@@ -155,6 +155,9 @@ repo_auto_validate_required_config() {
     DOCS_DIR \
     DOCS_INDEX \
     STATE_DIR_NAME \
+    REMOTE_NAME \
+    EXPECTED_REMOTE_URL \
+    PREFLIGHT_REQUIRE_CLEAN_WORKTREE \
     CI_PROVIDER \
     PR_PROVIDER \
     MERGE_MODE \
@@ -215,12 +218,26 @@ repo_auto_validate_required_config() {
     esac
   done
 
-  for value in "$DEFAULT_BRANCH" "$STATE_DIR_NAME" "$DOC_BRANCH_PREFIX" "$FEATURE_BRANCH_PREFIX" "$FIX_BRANCH_PREFIX" "$CHECK_PROFILE_DEFAULT"; do
+  for value in "$DEFAULT_BRANCH" "$STATE_DIR_NAME" "$REMOTE_NAME" "$DOC_BRANCH_PREFIX" "$FEATURE_BRANCH_PREFIX" "$FIX_BRANCH_PREFIX" "$CHECK_PROFILE_DEFAULT"; do
     repo_auto_validate_branch_name "$value" || {
       repo_auto_stop "invalid branch-safe config value"
       return 1
     }
   done
+
+  [[ "$EXPECTED_REMOTE_URL" =~ ^git@github.com:[^[:space:]]+/.+\.git$ ]] || {
+    repo_auto_stop "invalid EXPECTED_REMOTE_URL"
+    return 1
+  }
+
+  case "$PREFLIGHT_REQUIRE_CLEAN_WORKTREE" in
+    true|false)
+      ;;
+    *)
+      repo_auto_stop "invalid PREFLIGHT_REQUIRE_CLEAN_WORKTREE"
+      return 1
+      ;;
+  esac
 
   repo_auto_validate_provider "$CI_PROVIDER" || {
     repo_auto_stop "invalid CI_PROVIDER"
@@ -301,6 +318,9 @@ repo_auto_print_config_summary() {
   printf '  DOCS_DIR=%s\n' "$DOCS_DIR"
   printf '  DOCS_INDEX=%s\n' "$DOCS_INDEX"
   printf '  STATE_DIR_NAME=%s\n' "$STATE_DIR_NAME"
+  printf '  REMOTE_NAME=%s\n' "$REMOTE_NAME"
+  printf '  EXPECTED_REMOTE_URL=%s\n' "$EXPECTED_REMOTE_URL"
+  printf '  PREFLIGHT_REQUIRE_CLEAN_WORKTREE=%s\n' "$PREFLIGHT_REQUIRE_CLEAN_WORKTREE"
   printf '  CI_PROVIDER=%s\n' "$CI_PROVIDER"
   printf '  PR_PROVIDER=%s\n' "$PR_PROVIDER"
   printf '  MERGE_MODE=%s\n' "$MERGE_MODE"

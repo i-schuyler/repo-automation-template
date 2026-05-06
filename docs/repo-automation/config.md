@@ -29,6 +29,9 @@ The current config scaffold includes these required values:
 - `DOCS_DIR`
 - `DOCS_INDEX`
 - `STATE_DIR_NAME`
+- `REMOTE_NAME`
+- `EXPECTED_REMOTE_URL`
+- `PREFLIGHT_REQUIRE_CLEAN_WORKTREE`
 - `CI_PROVIDER`
 - `PR_PROVIDER`
 - `MERGE_MODE`
