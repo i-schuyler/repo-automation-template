@@ -52,6 +52,11 @@ smoke_main() {
   local report_preview_feature
   local doctor_json
   local doctor_missing_json
+  local install_plan_json
+  local install_target=""
+  local install_target_remote=""
+  local install_status_before
+  local install_status_after
   local finish_stderr
   local shim_dir
   local local_bash_path
@@ -62,7 +67,7 @@ smoke_main() {
   test_dir="$test_base/smoke-$$"
   remote_dir="$test_base/smoke-$$-remote.git"
   mkdir -p "$test_dir" || return 1
-  trap '[ -n "${test_dir:-}" ] && rm -rf "$test_dir"; [ -n "${remote_dir:-}" ] && rm -rf "$remote_dir"' EXIT INT TERM
+  trap '[ -n "${test_dir:-}" ] && rm -rf "$test_dir"; [ -n "${remote_dir:-}" ] && rm -rf "$remote_dir"; [ -n "${install_target:-}" ] && rm -rf "$install_target"; [ -n "${install_target_remote:-}" ] && rm -rf "$install_target_remote"' EXIT INT TERM
 
   mkdir -p "$test_dir/scripts/lib" "$test_dir/tests" || return 1
   cp "$repo_root/scripts/lib/repo-automation-common.sh" "$test_dir/scripts/lib/repo-automation-common.sh" || return 1
@@ -72,9 +77,11 @@ smoke_main() {
   cp "$repo_root/scripts/add-doc-pr" "$test_dir/scripts/add-doc-pr" || return 1
   cp "$repo_root/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-automation-report-upstream" || return 1
   cp "$repo_root/scripts/repo-doctor" "$test_dir/scripts/repo-doctor" || return 1
+  cp "$repo_root/scripts/repo-automation-install" "$test_dir/scripts/repo-automation-install" || return 1
   cp "$repo_root/scripts/run-tests" "$test_dir/scripts/run-tests" || return 1
+  cp "$repo_root/tests/smoke.sh" "$test_dir/tests/smoke.sh" || return 1
   cp "$repo_root/tests/version-consistency.sh" "$test_dir/tests/version-consistency.sh" || return 1
-  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" "$test_dir/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-doctor" "$test_dir/scripts/run-tests" "$test_dir/tests/version-consistency.sh" || return 1
+  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" "$test_dir/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-doctor" "$test_dir/scripts/repo-automation-install" "$test_dir/scripts/run-tests" "$test_dir/tests/smoke.sh" "$test_dir/tests/version-consistency.sh" || return 1
 
   (
     cd "$test_dir" || return 1
@@ -95,6 +102,7 @@ EOF
 ## [0.1.0] - Unreleased
 EOF
     mkdir -p docs .github/workflows .github/ISSUE_TEMPLATE || return 1
+    cp -R "$repo_root/docs/repo-automation" docs/ || return 1
     cat > docs/DECISIONS.md <<EOF
 # Decisions
 
@@ -119,6 +127,7 @@ EOF
 - repo-automation/add-doc-pr.md
 - repo-automation/repo-automation-report-upstream.md
 - repo-automation/repo-doctor.md
+- repo-automation/repo-automation-install.md
 - repo-automation/testing.md
 EOF
     mkdir -p examples/downstream || return 1
@@ -224,6 +233,16 @@ EOF
     smoke_info "repo-doctor help succeeds"
   else
     smoke_fail "repo-doctor help succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-install --help >/dev/null
+  ); then
+    smoke_info "repo-automation-install help succeeds"
+  else
+    smoke_fail "repo-automation-install help succeeds"
     status=1
   fi
 
@@ -420,6 +439,103 @@ EOF
     )
   fi
   rm -f "$doctor_json" "$doctor_missing_json" >/dev/null 2>&1 || true
+
+  install_target="$test_base/install-target-$$"
+  install_target_remote="$test_base/install-target-$$-remote.git"
+  mkdir -p "$install_target" || return 1
+  (
+    cd "$install_target" || return 1
+    git init -b main >/dev/null || return 1
+    git config user.name "repo-automation-install-test" || return 1
+    git config user.email "repo-automation-install-test@example.com" || return 1
+    printf '# target\n' > README.md || return 1
+    git add README.md || return 1
+    git commit -m "init target" >/dev/null || return 1
+    git init --bare --initial-branch=main "$install_target_remote" >/dev/null || return 1
+    git remote add origin "$install_target_remote" || return 1
+    git push -u origin main >/dev/null || return 1
+  ) || status=1
+
+  install_plan_json="$test_base/repo-install-plan-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-install --target "$install_target" --json > "$install_plan_json"
+  ) && python -m json.tool "$install_plan_json" >/dev/null; then
+    if smoke_json_assert "$install_plan_json" '"scripts/branch-cleanup" in data.get("files_to_add", [])'; then
+      smoke_info "repo-automation-install plan/json is parseable"
+    else
+      smoke_fail "repo-automation-install plan/json is parseable"
+      status=1
+    fi
+  else
+    smoke_fail "repo-automation-install plan/json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-install --target "$install_target" --apply --dry-run >/dev/null
+  ) && [ ! -f "$install_target/.repo-automation.conf" ]; then
+    smoke_info "repo-automation-install dry-run does not write files"
+  else
+    smoke_fail "repo-automation-install dry-run does not write files"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
+  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/docs/repo-automation/README.md" ] && [ -f "$install_target/docs/repo-automation/local-overrides.md" ] && [ -f "$install_target/scripts/repo-doctor" ] && [ -f "$install_target/scripts/run-tests" ] && [ -f "$install_target/tests/smoke.sh" ]; then
+    smoke_info "repo-automation-install apply creates managed files"
+  else
+    smoke_fail "repo-automation-install apply creates managed files"
+    status=1
+  fi
+
+  install_status_before="$(git -C "$install_target" status --porcelain)"
+  if [ -n "$install_status_before" ]; then
+    smoke_info "repo-automation-install does not commit or push in target repo"
+  else
+    smoke_fail "repo-automation-install does not commit or push in target repo"
+    status=1
+  fi
+
+  if (
+    cd "$install_target" || return 1
+    printf '# local override\n' > docs/repo-automation/local-overrides.md
+  ); then
+    :
+  else
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-install --target "$install_target" --json > "$install_plan_json"
+  ) && python -m json.tool "$install_plan_json" >/dev/null && \
+    smoke_json_assert "$install_plan_json" 'data.get("mode") == "update"'; then
+    smoke_info "repo-automation-install second plan infers update mode"
+  else
+    smoke_fail "repo-automation-install second plan infers update mode"
+    status=1
+  fi
+
+  if grep -q '^# local override$' "$install_target/docs/repo-automation/local-overrides.md"; then
+    smoke_info "repo-automation-install preserves existing local overrides"
+  else
+    smoke_fail "repo-automation-install preserves existing local overrides"
+    status=1
+  fi
+
+  install_status_after="$(git -C "$install_target" status --porcelain)"
+  if [ -n "$install_status_after" ]; then
+    :
+  else
+    smoke_fail "repo-automation-install target repo remains unchanged in git history"
+    status=1
+  fi
+
+  rm -f "$install_plan_json" >/dev/null 2>&1 || true
 
   branch_json="$test_dir/branch-cleanup.json"
   if (

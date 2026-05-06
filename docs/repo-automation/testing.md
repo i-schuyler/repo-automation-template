@@ -14,6 +14,7 @@ CI runs the same core checks:
 - smoke coverage for `scripts/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
 - smoke coverage for `scripts/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - smoke coverage for `scripts/repo-doctor` help, quick/json mode, and missing-config safe failure behavior
+- smoke coverage for `scripts/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, and local-overrides preservation
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard
 
@@ -22,6 +23,7 @@ The test scaffold does not require GitHub auth and does not create issues or PRs
 `scripts/add-doc-pr` smoke coverage does not create real PRs.
 `scripts/repo-automation-report-upstream` smoke coverage does not create real issues.
 `scripts/repo-doctor` smoke coverage is local/no-auth and does not create GitHub objects.
+`scripts/repo-automation-install` smoke coverage only uses temporary local target repos and does not touch real downstream repos.
 
 Smoke tests use temporary directories under `${TMPDIR:-$HOME/.cache}/repo-automation-template-tests`.
 

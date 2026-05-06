@@ -4,17 +4,18 @@ Downstream installs should make the automation visible, inspectable, and safe to
 
 ## Installed Files
 
-Expected installed paths:
+Default installer-managed paths:
 
 - `scripts/`
 - `scripts/lib/`
 - `docs/repo-automation/`
 - `.repo-automation.conf`
-- optional `examples/`
-- visible installed version/provenance note
-- upstream issue instructions
+- generated `docs/repo-automation/README.md`
+- optional `tests/` and `scripts/run-tests` when `--include-tests` is used
+- optional `.github/workflows/ci.yml` when `--include-ci` is used
 
 Public config must not contain secrets or machine-local values.
+Installer apply mode must not commit, push, create PRs, merge, or delete branches in target repos.
 
 Downstream repos should have a visible repo-automation README showing:
 
@@ -26,3 +27,4 @@ Downstream repos should have a visible repo-automation README showing:
 - a copyable installed-version/context block for upstream bug reports
 
 When available, downstream installs should include `scripts/repo-automation-report-upstream` so upstream shared automation bugs/features can be prepared with preview/redaction safeguards before submission.
+Downstream installs should use `scripts/repo-automation-install --target <repo>` in plan mode first, then explicit `--apply`.

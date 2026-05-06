@@ -2,6 +2,12 @@
 
 Downstream repos should keep this file visible after installing shared repo automation.
 
+Recommended install/update path:
+
+```sh
+scripts/repo-automation-install --target . --plan
+```
+
 Record:
 
 - installed version/ref

@@ -70,9 +70,9 @@
 - `--json` structured output
 - smoke coverage and run-tests integration
 
-## Slice 8: Downstream Installer/Import/Update Helper (Future)
+## Slice 8: Downstream Installer/Import/Update Helper (Completed)
 
-- future import/update helper
+- `scripts/repo-automation-install` install/update helper
 - provenance recording
 - installed version/ref checks
 - copyable installed-version/context block

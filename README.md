@@ -30,6 +30,7 @@ v0.1.0 is a docs-first bootstrap. It establishes:
 - first workflow scaffolds for branch cleanup and codex slice preflight
 - pr finish helper scaffold for status/watch/explicit merge flows
 - repo doctor read-only health helper scaffold
+- downstream install/update helper scaffold
 
 ## Not In v0.1.0
 
@@ -50,6 +51,7 @@ These names define the intended shape of slices.
 - `scripts/add-doc-pr` (implemented in first scaffold form)
 - `scripts/repo-automation-report-upstream` (implemented in first scaffold form)
 - `scripts/repo-doctor` (implemented in first scaffold form)
+- `scripts/repo-automation-install` (implemented in first scaffold form)
 
 ## Start Here
 
@@ -64,6 +66,7 @@ These names define the intended shape of slices.
 - Read [docs/repo-automation/add-doc-pr.md](docs/repo-automation/add-doc-pr.md) before creating docs-only pull requests from terminal helper flows.
 - Read [docs/repo-automation/repo-automation-report-upstream.md](docs/repo-automation/repo-automation-report-upstream.md) before submitting upstream automation bug/feature reports.
 - Read [docs/repo-automation/repo-doctor.md](docs/repo-automation/repo-doctor.md) before running read-only health diagnostics.
+- Read [docs/repo-automation/repo-automation-install.md](docs/repo-automation/repo-automation-install.md) before installing/updating automation into downstream repos.
 - Read [docs/repo-automation/testing.md](docs/repo-automation/testing.md) before changing scripts or version placements.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 
@@ -93,3 +96,4 @@ Do not add live payment links here unless a support path is actually live and cl
 Use GitHub Issues for bugs and feature requests. Downstream repo users should start with [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) so local repo-specific requests stay local and shared automation problems are filed upstream.
 Downstream repos can now use `scripts/repo-automation-report-upstream` to prepare and submit upstream bug/feature reports from terminal after preview/redaction checks.
 `scripts/repo-doctor` now provides a read-only PASS/WARN/FAIL health summary for config, scripts, tests, CI permissions, docs links, and issue templates.
+`scripts/repo-automation-install` now provides terminal preview/apply flows for installing or updating managed repo automation files into downstream repos.

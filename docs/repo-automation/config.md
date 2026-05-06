@@ -59,6 +59,8 @@ Downstream installed configs should keep recording:
 
 That installed context is what downstream users can paste into bug reports when filing upstream issues.
 
+`scripts/repo-automation-install` generates downstream `.repo-automation.conf` and keeps the same variable shape. `EXPECTED_REMOTE_URL` may be empty in generated downstream config when target origin cannot be detected; downstream maintainers should fill it in.
+
 ## Version Drift
 
 Config values are part of the version drift surface. Changes here should stay aligned with `VERSION`, `CHANGELOG.md`, README-visible version text, `docs/DECISIONS.md`, and `docs/VERSIONING.md`.
