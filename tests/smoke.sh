@@ -43,6 +43,9 @@ smoke_main() {
   local start_branch
   local branch_json
   local preflight_json
+  local finish_stderr
+  local shim_dir
+  local local_bash_path
   local status=0
 
   repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,7 +59,8 @@ smoke_main() {
   cp "$repo_root/scripts/lib/repo-automation-common.sh" "$test_dir/scripts/lib/repo-automation-common.sh" || return 1
   cp "$repo_root/scripts/branch-cleanup" "$test_dir/scripts/branch-cleanup" || return 1
   cp "$repo_root/scripts/codex-slice-preflight" "$test_dir/scripts/codex-slice-preflight" || return 1
-  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" || return 1
+  cp "$repo_root/scripts/pr-finish" "$test_dir/scripts/pr-finish" || return 1
+  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" || return 1
 
   (
     cd "$test_dir" || return 1
@@ -116,6 +120,16 @@ EOF
     smoke_info "branch-cleanup plan succeeds"
   else
     smoke_fail "branch-cleanup plan succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/pr-finish --help >/dev/null
+  ); then
+    smoke_info "pr-finish help succeeds"
+  else
+    smoke_fail "pr-finish help succeeds"
     status=1
   fi
 
@@ -200,6 +214,41 @@ EOF
   else
     smoke_fail "preflight json is parseable"
     status=1
+  fi
+
+  finish_stderr="$test_dir/pr-finish-stderr.log"
+  if (
+    cd "$test_dir" || return 1
+    local_bash_path="$(command -v bash)" || return 1
+    git rev-parse HEAD > "$test_dir/pre-head.txt" || return 1
+    git branch --show-current > "$test_dir/pre-branch.txt" || return 1
+    git status --porcelain --untracked-files=no > "$test_dir/pre-status.txt" || return 1
+    shim_dir="$test_dir/no-gh-bin"
+    mkdir -p "$shim_dir" || return 1
+    ln -sf "$(command -v git)" "$shim_dir/git" || return 1
+    ln -sf "$(command -v dirname)" "$shim_dir/dirname" || return 1
+    ln -sf "$(command -v grep)" "$shim_dir/grep" || return 1
+    PATH="$shim_dir" "$local_bash_path" scripts/pr-finish --plan >/dev/null 2> "$finish_stderr"
+    return 1
+  ); then
+    smoke_fail "pr-finish no-auth/no-gh safe-failure path"
+    status=1
+  else
+    if (
+      cd "$test_dir" || return 1
+      git rev-parse HEAD > "$test_dir/post-head.txt" || return 1
+      git branch --show-current > "$test_dir/post-branch.txt" || return 1
+      git status --porcelain --untracked-files=no > "$test_dir/post-status.txt" || return 1
+      cmp -s "$test_dir/pre-head.txt" "$test_dir/post-head.txt" &&
+        cmp -s "$test_dir/pre-branch.txt" "$test_dir/post-branch.txt" &&
+        cmp -s "$test_dir/pre-status.txt" "$test_dir/post-status.txt" &&
+        grep -q 'STOP: gh is required for pr-finish' "$finish_stderr"
+    ); then
+      smoke_info "pr-finish no-auth/no-gh failure is safe and non-mutating"
+    else
+      smoke_fail "pr-finish no-auth/no-gh failure is safe and non-mutating"
+      status=1
+    fi
   fi
 
   return "$status"

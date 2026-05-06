@@ -28,6 +28,7 @@ v0.1.0 is a docs-first bootstrap. It establishes:
 - public coming-soon support and monetization paths
 - repo-local config and shared Bash library scaffold for future scripts
 - first workflow scaffolds for branch cleanup and codex slice preflight
+- pr finish helper scaffold for status/watch/explicit merge flows
 
 ## Not In v0.1.0
 
@@ -44,7 +45,7 @@ These names define the intended shape of slices.
 
 - `scripts/codex-slice-preflight` (implemented in first scaffold form)
 - `scripts/branch-cleanup` (implemented in first scaffold form)
-- `scripts/pr-finish`
+- `scripts/pr-finish` (implemented in first scaffold form)
 - `scripts/add-doc-pr`
 - `scripts/repo-doctor`
 - `scripts/repo-automation-report-upstream`
@@ -58,6 +59,7 @@ These names define the intended shape of slices.
 - Read [docs/repo-automation/common-library.md](docs/repo-automation/common-library.md) before adding future workflow scripts.
 - Read [docs/repo-automation/branch-cleanup.md](docs/repo-automation/branch-cleanup.md) before deleting local branches.
 - Read [docs/repo-automation/codex-slice-preflight.md](docs/repo-automation/codex-slice-preflight.md) before running slice preflight automation.
+- Read [docs/repo-automation/pr-finish.md](docs/repo-automation/pr-finish.md) before watching checks or merging from terminal helper flows.
 - Read [docs/repo-automation/testing.md](docs/repo-automation/testing.md) before changing scripts or version placements.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 
