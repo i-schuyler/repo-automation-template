@@ -24,6 +24,9 @@ This file records public repo decisions for `repo-automation-template`.
 | Branch cleanup safety boundary | branch cleanup must never delete remote branches or force-delete local branches |
 | Codex preflight scope | codex slice preflight may create/check out a requested branch but must not create PRs or merge PRs |
 | Preflight branch deletion flag | preflight branch deletion requires explicit `--delete-safe-stale` |
+| JSON stdout contract | JSON mode stdout must be valid JSON only for branch cleanup and preflight |
+| Config failure contract | invalid config and secret-scan failures must stop rather than silently falling back in behavior-changing scripts |
+| Branch classification contract | branch cleanup must classify all local branches with explicit skipped reasons |
 
 ## TENTATIVE
 

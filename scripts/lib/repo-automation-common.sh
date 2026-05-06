@@ -113,6 +113,12 @@ repo_auto_validate_branch_name() {
       ;;
   esac
 
+  if command -v git >/dev/null 2>&1; then
+    git check-ref-format --branch "$branch_name" >/dev/null 2>&1 || {
+      return 1
+    }
+  fi
+
   return 0
 }
 

@@ -15,15 +15,30 @@ Default behavior is plan-only. No deletion happens unless `--apply` is passed.
 
 The script never deletes remote branches and never force-deletes local branches.
 
-`--json` prints structured output for later ChatGPT/Codex parsing:
+All local branches are classified as either a deletion candidate or a skipped branch with a reason.
+
+`--json` prints machine-parseable JSON on stdout only. Human INFO/WARN/STOP logs are written to stderr in JSON mode.
+
+`--json` output includes:
 
 - mode
 - default branch
 - current branch
 - candidates
-- skipped branches with reasons
+- skipped branches with `branch` and `reason`
 - deleted branches
 - stop reason
+
+Expected skip reasons include:
+
+- `current-branch`
+- `default-branch`
+- `not-merged-into-origin-default`
+- `has-unique-commits`
+- `invalid-branch-name`
+- `ambiguous-status`
+
+Config loading is strict for this script. Invalid config, secret-scan failure, or config source failure stops execution instead of silently falling back. `--apply` requires valid config.
 
 Usage examples:
 

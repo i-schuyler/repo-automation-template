@@ -4,9 +4,13 @@
 
 The script requires `--branch <name>`. It validates branch safety and rejects the default branch.
 
+Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
+
 `--check-only` validates config, remote expectations, current worktree status, and branch-cleanup planning without checking out or creating the requested branch.
 
 `--delete-safe-stale` allows local safe stale deletion by calling `scripts/branch-cleanup --apply`. Without this flag, branch cleanup stays in plan mode.
+
+`--json` emits valid JSON only on stdout. Human INFO/WARN/STOP logs are sent to stderr. JSON mode includes structured branch-cleanup status and does not parse human branch-cleanup text.
 
 STOP behavior is conservative. The script returns non-zero when safety cannot be confirmed, including:
 

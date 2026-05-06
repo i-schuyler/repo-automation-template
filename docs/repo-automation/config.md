@@ -68,3 +68,5 @@ See [docs/VERSIONING.md](../VERSIONING.md) for the current versioning contract.
 ## Loading Rule
 
 Future workflow scripts must load configuration through `scripts/lib/repo-automation-common.sh` instead of re-implementing config lookup or validation.
+
+For behavior-changing scripts such as branch cleanup and preflight, invalid config, secret-scan failure, or source failure must stop execution instead of silently falling back.
