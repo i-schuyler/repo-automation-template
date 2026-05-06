@@ -45,3 +45,7 @@ Usage examples:
     scripts/branch-cleanup --plan
     scripts/branch-cleanup --json --plan
     scripts/branch-cleanup --apply
+
+Test coverage:
+
+- `tests/smoke.sh` validates plan mode, JSON parseability, candidate classification, and skipped reason reporting.

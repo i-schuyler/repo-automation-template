@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y shellcheck
+          fi
+
+      - name: Run checks
+        run: |
+          git diff --check
+          bash -n scripts/lib/repo-automation-common.sh
+          bash -n scripts/branch-cleanup
+          bash -n scripts/codex-slice-preflight
+          bash -n scripts/run-tests
+          bash -n tests/smoke.sh
+          bash -n tests/version-consistency.sh
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck -e SC2317 scripts/branch-cleanup scripts/codex-slice-preflight scripts/run-tests tests/smoke.sh tests/version-consistency.sh
+          fi
+          scripts/run-tests

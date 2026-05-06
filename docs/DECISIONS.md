@@ -27,6 +27,10 @@ This file records public repo decisions for `repo-automation-template`.
 | JSON stdout contract | JSON mode stdout must be valid JSON only for branch cleanup and preflight |
 | Config failure contract | invalid config and secret-scan failures must stop rather than silently falling back in behavior-changing scripts |
 | Branch classification contract | branch cleanup must classify all local branches with explicit skipped reasons |
+| CI permission boundary | CI must use minimal permissions by default |
+| Test credential boundary | test scaffolds must be local-only and must not require private GitHub credentials |
+| Version consistency gate | version consistency must be checked in CI before release automation exists |
+| Preflight prompt contract | future Codex prompts should use `scripts/codex-slice-preflight` rather than repeating manual branch hygiene when the script exists |
 
 ## TENTATIVE
 

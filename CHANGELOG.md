@@ -20,6 +20,10 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Made JSON output machine-parseable on stdout.
 - Added all-local-branch classification with skipped reasons.
 - Added Git ref-format validation for branch names.
+- Added GitHub Actions CI scaffold.
+- Added local test runner.
+- Added smoke tests for branch cleanup and preflight.
+- Added version consistency guard.
 
 ### Not Implemented
 

@@ -30,21 +30,29 @@
 - strict config failure stop behavior for behavior-changing scripts
 - all-local-branch classification with explicit skipped reasons
 
-## Slice 3: pr-finish + JSON Status (Future)
+## Slice 3: CI/Test Scaffold + Version Consistency Guard (Completed)
+
+- GitHub Actions CI scaffold with minimal permissions
+- `scripts/run-tests` local validation entrypoint
+- smoke tests for branch cleanup and preflight
+- JSON parseability checks in local and CI paths
+- version consistency guard via `tests/version-consistency.sh`
+
+## Slice 4: pr-finish + JSON Status (Future)
 
 - `pr-finish`
 - `--json` structured output
 - CI failure evidence extraction
 - compact command summaries
 
-## Slice 4: add-doc-pr + Plan/Parse/Check Profiles (Future)
+## Slice 5: add-doc-pr + Plan/Parse/Check Profiles (Future)
 
 - clearer `add-doc-pr` modes
 - check profiles
 - `--plan` / `--dry-run`
 - package as template directory
 
-## Slice 5: repo-automation-report-upstream Terminal Issue Helper (Future)
+## Slice 6: repo-automation-report-upstream Terminal Issue Helper (Future)
 
 - downstream upstream-report helper
 - preview-before-submit behavior
@@ -52,14 +60,13 @@
 - local-vs-upstream issue body fields
 - redaction reminders
 
-## Slice 6: Tests + Doctor/Explain UX (Future)
+## Slice 7: repo-doctor + Explain UX (Future)
 
-- small test suite
 - `--doctor`
 - `--explain`
 - compatibility checks
 
-## Slice 7: Downstream Installer/Import/Update Helper (Future)
+## Slice 8: Downstream Installer/Import/Update Helper (Future)
 
 - future import/update helper
 - provenance recording
@@ -67,9 +74,8 @@
 - copyable installed-version/context block
 - local override preservation
 
-## Slice 8: Version Consistency CI + Release Guard (Future)
+## Slice 9: Release Guard Extensions (Future)
 
-- version consistency CI
 - changelog/version release guard
 - future CI guard for `VERSION`, `CHANGELOG.md`, README, decisions, script metadata, release metadata, and installed examples
 - version consistency checks across downstream installed docs and config examples
