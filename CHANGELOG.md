@@ -10,6 +10,9 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added issue-form plan and downstream feedback canon.
 - Added versioning canon.
 - Added monetization funnel docs.
+- Added repo-local config scaffold.
+- Added shared Bash library scaffold.
+- Added config/common-library docs.
 
 ### Not Implemented
 

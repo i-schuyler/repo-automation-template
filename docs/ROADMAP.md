@@ -9,12 +9,13 @@
 - versioning and changelog canon
 - monetization funnel copy
 
-## Slice 1: Config + Shared Bash Library Scaffold
+## Slice 1: Config + Shared Bash Library Scaffold (Started)
 
 - repo-local config file
 - shared Bash library
 - compact command summaries
 - safer branch naming defaults
+- config and common-library docs
 
 ## Slice 2: Branch Cleanup + Preflight
 

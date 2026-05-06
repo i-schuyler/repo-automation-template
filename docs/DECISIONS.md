@@ -18,6 +18,8 @@ This file records public repo decisions for `repo-automation-template`.
 | Downstream installed-context block | downstream installed docs must include a copyable installed-version/context block for upstream bug reports |
 | Monetization CTAs | public monetization CTAs remain "coming soon" until a support/payment path is live |
 | Version drift | version drift across root, docs, scripts, release metadata, and downstream examples is a tracked drift risk |
+| Repo-local config entry point | `.repo-automation.conf` is the repo-local config entry point for future automation scripts |
+| Shared Bash library source | repo-local scripts must source `scripts/lib/repo-automation-common.sh` instead of duplicating shared helper logic |
 
 ## TENTATIVE
 
