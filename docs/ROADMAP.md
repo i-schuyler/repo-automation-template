@@ -54,7 +54,7 @@
 - docs-only changed-file boundary enforcement
 - explicit `--create-pr` gate
 
-## Slice 6: repo-automation-report-upstream Terminal Issue Helper (Future)
+## Slice 6: repo-automation-report-upstream Terminal Issue Helper (Completed)
 
 - downstream upstream-report helper
 - preview-before-submit behavior

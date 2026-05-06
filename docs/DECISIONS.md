@@ -40,6 +40,11 @@ This file records public repo decisions for `repo-automation-template`.
 | Add-doc-pr docs-only boundary | `scripts/add-doc-pr` must enforce docs-only changed-file boundaries by default |
 | Add-doc-pr merge boundary | `scripts/add-doc-pr` must not merge PRs |
 | Add-doc-pr PR-create flag | `scripts/add-doc-pr` must not create PRs unless explicit `--create-pr` is supplied |
+| Report-upstream default mode | `scripts/repo-automation-report-upstream` defaults to preview/plan-only behavior |
+| Report-upstream preview gate | `scripts/repo-automation-report-upstream` must preview issue body before submit |
+| Report-upstream browser boundary | `scripts/repo-automation-report-upstream` must never require opening a browser |
+| Report-upstream redaction boundary | `scripts/repo-automation-report-upstream` must stop on likely secret markers before submission |
+| Report-upstream submit flag | `scripts/repo-automation-report-upstream` must not submit unless explicit `--submit` is supplied |
 
 ## TENTATIVE
 

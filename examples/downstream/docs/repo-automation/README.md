@@ -29,10 +29,10 @@ Repo automation installed context:
 
 File upstream when a bug or feature affects shared automation behavior. Keep repo-specific CI commands, docs paths, deploy paths, board config, app behavior, and private operational rules local.
 
-Planned terminal reporting helper:
+Terminal reporting helper:
 
 ```sh
-scripts/repo-automation-report-upstream
+scripts/repo-automation-report-upstream --type bug --title "Short title" --command "..." --expected "..." --actual "..." --dry-run
 ```
 
 Before filing, redact secrets, tokens, private keys, passphrases, private env values, sensitive private hostnames, and raw logs containing secrets.

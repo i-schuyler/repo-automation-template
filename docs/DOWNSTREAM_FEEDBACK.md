@@ -23,15 +23,13 @@ Keep local repo-specific requests local. Examples include repo-specific CI comma
 
 Redact secrets before filing. Do not paste tokens, private keys, passphrases, private env values, or raw logs containing secrets.
 
-## Future Terminal Helper
-
-Future helper:
+## Terminal Helper
 
 ```sh
 scripts/repo-automation-report-upstream --type bug|feature
 ```
 
-The helper must:
+Implemented helper behavior:
 
 - generate a local issue body preview before submission
 - show the upstream repo target
@@ -53,3 +51,5 @@ Issue bodies should include:
 - actual behavior
 - redacted logs
 - whether local overrides are present
+
+Issue forms in GitHub remain a fallback path when terminal helper usage is not possible.

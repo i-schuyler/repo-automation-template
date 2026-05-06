@@ -1,0 +1,480 @@
+#!/usr/bin/env bash
+# scripts/repo-automation-report-upstream
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/lib/repo-automation-common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+report_upstream_json=0
+report_upstream_stop_reason=""
+
+report_upstream_usage() {
+  printf 'Usage: scripts/repo-automation-report-upstream [--help] [--plan] [--dry-run] [--json] [--type bug|feature] [--title TITLE] [--command TEXT] [--expected TEXT] [--actual TEXT] [--use-case TEXT] [--proposed TEXT] [--why-upstream TEXT] [--logs-file FILE] [--body-file FILE] [--preview-file FILE] [--submit] [--yes] [--label LABEL] [--repo OWNER/REPO]\n'
+}
+
+report_upstream_info() {
+  printf 'INFO: %s\n' "$*" >&2
+}
+
+report_upstream_warn() {
+  printf 'WARN: %s\n' "$*" >&2
+}
+
+report_upstream_stop() {
+  report_upstream_stop_reason="$*"
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+report_upstream_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+report_upstream_json_array() {
+  local first=1
+  local value
+  for value in "$@"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(report_upstream_json_escape "$value")"
+    first=0
+  done
+}
+
+report_upstream_extract_issue_number() {
+  local url="$1"
+  local issue_number=""
+  issue_number="${url##*/}"
+  case "$issue_number" in
+    ''|*[!0-9]*)
+      printf ''
+      ;;
+    *)
+      printf '%s' "$issue_number"
+      ;;
+  esac
+}
+
+report_upstream_build_preview() {
+  local type="$1"
+  local title="$2"
+  local upstream_repo="$3"
+  local installed_version_or_ref="$4"
+  local installed_at="$5"
+  local local_overrides_doc="$6"
+  local local_overrides_present="$7"
+  local repo_name="$8"
+  local command_text="$9"
+  local expected_text="${10}"
+  local actual_text="${11}"
+  local use_case_text="${12}"
+  local proposed_text="${13}"
+  local why_upstream_text="${14}"
+  local logs_note="${15}"
+  local body_appendix="${16}"
+  local preview_file="${17}"
+
+  {
+    printf '# %s\n\n' "$title"
+    printf 'Type: %s\n' "$type"
+    printf 'Upstream repo target: %s\n\n' "$upstream_repo"
+    printf '## Installed context\n\n'
+    printf -- '- Upstream repo: %s\n' "$upstream_repo"
+    printf -- '- Installed version/ref: %s\n' "$installed_version_or_ref"
+    printf -- '- Installed at: %s\n' "$installed_at"
+    printf -- '- Local overrides doc: %s\n' "$local_overrides_doc"
+    printf -- '- Local overrides present: %s\n' "$local_overrides_present"
+    printf -- '- Current repo root name: %s\n\n' "$repo_name"
+
+    if [ "$type" = "bug" ]; then
+      printf '## Bug details\n\n'
+      printf 'Command run:\n\n'
+      printf '%s\n\n' "${command_text:-not provided}"
+      printf 'Expected behavior:\n\n'
+      printf '%s\n\n' "${expected_text:-not provided}"
+      printf 'Actual behavior:\n\n'
+      printf '%s\n\n' "${actual_text:-not provided}"
+    else
+      printf '## Feature details\n\n'
+      printf 'Use case:\n\n'
+      printf '%s\n\n' "${use_case_text:-not provided}"
+      printf 'Proposed behavior:\n\n'
+      printf '%s\n\n' "${proposed_text:-not provided}"
+      printf 'Why this belongs upstream:\n\n'
+      printf '%s\n\n' "${why_upstream_text:-not provided}"
+    fi
+
+    printf '## Redaction check\n\n'
+    printf '%s\n\n' "$logs_note"
+    printf -- '- [ ] I confirm logs and context are redacted and contain no tokens, API keys, private keys, passwords, passphrases, or sensitive host identifiers.\n\n'
+
+    if [ -n "$body_appendix" ]; then
+      printf '## Additional context\n\n'
+      printf '%s\n\n' "$body_appendix"
+    fi
+  } > "$preview_file"
+}
+
+report_upstream_main() {
+  local mode="plan"
+  local report_type=""
+  local title=""
+  local command_text=""
+  local expected_text=""
+  local actual_text=""
+  local use_case_text=""
+  local proposed_text=""
+  local why_upstream_text=""
+  local logs_file=""
+  local body_file=""
+  local preview_file=""
+  local submit=0
+  local assume_yes=0
+  local repo_override=""
+  local arg=""
+  local action_taken="preview"
+  local submitted=false
+  local redaction_scan="pass"
+  local issue_number=""
+  local issue_url=""
+  local command_status=0
+  local repo_root=""
+  local repo_name=""
+  local upstream_repo=""
+  local installed_version_or_ref=""
+  local installed_at=""
+  local local_overrides_doc=""
+  local local_overrides_present="unknown"
+  local logs_note="Redacted logs attached/pasted: no"
+  local body_appendix=""
+  local confirm_input=""
+  local default_bug_label="automation-bug"
+  local default_feature_label="automation-feature"
+  local -a labels=()
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        report_upstream_usage
+        return 0
+        ;;
+      --plan)
+        mode="plan"
+        ;;
+      --dry-run)
+        mode="dry-run"
+        ;;
+      --json)
+        report_upstream_json=1
+        ;;
+      --type)
+        shift
+        report_type="${1:-}"
+        ;;
+      --title)
+        shift
+        title="${1:-}"
+        ;;
+      --command)
+        shift
+        command_text="${1:-}"
+        ;;
+      --expected)
+        shift
+        expected_text="${1:-}"
+        ;;
+      --actual)
+        shift
+        actual_text="${1:-}"
+        ;;
+      --use-case)
+        shift
+        use_case_text="${1:-}"
+        ;;
+      --proposed)
+        shift
+        proposed_text="${1:-}"
+        ;;
+      --why-upstream)
+        shift
+        why_upstream_text="${1:-}"
+        ;;
+      --logs-file)
+        shift
+        logs_file="${1:-}"
+        ;;
+      --body-file)
+        shift
+        body_file="${1:-}"
+        ;;
+      --preview-file)
+        shift
+        preview_file="${1:-}"
+        ;;
+      --submit)
+        submit=1
+        ;;
+      --yes)
+        assume_yes=1
+        ;;
+      --label)
+        shift
+        labels+=("${1:-}")
+        ;;
+      --repo)
+        shift
+        repo_override="${1:-}"
+        ;;
+      *)
+        report_upstream_stop "unknown argument: $arg"
+        command_status=1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$submit" -eq 1 ] && [ "$mode" = "dry-run" ]; then
+    report_upstream_warn "--dry-run active; issue will not be submitted"
+    submit=0
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_root=$(repo_auto_repo_root) || {
+      report_upstream_stop "failed to determine repo root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$repo_root" || {
+      report_upstream_stop "failed to enter repo root: $repo_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      report_upstream_stop "failed to load .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      report_upstream_stop "invalid .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    case "$report_type" in
+      bug|feature)
+        ;;
+      *)
+        report_upstream_stop "--type must be exactly bug or feature"
+        command_status=1
+        ;;
+    esac
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -z "$title" ]; then
+    report_upstream_stop "--title is required"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -n "$repo_override" ]; then
+      upstream_repo="$repo_override"
+    else
+      upstream_repo="$UPSTREAM_REPO_FULL_NAME"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    [[ "$upstream_repo" =~ ^[^[:space:]/]+/[^[:space:]/]+$ ]] || {
+      report_upstream_stop "invalid target repo: $upstream_repo"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    # shellcheck disable=SC2153
+    installed_version_or_ref="$INSTALLED_VERSION_OR_REF"
+    # shellcheck disable=SC2153
+    installed_at="$INSTALLED_AT"
+    # shellcheck disable=SC2153
+    local_overrides_doc="$LOCAL_OVERRIDES_DOC"
+    repo_name="$(basename "$repo_root")"
+    if [ -f "$local_overrides_doc" ]; then
+      local_overrides_present="yes"
+    else
+      local_overrides_present="no"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$logs_file" ]; then
+    if [ ! -f "$logs_file" ]; then
+      report_upstream_stop "logs file does not exist: $logs_file"
+      command_status=1
+    elif ! repo_auto_secret_scan_file "$logs_file"; then
+      redaction_scan="blocked"
+      report_upstream_stop "likely secret markers found in logs file"
+      command_status=1
+    else
+      logs_note="Redacted logs attached/pasted: yes (from logs file)"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$body_file" ]; then
+    if [ ! -f "$body_file" ]; then
+      report_upstream_stop "body file does not exist: $body_file"
+      command_status=1
+    elif ! repo_auto_secret_scan_file "$body_file"; then
+      redaction_scan="blocked"
+      report_upstream_stop "likely secret markers found in body file"
+      command_status=1
+    else
+      body_appendix="$(cat "$body_file")"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -z "$preview_file" ]; then
+      preview_file="${TMPDIR:-$HOME/.cache}/repo-automation-template/report-upstream-preview.md"
+    fi
+    mkdir -p "$(dirname "$preview_file")" || {
+      report_upstream_stop "failed to create preview directory"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ "$report_type" = "bug" ]; then
+      labels=("$default_bug_label" "${labels[@]}")
+    else
+      labels=("$default_feature_label" "${labels[@]}")
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    report_upstream_build_preview \
+      "$report_type" \
+      "$title" \
+      "$upstream_repo" \
+      "$installed_version_or_ref" \
+      "$installed_at" \
+      "$local_overrides_doc" \
+      "$local_overrides_present" \
+      "$repo_name" \
+      "$command_text" \
+      "$expected_text" \
+      "$actual_text" \
+      "$use_case_text" \
+      "$proposed_text" \
+      "$why_upstream_text" \
+      "$logs_note" \
+      "$body_appendix" \
+      "$preview_file" || {
+      report_upstream_stop "failed to build preview body"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$report_upstream_json" -eq 0 ]; then
+    report_upstream_info "issue body preview generated"
+    report_upstream_info "preview file: $preview_file"
+    report_upstream_info "upstream repo target: $upstream_repo"
+    report_upstream_info "issue type: $report_type"
+    report_upstream_info "installed version/ref: $installed_version_or_ref"
+    report_upstream_info "local overrides present: $local_overrides_present"
+    report_upstream_info "redact secrets before submission"
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$submit" -eq 1 ]; then
+    repo_auto_require_command gh || {
+      report_upstream_stop "gh is required for --submit"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$submit" -eq 1 ] && [ "$assume_yes" -eq 0 ]; then
+    if [ "$report_upstream_json" -eq 0 ]; then
+      printf 'Confirm submission to %s? Type yes to continue: ' "$upstream_repo" >&2
+      IFS= read -r confirm_input
+      if [ "$confirm_input" != "yes" ]; then
+        report_upstream_stop "submission not confirmed"
+        command_status=1
+      fi
+    else
+      report_upstream_stop "--submit without --yes is not supported in --json mode"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$submit" -eq 1 ]; then
+    local -a label_flags=()
+    local label
+    for label in "${labels[@]}"; do
+      [ -n "$label" ] || continue
+      label_flags+=(--label "$label")
+    done
+
+    issue_url=$(gh issue create --repo "$upstream_repo" --title "$title" --body-file "$preview_file" "${label_flags[@]}" 2>&1) || {
+      report_upstream_stop "gh issue create failed: $issue_url"
+      command_status=1
+    }
+    if [ "$command_status" -eq 0 ]; then
+      issue_number="$(report_upstream_extract_issue_number "$issue_url")"
+      submitted=true
+      action_taken="submitted"
+      [ "$report_upstream_json" -eq 1 ] || report_upstream_info "issue submitted: $issue_url"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$submit" -eq 0 ]; then
+    action_taken="preview"
+    [ "$report_upstream_json" -eq 1 ] || report_upstream_info "preview-only mode; no issue was submitted"
+  fi
+
+  if [ "$report_upstream_json" -eq 1 ]; then
+    printf '{'
+    printf '"mode":"%s",' "$(report_upstream_json_escape "$mode")"
+    printf '"type":"%s",' "$(report_upstream_json_escape "$report_type")"
+    printf '"title":"%s",' "$(report_upstream_json_escape "$title")"
+    printf '"upstream_repo":"%s",' "$(report_upstream_json_escape "$upstream_repo")"
+    printf '"labels":['
+    report_upstream_json_array "${labels[@]}"
+    printf '],'
+    printf '"preview_file":"%s",' "$(report_upstream_json_escape "$preview_file")"
+    printf '"submitted":%s,' "$submitted"
+    printf '"issue_number":"%s",' "$(report_upstream_json_escape "$issue_number")"
+    printf '"issue_url":"%s",' "$(report_upstream_json_escape "$issue_url")"
+    printf '"redaction_scan":"%s",' "$(report_upstream_json_escape "$redaction_scan")"
+    printf '"installed_version_or_ref":"%s",' "$(report_upstream_json_escape "$installed_version_or_ref")"
+    printf '"local_overrides_doc":"%s",' "$(report_upstream_json_escape "$local_overrides_doc")"
+    printf '"action_taken":"%s",' "$(report_upstream_json_escape "$action_taken")"
+    printf '"stop_reason":"%s"' "$(report_upstream_json_escape "$report_upstream_stop_reason")"
+    printf '}\n'
+  fi
+
+  return "$command_status"
+}
+
+report_upstream_main "$@"
+report_upstream_status=$?
+return "$report_upstream_status" 2>/dev/null || exit "$report_upstream_status"
+# scripts/repo-automation-report-upstream EOF

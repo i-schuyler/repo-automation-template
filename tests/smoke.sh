@@ -45,6 +45,11 @@ smoke_main() {
   local preflight_json
   local add_doc_pr_json
   local add_doc_pr_block_json
+  local report_bug_json
+  local report_feature_json
+  local report_secret_json
+  local report_preview_bug
+  local report_preview_feature
   local finish_stderr
   local shim_dir
   local local_bash_path
@@ -63,7 +68,8 @@ smoke_main() {
   cp "$repo_root/scripts/codex-slice-preflight" "$test_dir/scripts/codex-slice-preflight" || return 1
   cp "$repo_root/scripts/pr-finish" "$test_dir/scripts/pr-finish" || return 1
   cp "$repo_root/scripts/add-doc-pr" "$test_dir/scripts/add-doc-pr" || return 1
-  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" || return 1
+  cp "$repo_root/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-automation-report-upstream" || return 1
+  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" "$test_dir/scripts/repo-automation-report-upstream" || return 1
 
   (
     cd "$test_dir" || return 1
@@ -146,6 +152,16 @@ EOF
     status=1
   fi
 
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-report-upstream --help >/dev/null
+  ); then
+    smoke_info "report-upstream help succeeds"
+  else
+    smoke_fail "report-upstream help succeeds"
+    status=1
+  fi
+
   add_doc_pr_json="$test_base/add-doc-pr-plan-$$.json"
   if (
     cd "$test_dir" || return 1
@@ -202,6 +218,101 @@ EOF
   fi
 
   rm -f "$add_doc_pr_json" "$add_doc_pr_block_json" >/dev/null 2>&1 || true
+
+  report_bug_json="$test_base/report-upstream-bug-$$.json"
+  report_preview_bug="$test_base/report-upstream-bug-preview-$$.md"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-report-upstream \
+      --type bug \
+      --title "Bug smoke" \
+      --command "scripts/example --flag" \
+      --expected "works" \
+      --actual "fails" \
+      --dry-run \
+      --json \
+      --preview-file "$report_preview_bug" > "$report_bug_json"
+  ) && python -m json.tool "$report_bug_json" >/dev/null && [ -f "$report_preview_bug" ]; then
+    smoke_info "report-upstream bug dry-run/json preview succeeds"
+  else
+    smoke_fail "report-upstream bug dry-run/json preview succeeds"
+    status=1
+  fi
+
+  report_feature_json="$test_base/report-upstream-feature-$$.json"
+  report_preview_feature="$test_base/report-upstream-feature-preview-$$.md"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-report-upstream \
+      --type feature \
+      --title "Feature smoke" \
+      --use-case "repeat docs churn" \
+      --proposed "better helper" \
+      --why-upstream "shared contract" \
+      --dry-run \
+      --json \
+      --preview-file "$report_preview_feature" > "$report_feature_json"
+  ) && python -m json.tool "$report_feature_json" >/dev/null && [ -f "$report_preview_feature" ]; then
+    smoke_info "report-upstream feature dry-run/json preview succeeds"
+  else
+    smoke_fail "report-upstream feature dry-run/json preview succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-report-upstream --type bug --dry-run >/dev/null 2>&1
+  ); then
+    smoke_fail "report-upstream missing title fails safely"
+    status=1
+  else
+    smoke_info "report-upstream missing title fails safely"
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-automation-report-upstream --type wrong --title "Invalid type" --dry-run >/dev/null 2>&1
+  ); then
+    smoke_fail "report-upstream invalid type fails safely"
+    status=1
+  else
+    smoke_info "report-upstream invalid type fails safely"
+  fi
+
+  report_secret_json="$test_base/report-upstream-secret-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    printf 'token=supersecret\n' > logs-secret.txt || return 1
+    scripts/repo-automation-report-upstream \
+      --type bug \
+      --title "Secret scan smoke" \
+      --logs-file logs-secret.txt \
+      --dry-run \
+      --json > "$report_secret_json"
+    return 1
+  ); then
+    smoke_fail "report-upstream secret scan blocks likely secret logs"
+    status=1
+  else
+    if python -m json.tool "$report_secret_json" >/dev/null && \
+      smoke_json_assert "$report_secret_json" 'data.get("redaction_scan") == "blocked"'; then
+      smoke_info "report-upstream secret scan blocks likely secret logs"
+    else
+      smoke_fail "report-upstream secret scan blocks likely secret logs"
+      status=1
+    fi
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    rm -f logs-secret.txt || return 1
+  ); then
+    :
+  else
+    status=1
+  fi
+
+  rm -f "$report_bug_json" "$report_feature_json" "$report_secret_json" "$report_preview_bug" "$report_preview_feature" >/dev/null 2>&1 || true
 
   branch_json="$test_dir/branch-cleanup.json"
   if (
