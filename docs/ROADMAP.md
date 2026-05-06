@@ -46,12 +46,13 @@
 - `--json` structured output
 - explicit post-merge branch deletion flag handling
 
-## Slice 5: add-doc-pr + Plan/Parse/Check Profiles (Future)
+## Slice 5: add-doc-pr + Plan/Parse/Check Profiles (Completed)
 
 - clearer `add-doc-pr` modes
 - check profiles
 - `--plan` / `--dry-run`
-- package as template directory
+- docs-only changed-file boundary enforcement
+- explicit `--create-pr` gate
 
 ## Slice 6: repo-automation-report-upstream Terminal Issue Helper (Future)
 

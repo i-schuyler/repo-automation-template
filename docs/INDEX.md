@@ -13,14 +13,15 @@ Start here if you are evaluating, copying, or contributing to `repo-automation-t
 7. [Branch Cleanup](repo-automation/branch-cleanup.md)
 8. [Codex Slice Preflight](repo-automation/codex-slice-preflight.md)
 9. [PR Finish](repo-automation/pr-finish.md)
-10. [Testing](repo-automation/testing.md)
-11. [Changelog](../CHANGELOG.md)
-12. [Roadmap](ROADMAP.md)
-13. [Drift Ledger](DRIFT_LEDGER.md)
-14. [Monetization](MONETIZATION.md)
-15. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
-16. [Issue Escalation](repo-automation/issue-escalation.md)
-17. [Source Provenance](repo-automation/source-provenance.md)
+10. [Add Doc PR](repo-automation/add-doc-pr.md)
+11. [Testing](repo-automation/testing.md)
+12. [Changelog](../CHANGELOG.md)
+13. [Roadmap](ROADMAP.md)
+14. [Drift Ledger](DRIFT_LEDGER.md)
+15. [Monetization](MONETIZATION.md)
+16. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
+17. [Issue Escalation](repo-automation/issue-escalation.md)
+18. [Source Provenance](repo-automation/source-provenance.md)
 
 ## Start Here
 

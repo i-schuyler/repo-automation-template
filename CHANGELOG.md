@@ -26,8 +26,9 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added version consistency guard.
 - Added PR finish helper for status/watch/explicit merge flows.
 - Added PR finish docs and smoke coverage.
+- Added docs-only PR helper.
+- Added docs-only boundary validation and smoke coverage.
 
 ### Not Implemented
 
-- No add-doc-pr script is implemented in 0.1.0 yet.
 - No upstream report helper script is implemented in 0.1.0 yet.
