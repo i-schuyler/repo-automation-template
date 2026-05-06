@@ -16,7 +16,8 @@ The library centralizes small behaviors that future scripts will need repeatedly
 - public-safe config summaries
 - consistent info/warn/stop messaging
 
-This slice does not implement workflow script behavior yet. It only adds the shared scaffolding that future scripts should source.
+The shared library was introduced before workflow scripts and remains the common source of truth for script-level helpers.
+Current slices now include initial workflow scaffolds for branch cleanup and codex preflight that source this library.
 
 ## Exported Functions
 

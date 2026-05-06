@@ -1,0 +1,281 @@
+#!/usr/bin/env bash
+# scripts/branch-cleanup
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/lib/repo-automation-common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  exit 2
+}
+
+branch_cleanup_usage() {
+  printf 'Usage: scripts/branch-cleanup [--plan] [--apply] [--json] [--help]\n'
+}
+
+branch_cleanup_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+branch_cleanup_json_array() {
+  local first=1
+  local item
+  for item in "$@"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(branch_cleanup_json_escape "$item")"
+    first=0
+  done
+}
+
+branch_cleanup_print_json() {
+  local mode="$1"
+  local default_branch="$2"
+  local current_branch="$3"
+  local stop_reason="$4"
+  local -n json_candidates_ref=$5
+  local -n json_skipped_ref=$6
+  local -n json_deleted_ref=$7
+
+  printf '{'
+  printf '"mode":"%s",' "$(branch_cleanup_json_escape "$mode")"
+  printf '"default_branch":"%s",' "$(branch_cleanup_json_escape "$default_branch")"
+  printf '"current_branch":"%s",' "$(branch_cleanup_json_escape "$current_branch")"
+  printf '"candidates":['
+  branch_cleanup_json_array "${json_candidates_ref[@]}"
+  printf '],'
+  printf '"skipped":['
+  branch_cleanup_json_array "${json_skipped_ref[@]}"
+  printf '],'
+  printf '"deleted":['
+  branch_cleanup_json_array "${json_deleted_ref[@]}"
+  printf '],'
+  printf '"stop_reason":"%s"' "$(branch_cleanup_json_escape "$stop_reason")"
+  printf '}\n'
+}
+
+branch_cleanup_trim_line() {
+  local input="${1:-}"
+  input="${input#"${input%%[![:space:]]*}"}"
+  input="${input%"${input##*[![:space:]]}"}"
+  printf '%s' "$input"
+}
+
+branch_cleanup_main() {
+  local mode=""
+  local json_output=0
+  local arg
+  local repo_root=""
+  local default_branch="main"
+  local remote_name="origin"
+  local base_ref=""
+  local current_branch=""
+  local merged_output=""
+  local stop_reason=""
+  local branch_name=""
+  local -a branches=()
+  local -a candidates=()
+  local -a skipped=()
+  local -a deleted=()
+
+  for arg in "$@"; do
+    case "$arg" in
+      --plan)
+        mode="plan"
+        ;;
+      --apply)
+        mode="apply"
+        ;;
+      --json)
+        json_output=1
+        ;;
+      --help)
+        branch_cleanup_usage
+        return 0
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+  done
+
+  repo_root=$(repo_auto_repo_root) || return 1
+  if repo_auto_load_config; then
+    repo_auto_validate_required_config || return 1
+    default_branch="${DEFAULT_BRANCH:-main}"
+    remote_name="${REMOTE_NAME:-origin}"
+  else
+    repo_auto_warn "config not loaded, using defaults"
+    default_branch="main"
+    remote_name="origin"
+  fi
+
+  if [ -z "$mode" ]; then
+    mode="plan"
+  fi
+
+  case "$mode" in
+    plan|apply)
+      ;;
+    *)
+      repo_auto_stop "invalid mode: $mode"
+      return 1
+      ;;
+  esac
+
+  repo_auto_validate_branch_name "$default_branch" || {
+    repo_auto_stop "invalid default branch value: $default_branch"
+    return 1
+  }
+
+  repo_auto_validate_branch_name "$remote_name" || {
+    repo_auto_stop "invalid remote name value: $remote_name"
+    return 1
+  }
+
+  base_ref="$remote_name/$default_branch"
+  git show-ref --verify --quiet "refs/remotes/$base_ref" || {
+    repo_auto_stop "missing base ref: $base_ref"
+    return 1
+  }
+
+  current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+    repo_auto_stop "failed to determine current branch"
+    return 1
+  }
+
+  repo_auto_validate_branch_name "$current_branch" || {
+    repo_auto_stop "invalid current branch name: $current_branch"
+    return 1
+  }
+
+  merged_output=$(git for-each-ref --format='%(refname:short)' --merged "$base_ref" refs/heads) || {
+    repo_auto_stop "failed to enumerate merged local branches"
+    return 1
+  }
+
+  if [ -n "$merged_output" ]; then
+    while IFS= read -r branch_name; do
+      branch_name=$(branch_cleanup_trim_line "$branch_name")
+      [ -n "$branch_name" ] || continue
+      branches+=("$branch_name")
+    done <<EOF
+$merged_output
+EOF
+  fi
+
+  if [ "${#branches[@]}" -eq 0 ]; then
+    repo_auto_info "current branch: $current_branch"
+    repo_auto_info "default branch: $default_branch"
+    repo_auto_info "safe stale branch candidates: none"
+    repo_auto_info "no deletion happened"
+    if [ "$json_output" -eq 1 ]; then
+      branch_cleanup_print_json "$mode" "$default_branch" "$current_branch" "" candidates skipped deleted
+    fi
+    return 0
+  fi
+
+  for branch_name in "${branches[@]}"; do
+    repo_auto_validate_branch_name "$branch_name" || {
+      skipped+=("$branch_name:invalid-branch-name")
+      continue
+    }
+
+    if [ "$branch_name" = "$current_branch" ]; then
+      skipped+=("$branch_name:current-branch")
+      continue
+    fi
+
+    if [ "$branch_name" = "$default_branch" ]; then
+      skipped+=("$branch_name:default-branch")
+      continue
+    fi
+
+    if ! git show-ref --verify --quiet "refs/heads/$branch_name"; then
+      skipped+=("$branch_name:not-local")
+      continue
+    fi
+
+    if ! git merge-base --is-ancestor "$branch_name" "$base_ref"; then
+      skipped+=("$branch_name:not-merged-into-$base_ref")
+      continue
+    fi
+
+    candidates+=("$branch_name")
+  done
+
+  repo_auto_info "current branch: $current_branch"
+  repo_auto_info "default branch: $default_branch"
+  if [ "${#candidates[@]}" -eq 0 ]; then
+    repo_auto_info "safe stale branch candidates: none"
+  else
+    repo_auto_info "safe stale branch candidates:"
+    printf '  %s\n' "${candidates[@]}"
+  fi
+
+  if [ "${#skipped[@]}" -eq 0 ]; then
+    repo_auto_info "skipped branches: none"
+  else
+    repo_auto_info "skipped branches and reasons:"
+    printf '  %s\n' "${skipped[@]}"
+  fi
+
+  if [ "$mode" = "plan" ]; then
+    repo_auto_info "no deletion happened"
+    if [ "$json_output" -eq 1 ]; then
+      branch_cleanup_print_json "$mode" "$default_branch" "$current_branch" "" candidates skipped deleted
+    fi
+    return 0
+  fi
+
+  if [ "${#candidates[@]}" -eq 0 ]; then
+    repo_auto_info "no eligible branches to delete"
+    if [ "$json_output" -eq 1 ]; then
+      branch_cleanup_print_json "$mode" "$default_branch" "$current_branch" "" candidates skipped deleted
+    fi
+    return 0
+  fi
+
+  for branch_name in "${candidates[@]}"; do
+    if [ "$branch_name" = "$current_branch" ] || [ "$branch_name" = "$default_branch" ]; then
+      stop_reason="refused deletion of protected branch: $branch_name"
+      repo_auto_stop "$stop_reason"
+      if [ "$json_output" -eq 1 ]; then
+        branch_cleanup_print_json "$mode" "$default_branch" "$current_branch" "$stop_reason" candidates skipped deleted
+      fi
+      return 1
+    fi
+
+    if git branch -d "$branch_name" >/dev/null; then
+      deleted+=("$branch_name")
+      repo_auto_info "deleted local branch: $branch_name"
+    else
+      stop_reason="failed to delete branch safely: $branch_name"
+      repo_auto_stop "$stop_reason"
+      if [ "$json_output" -eq 1 ]; then
+        branch_cleanup_print_json "$mode" "$default_branch" "$current_branch" "$stop_reason" candidates skipped deleted
+      fi
+      return 1
+    fi
+  done
+
+  if [ "$json_output" -eq 1 ]; then
+    branch_cleanup_print_json "$mode" "$default_branch" "$current_branch" "" candidates skipped deleted
+  fi
+
+  return 0
+}
+
+branch_cleanup_main "$@"
+exit $?
+# scripts/branch-cleanup EOF

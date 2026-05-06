@@ -27,12 +27,13 @@ v0.1.0 is a docs-first bootstrap. It establishes:
 - roadmap
 - public coming-soon support and monetization paths
 - repo-local config and shared Bash library scaffold for future scripts
+- first workflow scaffolds for branch cleanup and codex slice preflight
 
 ## Not In v0.1.0
 
 v0.1.0 does not include:
 
-- script implementation
+- most script implementation
 - CI workflows
 - release automation
 - package manager install
@@ -40,12 +41,12 @@ v0.1.0 does not include:
 
 ## Intended Future Scripts
 
-These names define the intended shape of later slices. They are not implemented yet.
+These names define the intended shape of slices.
 
-- `scripts/codex-slice-preflight`
+- `scripts/codex-slice-preflight` (implemented in first scaffold form)
+- `scripts/branch-cleanup` (implemented in first scaffold form)
 - `scripts/pr-finish`
 - `scripts/add-doc-pr`
-- `scripts/branch-cleanup`
 - `scripts/repo-doctor`
 - `scripts/repo-automation-report-upstream`
 
@@ -56,6 +57,8 @@ These names define the intended shape of later slices. They are not implemented 
 - Read [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) before filing shared automation bugs or features.
 - Read [docs/repo-automation/config.md](docs/repo-automation/config.md) before editing `.repo-automation.conf`.
 - Read [docs/repo-automation/common-library.md](docs/repo-automation/common-library.md) before adding future workflow scripts.
+- Read [docs/repo-automation/branch-cleanup.md](docs/repo-automation/branch-cleanup.md) before deleting local branches.
+- Read [docs/repo-automation/codex-slice-preflight.md](docs/repo-automation/codex-slice-preflight.md) before running slice preflight automation.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 
 ## Coming Soon

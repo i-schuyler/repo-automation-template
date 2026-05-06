@@ -9,7 +9,7 @@
 - versioning and changelog canon
 - monetization funnel copy
 
-## Slice 1: Config + Shared Bash Library Scaffold (Started)
+## Slice 1: Config + Shared Bash Library Scaffold (Completed)
 
 - repo-local config file
 - shared Bash library
@@ -17,28 +17,31 @@
 - safer branch naming defaults
 - config and common-library docs
 
-## Slice 2: Branch Cleanup + Preflight
+## Slice 2: Branch Cleanup + Preflight (Completed)
 
 - stale branch cleanup helper
 - branch deletion ambiguity handling
-- `--plan` / `--dry-run`
+- `--plan` and `--apply`
 - safer branch naming defaults
+- codex slice preflight helper
+- preflight check-only mode
+- explicit `--delete-safe-stale` preflight deletion mode
 
-## Slice 3: pr-finish + JSON Status
+## Slice 3: pr-finish + JSON Status (Future)
 
 - `pr-finish`
 - `--json` structured output
 - CI failure evidence extraction
 - compact command summaries
 
-## Slice 4: add-doc-pr + Plan/Parse/Check Profiles
+## Slice 4: add-doc-pr + Plan/Parse/Check Profiles (Future)
 
 - clearer `add-doc-pr` modes
 - check profiles
 - `--plan` / `--dry-run`
 - package as template directory
 
-## Slice 5: repo-automation-report-upstream Terminal Issue Helper
+## Slice 5: repo-automation-report-upstream Terminal Issue Helper (Future)
 
 - downstream upstream-report helper
 - preview-before-submit behavior
@@ -46,14 +49,14 @@
 - local-vs-upstream issue body fields
 - redaction reminders
 
-## Slice 6: Tests + Doctor/Explain UX
+## Slice 6: Tests + Doctor/Explain UX (Future)
 
 - small test suite
 - `--doctor`
 - `--explain`
 - compatibility checks
 
-## Slice 7: Downstream Installer/Import/Update Helper
+## Slice 7: Downstream Installer/Import/Update Helper (Future)
 
 - future import/update helper
 - provenance recording
@@ -61,7 +64,7 @@
 - copyable installed-version/context block
 - local override preservation
 
-## Slice 8: Version Consistency CI + Release Guard
+## Slice 8: Version Consistency CI + Release Guard (Future)
 
 - version consistency CI
 - changelog/version release guard

@@ -13,7 +13,12 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added repo-local config scaffold.
 - Added shared Bash library scaffold.
 - Added config/common-library docs.
+- Added safe branch cleanup helper with plan-only default.
+- Added Codex slice preflight helper.
+- Added docs for branch cleanup and preflight.
 
 ### Not Implemented
 
-- No automation scripts are implemented in 0.1.0 yet.
+- No PR finish script is implemented in 0.1.0 yet.
+- No add-doc-pr script is implemented in 0.1.0 yet.
+- No upstream report helper script is implemented in 0.1.0 yet.
