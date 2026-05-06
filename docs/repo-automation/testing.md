@@ -32,3 +32,8 @@ Smoke tests use temporary directories under `${TMPDIR:-$HOME/.cache}/repo-automa
 Tests do not delete remote branches and do not use force delete for local branches.
 
 ShellCheck is required in CI. Locally, `scripts/run-tests` runs ShellCheck when available and warns when missing.
+
+
+## Output modes
+
+The shared output-mode contract is documented in `docs/repo-automation/output-modes.md`. `scripts/run-tests` and `scripts/repo-doctor` should be the first commands to implement compact summaries, log-file detail capture, `--explain`, and `--json-level fail|warn|all`.
