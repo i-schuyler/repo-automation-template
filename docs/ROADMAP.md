@@ -62,11 +62,13 @@
 - local-vs-upstream issue body fields
 - redaction reminders
 
-## Slice 7: repo-doctor + Explain UX (Future)
+## Slice 7: repo-doctor + Explain UX (Completed)
 
-- `--doctor`
-- `--explain`
-- compatibility checks
+- `repo-doctor` read-only helper
+- PASS/WARN/FAIL health findings
+- `--quick` / `--full` modes
+- `--json` structured output
+- smoke coverage and run-tests integration
 
 ## Slice 8: Downstream Installer/Import/Update Helper (Future)
 
