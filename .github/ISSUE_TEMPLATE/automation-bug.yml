@@ -1,0 +1,68 @@
+name: Automation bug
+description: Report a shared repo automation bug.
+title: "[automation-bug] "
+labels: ["automation-bug", "triage"]
+body:
+  - type: input
+    id: downstream_repo
+    attributes:
+      label: Downstream repo
+      description: Repository where the automation was installed or run.
+      placeholder: owner/repo
+    validations:
+      required: true
+  - type: input
+    id: installed_version_ref
+    attributes:
+      label: Installed version/ref
+      description: Version, tag, commit, or release bundle ref.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: command_run
+    attributes:
+      label: Command run
+      description: Paste the command that failed or behaved unexpectedly.
+      render: sh
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: redacted_logs
+    attributes:
+      label: Redacted logs
+      description: Paste only logs with secrets, tokens, hostnames if sensitive, and private values removed.
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: local_overrides_present
+    attributes:
+      label: Local overrides present?
+      options:
+        - "No"
+        - "Yes"
+        - "Unsure"
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction_checklist
+    attributes:
+      label: Redaction checklist
+      options:
+        - label: I removed secrets, tokens, private keys, passphrases, private env values, and sensitive private hostnames.
+          required: true

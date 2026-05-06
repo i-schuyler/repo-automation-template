@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: README
+    url: https://github.com/i-schuyler/repo-automation-template#readme
+    about: Start with the public README for project scope and maturity.
+  - name: Support docs
+    url: https://github.com/i-schuyler/repo-automation-template/blob/main/SUPPORT.md
+    about: Read support routing before filing local-vs-upstream issues.

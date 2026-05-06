@@ -1,0 +1,27 @@
+# examples/downstream/.repo-automation.conf.example
+REPO_AUTOMATION_CONF_VERSION="0.1"
+REPO_AUTOMATION_VERSION="0.1.0"
+UPSTREAM_REPO_FULL_NAME="i-schuyler/repo-automation-template"
+UPSTREAM_ISSUE_URL="https://github.com/i-schuyler/repo-automation-template/issues/new/choose"
+INSTALLED_FROM="i-schuyler/repo-automation-template"
+INSTALLED_VERSION_OR_REF="0.1.0-EXAMPLE"
+INSTALLED_AT="YYYY-MM-DD"
+LOCAL_OVERRIDES_DOC="docs/repo-automation/local-overrides.md"
+
+DEFAULT_BRANCH="main"
+DOCS_DIR="docs"
+DOCS_INDEX="docs/INDEX.md"
+STATE_DIR_NAME="example-repo"
+CI_PROVIDER="github"
+PR_PROVIDER="github"
+MERGE_MODE="squash"
+
+DOC_PR_TIMEOUT_SECONDS=60
+DOC_PR_POLL_SECONDS=10
+IMPLEMENTATION_PR_TIMEOUT_SECONDS=300
+
+DOC_BRANCH_PREFIX="docs"
+FEATURE_BRANCH_PREFIX="feature"
+FIX_BRANCH_PREFIX="fix"
+
+# examples/downstream/.repo-automation.conf.example EOF

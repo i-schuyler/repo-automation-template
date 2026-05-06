@@ -1,0 +1,58 @@
+name: Automation feature
+description: Request a shared repo automation feature.
+title: "[automation-feature] "
+labels: ["automation-feature", "triage"]
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What repeatable workflow should this improve?
+    validations:
+      required: true
+  - type: input
+    id: downstream_repo_type
+    attributes:
+      label: Downstream repo/type
+      description: Repo or repo category where this would be used.
+      placeholder: owner/repo or static site / firmware / CLI / docs repo
+    validations:
+      required: false
+  - type: textarea
+    id: repeated_churn_spend
+    attributes:
+      label: Repeated churn/spend being reduced
+      description: What repeated time, attention, or command churn would this remove?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_behavior
+    attributes:
+      label: Proposed behavior
+      description: What should the shared automation do?
+    validations:
+      required: true
+  - type: textarea
+    id: upstream_reason
+    attributes:
+      label: Why it belongs upstream rather than local
+      description: Explain why this is shared automation behavior instead of repo-specific policy.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility_concerns
+    attributes:
+      label: Compatibility concerns
+      description: Note provider, shell, CI, branch, or downstream repo constraints.
+    validations:
+      required: false
+  - type: dropdown
+    id: willingness_to_test
+    attributes:
+      label: Willingness to test
+      options:
+        - "Yes"
+        - "Maybe"
+        - "No"
+    validations:
+      required: true
