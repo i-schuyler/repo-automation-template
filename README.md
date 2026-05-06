@@ -66,6 +66,8 @@ The basic workflow should remain useful as open source. Paid paths should fund m
 - sponsors-only early recipes/templates coming soon
 - paid support for adapting to non-GitHub providers coming soon
 
+Do not add live payment links here unless a support path is actually live and clickable.
+
 ## Support
 
 Use GitHub Issues for bugs and feature requests. Downstream repo users should start with [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) so local repo-specific requests stay local and shared automation problems are filed upstream.

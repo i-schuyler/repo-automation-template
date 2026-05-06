@@ -31,4 +31,4 @@ Never paste tokens, env values, private keys, passphrases, private hostnames if 
 
 If unsure, file upstream as `triage` with redacted context.
 
-Terminal flow must be supported by `scripts/repo-automation-report-upstream` in a later slice.
+Terminal flow must be supported by `scripts/repo-automation-report-upstream` in a later slice, and that helper must preview the generated issue body locally before any submission.

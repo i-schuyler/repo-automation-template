@@ -40,6 +40,7 @@
 ## Slice 5: repo-automation-report-upstream Terminal Issue Helper
 
 - downstream upstream-report helper
+- preview-before-submit behavior
 - terminal GitHub CLI issue creation
 - local-vs-upstream issue body fields
 - redaction reminders
@@ -56,6 +57,7 @@
 - future import/update helper
 - provenance recording
 - installed version/ref checks
+- copyable installed-version/context block
 - local override preservation
 
 ## Slice 8: Version Consistency CI + Release Guard
@@ -63,6 +65,7 @@
 - version consistency CI
 - changelog/version release guard
 - future CI guard for `VERSION`, `CHANGELOG.md`, README, decisions, script metadata, release metadata, and installed examples
+- version consistency checks across downstream installed docs and config examples
 
 ## Additional Planned Work
 
