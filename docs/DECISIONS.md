@@ -36,6 +36,10 @@ This file records public repo decisions for `repo-automation-template`.
 | PR finish merge safety gate | `scripts/pr-finish` must not merge pending, failing, draft, closed, missing-check, or ambiguous PR states |
 | PR finish checks boundary | `scripts/pr-finish` must not bypass required checks |
 | PR finish branch-delete boundary | branch deletion after merge must be explicit |
+| Add-doc-pr default mode | `scripts/add-doc-pr` defaults to plan-only behavior |
+| Add-doc-pr docs-only boundary | `scripts/add-doc-pr` must enforce docs-only changed-file boundaries by default |
+| Add-doc-pr merge boundary | `scripts/add-doc-pr` must not merge PRs |
+| Add-doc-pr PR-create flag | `scripts/add-doc-pr` must not create PRs unless explicit `--create-pr` is supplied |
 
 ## TENTATIVE
 

@@ -56,6 +56,7 @@ run_tests_main() {
   run_tests_run_cmd "bash syntax scripts/branch-cleanup" bash -n scripts/branch-cleanup || status=1
   run_tests_run_cmd "bash syntax scripts/codex-slice-preflight" bash -n scripts/codex-slice-preflight || status=1
   run_tests_run_cmd "bash syntax scripts/pr-finish" bash -n scripts/pr-finish || status=1
+  run_tests_run_cmd "bash syntax scripts/add-doc-pr" bash -n scripts/add-doc-pr || status=1
   run_tests_run_cmd "bash syntax scripts/run-tests" bash -n scripts/run-tests || status=1
   run_tests_run_cmd "bash syntax tests/smoke.sh" bash -n tests/smoke.sh || status=1
   run_tests_run_cmd "bash syntax tests/version-consistency.sh" bash -n tests/version-consistency.sh || status=1
@@ -68,6 +69,7 @@ run_tests_main() {
       scripts/branch-cleanup \
       scripts/codex-slice-preflight \
       scripts/pr-finish \
+      scripts/add-doc-pr \
       scripts/run-tests \
       tests/smoke.sh \
       tests/version-consistency.sh || status=1
@@ -76,6 +78,7 @@ run_tests_main() {
   fi
 
   run_tests_run_cmd "scripts/pr-finish --help" bash -c 'scripts/pr-finish --help >/dev/null' || status=1
+  run_tests_run_cmd "scripts/add-doc-pr --help" bash -c 'scripts/add-doc-pr --help >/dev/null' || status=1
   run_tests_run_cmd "tests/smoke.sh" tests/smoke.sh || status=1
   run_tests_run_cmd "tests/version-consistency.sh" tests/version-consistency.sh || status=1
 

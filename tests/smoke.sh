@@ -43,6 +43,8 @@ smoke_main() {
   local start_branch
   local branch_json
   local preflight_json
+  local add_doc_pr_json
+  local add_doc_pr_block_json
   local finish_stderr
   local shim_dir
   local local_bash_path
@@ -51,16 +53,17 @@ smoke_main() {
   repo_root="$(cd "$(dirname "$0")/.." && pwd)"
   test_base="${TMPDIR:-$HOME/.cache}/repo-automation-template-tests"
   test_dir="$test_base/smoke-$$"
-  remote_dir="$test_dir/remote.git"
+  remote_dir="$test_base/smoke-$$-remote.git"
   mkdir -p "$test_dir" || return 1
-  trap '[ -n "${test_dir:-}" ] && rm -rf "$test_dir"' EXIT INT TERM
+  trap '[ -n "${test_dir:-}" ] && rm -rf "$test_dir"; [ -n "${remote_dir:-}" ] && rm -rf "$remote_dir"' EXIT INT TERM
 
   mkdir -p "$test_dir/scripts/lib" || return 1
   cp "$repo_root/scripts/lib/repo-automation-common.sh" "$test_dir/scripts/lib/repo-automation-common.sh" || return 1
   cp "$repo_root/scripts/branch-cleanup" "$test_dir/scripts/branch-cleanup" || return 1
   cp "$repo_root/scripts/codex-slice-preflight" "$test_dir/scripts/codex-slice-preflight" || return 1
   cp "$repo_root/scripts/pr-finish" "$test_dir/scripts/pr-finish" || return 1
-  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" || return 1
+  cp "$repo_root/scripts/add-doc-pr" "$test_dir/scripts/add-doc-pr" || return 1
+  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" || return 1
 
   (
     cd "$test_dir" || return 1
@@ -132,6 +135,73 @@ EOF
     smoke_fail "pr-finish help succeeds"
     status=1
   fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/add-doc-pr --help >/dev/null
+  ); then
+    smoke_info "add-doc-pr help succeeds"
+  else
+    smoke_fail "add-doc-pr help succeeds"
+    status=1
+  fi
+
+  add_doc_pr_json="$test_base/add-doc-pr-plan-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    mkdir -p docs || return 1
+    printf 'docs only change\n' > docs/plan-doc.md || return 1
+    scripts/add-doc-pr --plan --json > "$add_doc_pr_json"
+  ) && python -m json.tool "$add_doc_pr_json" >/dev/null; then
+    if smoke_json_assert "$add_doc_pr_json" '"docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
+      smoke_info "add-doc-pr docs-only plan/json succeeds"
+    else
+      smoke_fail "add-doc-pr docs-only plan/json succeeds"
+      status=1
+    fi
+  else
+    smoke_fail "add-doc-pr docs-only plan/json succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    rm -f docs/plan-doc.md || return 1
+  ); then
+    :
+  else
+    status=1
+  fi
+
+  add_doc_pr_block_json="$test_base/add-doc-pr-blocked-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    printf '#!/usr/bin/env bash\n' > scripts/blocked-change.sh || return 1
+    scripts/add-doc-pr --plan --json > "$add_doc_pr_block_json"
+    return 1
+  ); then
+    smoke_fail "add-doc-pr blocks scripts/ changes in plan mode"
+    status=1
+  else
+    if python -m json.tool "$add_doc_pr_block_json" >/dev/null && \
+      smoke_json_assert "$add_doc_pr_block_json" '"scripts/blocked-change.sh" in data.get("blocked_files", [])'; then
+      smoke_info "add-doc-pr blocks scripts/ changes in plan mode"
+    else
+      smoke_fail "add-doc-pr blocks scripts/ changes in plan mode"
+      status=1
+    fi
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    rm -f scripts/blocked-change.sh || return 1
+  ); then
+    :
+  else
+    status=1
+  fi
+
+  rm -f "$add_doc_pr_json" "$add_doc_pr_block_json" >/dev/null 2>&1 || true
 
   branch_json="$test_dir/branch-cleanup.json"
   if (
