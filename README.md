@@ -26,6 +26,7 @@ v0.1.0 is a docs-first bootstrap. It establishes:
 - issue forms
 - roadmap
 - public coming-soon support and monetization paths
+- repo-local config and shared Bash library scaffold for future scripts
 
 ## Not In v0.1.0
 
@@ -53,6 +54,8 @@ These names define the intended shape of later slices. They are not implemented 
 - Read [docs/INDEX.md](docs/INDEX.md) for the canonical docs order.
 - Read [docs/INSTALL_MODELS.md](docs/INSTALL_MODELS.md) before copying this template into downstream repos.
 - Read [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) before filing shared automation bugs or features.
+- Read [docs/repo-automation/config.md](docs/repo-automation/config.md) before editing `.repo-automation.conf`.
+- Read [docs/repo-automation/common-library.md](docs/repo-automation/common-library.md) before adding future workflow scripts.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 
 ## Coming Soon

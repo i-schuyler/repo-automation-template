@@ -8,13 +8,15 @@ Start here if you are evaluating, copying, or contributing to `repo-automation-t
 2. [Install Models](INSTALL_MODELS.md)
 3. [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
 4. [Versioning](VERSIONING.md)
-5. [Changelog](../CHANGELOG.md)
-6. [Roadmap](ROADMAP.md)
-7. [Drift Ledger](DRIFT_LEDGER.md)
-8. [Monetization](MONETIZATION.md)
-9. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
-10. [Issue Escalation](repo-automation/issue-escalation.md)
-11. [Source Provenance](repo-automation/source-provenance.md)
+5. [Repo Automation Config](repo-automation/config.md)
+6. [Shared Bash Library](repo-automation/common-library.md)
+7. [Changelog](../CHANGELOG.md)
+8. [Roadmap](ROADMAP.md)
+9. [Drift Ledger](DRIFT_LEDGER.md)
+10. [Monetization](MONETIZATION.md)
+11. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
+12. [Issue Escalation](repo-automation/issue-escalation.md)
+13. [Source Provenance](repo-automation/source-provenance.md)
 
 ## Start Here
 
