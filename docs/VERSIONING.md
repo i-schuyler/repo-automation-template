@@ -1,0 +1,30 @@
+# Versioning
+
+Current version: 0.1.0
+
+## Version Placements
+
+Version numbers must stay aligned in these places:
+
+- `VERSION`
+- `CHANGELOG.md`
+- `README.md` visible current version
+- `docs/DECISIONS.md` current version decision
+- future release bundle metadata
+- future script metadata
+- `examples/downstream/.repo-automation.conf.example`
+
+## Future CI Guard
+
+A future version consistency check must fail when version numbers drift.
+
+Required behavior:
+
+- `CHANGELOG.md` bump and `VERSION` bump must agree.
+- README visible current version must match `VERSION`.
+- Decision docs must match the active version line.
+- Future release bundle metadata must match the release version.
+- Future script metadata must match the release version.
+- Installed downstream examples must show the same version or an explicit placeholder.
+
+This slice does not implement the CI workflow.
