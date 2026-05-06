@@ -23,3 +23,4 @@ Downstream repos should have a visible repo-automation README showing:
 - local override location
 - redaction rules
 - when to file upstream versus local
+- a copyable installed-version/context block for upstream bug reports

@@ -10,6 +10,23 @@ Record:
 - when to file upstream bug/feature
 - redaction rules
 
+## Installed Context Block
+
+Copy this into upstream bug reports and fill in the local details:
+
+```text
+Repo automation installed context:
+- Upstream repo: i-schuyler/repo-automation-template
+- Installed version/ref: 0.1.0-EXAMPLE
+- Installed at: YYYY-MM-DD
+- Local overrides doc: docs/repo-automation/local-overrides.md
+- Local overrides present: yes/no/unknown
+- Command run:
+- Expected behavior:
+- Actual behavior:
+- Redacted logs attached/pasted: yes/no
+```
+
 File upstream when a bug or feature affects shared automation behavior. Keep repo-specific CI commands, docs paths, deploy paths, board config, app behavior, and private operational rules local.
 
 Planned terminal reporting helper:

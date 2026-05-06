@@ -31,7 +31,18 @@ Future helper:
 scripts/repo-automation-report-upstream --type bug|feature
 ```
 
-The helper must complete from terminal using GitHub CLI issue creation and must not require opening a browser.
+The helper must:
+
+- generate a local issue body preview before submission
+- show the upstream repo target
+- show issue type `bug` or `feature`
+- show installed version/ref
+- show whether local overrides are present
+- warn users to redact secrets before submission
+- prompt for confirmation before submission
+- use GitHub CLI issue creation after preview approval
+- stay terminal-only and not open a browser as the required path
+- keep any future non-interactive mode behind explicit redaction safeguards
 
 Issue bodies should include:
 

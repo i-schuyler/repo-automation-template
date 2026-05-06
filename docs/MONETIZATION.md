@@ -11,6 +11,8 @@ The open-source workflow should be useful first. Paid paths should fund maintena
 - sponsors-only early recipes/templates coming soon
 - paid support for adapting to non-GitHub providers coming soon
 
+Do not add live payment links here unless a support path is actually live and clickable.
+
 ## Fit
 
 This repo is aimed at people who repeatedly lose time to branch setup, docs PR scaffolding, stale cleanup, CI status interpretation, and downstream automation drift. The public template should reduce repeated churn. Paid paths can help users who want faster adoption, examples, audits, or provider-specific adaptation.
