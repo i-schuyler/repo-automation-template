@@ -24,9 +24,10 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added local test runner.
 - Added smoke tests for branch cleanup and preflight.
 - Added version consistency guard.
+- Added PR finish helper for status/watch/explicit merge flows.
+- Added PR finish docs and smoke coverage.
 
 ### Not Implemented
 
-- No PR finish script is implemented in 0.1.0 yet.
 - No add-doc-pr script is implemented in 0.1.0 yet.
 - No upstream report helper script is implemented in 0.1.0 yet.

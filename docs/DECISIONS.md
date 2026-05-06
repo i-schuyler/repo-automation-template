@@ -31,6 +31,11 @@ This file records public repo decisions for `repo-automation-template`.
 | Test credential boundary | test scaffolds must be local-only and must not require private GitHub credentials |
 | Version consistency gate | version consistency must be checked in CI before release automation exists |
 | Preflight prompt contract | future Codex prompts should use `scripts/codex-slice-preflight` rather than repeating manual branch hygiene when the script exists |
+| PR finish default mode | `scripts/pr-finish` defaults to status/plan-only behavior |
+| PR finish merge flag | `scripts/pr-finish` requires explicit `--merge` |
+| PR finish merge safety gate | `scripts/pr-finish` must not merge pending, failing, draft, closed, missing-check, or ambiguous PR states |
+| PR finish checks boundary | `scripts/pr-finish` must not bypass required checks |
+| PR finish branch-delete boundary | branch deletion after merge must be explicit |
 
 ## TENTATIVE
 

@@ -29,10 +29,11 @@ jobs:
           bash -n scripts/lib/repo-automation-common.sh
           bash -n scripts/branch-cleanup
           bash -n scripts/codex-slice-preflight
+          bash -n scripts/pr-finish
           bash -n scripts/run-tests
           bash -n tests/smoke.sh
           bash -n tests/version-consistency.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck -e SC2317 scripts/branch-cleanup scripts/codex-slice-preflight scripts/run-tests tests/smoke.sh tests/version-consistency.sh
+            shellcheck -e SC2317 scripts/branch-cleanup scripts/codex-slice-preflight scripts/pr-finish scripts/run-tests tests/smoke.sh tests/version-consistency.sh
           fi
           scripts/run-tests

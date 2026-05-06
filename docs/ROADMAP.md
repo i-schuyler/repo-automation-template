@@ -38,12 +38,13 @@
 - JSON parseability checks in local and CI paths
 - version consistency guard via `tests/version-consistency.sh`
 
-## Slice 4: pr-finish + JSON Status (Future)
+## Slice 4: PR Finish + JSON Status (Completed)
 
 - `pr-finish`
+- `--plan`/`--status` default no-merge path
+- explicit `--watch` and explicit `--merge` gating
 - `--json` structured output
-- CI failure evidence extraction
-- compact command summaries
+- explicit post-merge branch deletion flag handling
 
 ## Slice 5: add-doc-pr + Plan/Parse/Check Profiles (Future)
 
