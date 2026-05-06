@@ -27,3 +27,7 @@ Usage examples:
     scripts/codex-slice-preflight --branch feature/my-slice
     scripts/codex-slice-preflight --check-only --branch feature/my-slice
     scripts/codex-slice-preflight --branch feature/my-slice --delete-safe-stale
+
+Test coverage:
+
+- `tests/smoke.sh` validates check-only behavior and JSON parseability for preflight output.

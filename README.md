@@ -34,7 +34,6 @@ v0.1.0 is a docs-first bootstrap. It establishes:
 v0.1.0 does not include:
 
 - most script implementation
-- CI workflows
 - release automation
 - package manager install
 - subtree sync
@@ -59,7 +58,16 @@ These names define the intended shape of slices.
 - Read [docs/repo-automation/common-library.md](docs/repo-automation/common-library.md) before adding future workflow scripts.
 - Read [docs/repo-automation/branch-cleanup.md](docs/repo-automation/branch-cleanup.md) before deleting local branches.
 - Read [docs/repo-automation/codex-slice-preflight.md](docs/repo-automation/codex-slice-preflight.md) before running slice preflight automation.
+- Read [docs/repo-automation/testing.md](docs/repo-automation/testing.md) before changing scripts or version placements.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
+
+## Testing and CI
+
+CI now validates Bash syntax, smoke behavior, JSON parseability, and version consistency for current scripts.
+
+Run locally:
+
+    scripts/run-tests
 
 ## Coming Soon
 

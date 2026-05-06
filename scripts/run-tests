@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# scripts/run-tests
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/lib/repo-automation-common.sh"
+
+run_tests_info() {
+  printf 'PASS: %s\n' "$1"
+}
+
+run_tests_fail() {
+  printf 'FAIL: %s\n' "$1" >&2
+}
+
+run_tests_warn() {
+  printf 'WARN: %s\n' "$1" >&2
+}
+
+run_tests_repo_root() {
+  local root
+  root="$(repo_auto_repo_root)" || return 1
+  printf '%s\n' "$root"
+}
+
+run_tests_run_cmd() {
+  local label="$1"
+  shift
+
+  if "$@"; then
+    run_tests_info "$label"
+    return 0
+  fi
+
+  run_tests_fail "$label"
+  return 1
+}
+
+run_tests_main() {
+  local status=0
+  local repo_root
+
+  repo_root="$(run_tests_repo_root)" || {
+    run_tests_fail "resolve repo root"
+    return 1
+  }
+
+  cd "$repo_root" || {
+    run_tests_fail "cd repo root"
+    return 1
+  }
+
+  run_tests_run_cmd "bash syntax scripts/lib/repo-automation-common.sh" bash -n scripts/lib/repo-automation-common.sh || status=1
+  run_tests_run_cmd "bash syntax scripts/branch-cleanup" bash -n scripts/branch-cleanup || status=1
+  run_tests_run_cmd "bash syntax scripts/codex-slice-preflight" bash -n scripts/codex-slice-preflight || status=1
+  run_tests_run_cmd "bash syntax scripts/run-tests" bash -n scripts/run-tests || status=1
+  run_tests_run_cmd "bash syntax tests/smoke.sh" bash -n tests/smoke.sh || status=1
+  run_tests_run_cmd "bash syntax tests/version-consistency.sh" bash -n tests/version-consistency.sh || status=1
+
+  if command -v shellcheck >/dev/null 2>&1; then
+    run_tests_run_cmd \
+      "shellcheck scripts and tests" \
+      shellcheck \
+      -e SC2317 \
+      scripts/branch-cleanup \
+      scripts/codex-slice-preflight \
+      scripts/run-tests \
+      tests/smoke.sh \
+      tests/version-consistency.sh || status=1
+  else
+    run_tests_warn "shellcheck not installed locally; skipping shellcheck"
+  fi
+
+  run_tests_run_cmd "tests/smoke.sh" tests/smoke.sh || status=1
+  run_tests_run_cmd "tests/version-consistency.sh" tests/version-consistency.sh || status=1
+
+  return "$status"
+}
+
+run_tests_main "$@"
+# scripts/run-tests EOF

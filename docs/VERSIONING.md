@@ -16,10 +16,11 @@ Version numbers must stay aligned in these places:
 - future release bundle metadata
 - future script metadata
 - `examples/downstream/.repo-automation.conf.example`
+- `tests/version-consistency.sh` guard expectations
 
-## Future CI Guard
+## CI Guard
 
-A future version consistency check must fail when version numbers drift.
+The version consistency check must fail when version numbers drift.
 
 Required behavior:
 
@@ -32,4 +33,4 @@ Required behavior:
 - Future script metadata must match the release version.
 - Installed downstream examples must show the same version or an explicit placeholder.
 
-This slice does not implement the CI workflow.
+CI enforces this through `tests/version-consistency.sh`.
