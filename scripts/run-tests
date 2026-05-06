@@ -59,6 +59,7 @@ run_tests_main() {
   run_tests_run_cmd "bash syntax scripts/add-doc-pr" bash -n scripts/add-doc-pr || status=1
   run_tests_run_cmd "bash syntax scripts/repo-automation-report-upstream" bash -n scripts/repo-automation-report-upstream || status=1
   run_tests_run_cmd "bash syntax scripts/repo-doctor" bash -n scripts/repo-doctor || status=1
+  run_tests_run_cmd "bash syntax scripts/repo-automation-install" bash -n scripts/repo-automation-install || status=1
   run_tests_run_cmd "bash syntax scripts/run-tests" bash -n scripts/run-tests || status=1
   run_tests_run_cmd "bash syntax tests/smoke.sh" bash -n tests/smoke.sh || status=1
   run_tests_run_cmd "bash syntax tests/version-consistency.sh" bash -n tests/version-consistency.sh || status=1
@@ -74,6 +75,7 @@ run_tests_main() {
       scripts/add-doc-pr \
       scripts/repo-automation-report-upstream \
       scripts/repo-doctor \
+      scripts/repo-automation-install \
       scripts/run-tests \
       tests/smoke.sh \
       tests/version-consistency.sh || status=1
@@ -85,6 +87,7 @@ run_tests_main() {
   run_tests_run_cmd "scripts/add-doc-pr --help" bash -c 'scripts/add-doc-pr --help >/dev/null' || status=1
   run_tests_run_cmd "scripts/repo-automation-report-upstream --help" bash -c 'scripts/repo-automation-report-upstream --help >/dev/null' || status=1
   run_tests_run_cmd "scripts/repo-doctor --help" bash -c 'scripts/repo-doctor --help >/dev/null' || status=1
+  run_tests_run_cmd "scripts/repo-automation-install --help" bash -c 'scripts/repo-automation-install --help >/dev/null' || status=1
   run_tests_run_cmd "tests/smoke.sh" tests/smoke.sh || status=1
   run_tests_run_cmd "tests/version-consistency.sh" tests/version-consistency.sh || status=1
 

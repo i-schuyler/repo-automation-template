@@ -231,10 +231,12 @@ repo_auto_validate_required_config() {
     }
   done
 
-  [[ "$EXPECTED_REMOTE_URL" =~ ^git@github.com:[^[:space:]]+/.+\.git$ ]] || {
-    repo_auto_stop "invalid EXPECTED_REMOTE_URL"
-    return 1
-  }
+  if [ -n "$EXPECTED_REMOTE_URL" ]; then
+    [[ "$EXPECTED_REMOTE_URL" =~ ^git@github.com:[^[:space:]]+/.+\.git$ ]] || {
+      repo_auto_stop "invalid EXPECTED_REMOTE_URL"
+      return 1
+    }
+  fi
 
   case "$PREFLIGHT_REQUIRE_CLEAN_WORKTREE" in
     true|false)

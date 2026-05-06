@@ -11,3 +11,8 @@ Future releases should record:
 - source commit
 - installed files
 - local overrides
+
+`scripts/repo-automation-install` writes downstream provenance into:
+
+- `.repo-automation.conf` (`INSTALLED_VERSION_OR_REF`, `INSTALLED_AT`, upstream source fields)
+- `docs/repo-automation/README.md` installed context block

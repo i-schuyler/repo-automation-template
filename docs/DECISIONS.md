@@ -48,6 +48,10 @@ This file records public repo decisions for `repo-automation-template`.
 | Repo-doctor default mode | `scripts/repo-doctor` defaults to read-only diagnostics |
 | Repo-doctor mutation boundary | `scripts/repo-doctor` must not mutate git state or create GitHub objects |
 | Repo-doctor JSON contract | `scripts/repo-doctor --json` must emit valid JSON only on stdout |
+| Installer default mode | `scripts/repo-automation-install` defaults to plan-only behavior |
+| Installer target mutation boundary | `scripts/repo-automation-install` must not commit, push, or create PRs in target repos |
+| Installer local overrides boundary | downstream local overrides must be preserved |
+| Installer CI install boundary | CI workflow installation is optional and not default |
 
 ## TENTATIVE
 

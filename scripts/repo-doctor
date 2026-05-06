@@ -213,6 +213,7 @@ repo_doctor_check_scripts() {
   repo_doctor_check_script_one "scripts/add-doc-pr" "add-doc-pr" || status=1
   repo_doctor_check_script_one "scripts/repo-automation-report-upstream" "report-upstream" || status=1
   repo_doctor_check_script_one "scripts/repo-doctor" "repo-doctor" || status=1
+  repo_doctor_check_script_one "scripts/repo-automation-install" "repo-automation-install" || status=1
   repo_doctor_check_script_one "scripts/run-tests" "run-tests" || status=1
   repo_doctor_check_script_one "scripts/lib/repo-automation-common.sh" "common-library" || status=1
   return "$status"
@@ -329,6 +330,7 @@ repo_doctor_check_docs_index() {
     "repo-automation/add-doc-pr.md" \
     "repo-automation/repo-automation-report-upstream.md" \
     "repo-automation/repo-doctor.md" \
+    "repo-automation/repo-automation-install.md" \
     "repo-automation/testing.md"
   do
     if grep -Fq "$needle" "$path"; then

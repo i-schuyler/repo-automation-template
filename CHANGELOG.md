@@ -33,5 +33,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added report-upstream smoke coverage.
 - Added repo doctor helper.
 - Added doctor smoke coverage.
+- Added downstream install/update helper.
+- Added downstream install docs and smoke coverage.
 
 ### Not Implemented
