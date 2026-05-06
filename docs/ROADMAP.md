@@ -84,6 +84,13 @@
 - future CI guard for `VERSION`, `CHANGELOG.md`, README, decisions, script metadata, release metadata, and installed examples
 - version consistency checks across downstream installed docs and config examples
 
+## Slice 10: Final Audit Fixes + Workflow Audit Checklist Seed (Completed)
+
+- add-doc-pr smoke baseline fixture now commits the full automation baseline before docs-only boundary tests
+- installer remote fallback normalizes unsupported `EXPECTED_REMOTE_URL` values to empty
+- installer smoke coverage audits downstream contract behavior in temporary repos
+- public workflow audit checklist product seed
+
 ## Additional Planned Work
 
 - compatibility mode for CI/PR providers

@@ -16,3 +16,5 @@ Future releases should record:
 
 - `.repo-automation.conf` (`INSTALLED_VERSION_OR_REF`, `INSTALLED_AT`, upstream source fields)
 - `docs/repo-automation/README.md` installed context block
+
+When the target origin is unsupported, the downstream config should keep `EXPECTED_REMOTE_URL=""` rather than copying a raw local/file/HTTPS URL. That keeps provenance public-safe while still letting downstream repos document their installed version/ref and installation date.

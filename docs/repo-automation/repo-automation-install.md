@@ -40,6 +40,16 @@ The helper writes downstream install context into:
 
 - `.repo-automation.conf` (`INSTALLED_VERSION_OR_REF`, `INSTALLED_AT`, `UPSTREAM_REPO_FULL_NAME`, target defaults)
 - `docs/repo-automation/README.md` (copyable installed context, doctor/report-upstream commands)
+- `EXPECTED_REMOTE_URL` is set only when the target origin is a supported GitHub SSH remote; unsupported or local/file/HTTPS origins are normalized to `""`
+
+## Installer Output Audit
+
+The installer plan/apply output should stay auditable in temporary repos:
+
+- JSON output must remain parseable and should report `present`, `missing`, or `unsupported` target remote status instead of raw remote URLs
+- downstream config should still validate with the shared Bash library
+- downstream `repo-doctor --quick --no-run-tests` should succeed or warn only in a valid temp repo
+- no target commits, pushes, PRs, or merges should be created
 
 ## JSON Contract
 
@@ -53,6 +63,7 @@ With `--json`, stdout includes:
 - `include_ci`
 - `include_tests`
 - `installed_version_or_ref`
+- `target_remote_status`
 - `files_to_add`
 - `files_to_update`
 - `files_to_skip`

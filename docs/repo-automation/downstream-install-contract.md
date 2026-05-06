@@ -16,6 +16,7 @@ Default installer-managed paths:
 
 Public config must not contain secrets or machine-local values.
 Installer apply mode must not commit, push, create PRs, merge, or delete branches in target repos.
+If the target origin is missing, local, file-based, HTTPS, or otherwise unsupported, the generated downstream `EXPECTED_REMOTE_URL` should be empty rather than copying a raw URL.
 
 Downstream repos should have a visible repo-automation README showing:
 
@@ -28,3 +29,4 @@ Downstream repos should have a visible repo-automation README showing:
 
 When available, downstream installs should include `scripts/repo-automation-report-upstream` so upstream shared automation bugs/features can be prepared with preview/redaction safeguards before submission.
 Downstream installs should use `scripts/repo-automation-install --target <repo>` in plan mode first, then explicit `--apply`.
+Installer smoke tests should audit the downstream contract in temp repos before real rollout.

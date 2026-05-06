@@ -54,6 +54,22 @@ repo_install_json_array() {
   done
 }
 
+repo_install_target_remote_status() {
+  local remote_url="${1:-}"
+
+  if [ -z "$remote_url" ]; then
+    printf 'missing\n'
+    return 0
+  fi
+
+  if [[ "$remote_url" =~ ^git@github.com:[^[:space:]]+/.+\.git$ ]]; then
+    printf 'present\n'
+    return 0
+  fi
+
+  printf 'unsupported\n'
+}
+
 repo_install_print_json() {
   local mode="$1"
   local source_root="$2"
@@ -63,14 +79,15 @@ repo_install_print_json() {
   local include_ci="$6"
   local include_tests="$7"
   local installed_version_or_ref="$8"
-  local action_taken="$9"
-  local stop_reason="${10}"
-  local target_dirty="${11}"
-  local files_to_add_name="${12}"
-  local files_to_update_name="${13}"
-  local files_to_skip_name="${14}"
-  local blocked_files_name="${15}"
-  local generated_files_name="${16}"
+  local target_remote_status="$9"
+  local action_taken="${10}"
+  local stop_reason="${11}"
+  local target_dirty="${12}"
+  local files_to_add_name="${13}"
+  local files_to_update_name="${14}"
+  local files_to_skip_name="${15}"
+  local blocked_files_name="${16}"
+  local generated_files_name="${17}"
   # shellcheck disable=SC2178
   local -n files_to_add_ref="$files_to_add_name"
   # shellcheck disable=SC2178
@@ -91,6 +108,7 @@ repo_install_print_json() {
   printf '"include_ci":%s,' "$include_ci"
   printf '"include_tests":%s,' "$include_tests"
   printf '"installed_version_or_ref":"%s",' "$(repo_install_json_escape "$installed_version_or_ref")"
+  printf '"target_remote_status":"%s",' "$(repo_install_json_escape "$target_remote_status")"
   printf '"files_to_add":['
   repo_install_json_array "${files_to_add_ref[@]}"
   printf '],'
@@ -229,6 +247,8 @@ repo_install_main() {
   local inferred_mode=""
   local target_default_branch=""
   local target_remote_url=""
+  local target_remote_status="missing"
+  local target_expected_remote_url=""
   local target_state_dir_name=""
   local local_overrides_doc=""
   local installed_version_or_ref=""
@@ -415,6 +435,12 @@ repo_install_main() {
       target_default_branch="main"
     fi
     target_remote_url="$(git -C "$target_root" remote get-url origin 2>/dev/null)" || target_remote_url=""
+    target_remote_status="$(repo_install_target_remote_status "$target_remote_url")"
+    if [ "$target_remote_status" = "present" ]; then
+      target_expected_remote_url="$target_remote_url"
+    else
+      target_expected_remote_url=""
+    fi
     target_state_dir_name="$(basename "$target_root")"
   fi
 
@@ -506,7 +532,7 @@ repo_install_main() {
     repo_install_info "include tests: $include_tests"
     repo_install_info "include ci: $include_ci"
     repo_install_info "installed version/ref: $installed_version_or_ref"
-    repo_install_info "expected remote URL in generated config: $( [ -n "$target_remote_url" ] && printf 'present' || printf 'missing' )"
+    repo_install_info "target remote status: $target_remote_status"
     if [ "${#files_to_add[@]}" -gt 0 ]; then
       repo_install_info "files to add:"
       printf '  %s\n' "${files_to_add[@]}" >&2
@@ -582,7 +608,7 @@ repo_install_main() {
         "$local_overrides_doc" \
         "$target_default_branch" \
         "$target_state_dir_name" \
-        "$target_remote_url" || {
+        "$target_expected_remote_url" || {
           repo_install_stop "failed to write target .repo-automation.conf"
           command_status=1
         }
@@ -640,6 +666,7 @@ repo_install_main() {
       "$include_ci" \
       "$include_tests" \
       "$installed_version_or_ref" \
+      "$target_remote_status" \
       "$action_taken" \
       "$repo_install_stop_reason" \
       "$target_dirty" \

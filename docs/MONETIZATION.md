@@ -13,6 +13,8 @@ The open-source workflow should be useful first. Paid paths should fund maintena
 
 Do not add live payment links here unless a support path is actually live and clickable.
 
+The public workflow audit checklist seed is documented in [docs/WORKFLOW_AUDIT_CHECKLIST.md](WORKFLOW_AUDIT_CHECKLIST.md) and remains a coming-soon product idea, not a live checkout path.
+
 ## Fit
 
 This repo is aimed at people who repeatedly lose time to branch setup, docs PR scaffolding, stale cleanup, CI status interpretation, and downstream automation drift. The public template should reduce repeated churn. Paid paths can help users who want faster adoption, examples, audits, or provider-specific adaptation.

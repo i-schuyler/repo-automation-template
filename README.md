@@ -97,3 +97,4 @@ Use GitHub Issues for bugs and feature requests. Downstream repo users should st
 Downstream repos can now use `scripts/repo-automation-report-upstream` to prepare and submit upstream bug/feature reports from terminal after preview/redaction checks.
 `scripts/repo-doctor` now provides a read-only PASS/WARN/FAIL health summary for config, scripts, tests, CI permissions, docs links, and issue templates.
 `scripts/repo-automation-install` now provides terminal preview/apply flows for installing or updating managed repo automation files into downstream repos.
+The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST.md](docs/WORKFLOW_AUDIT_CHECKLIST.md) and remains coming soon.
