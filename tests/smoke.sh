@@ -50,6 +50,8 @@ smoke_main() {
   local report_secret_json
   local report_preview_bug
   local report_preview_feature
+  local doctor_json
+  local doctor_missing_json
   local finish_stderr
   local shim_dir
   local local_bash_path
@@ -62,22 +64,75 @@ smoke_main() {
   mkdir -p "$test_dir" || return 1
   trap '[ -n "${test_dir:-}" ] && rm -rf "$test_dir"; [ -n "${remote_dir:-}" ] && rm -rf "$remote_dir"' EXIT INT TERM
 
-  mkdir -p "$test_dir/scripts/lib" || return 1
+  mkdir -p "$test_dir/scripts/lib" "$test_dir/tests" || return 1
   cp "$repo_root/scripts/lib/repo-automation-common.sh" "$test_dir/scripts/lib/repo-automation-common.sh" || return 1
   cp "$repo_root/scripts/branch-cleanup" "$test_dir/scripts/branch-cleanup" || return 1
   cp "$repo_root/scripts/codex-slice-preflight" "$test_dir/scripts/codex-slice-preflight" || return 1
   cp "$repo_root/scripts/pr-finish" "$test_dir/scripts/pr-finish" || return 1
   cp "$repo_root/scripts/add-doc-pr" "$test_dir/scripts/add-doc-pr" || return 1
   cp "$repo_root/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-automation-report-upstream" || return 1
-  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" "$test_dir/scripts/repo-automation-report-upstream" || return 1
+  cp "$repo_root/scripts/repo-doctor" "$test_dir/scripts/repo-doctor" || return 1
+  cp "$repo_root/scripts/run-tests" "$test_dir/scripts/run-tests" || return 1
+  cp "$repo_root/tests/version-consistency.sh" "$test_dir/tests/version-consistency.sh" || return 1
+  chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" "$test_dir/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-doctor" "$test_dir/scripts/run-tests" "$test_dir/tests/version-consistency.sh" || return 1
 
   (
     cd "$test_dir" || return 1
     git init -b main >/dev/null || return 1
     git config user.name "repo-automation-test" || return 1
     git config user.email "repo-automation-test@example.com" || return 1
-    echo "# smoke" > README.md
+    cat > README.md <<EOF
+# smoke
+
+Current version: 0.1.0
+EOF
+    cat > VERSION <<EOF
+0.1.0
+EOF
+    cat > CHANGELOG.md <<EOF
+# Changelog
+
+## [0.1.0] - Unreleased
+EOF
+    mkdir -p docs .github/workflows .github/ISSUE_TEMPLATE || return 1
+    cat > docs/DECISIONS.md <<EOF
+# Decisions
+
+| Current version line | starts at 0.1.0 |
+EOF
+    cat > docs/VERSIONING.md <<EOF
+# Versioning
+
+Version numbers must stay aligned in these places:
+- VERSION
+- .repo-automation.conf
+- REPO_AUTOMATION_VERSION
+- tests/version-consistency.sh
+- examples/downstream/.repo-automation.conf.example
+EOF
+    cat > docs/INDEX.md <<EOF
+# Docs Index
+
+- repo-automation/branch-cleanup.md
+- repo-automation/codex-slice-preflight.md
+- repo-automation/pr-finish.md
+- repo-automation/add-doc-pr.md
+- repo-automation/repo-automation-report-upstream.md
+- repo-automation/repo-doctor.md
+- repo-automation/testing.md
+EOF
+    mkdir -p examples/downstream || return 1
+    cat > examples/downstream/.repo-automation.conf.example <<EOF
+INSTALLED_VERSION_OR_REF="0.1.0-EXAMPLE"
+EOF
+    cat > .github/workflows/ci.yml <<EOF
+name: CI
+permissions:
+  contents: read
+EOF
+    touch .github/ISSUE_TEMPLATE/automation-bug.yml .github/ISSUE_TEMPLATE/automation-feature.yml || return 1
     git add README.md || return 1
+    git add VERSION CHANGELOG.md README.md docs .github examples || return 1
     git commit -m "init" >/dev/null || return 1
     git init --bare --initial-branch=main "$remote_dir" >/dev/null || return 1
     git remote add origin "$remote_dir" || return 1
@@ -116,7 +171,7 @@ CHECK_PROFILE_DOCS_COMMANDS=("git diff --check")
 CHECK_PROFILE_NONE_COMMANDS=()
 # .repo-automation.conf EOF
 EOF
-    git add .repo-automation.conf scripts >/dev/null || return 1
+    git add .repo-automation.conf scripts tests >/dev/null || return 1
     git commit -m "add test automation files" >/dev/null || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     return 0
@@ -159,6 +214,16 @@ EOF
     smoke_info "report-upstream help succeeds"
   else
     smoke_fail "report-upstream help succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --help >/dev/null
+  ); then
+    smoke_info "repo-doctor help succeeds"
+  else
+    smoke_fail "repo-doctor help succeeds"
     status=1
   fi
 
@@ -313,6 +378,48 @@ EOF
   fi
 
   rm -f "$report_bug_json" "$report_feature_json" "$report_secret_json" "$report_preview_bug" "$report_preview_feature" >/dev/null 2>&1 || true
+
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --quick >/dev/null
+  ); then
+    smoke_info "repo-doctor quick succeeds"
+  else
+    smoke_fail "repo-doctor quick succeeds"
+    status=1
+  fi
+
+  doctor_json="$test_base/repo-doctor-quick-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --json --quick > "$doctor_json"
+  ) && python -m json.tool "$doctor_json" >/dev/null; then
+    smoke_info "repo-doctor json quick is parseable"
+  else
+    smoke_fail "repo-doctor json quick is parseable"
+    status=1
+  fi
+
+  doctor_missing_json="$test_base/repo-doctor-missing-config-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    mv .repo-automation.conf .repo-automation.conf.bak || return 1
+    scripts/repo-doctor --json --quick > "$doctor_missing_json"
+    result=$?
+    mv .repo-automation.conf.bak .repo-automation.conf || return 1
+    [ "$result" -ne 0 ]
+  ) && python -m json.tool "$doctor_missing_json" >/dev/null && \
+    smoke_json_assert "$doctor_missing_json" 'data.get("overall_status") == "fail"'; then
+    smoke_info "repo-doctor missing config fails safely"
+  else
+    smoke_fail "repo-doctor missing config fails safely"
+    status=1
+    (
+      cd "$test_dir" || true
+      [ -f .repo-automation.conf ] || mv .repo-automation.conf.bak .repo-automation.conf >/dev/null 2>&1 || true
+    )
+  fi
+  rm -f "$doctor_json" "$doctor_missing_json" >/dev/null 2>&1 || true
 
   branch_json="$test_dir/branch-cleanup.json"
   if (

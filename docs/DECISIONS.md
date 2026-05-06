@@ -45,6 +45,9 @@ This file records public repo decisions for `repo-automation-template`.
 | Report-upstream browser boundary | `scripts/repo-automation-report-upstream` must never require opening a browser |
 | Report-upstream redaction boundary | `scripts/repo-automation-report-upstream` must stop on likely secret markers before submission |
 | Report-upstream submit flag | `scripts/repo-automation-report-upstream` must not submit unless explicit `--submit` is supplied |
+| Repo-doctor default mode | `scripts/repo-doctor` defaults to read-only diagnostics |
+| Repo-doctor mutation boundary | `scripts/repo-doctor` must not mutate git state or create GitHub objects |
+| Repo-doctor JSON contract | `scripts/repo-doctor --json` must emit valid JSON only on stdout |
 
 ## TENTATIVE
 

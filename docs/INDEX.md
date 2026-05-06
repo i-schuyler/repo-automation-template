@@ -15,14 +15,15 @@ Start here if you are evaluating, copying, or contributing to `repo-automation-t
 9. [PR Finish](repo-automation/pr-finish.md)
 10. [Add Doc PR](repo-automation/add-doc-pr.md)
 11. [Report Upstream](repo-automation/repo-automation-report-upstream.md)
-12. [Testing](repo-automation/testing.md)
-13. [Changelog](../CHANGELOG.md)
-14. [Roadmap](ROADMAP.md)
-15. [Drift Ledger](DRIFT_LEDGER.md)
-16. [Monetization](MONETIZATION.md)
-17. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
-18. [Issue Escalation](repo-automation/issue-escalation.md)
-19. [Source Provenance](repo-automation/source-provenance.md)
+12. [Repo Doctor](repo-automation/repo-doctor.md)
+13. [Testing](repo-automation/testing.md)
+14. [Changelog](../CHANGELOG.md)
+15. [Roadmap](ROADMAP.md)
+16. [Drift Ledger](DRIFT_LEDGER.md)
+17. [Monetization](MONETIZATION.md)
+18. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
+19. [Issue Escalation](repo-automation/issue-escalation.md)
+20. [Source Provenance](repo-automation/source-provenance.md)
 
 ## Start Here
 

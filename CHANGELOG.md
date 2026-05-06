@@ -31,5 +31,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added upstream bug/feature reporting helper.
 - Added preview-before-submit and redaction safeguards.
 - Added report-upstream smoke coverage.
+- Added repo doctor helper.
+- Added doctor smoke coverage.
 
 ### Not Implemented
