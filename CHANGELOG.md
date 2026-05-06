@@ -16,6 +16,10 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added safe branch cleanup helper with plan-only default.
 - Added Codex slice preflight helper.
 - Added docs for branch cleanup and preflight.
+- Hardened config failure handling for branch cleanup and preflight.
+- Made JSON output machine-parseable on stdout.
+- Added all-local-branch classification with skipped reasons.
+- Added Git ref-format validation for branch names.
 
 ### Not Implemented
 

@@ -26,6 +26,9 @@
 - codex slice preflight helper
 - preflight check-only mode
 - explicit `--delete-safe-stale` preflight deletion mode
+- JSON stdout parseability hardening and stderr human-log split
+- strict config failure stop behavior for behavior-changing scripts
+- all-local-branch classification with explicit skipped reasons
 
 ## Slice 3: pr-finish + JSON Status (Future)
 
