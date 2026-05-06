@@ -12,12 +12,14 @@ CI runs the same core checks:
 - smoke tests for branch cleanup and codex slice preflight
 - smoke coverage for `scripts/pr-finish` help and safe no-auth/no-gh failure behavior
 - smoke coverage for `scripts/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
+- smoke coverage for `scripts/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `scripts/pr-finish` smoke coverage does not perform real merges.
 `scripts/add-doc-pr` smoke coverage does not create real PRs.
+`scripts/repo-automation-report-upstream` smoke coverage does not create real issues.
 
 Smoke tests use temporary directories under `${TMPDIR:-$HOME/.cache}/repo-automation-template-tests`.
 

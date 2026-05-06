@@ -24,3 +24,5 @@ Downstream repos should have a visible repo-automation README showing:
 - redaction rules
 - when to file upstream versus local
 - a copyable installed-version/context block for upstream bug reports
+
+When available, downstream installs should include `scripts/repo-automation-report-upstream` so upstream shared automation bugs/features can be prepared with preview/redaction safeguards before submission.

@@ -47,8 +47,8 @@ These names define the intended shape of slices.
 - `scripts/branch-cleanup` (implemented in first scaffold form)
 - `scripts/pr-finish` (implemented in first scaffold form)
 - `scripts/add-doc-pr` (implemented in first scaffold form)
+- `scripts/repo-automation-report-upstream` (implemented in first scaffold form)
 - `scripts/repo-doctor`
-- `scripts/repo-automation-report-upstream`
 
 ## Start Here
 
@@ -61,6 +61,7 @@ These names define the intended shape of slices.
 - Read [docs/repo-automation/codex-slice-preflight.md](docs/repo-automation/codex-slice-preflight.md) before running slice preflight automation.
 - Read [docs/repo-automation/pr-finish.md](docs/repo-automation/pr-finish.md) before watching checks or merging from terminal helper flows.
 - Read [docs/repo-automation/add-doc-pr.md](docs/repo-automation/add-doc-pr.md) before creating docs-only pull requests from terminal helper flows.
+- Read [docs/repo-automation/repo-automation-report-upstream.md](docs/repo-automation/repo-automation-report-upstream.md) before submitting upstream automation bug/feature reports.
 - Read [docs/repo-automation/testing.md](docs/repo-automation/testing.md) before changing scripts or version placements.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 
@@ -88,3 +89,4 @@ Do not add live payment links here unless a support path is actually live and cl
 ## Support
 
 Use GitHub Issues for bugs and feature requests. Downstream repo users should start with [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) so local repo-specific requests stay local and shared automation problems are filed upstream.
+Downstream repos can now use `scripts/repo-automation-report-upstream` to prepare and submit upstream bug/feature reports from terminal after preview/redaction checks.

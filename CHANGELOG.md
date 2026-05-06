@@ -28,7 +28,8 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added PR finish docs and smoke coverage.
 - Added docs-only PR helper.
 - Added docs-only boundary validation and smoke coverage.
+- Added upstream bug/feature reporting helper.
+- Added preview-before-submit and redaction safeguards.
+- Added report-upstream smoke coverage.
 
 ### Not Implemented
-
-- No upstream report helper script is implemented in 0.1.0 yet.
