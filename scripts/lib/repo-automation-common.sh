@@ -176,7 +176,9 @@ repo_auto_validate_required_config() {
     FIX_BRANCH_PREFIX \
     CHECK_PROFILE_DEFAULT
   do
-    if [ -z "${!var_name+x}" ] || [ -z "${!var_name}" ]; then
+    if [ -z "${!var_name+x}" ]; then
+      missing+=("$var_name")
+    elif [ "$var_name" != "EXPECTED_REMOTE_URL" ] && [ -z "${!var_name}" ]; then
       missing+=("$var_name")
     fi
   done

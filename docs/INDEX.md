@@ -25,6 +25,7 @@ Start here if you are evaluating, copying, or contributing to `repo-automation-t
 19. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
 20. [Issue Escalation](repo-automation/issue-escalation.md)
 21. [Source Provenance](repo-automation/source-provenance.md)
+22. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
 
 ## Start Here
 

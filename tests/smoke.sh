@@ -57,6 +57,11 @@ smoke_main() {
   local install_target_remote=""
   local install_status_before
   local install_status_after
+  local install_commit_count_before
+  local install_commit_count_after
+  local install_remote_head_before
+  local install_remote_head_after
+  local install_doctor_json
   local finish_stderr
   local shim_dir
   local local_bash_path
@@ -180,7 +185,8 @@ CHECK_PROFILE_DOCS_COMMANDS=("git diff --check")
 CHECK_PROFILE_NONE_COMMANDS=()
 # .repo-automation.conf EOF
 EOF
-    git add .repo-automation.conf scripts tests >/dev/null || return 1
+    # Commit the full automation baseline before docs-only boundary tests.
+    git add -A >/dev/null || return 1
     git commit -m "add test automation files" >/dev/null || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     return 0
@@ -448,20 +454,27 @@ EOF
     git init -b main >/dev/null || return 1
     git config user.name "repo-automation-install-test" || return 1
     git config user.email "repo-automation-install-test@example.com" || return 1
-    printf '# target\n' > README.md || return 1
-    git add README.md || return 1
+    cp "$repo_root/README.md" README.md || return 1
+    cp "$repo_root/VERSION" VERSION || return 1
+    cp "$repo_root/CHANGELOG.md" CHANGELOG.md || return 1
+    cp -R "$repo_root/docs" . || return 1
+    cp -R "$repo_root/.github" . || return 1
+    cp -R "$repo_root/examples" . || return 1
+    git add -A || return 1
     git commit -m "init target" >/dev/null || return 1
     git init --bare --initial-branch=main "$install_target_remote" >/dev/null || return 1
     git remote add origin "$install_target_remote" || return 1
     git push -u origin main >/dev/null || return 1
   ) || status=1
+  install_commit_count_before="$(git -C "$install_target" rev-list --count HEAD)"
+  install_remote_head_before="$(git -C "$install_target_remote" rev-parse refs/heads/main)"
 
   install_plan_json="$test_base/repo-install-plan-$$.json"
   if (
     cd "$test_dir" || return 1
     scripts/repo-automation-install --target "$install_target" --json > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" '"scripts/branch-cleanup" in data.get("files_to_add", [])'; then
+    if smoke_json_assert "$install_plan_json" '"scripts/branch-cleanup" in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       smoke_info "repo-automation-install plan/json is parseable"
     else
       smoke_fail "repo-automation-install plan/json is parseable"
@@ -470,6 +483,12 @@ EOF
   else
     smoke_fail "repo-automation-install plan/json is parseable"
     status=1
+  fi
+  if grep -Fq "$install_target_remote" "$install_plan_json"; then
+    smoke_fail "repo-automation-install JSON does not leak raw target origin"
+    status=1
+  else
+    smoke_info "repo-automation-install JSON does not leak raw target origin"
   fi
 
   if (
@@ -485,10 +504,50 @@ EOF
   if (
     cd "$test_dir" || return 1
     scripts/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/docs/repo-automation/README.md" ] && [ -f "$install_target/docs/repo-automation/local-overrides.md" ] && [ -f "$install_target/scripts/repo-doctor" ] && [ -f "$install_target/scripts/run-tests" ] && [ -f "$install_target/tests/smoke.sh" ]; then
+  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/docs/repo-automation/README.md" ] && [ -f "$install_target/docs/repo-automation/local-overrides.md" ] && [ -f "$install_target/scripts/repo-doctor" ] && [ -f "$install_target/scripts/run-tests" ] && [ -f "$install_target/tests/smoke.sh" ] && [ -x "$install_target/scripts/repo-doctor" ] && [ -x "$install_target/scripts/run-tests" ] && [ -x "$install_target/tests/smoke.sh" ]; then
     smoke_info "repo-automation-install apply creates managed files"
   else
     smoke_fail "repo-automation-install apply creates managed files"
+    status=1
+  fi
+
+  if (
+    cd "$install_target" || return 1
+    # shellcheck disable=SC1091
+    source scripts/lib/repo-automation-common.sh && repo_auto_load_config >/dev/null && repo_auto_validate_required_config >/dev/null
+  ); then
+    smoke_info "repo-automation-install installed config loads and validates"
+  else
+    smoke_fail "repo-automation-install installed config loads and validates"
+    status=1
+  fi
+
+  if (
+    cd "$install_target" || return 1
+    scripts/repo-doctor --quick --no-run-tests >/dev/null
+  ); then
+    smoke_info "repo-automation-install target repo-doctor quick/no-run-tests succeeds"
+  else
+    smoke_fail "repo-automation-install target repo-doctor quick/no-run-tests succeeds"
+    status=1
+  fi
+
+  install_doctor_json="$test_base/repo-doctor-install-$$.json"
+  if (
+    cd "$install_target" || return 1
+    scripts/repo-doctor --json --quick --no-run-tests > "$install_doctor_json"
+  ) && python -m json.tool "$install_doctor_json" >/dev/null && \
+    smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("name") == "config-validate" and check.get("status") == "pass" for check in data.get("checks", []))'; then
+    smoke_info "repo-automation-install target repo-doctor json audit succeeds"
+  else
+    smoke_fail "repo-automation-install target repo-doctor json audit succeeds"
+    status=1
+  fi
+
+  if grep -qx 'EXPECTED_REMOTE_URL=""' "$install_target/.repo-automation.conf"; then
+    smoke_info "repo-automation-install uses empty EXPECTED_REMOTE_URL fallback for unsupported target origin"
+  else
+    smoke_fail "repo-automation-install uses empty EXPECTED_REMOTE_URL fallback for unsupported target origin"
     status=1
   fi
 
@@ -497,6 +556,14 @@ EOF
     smoke_info "repo-automation-install does not commit or push in target repo"
   else
     smoke_fail "repo-automation-install does not commit or push in target repo"
+    status=1
+  fi
+  install_commit_count_after="$(git -C "$install_target" rev-list --count HEAD)"
+  install_remote_head_after="$(git -C "$install_target_remote" rev-parse refs/heads/main)"
+  if [ "$install_commit_count_before" = "$install_commit_count_after" ] && [ "$install_remote_head_before" = "$install_remote_head_after" ]; then
+    smoke_info "repo-automation-install leaves target history and remote untouched"
+  else
+    smoke_fail "repo-automation-install leaves target history and remote untouched"
     status=1
   fi
 
@@ -536,6 +603,7 @@ EOF
   fi
 
   rm -f "$install_plan_json" >/dev/null 2>&1 || true
+  rm -f "$install_doctor_json" >/dev/null 2>&1 || true
 
   branch_json="$test_dir/branch-cleanup.json"
   if (

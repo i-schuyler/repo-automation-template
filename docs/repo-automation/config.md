@@ -59,7 +59,9 @@ Downstream installed configs should keep recording:
 
 That installed context is what downstream users can paste into bug reports when filing upstream issues.
 
-`scripts/repo-automation-install` generates downstream `.repo-automation.conf` and keeps the same variable shape. `EXPECTED_REMOTE_URL` may be empty in generated downstream config when target origin cannot be detected; downstream maintainers should fill it in.
+`scripts/repo-automation-install` generates downstream `.repo-automation.conf` and keeps the same variable shape. `EXPECTED_REMOTE_URL` is only populated when the target origin is a supported GitHub SSH remote; missing, local, file-based, HTTPS, or otherwise unsupported target origins are normalized to an empty `EXPECTED_REMOTE_URL=""` so downstream config stays public-safe. Downstream maintainers can fill it in later if they want stricter remote matching.
+
+Installer smoke tests should also audit the generated downstream config and helper outputs against the downstream install contract in a temporary repo before any real downstream rollout.
 
 ## Version Drift
 
