@@ -69,3 +69,8 @@ This file records public repo decisions for `repo-automation-template`.
 | Workflow audit checklist product | planned monetization path |
 | Sponsors-only early recipes/templates | planned monetization path |
 | Paid non-GitHub provider support | planned monetization path |
+
+
+- [LOCKED] Long-running diagnostic scripts should default to compact summaries, write details to temp logs, and expose `--explain` for full human detail.
+- [LOCKED] JSON diagnostic output should support levels such as `fail`, `warn`, and `all` so Codex can consume only actionable details by default.
+- [LOCKED] Output-mode implementation starts with `scripts/run-tests` and `scripts/repo-doctor` before expanding to other scripts.

@@ -33,3 +33,5 @@ Start here if you are evaluating, copying, or contributing to `repo-automation-t
 - Downstream maintainers should read the downstream feedback docs before filing upstream issues.
 - Maintainers changing versions should read the versioning docs before editing `VERSION` or `CHANGELOG.md`.
 - Contributors should read `CONTRIBUTING.md` and use issue forms.
+
+- [Output Modes](repo-automation/output-modes.md) — compact human output, JSON levels, and log-file contracts for low-token diagnostics.

@@ -87,3 +87,8 @@ This is a public, practical seed for the workflow audit checklist product. It is
 - a PR helper blocks on checks you do not understand
 
 The checklist is intentionally public and lightweight. It is meant to reduce churn before support, not to hide support behind a paywall.
+
+
+## Low-noise diagnostic output
+
+A healthy repo automation setup should make diagnostics easy to share without dumping pages of passing checks. Prefer compact summaries, warning/failure JSON, and temp log files for full detail.

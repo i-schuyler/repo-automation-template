@@ -4,6 +4,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 
 ## [0.1.0] - Unreleased
 
+- Added output-mode contract for compact diagnostics, JSON levels, and log-file evidence capture.
 ### Added
 
 - Added docs-only bootstrap canon.
