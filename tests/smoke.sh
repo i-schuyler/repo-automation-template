@@ -36,22 +36,6 @@ PY
   return 1
 }
 
-smoke_add_doc_pr_failure_details() {
-  local json_file="$1"
-  local stderr_file="$2"
-  local details=""
-
-  if [ -s "$json_file" ] && python -m json.tool "$json_file" >/dev/null 2>&1; then
-    details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print("changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])))' "$json_file")"
-  elif [ -s "$stderr_file" ]; then
-    details="stderr=$(tr '\n' ' ' < "$stderr_file")"
-  fi
-
-  if [ -n "$details" ]; then
-    printf ' (%s)' "$details"
-  fi
-}
-
 smoke_setup_temp_repo() {
   local repo_root
 
@@ -261,12 +245,20 @@ smoke_check_add_doc_pr_docs_only() {
     if smoke_json_assert "$add_doc_pr_json" '"docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
       test_pass "add-doc-pr docs-only plan/json succeeds"
     else
-      add_doc_pr_failure_details="$(smoke_add_doc_pr_failure_details "$add_doc_pr_json" "$add_doc_pr_stderr")"
+      if [ -s "$add_doc_pr_json" ]; then
+        add_doc_pr_failure_details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_json")"
+      elif [ -s "$add_doc_pr_stderr" ]; then
+        add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_stderr"))"
+      fi
       test_fail "add-doc-pr docs-only plan/json succeeds${add_doc_pr_failure_details}"
       status=1
     fi
   else
-    add_doc_pr_failure_details="$(smoke_add_doc_pr_failure_details "$add_doc_pr_json" "$add_doc_pr_stderr")"
+    if [ -s "$add_doc_pr_json" ]; then
+      add_doc_pr_failure_details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_json")"
+    elif [ -s "$add_doc_pr_stderr" ]; then
+      add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_stderr"))"
+    fi
     test_fail "add-doc-pr docs-only plan/json succeeds${add_doc_pr_failure_details}"
     status=1
   fi
