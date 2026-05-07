@@ -44,6 +44,7 @@ This is a public, practical seed for the workflow audit checklist product. It is
 - keep `scripts/branch-cleanup` on plan-only unless `--apply` is explicit
 - use `scripts/pr-finish` only for explicit status, watch, and merge flows
 - keep `scripts/add-doc-pr` on docs-only boundaries
+- prefer timeout-guarded diagnostics such as `scripts/run-tests --audit --timeout 120` and `scripts/repo-doctor --full --timeout 120` for final audits
 - preview upstream issues before submission with `scripts/repo-automation-report-upstream`
 
 ## Branch / PR / CI Safety

@@ -99,4 +99,4 @@
 - output-mode contract now implemented for `scripts/run-tests` and `scripts/repo-doctor`; remaining scripts may adopt it later.
 
 
-- Output-mode contract: compact summaries, temp log files, `--explain`, and JSON levels for lower-token diagnostics.
+- Output-mode contract: compact summaries, temp log files, `--explain`, `--audit`, `--timeout`, and JSON levels for lower-token diagnostics.
