@@ -35,9 +35,10 @@ jobs:
           bash -n scripts/repo-doctor
           bash -n scripts/repo-automation-install
           bash -n scripts/run-tests
+          bash -n tests/docs-check.sh
           bash -n tests/smoke.sh
           bash -n tests/version-consistency.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck -e SC2317 scripts/branch-cleanup scripts/codex-slice-preflight scripts/pr-finish scripts/add-doc-pr scripts/repo-automation-report-upstream scripts/repo-doctor scripts/repo-automation-install scripts/run-tests tests/smoke.sh tests/version-consistency.sh
+            shellcheck -e SC2317 scripts/branch-cleanup scripts/codex-slice-preflight scripts/pr-finish scripts/add-doc-pr scripts/repo-automation-report-upstream scripts/repo-doctor scripts/repo-automation-install scripts/run-tests tests/docs-check.sh tests/smoke.sh tests/version-consistency.sh
           fi
           scripts/run-tests

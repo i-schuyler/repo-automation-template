@@ -17,7 +17,7 @@ This repo is in early public read-only/low-attention mode. Issues are welcome. E
 
 ## v0.1.0 Scope
 
-v0.1.0 is a docs-first bootstrap. It establishes:
+v0.1.0 establishes the initial public docs and helper scaffolds. It includes:
 
 - canonical public docs
 - versioning conventions
@@ -45,13 +45,13 @@ v0.1.0 does not include:
 
 These names define the intended shape of slices.
 
-- `scripts/codex-slice-preflight` (implemented in first scaffold form)
-- `scripts/branch-cleanup` (implemented in first scaffold form)
-- `scripts/pr-finish` (implemented in first scaffold form)
-- `scripts/add-doc-pr` (implemented in first scaffold form)
-- `scripts/repo-automation-report-upstream` (implemented in first scaffold form)
-- `scripts/repo-doctor` (implemented in first scaffold form)
-- `scripts/repo-automation-install` (implemented in first scaffold form)
+- `scripts/codex-slice-preflight` (initial scaffold)
+- `scripts/branch-cleanup` (initial scaffold)
+- `scripts/pr-finish` (initial scaffold)
+- `scripts/add-doc-pr` (initial scaffold)
+- `scripts/repo-automation-report-upstream` (initial scaffold)
+- `scripts/repo-doctor` (initial scaffold)
+- `scripts/repo-automation-install` (initial scaffold)
 
 ## Start Here
 
@@ -72,7 +72,9 @@ These names define the intended shape of slices.
 
 ## Testing and CI
 
-CI now validates Bash syntax, smoke behavior, JSON parseability, and version consistency for current scripts.
+CI now validates Bash syntax, smoke behavior, JSON parseability, docs drift, and version consistency for current scripts.
+
+`scripts/run-tests` includes the standalone `tests/docs-check.sh` gate, which catches broken local markdown links, missing `docs/INDEX.md` coverage, stale public phrasing, and missing public entry-point links.
 
 Run locally:
 

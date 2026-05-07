@@ -54,6 +54,8 @@ The repo currently supports:
 - JSON diagnostic output
 - timeout-guarded audit runs
 - named smoke-test scenarios
+- docs index/link coverage checks
+- stale public phrasing checks
 
 ## Practical guidance
 
@@ -74,8 +76,6 @@ Preview the issue first, confirm no secrets are included, then submit explicitly
 Likely future improvements include:
 
 - packaged release bundles
-- docs CI completeness checks
-- markdown/link validation
 - better cross-container smoke-test portability
 - optional multi-file smoke-test scenario split
 - non-GitHub provider adaptation
