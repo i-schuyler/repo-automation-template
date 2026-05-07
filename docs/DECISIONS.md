@@ -20,6 +20,7 @@ This file records public repo decisions for `repo-automation-template`.
 | Version drift | version drift across root, docs, scripts, release metadata, and downstream examples is a tracked drift risk |
 | Repo-local config entry point | `.repo-automation.conf` is the repo-local config entry point for future automation scripts |
 | Shared Bash library source | repo-local scripts must source `scripts/lib/repo-automation-common.sh` instead of duplicating shared helper logic |
+| Smoke test harness boundary | smoke tests must use `tests/lib/test-common.sh` for named subchecks and registered temp-dir cleanup before any future split |
 | Branch cleanup safety mode | branch cleanup defaults to plan-only and requires `--apply` for deletion |
 | Branch cleanup safety boundary | branch cleanup must never delete remote branches or force-delete local branches |
 | Codex preflight scope | codex slice preflight may create/check out a requested branch but must not create PRs or merge PRs |

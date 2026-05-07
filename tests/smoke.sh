@@ -4,56 +4,10 @@
 set -u
 set -o pipefail
 
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")/.." && pwd)/tests/lib/test-common.sh"
+
 smoke_timeout_seconds=120
-smoke_timeout_available=""
-smoke_timeout_warned=0
-
-smoke_info() {
-  printf 'PASS: %s\n' "$1"
-}
-
-smoke_fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-}
-
-smoke_run_named_check() {
-  printf 'RUNNING: %s\n' "$1"
-}
-
-smoke_command_string() {
-  local arg
-  local quoted=""
-
-  for arg in "$@"; do
-    quoted+="$(printf '%q ' "$arg")"
-  done
-
-  printf '%s' "${quoted% }"
-}
-
-smoke_timeout_supported() {
-  if [ -n "$smoke_timeout_available" ]; then
-    [ "$smoke_timeout_available" = "1" ]
-    return $?
-  fi
-
-  if command -v timeout >/dev/null 2>&1; then
-    smoke_timeout_available=1
-  else
-    smoke_timeout_available=0
-  fi
-
-  [ "$smoke_timeout_available" = "1" ]
-}
-
-smoke_timeout_warn_once() {
-  if [ "$smoke_timeout_warned" -eq 1 ]; then
-    return 0
-  fi
-
-  smoke_timeout_warned=1
-  printf 'WARN: timeout command not found; running smoke subchecks without per-check timeout guards\n' >&2
-}
 
 smoke_json_assert() {
   local json_file="$1"
@@ -75,6 +29,21 @@ PY
   fi
 
   return 1
+}
+
+timeout() {
+  local timeout_spec="${1:-0}"
+  local command_string=""
+  local arg
+
+  shift || true
+  timeout_spec="${timeout_spec%s}"
+
+  for arg in "$@"; do
+    command_string+="$(printf '%q ' "$arg")"
+  done
+
+  test_run_with_timeout "$timeout_spec" "${command_string% }"
 }
 
 smoke_main() {
@@ -122,18 +91,20 @@ smoke_main() {
   local local_bash_path
   local status=0
 
-  if [ "$smoke_timeout_seconds" -gt 0 ] && ! smoke_timeout_supported; then
-    smoke_timeout_warn_once
+  if [ "$smoke_timeout_seconds" -gt 0 ] && ! test_have_timeout; then
+    test_warn_timeout_once
   fi
 
   repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-  test_base="${TMPDIR:-$HOME/.cache}/repo-automation-template-tests"
-  test_dir="$test_base/smoke-$$"
-  remote_dir="$test_base/smoke-$$-remote.git"
+  mkdir -p "$TEST_TEMP_ROOT" || return 1
+  test_base="$(mktemp -d "${TEST_TEMP_ROOT}/smoke.XXXXXX")" || return 1
+  test_register_temp_dir "$test_base" || return 1
+  test_dir="$test_base/smoke"
+  remote_dir="$test_base/smoke-remote.git"
   mkdir -p "$test_dir" || return 1
-  trap '[ -n "${test_dir:-}" ] && rm -rf "$test_dir"; [ -n "${remote_dir:-}" ] && rm -rf "$remote_dir"; [ -n "${install_target:-}" ] && rm -rf "$install_target"; [ -n "${install_target_remote:-}" ] && rm -rf "$install_target_remote"' EXIT INT TERM
+  trap 'test_cleanup' EXIT INT TERM
 
-  mkdir -p "$test_dir/scripts/lib" "$test_dir/tests" || return 1
+  mkdir -p "$test_dir/scripts/lib" "$test_dir/tests/lib" "$test_dir/tests" || return 1
   cp "$repo_root/scripts/lib/repo-automation-common.sh" "$test_dir/scripts/lib/repo-automation-common.sh" || return 1
   cp "$repo_root/scripts/branch-cleanup" "$test_dir/scripts/branch-cleanup" || return 1
   cp "$repo_root/scripts/codex-slice-preflight" "$test_dir/scripts/codex-slice-preflight" || return 1
@@ -143,6 +114,7 @@ smoke_main() {
   cp "$repo_root/scripts/repo-doctor" "$test_dir/scripts/repo-doctor" || return 1
   cp "$repo_root/scripts/repo-automation-install" "$test_dir/scripts/repo-automation-install" || return 1
   cp "$repo_root/scripts/run-tests" "$test_dir/scripts/run-tests" || return 1
+  cp "$repo_root/tests/lib/test-common.sh" "$test_dir/tests/lib/test-common.sh" || return 1
   cp "$repo_root/tests/smoke.sh" "$test_dir/tests/smoke.sh" || return 1
   cp "$repo_root/tests/version-consistency.sh" "$test_dir/tests/version-consistency.sh" || return 1
   chmod +x "$test_dir/scripts/branch-cleanup" "$test_dir/scripts/codex-slice-preflight" "$test_dir/scripts/pr-finish" "$test_dir/scripts/add-doc-pr" "$test_dir/scripts/repo-automation-report-upstream" "$test_dir/scripts/repo-doctor" "$test_dir/scripts/repo-automation-install" "$test_dir/scripts/run-tests" "$test_dir/tests/smoke.sh" "$test_dir/tests/version-consistency.sh" || return 1
@@ -255,9 +227,9 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/branch-cleanup --plan >/dev/null
   ); then
-    smoke_info "branch-cleanup plan succeeds"
+    test_pass "branch-cleanup plan succeeds"
   else
-    smoke_fail "branch-cleanup plan succeeds"
+    test_fail "branch-cleanup plan succeeds"
     status=1
   fi
 
@@ -265,9 +237,9 @@ EOF
     cd "$test_dir" || return 1
     scripts/pr-finish --help >/dev/null
   ); then
-    smoke_info "pr-finish help succeeds"
+    test_pass "pr-finish help succeeds"
   else
-    smoke_fail "pr-finish help succeeds"
+    test_fail "pr-finish help succeeds"
     status=1
   fi
 
@@ -275,9 +247,9 @@ EOF
     cd "$test_dir" || return 1
     scripts/add-doc-pr --help >/dev/null
   ); then
-    smoke_info "add-doc-pr help succeeds"
+    test_pass "add-doc-pr help succeeds"
   else
-    smoke_fail "add-doc-pr help succeeds"
+    test_fail "add-doc-pr help succeeds"
     status=1
   fi
 
@@ -285,9 +257,9 @@ EOF
     cd "$test_dir" || return 1
     scripts/repo-automation-report-upstream --help >/dev/null
   ); then
-    smoke_info "report-upstream help succeeds"
+    test_pass "report-upstream help succeeds"
   else
-    smoke_fail "report-upstream help succeeds"
+    test_fail "report-upstream help succeeds"
     status=1
   fi
 
@@ -295,9 +267,9 @@ EOF
     cd "$test_dir" || return 1
     scripts/repo-doctor --help >/dev/null
   ); then
-    smoke_info "repo-doctor help succeeds"
+    test_pass "repo-doctor help succeeds"
   else
-    smoke_fail "repo-doctor help succeeds"
+    test_fail "repo-doctor help succeeds"
     status=1
   fi
 
@@ -305,13 +277,13 @@ EOF
     cd "$test_dir" || return 1
     scripts/repo-automation-install --help >/dev/null
   ); then
-    smoke_info "repo-automation-install help succeeds"
+    test_pass "repo-automation-install help succeeds"
   else
-    smoke_fail "repo-automation-install help succeeds"
+    test_fail "repo-automation-install help succeeds"
     status=1
   fi
 
-  smoke_run_named_check "smoke:add-doc-pr-docs-only"
+  test_run_named_check "smoke:add-doc-pr-docs-only"
   add_doc_pr_json="$test_base/add-doc-pr-plan-$$.json"
   if (
     cd "$test_dir" || return 1
@@ -320,13 +292,13 @@ EOF
     scripts/add-doc-pr --plan --json > "$add_doc_pr_json"
   ) && python -m json.tool "$add_doc_pr_json" >/dev/null; then
     if smoke_json_assert "$add_doc_pr_json" '"docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
-      smoke_info "add-doc-pr docs-only plan/json succeeds"
+      test_pass "add-doc-pr docs-only plan/json succeeds"
     else
-      smoke_fail "add-doc-pr docs-only plan/json succeeds"
+      test_fail "add-doc-pr docs-only plan/json succeeds"
       status=1
     fi
   else
-    smoke_fail "add-doc-pr docs-only plan/json succeeds"
+    test_fail "add-doc-pr docs-only plan/json succeeds"
     status=1
   fi
 
@@ -335,11 +307,9 @@ EOF
     rm -f docs/plan-doc.md || return 1
   ); then
     :
-  else
-    status=1
   fi
 
-  smoke_run_named_check "smoke:add-doc-pr-blocked-file"
+  test_run_named_check "smoke:add-doc-pr-blocked-file"
   add_doc_pr_block_json="$test_base/add-doc-pr-blocked-$$.json"
   if (
     cd "$test_dir" || return 1
@@ -347,14 +317,14 @@ EOF
     scripts/add-doc-pr --plan --json > "$add_doc_pr_block_json"
     return 1
   ); then
-    smoke_fail "add-doc-pr blocks scripts/ changes in plan mode"
+    test_fail "add-doc-pr blocks scripts/ changes in plan mode"
     status=1
   else
     if python -m json.tool "$add_doc_pr_block_json" >/dev/null && \
       smoke_json_assert "$add_doc_pr_block_json" '"scripts/blocked-change.sh" in data.get("blocked_files", [])'; then
-      smoke_info "add-doc-pr blocks scripts/ changes in plan mode"
+      test_pass "add-doc-pr blocks scripts/ changes in plan mode"
     else
-      smoke_fail "add-doc-pr blocks scripts/ changes in plan mode"
+      test_fail "add-doc-pr blocks scripts/ changes in plan mode"
       status=1
     fi
   fi
@@ -364,13 +334,11 @@ EOF
     rm -f scripts/blocked-change.sh || return 1
   ); then
     :
-  else
-    status=1
   fi
 
   rm -f "$add_doc_pr_json" "$add_doc_pr_block_json" >/dev/null 2>&1 || true
 
-  smoke_run_named_check "smoke:report-upstream-preview"
+  test_run_named_check "smoke:report-upstream-preview"
   report_bug_json="$test_base/report-upstream-bug-$$.json"
   report_preview_bug="$test_base/report-upstream-bug-preview-$$.md"
   if (
@@ -385,9 +353,9 @@ EOF
       --json \
       --preview-file "$report_preview_bug" > "$report_bug_json"
   ) && python -m json.tool "$report_bug_json" >/dev/null && [ -f "$report_preview_bug" ]; then
-    smoke_info "report-upstream bug dry-run/json preview succeeds"
+    test_pass "report-upstream bug dry-run/json preview succeeds"
   else
-    smoke_fail "report-upstream bug dry-run/json preview succeeds"
+    test_fail "report-upstream bug dry-run/json preview succeeds"
     status=1
   fi
 
@@ -405,9 +373,9 @@ EOF
       --json \
       --preview-file "$report_preview_feature" > "$report_feature_json"
   ) && python -m json.tool "$report_feature_json" >/dev/null && [ -f "$report_preview_feature" ]; then
-    smoke_info "report-upstream feature dry-run/json preview succeeds"
+    test_pass "report-upstream feature dry-run/json preview succeeds"
   else
-    smoke_fail "report-upstream feature dry-run/json preview succeeds"
+    test_fail "report-upstream feature dry-run/json preview succeeds"
     status=1
   fi
 
@@ -415,23 +383,23 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-automation-report-upstream --type bug --dry-run >/dev/null 2>&1
   ); then
-    smoke_fail "report-upstream missing title fails safely"
+    test_fail "report-upstream missing title fails safely"
     status=1
   else
-    smoke_info "report-upstream missing title fails safely"
+    test_pass "report-upstream missing title fails safely"
   fi
 
   if (
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-automation-report-upstream --type wrong --title "Invalid type" --dry-run >/dev/null 2>&1
   ); then
-    smoke_fail "report-upstream invalid type fails safely"
+    test_fail "report-upstream invalid type fails safely"
     status=1
   else
-    smoke_info "report-upstream invalid type fails safely"
+    test_pass "report-upstream invalid type fails safely"
   fi
 
-  smoke_run_named_check "smoke:report-upstream-secret-scan"
+  test_run_named_check "smoke:report-upstream-secret-scan"
   report_secret_json="$test_base/report-upstream-secret-$$.json"
   if (
     cd "$test_dir" || return 1
@@ -444,14 +412,14 @@ EOF
       --json > "$report_secret_json"
     return 1
   ); then
-    smoke_fail "report-upstream secret scan blocks likely secret logs"
+    test_fail "report-upstream secret scan blocks likely secret logs"
     status=1
   else
     if python -m json.tool "$report_secret_json" >/dev/null && \
       smoke_json_assert "$report_secret_json" 'data.get("redaction_scan") == "blocked"'; then
-      smoke_info "report-upstream secret scan blocks likely secret logs"
+      test_pass "report-upstream secret scan blocks likely secret logs"
     else
-      smoke_fail "report-upstream secret scan blocks likely secret logs"
+      test_fail "report-upstream secret scan blocks likely secret logs"
       status=1
     fi
   fi
@@ -461,21 +429,19 @@ EOF
     rm -f logs-secret.txt || return 1
   ); then
     :
-  else
-    status=1
   fi
 
   rm -f "$report_bug_json" "$report_feature_json" "$report_secret_json" "$report_preview_bug" "$report_preview_feature" >/dev/null 2>&1 || true
 
-  smoke_run_named_check "smoke:run-tests-contract"
+  test_run_named_check "smoke:run-tests-contract"
   run_tests_default_out="$test_base/run-tests-default-$$.txt"
   if (
     cd "$repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 timeout "${smoke_timeout_seconds}s" scripts/run-tests > "$run_tests_default_out"
   ) && ! grep -Eq '^PASS:' "$run_tests_default_out" && grep -Eq '^RESULT: pass=' "$run_tests_default_out"; then
-    smoke_info "run-tests default output is compact"
+    test_pass "run-tests default output is compact"
   else
-    smoke_fail "run-tests default output is compact"
+    test_fail "run-tests default output is compact"
     status=1
   fi
 
@@ -484,9 +450,9 @@ EOF
     cd "$repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 timeout "${smoke_timeout_seconds}s" scripts/run-tests --explain > "$run_tests_explain_out"
   ) && grep -Eq '^PASS: bash syntax scripts/run-tests - passed' "$run_tests_explain_out"; then
-    smoke_info "run-tests explain output shows details"
+    test_pass "run-tests explain output shows details"
   else
-    smoke_fail "run-tests explain output shows details"
+    test_fail "run-tests explain output shows details"
     status=1
   fi
 
@@ -496,9 +462,9 @@ EOF
     RUN_TESTS_SKIP_SMOKE=1 timeout "${smoke_timeout_seconds}s" scripts/run-tests --json --json-level warn > "$run_tests_json"
   ) && python -m json.tool "$run_tests_json" >/dev/null && \
     smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
-    smoke_info "run-tests json warn is parseable"
+    test_pass "run-tests json warn is parseable"
   else
-    smoke_fail "run-tests json warn is parseable"
+    test_fail "run-tests json warn is parseable"
     status=1
   fi
 
@@ -507,9 +473,9 @@ EOF
     cd "$repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 timeout "${smoke_timeout_seconds}s" scripts/run-tests --log-file "$run_tests_log_file" >/dev/null
   ) && [ -f "$run_tests_log_file" ]; then
-    smoke_info "run-tests log-file creates a log"
+    test_pass "run-tests log-file creates a log"
   else
-    smoke_fail "run-tests log-file creates a log"
+    test_fail "run-tests log-file creates a log"
     status=1
   fi
 
@@ -519,21 +485,21 @@ EOF
     cd "$repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 timeout "${smoke_timeout_seconds}s" scripts/run-tests --log-file "$run_tests_no_log_file" --no-log > "$run_tests_no_log_out"
   ) && [ ! -e "$run_tests_no_log_file" ] && ! grep -Eq '^Log:' "$run_tests_no_log_out"; then
-    smoke_info "run-tests no-log does not create a log"
+    test_pass "run-tests no-log does not create a log"
   else
-    smoke_fail "run-tests no-log does not create a log"
+    test_fail "run-tests no-log does not create a log"
     status=1
   fi
 
-  smoke_run_named_check "smoke:repo-doctor-contract"
+  test_run_named_check "smoke:repo-doctor-contract"
   doctor_default_out="$test_base/repo-doctor-quick-default-$$.txt"
   if (
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --quick > "$doctor_default_out"
   ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- git-remote-match$' "$doctor_default_out"; then
-    smoke_info "repo-doctor quick default output is compact"
+    test_pass "repo-doctor quick default output is compact"
   else
-    smoke_fail "repo-doctor quick default output is compact"
+    test_fail "repo-doctor quick default output is compact"
     status=1
   fi
 
@@ -542,9 +508,9 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --quick --explain > "$doctor_explain_out"
   ) && grep -Eq '^PASS: git-branch - current branch:' "$doctor_explain_out"; then
-    smoke_info "repo-doctor quick explain output shows details"
+    test_pass "repo-doctor quick explain output shows details"
   else
-    smoke_fail "repo-doctor quick explain output shows details"
+    test_fail "repo-doctor quick explain output shows details"
     status=1
   fi
 
@@ -554,9 +520,9 @@ EOF
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --json --quick --json-level warn > "$doctor_json_warn"
   ) && python -m json.tool "$doctor_json_warn" >/dev/null && \
     smoke_json_assert "$doctor_json_warn" 'data.get("mode") == "quick" and data.get("json_level") == "warn" and any(check.get("status") == "warn" for check in data.get("checks", []))'; then
-    smoke_info "repo-doctor json quick warn is parseable"
+    test_pass "repo-doctor json quick warn is parseable"
   else
-    smoke_fail "repo-doctor json quick warn is parseable"
+    test_fail "repo-doctor json quick warn is parseable"
     status=1
   fi
 
@@ -565,9 +531,9 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --quick --log-file "$doctor_log_file" >/dev/null
   ) && [ -f "$doctor_log_file" ]; then
-    smoke_info "repo-doctor log-file creates a log"
+    test_pass "repo-doctor log-file creates a log"
   else
-    smoke_fail "repo-doctor log-file creates a log"
+    test_fail "repo-doctor log-file creates a log"
     status=1
   fi
 
@@ -577,9 +543,9 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --quick --log-file "$doctor_no_log_file" --no-log > "$doctor_no_log_out"
   ) && [ ! -e "$doctor_no_log_file" ] && ! grep -Eq '^Log:' "$doctor_no_log_out"; then
-    smoke_info "repo-doctor no-log does not create a log"
+    test_pass "repo-doctor no-log does not create a log"
   else
-    smoke_fail "repo-doctor no-log does not create a log"
+    test_fail "repo-doctor no-log does not create a log"
     status=1
   fi
 
@@ -587,9 +553,9 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --quick >/dev/null
   ); then
-    smoke_info "repo-doctor quick succeeds"
+    test_pass "repo-doctor quick succeeds"
   else
-    smoke_fail "repo-doctor quick succeeds"
+    test_fail "repo-doctor quick succeeds"
     status=1
   fi
 
@@ -598,13 +564,13 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --json --quick > "$doctor_json"
   ) && python -m json.tool "$doctor_json" >/dev/null; then
-    smoke_info "repo-doctor json quick is parseable"
+    test_pass "repo-doctor json quick is parseable"
   else
-    smoke_fail "repo-doctor json quick is parseable"
+    test_fail "repo-doctor json quick is parseable"
     status=1
   fi
 
-  smoke_run_named_check "smoke:repo-doctor-missing-config"
+  test_run_named_check "smoke:repo-doctor-missing-config"
   doctor_missing_json="$test_base/repo-doctor-missing-config-$$.json"
   if (
     cd "$test_dir" || return 1
@@ -615,9 +581,9 @@ EOF
     [ "$result" -ne 0 ]
   ) && python -m json.tool "$doctor_missing_json" >/dev/null && \
     smoke_json_assert "$doctor_missing_json" 'data.get("overall_status") == "fail"'; then
-    smoke_info "repo-doctor missing config fails safely"
+    test_pass "repo-doctor missing config fails safely"
   else
-    smoke_fail "repo-doctor missing config fails safely"
+    test_fail "repo-doctor missing config fails safely"
     status=1
     (
       cd "$test_dir" || true
@@ -626,7 +592,7 @@ EOF
   fi
   rm -f "$doctor_json" "$doctor_missing_json" >/dev/null 2>&1 || true
 
-  smoke_run_named_check "smoke:installer-apply-contract"
+  test_run_named_check "smoke:installer-apply-contract"
   install_target="$test_base/install-target-$$"
   install_target_remote="$test_base/install-target-$$-remote.git"
   mkdir -p "$install_target" || return 1
@@ -656,29 +622,29 @@ EOF
     timeout "${smoke_timeout_seconds}s" scripts/repo-automation-install --target "$install_target" --json > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
     if smoke_json_assert "$install_plan_json" '"scripts/branch-cleanup" in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
-      smoke_info "repo-automation-install plan/json is parseable"
+      test_pass "repo-automation-install plan/json is parseable"
     else
-      smoke_fail "repo-automation-install plan/json is parseable"
+      test_fail "repo-automation-install plan/json is parseable"
       status=1
     fi
   else
-    smoke_fail "repo-automation-install plan/json is parseable"
+    test_fail "repo-automation-install plan/json is parseable"
     status=1
   fi
   if grep -Fq "$install_target_remote" "$install_plan_json"; then
-    smoke_fail "repo-automation-install JSON does not leak raw target origin"
+    test_fail "repo-automation-install JSON does not leak raw target origin"
     status=1
   else
-    smoke_info "repo-automation-install JSON does not leak raw target origin"
+    test_pass "repo-automation-install JSON does not leak raw target origin"
   fi
 
   if (
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-automation-install --target "$install_target" --apply --dry-run >/dev/null
   ) && [ ! -f "$install_target/.repo-automation.conf" ]; then
-    smoke_info "repo-automation-install dry-run does not write files"
+    test_pass "repo-automation-install dry-run does not write files"
   else
-    smoke_fail "repo-automation-install dry-run does not write files"
+    test_fail "repo-automation-install dry-run does not write files"
     status=1
   fi
 
@@ -686,9 +652,9 @@ EOF
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
   ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/docs/repo-automation/README.md" ] && [ -f "$install_target/docs/repo-automation/local-overrides.md" ] && [ -f "$install_target/scripts/repo-doctor" ] && [ -f "$install_target/scripts/run-tests" ] && [ -f "$install_target/tests/smoke.sh" ] && [ -x "$install_target/scripts/repo-doctor" ] && [ -x "$install_target/scripts/run-tests" ] && [ -x "$install_target/tests/smoke.sh" ]; then
-    smoke_info "repo-automation-install apply creates managed files"
+    test_pass "repo-automation-install apply creates managed files"
   else
-    smoke_fail "repo-automation-install apply creates managed files"
+    test_fail "repo-automation-install apply creates managed files"
     status=1
   fi
 
@@ -697,9 +663,9 @@ EOF
     # shellcheck disable=SC1091
     source scripts/lib/repo-automation-common.sh && repo_auto_load_config >/dev/null && repo_auto_validate_required_config >/dev/null
   ); then
-    smoke_info "repo-automation-install installed config loads and validates"
+    test_pass "repo-automation-install installed config loads and validates"
   else
-    smoke_fail "repo-automation-install installed config loads and validates"
+    test_fail "repo-automation-install installed config loads and validates"
     status=1
   fi
 
@@ -707,9 +673,9 @@ EOF
     cd "$install_target" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --quick --no-run-tests >/dev/null
   ); then
-    smoke_info "repo-automation-install target repo-doctor quick/no-run-tests succeeds"
+    test_pass "repo-automation-install target repo-doctor quick/no-run-tests succeeds"
   else
-    smoke_fail "repo-automation-install target repo-doctor quick/no-run-tests succeeds"
+    test_fail "repo-automation-install target repo-doctor quick/no-run-tests succeeds"
     status=1
   fi
 
@@ -719,32 +685,32 @@ EOF
     timeout "${smoke_timeout_seconds}s" scripts/repo-doctor --json --quick --no-run-tests > "$install_doctor_json"
   ) && python -m json.tool "$install_doctor_json" >/dev/null && \
     smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("status") == "warn" for check in data.get("checks", [])) and all(check.get("status") != "pass" for check in data.get("checks", []))'; then
-    smoke_info "repo-automation-install target repo-doctor json audit succeeds"
+    test_pass "repo-automation-install target repo-doctor json audit succeeds"
   else
-    smoke_fail "repo-automation-install target repo-doctor json audit succeeds"
+    test_fail "repo-automation-install target repo-doctor json audit succeeds"
     status=1
   fi
 
   if grep -qx 'EXPECTED_REMOTE_URL=""' "$install_target/.repo-automation.conf"; then
-    smoke_info "repo-automation-install uses empty EXPECTED_REMOTE_URL fallback for unsupported target origin"
+    test_pass "repo-automation-install uses empty EXPECTED_REMOTE_URL fallback for unsupported target origin"
   else
-    smoke_fail "repo-automation-install uses empty EXPECTED_REMOTE_URL fallback for unsupported target origin"
+    test_fail "repo-automation-install uses empty EXPECTED_REMOTE_URL fallback for unsupported target origin"
     status=1
   fi
 
   install_status_before="$(git -C "$install_target" status --porcelain)"
   if [ -n "$install_status_before" ]; then
-    smoke_info "repo-automation-install does not commit or push in target repo"
+    test_pass "repo-automation-install does not commit or push in target repo"
   else
-    smoke_fail "repo-automation-install does not commit or push in target repo"
+    test_fail "repo-automation-install does not commit or push in target repo"
     status=1
   fi
   install_commit_count_after="$(git -C "$install_target" rev-list --count HEAD)"
   install_remote_head_after="$(git -C "$install_target_remote" rev-parse refs/heads/main)"
   if [ "$install_commit_count_before" = "$install_commit_count_after" ] && [ "$install_remote_head_before" = "$install_remote_head_after" ]; then
-    smoke_info "repo-automation-install leaves target history and remote untouched"
+    test_pass "repo-automation-install leaves target history and remote untouched"
   else
-    smoke_fail "repo-automation-install leaves target history and remote untouched"
+    test_fail "repo-automation-install leaves target history and remote untouched"
     status=1
   fi
 
@@ -762,16 +728,16 @@ EOF
     timeout "${smoke_timeout_seconds}s" scripts/repo-automation-install --target "$install_target" --json > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null && \
     smoke_json_assert "$install_plan_json" 'data.get("mode") == "update"'; then
-    smoke_info "repo-automation-install second plan infers update mode"
+    test_pass "repo-automation-install second plan infers update mode"
   else
-    smoke_fail "repo-automation-install second plan infers update mode"
+    test_fail "repo-automation-install second plan infers update mode"
     status=1
   fi
 
   if grep -q '^# local override$' "$install_target/docs/repo-automation/local-overrides.md"; then
-    smoke_info "repo-automation-install preserves existing local overrides"
+    test_pass "repo-automation-install preserves existing local overrides"
   else
-    smoke_fail "repo-automation-install preserves existing local overrides"
+    test_fail "repo-automation-install preserves existing local overrides"
     status=1
   fi
 
@@ -779,22 +745,22 @@ EOF
   if [ -n "$install_status_after" ]; then
     :
   else
-    smoke_fail "repo-automation-install target repo remains unchanged in git history"
+    test_fail "repo-automation-install target repo remains unchanged in git history"
     status=1
   fi
 
   rm -f "$install_plan_json" >/dev/null 2>&1 || true
   rm -f "$install_doctor_json" >/dev/null 2>&1 || true
 
-  smoke_run_named_check "smoke:branch-cleanup-json"
+  test_run_named_check "smoke:branch-cleanup-json"
   branch_json="$test_dir/branch-cleanup.json"
   if (
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/branch-cleanup --json --plan > "$branch_json"
   ) && python -m json.tool "$branch_json" >/dev/null; then
-    smoke_info "branch-cleanup json is parseable"
+    test_pass "branch-cleanup json is parseable"
   else
-    smoke_fail "branch-cleanup json is parseable"
+    test_fail "branch-cleanup json is parseable"
     status=1
   fi
 
@@ -821,30 +787,30 @@ EOF
   ) || status=1
 
   if smoke_json_assert "$branch_json" '"docs/merged-branch" in data.get("candidates", [])'; then
-    smoke_info "merged local branch classified as candidate"
+    test_pass "merged local branch classified as candidate"
   else
-    smoke_fail "merged local branch classified as candidate"
+    test_fail "merged local branch classified as candidate"
     status=1
   fi
 
   if smoke_json_assert "$branch_json" 'any(item.get("branch") == "feature/unique-branch" and item.get("reason") == "current-branch" for item in data.get("skipped", []))'; then
-    smoke_info "current branch skipped with current-branch reason"
+    test_pass "current branch skipped with current-branch reason"
   else
-    smoke_fail "current branch skipped with current-branch reason"
+    test_fail "current branch skipped with current-branch reason"
     status=1
   fi
 
   if smoke_json_assert "$branch_json" 'any(item.get("branch") == "main" and item.get("reason") == "default-branch" for item in data.get("skipped", []))'; then
-    smoke_info "default branch skipped with default-branch reason"
+    test_pass "default branch skipped with default-branch reason"
   else
-    smoke_fail "default branch skipped with default-branch reason"
+    test_fail "default branch skipped with default-branch reason"
     status=1
   fi
 
   if smoke_json_assert "$branch_json" 'any(item.get("branch") == "feature/unique-branch" and item.get("reason") in ("current-branch", "has-unique-commits", "not-merged-into-origin-default") for item in data.get("skipped", []))'; then
-    smoke_info "unique branch shows expected non-candidate reason"
+    test_pass "unique branch shows expected non-candidate reason"
   else
-    smoke_fail "unique branch shows expected non-candidate reason"
+    test_fail "unique branch shows expected non-candidate reason"
     status=1
   fi
 
@@ -853,21 +819,21 @@ EOF
     git checkout main >/dev/null || return 1
     timeout "${smoke_timeout_seconds}s" scripts/codex-slice-preflight --check-only --branch feature/preflight-smoke >/dev/null
   ); then
-    smoke_info "preflight check-only succeeds"
+    test_pass "preflight check-only succeeds"
   else
-    smoke_fail "preflight check-only succeeds"
+    test_fail "preflight check-only succeeds"
     status=1
   fi
 
-  smoke_run_named_check "smoke:preflight-json"
+  test_run_named_check "smoke:preflight-json"
   preflight_json="$test_dir/preflight.json"
   if (
     cd "$test_dir" || return 1
     timeout "${smoke_timeout_seconds}s" scripts/codex-slice-preflight --json --check-only --branch feature/preflight-smoke > "$preflight_json"
   ) && python -m json.tool "$preflight_json" >/dev/null; then
-    smoke_info "preflight json is parseable"
+    test_pass "preflight json is parseable"
   else
-    smoke_fail "preflight json is parseable"
+    test_fail "preflight json is parseable"
     status=1
   fi
 
@@ -886,7 +852,7 @@ EOF
     PATH="$shim_dir" "$local_bash_path" scripts/pr-finish --plan >/dev/null 2> "$finish_stderr"
     return 1
   ); then
-    smoke_fail "pr-finish no-auth/no-gh safe-failure path"
+    test_fail "pr-finish no-auth/no-gh safe-failure path"
     status=1
   else
     if (
@@ -899,9 +865,9 @@ EOF
         cmp -s "$test_dir/pre-status.txt" "$test_dir/post-status.txt" &&
         grep -q 'STOP: gh is required for pr-finish' "$finish_stderr"
     ); then
-      smoke_info "pr-finish no-auth/no-gh failure is safe and non-mutating"
+      test_pass "pr-finish no-auth/no-gh failure is safe and non-mutating"
     else
-      smoke_fail "pr-finish no-auth/no-gh failure is safe and non-mutating"
+      test_fail "pr-finish no-auth/no-gh failure is safe and non-mutating"
       status=1
     fi
   fi
