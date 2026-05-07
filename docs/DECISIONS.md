@@ -21,6 +21,9 @@ This file records public repo decisions for `repo-automation-template`.
 | Repo-local config entry point | `.repo-automation.conf` is the repo-local config entry point for future automation scripts |
 | Shared Bash library source | repo-local scripts must source `scripts/lib/repo-automation-common.sh` instead of duplicating shared helper logic |
 | Smoke test harness boundary | smoke tests must use `tests/lib/test-common.sh` for named subchecks and registered temp-dir cleanup before any future split |
+| Smoke scenario ownership | `test_run_named_check` owns smoke scenario execution |
+| Smoke timeout boundary | `tests/smoke.sh` must not shadow system `timeout` |
+| Smoke cleanup ownership | smoke cleanup is centralized through `tests/lib/test-common.sh` |
 | Branch cleanup safety mode | branch cleanup defaults to plan-only and requires `--apply` for deletion |
 | Branch cleanup safety boundary | branch cleanup must never delete remote branches or force-delete local branches |
 | Codex preflight scope | codex slice preflight may create/check out a requested branch but must not create PRs or merge PRs |

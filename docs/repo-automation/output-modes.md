@@ -93,7 +93,7 @@ Example failure run:
     Log: /path/to/run-tests-2026-05-06T120000.log
     Next: scripts/run-tests --explain
 
-For smoke-test failures, the compact summary should point at the named smoke subcheck and the log file when one exists.
+For smoke-test failures, the compact summary should point at the named smoke subcheck and the log file when one exists. Timed-out smoke checks should say so explicitly when the named check is available.
 
 ## Recommended Codex usage
 
