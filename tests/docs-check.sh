@@ -17,6 +17,9 @@ link_pattern = re.compile(r'(?<!\!)\[[^\]]+\]\(([^)]+)\)')
 markdown_suffixes = {'.md', '.markdown'}
 text_suffixes = {'.md', '.markdown', '.yml', '.yaml', '.sh', '.txt'}
 skip_dirs = {'.git', '.hg', '.svn', '.tox', '__pycache__'}
+fence_pattern = re.compile(r'^[ \t]{0,3}(`{3,}|~{3,})')
+heading_pattern = re.compile(r'^[ \t]{0,3}#{1,6}\s+\S')
+trailing_whitespace_pattern = re.compile(r'[ \t]+$', re.M)
 
 def rel(path: Path) -> str:
     try:
@@ -112,28 +115,75 @@ def check_public_entry_points():
     if missing:
         fail('public entry points', 'missing from docs/INDEX.md: ' + ', '.join(missing))
 
-def check_phrase_group(category, phrases):
+def check_phrase_group(category, phrases, *, allowed_paths=None):
     for phrase in phrases:
         hits = []
         for path in iter_files(text_suffixes):
+            rel_path = rel(path)
+            if rel_path == 'tests/docs-check.sh':
+                continue
+            if allowed_paths is not None and rel_path not in allowed_paths:
+                continue
             text = path.read_text(encoding='utf-8', errors='ignore')
-            if phrase in text:
-                hits.append(rel(path))
+            if phrase.lower() in text.lower():
+                hits.append(rel_path)
         if hits:
             fail(category, f'"{phrase}" found in: ' + ', '.join(sorted(set(hits))))
+
+def check_markdown_formatting():
+    for path in iter_files(markdown_suffixes):
+        rel_path = rel(path)
+        text = path.read_text(encoding='utf-8', errors='ignore')
+        if not text.endswith('\n'):
+            fail('markdown formatting', f'{rel_path} does not end with a newline')
+        if trailing_whitespace_pattern.search(text):
+            fail('markdown formatting', f'{rel_path} has trailing whitespace')
+
+        lines = text.splitlines()
+        in_fence = False
+        fence_char = None
+        fence_len = 0
+        for index, line in enumerate(lines):
+            fence_match = fence_pattern.match(line)
+            if fence_match:
+                fence = fence_match.group(1)
+                if not in_fence:
+                    in_fence = True
+                    fence_char = fence[0]
+                    fence_len = len(fence)
+                    continue
+                if fence[0] == fence_char and len(fence) >= fence_len:
+                    in_fence = False
+                    fence_char = None
+                    fence_len = 0
+                    continue
+            if in_fence:
+                continue
+            if heading_pattern.match(line):
+                if index > 0 and lines[index - 1].strip():
+                    fail('markdown formatting', f'{rel_path} heading on line {index + 1} is missing a blank line before it')
+                if index + 1 >= len(lines) or lines[index + 1].strip():
+                    fail('markdown formatting', f'{rel_path} heading on line {index + 1} is missing a blank line after it')
+        if in_fence:
+            fail('markdown formatting', f'{rel_path} has an unbalanced fenced code block')
 
 check_local_links()
 check_docs_index_coverage()
 check_public_entry_points()
 check_phrase_group('stale phrasing', [
     ''.join(['docs-first ', 'bootstrap']),
-    ''.join(['Most script implementation is not included ', 'yet']),
-    ''.join(['first scaffold ', 'form']),
-])
+    ''.join(['most script implementation']),
+    ''.join(['initial scaffold']),
+    ''.join(['helper scaffold']),
+], allowed_paths=None)
+check_phrase_group('stale public release framing', [
+    ''.join(['future scripts']),
+], allowed_paths={'README.md'})
 check_phrase_group('forbidden public phrase', [
     ''.join(['Prompt Template ', 'V1']),
     ''.join(['Heartloom ', 'Identity']),
 ])
+check_markdown_formatting()
 
 if failures:
     for message in failures:
@@ -145,6 +195,7 @@ print('PASS: local markdown links')
 print('PASS: docs index coverage')
 print('PASS: public entry points')
 print('PASS: phrase scans')
+print('PASS: markdown formatting')
 PY
 status=$?
 if [ "$status" -eq 0 ]; then

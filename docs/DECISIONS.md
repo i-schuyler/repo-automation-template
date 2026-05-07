@@ -24,7 +24,7 @@ This file records public repo decisions for `repo-automation-template`.
 | Smoke scenario ownership | `test_run_named_check` owns smoke scenario execution |
 | Smoke timeout boundary | `tests/smoke.sh` must not shadow system `timeout` |
 | Smoke cleanup ownership | smoke cleanup is centralized through `tests/lib/test-common.sh` |
-| Docs drift gate | docs index/link completeness is CI-checked through `tests/docs-check.sh` and `scripts/run-tests` |
+| Docs drift gate | docs index/link completeness, basic Markdown formatting, and stale public-alpha wording are CI-checked through `tests/docs-check.sh` and `scripts/run-tests` |
 | Branch cleanup safety mode | branch cleanup defaults to plan-only and requires `--apply` for deletion |
 | Branch cleanup safety boundary | branch cleanup must never delete remote branches or force-delete local branches |
 | Codex preflight scope | codex slice preflight may create/check out a requested branch but must not create PRs or merge PRs |
@@ -85,4 +85,4 @@ This file records public repo decisions for `repo-automation-template`.
 - [LOCKED] Public-alpha health is defined by `scripts/run-tests --audit --timeout 200`, `scripts/repo-doctor --full --timeout 200`, and the GitHub Actions `validate` check.
 - [LOCKED] Docs navigation must keep canonical project docs and public entry points discoverable from `docs/INDEX.md`.
 - [LOCKED] `tests/docs-check.sh` and `scripts/run-tests` enforce docs index coverage, local markdown link validity, and public-entry-point coverage.
-- [TENTATIVE] Docs CI should validate index links, important markdown coverage, and basic docs formatting in a follow-up implementation slice.
+- [LOCKED] Docs CI validates index links, important markdown coverage, basic docs formatting, and stale public-alpha wording.

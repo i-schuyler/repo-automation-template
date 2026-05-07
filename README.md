@@ -17,7 +17,7 @@ This repo is in early public read-only/low-attention mode. Issues are welcome. E
 
 ## v0.1.0 Scope
 
-v0.1.0 establishes the initial public docs and helper scaffolds. It includes:
+v0.1.0 is a public-alpha helper set with implemented terminal workflows. It includes:
 
 - canonical public docs
 - versioning conventions
@@ -26,32 +26,32 @@ v0.1.0 establishes the initial public docs and helper scaffolds. It includes:
 - issue forms
 - roadmap
 - public coming-soon support and monetization paths
-- repo-local config and shared Bash library scaffold for future scripts
-- first workflow scaffolds for branch cleanup and codex slice preflight
-- pr finish helper scaffold for status/watch/explicit merge flows
-- repo doctor read-only health helper scaffold
-- downstream install/update helper scaffold
+- repo-local config and shared Bash library for terminal workflows
+- branch cleanup and codex slice preflight helpers
+- pr finish helper for status/watch/explicit merge flows
+- repo doctor read-only health helper
+- downstream install/update helper
 
 ## Not In v0.1.0
 
 v0.1.0 does not include:
 
-- most script implementation
+- release-grade script implementation
 - release automation
 - package manager install
 - subtree sync
 
-## Intended Future Scripts
+## Implemented Helper Scripts
 
-These names define the intended shape of slices.
+These names define the implemented helper set.
 
-- `scripts/codex-slice-preflight` (initial scaffold)
-- `scripts/branch-cleanup` (initial scaffold)
-- `scripts/pr-finish` (initial scaffold)
-- `scripts/add-doc-pr` (initial scaffold)
-- `scripts/repo-automation-report-upstream` (initial scaffold)
-- `scripts/repo-doctor` (initial scaffold)
-- `scripts/repo-automation-install` (initial scaffold)
+- `scripts/codex-slice-preflight`
+- `scripts/branch-cleanup`
+- `scripts/pr-finish`
+- `scripts/add-doc-pr`
+- `scripts/repo-automation-report-upstream`
+- `scripts/repo-doctor`
+- `scripts/repo-automation-install`
 
 ## Start Here
 
