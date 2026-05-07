@@ -102,4 +102,4 @@ The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST
 
 ### Low-token diagnostics
 
-The output-mode contract in `docs/repo-automation/output-modes.md` is intended to keep future Codex and ChatGPT handoffs compact: summary by default, detailed logs in temp files, and JSON modes for warnings/failures.
+The output-mode contract in `docs/repo-automation/output-modes.md` now keeps `scripts/run-tests` and `scripts/repo-doctor` compact by default: summary output first, detailed logs in temp files, `--explain` for full detail, and JSON modes for warnings/failures.

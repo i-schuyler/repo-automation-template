@@ -13,7 +13,8 @@ CI runs the same core checks:
 - smoke coverage for `scripts/pr-finish` help and safe no-auth/no-gh failure behavior
 - smoke coverage for `scripts/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
 - smoke coverage for `scripts/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
-- smoke coverage for `scripts/repo-doctor` help, quick/json mode, and missing-config safe failure behavior
+- smoke coverage for `scripts/run-tests` compact defaults, `--explain`, JSON levels, log files, and no-log behavior
+- smoke coverage for `scripts/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
 - smoke coverage for `scripts/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, and downstream install contract auditing in temporary repos
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard
@@ -24,6 +25,7 @@ The test scaffold does not require GitHub auth and does not create issues or PRs
 `scripts/repo-automation-report-upstream` smoke coverage does not create real issues.
 `scripts/repo-doctor` smoke coverage is local/no-auth and does not create GitHub objects.
 `scripts/repo-automation-install` smoke coverage only uses temporary local target repos and does not touch real downstream repos.
+`scripts/run-tests` smoke coverage does not create or modify GitHub objects.
 
 Installer smoke coverage also checks that temporary downstream installs can load and validate config, keep scripts executable, normalize unsupported `EXPECTED_REMOTE_URL` values to empty, and run `scripts/repo-doctor --quick --no-run-tests` without needing GitHub auth.
 
@@ -36,4 +38,4 @@ ShellCheck is required in CI. Locally, `scripts/run-tests` runs ShellCheck when 
 
 ## Output modes
 
-The shared output-mode contract is documented in `docs/repo-automation/output-modes.md`. `scripts/run-tests` and `scripts/repo-doctor` should be the first commands to implement compact summaries, log-file detail capture, `--explain`, and `--json-level fail|warn|all`.
+The shared output-mode contract is documented in [docs/repo-automation/output-modes.md](output-modes.md). `scripts/run-tests` and `scripts/repo-doctor` now implement compact summaries by default, temp log-file detail capture, `--explain`, `--quiet`, and `--json-level fail|warn|all`.

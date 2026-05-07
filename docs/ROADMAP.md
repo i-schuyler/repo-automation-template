@@ -96,6 +96,7 @@
 - compatibility mode for CI/PR providers
 - reusable GitHub Actions workflows as CI-only complement
 - package as template directory
+- output-mode contract now implemented for `scripts/run-tests` and `scripts/repo-doctor`; remaining scripts may adopt it later.
 
 
 - Output-mode contract: compact summaries, temp log files, `--explain`, and JSON levels for lower-token diagnostics.
