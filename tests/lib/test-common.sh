@@ -225,8 +225,12 @@ test_run_with_timeout() {
   local command_string="${2:-}"
   local shell_command
   local child_pid
+  local watchdog_pid
+  local timeout_marker=""
   local exit_code=0
   local is_function=0
+  local watchdog_timeout=0
+  local child_pgid=""
 
   TEST_LAST_TIMEOUT=0
 
@@ -240,36 +244,84 @@ test_run_with_timeout() {
   fi
 
   if [ "$is_function" -eq 1 ]; then
-    shell_command="$(typeset -f)
-cd $(printf '%q' "$PWD") && $command_string"
+    if [ "$timeout_seconds" -gt 0 ]; then
+      timeout_marker="${TEST_TEMP_ROOT}/timeout.$$.$RANDOM"
+    fi
+
+    (
+      "$command_string"
+    ) &
+    child_pid=$!
+    test_register_child_pid "$child_pid"
+
+    if [ "$timeout_seconds" -gt 0 ]; then
+      (
+        sleep "$timeout_seconds"
+        if kill -0 "$child_pid" >/dev/null 2>&1; then
+          : > "$timeout_marker"
+          child_pgid="$(ps -o pgid= -p "$child_pid" 2>/dev/null | tr -d '[:space:]')"
+          if [ -n "$child_pgid" ]; then
+            kill -- "-$child_pgid" >/dev/null 2>&1 || true
+          fi
+          kill "$child_pid" >/dev/null 2>&1 || true
+        fi
+      ) &
+      watchdog_pid=$!
+    fi
+
+    wait "$child_pid"
+    exit_code=$?
+    test_unregister_child_pid "$child_pid"
+
+    if [ "$timeout_seconds" -gt 0 ]; then
+      kill "$watchdog_pid" >/dev/null 2>&1 || true
+      wait "$watchdog_pid" >/dev/null 2>&1 || true
+      if [ -f "$timeout_marker" ]; then
+        watchdog_timeout=1
+        rm -f -- "$timeout_marker" >/dev/null 2>&1 || true
+      fi
+    fi
   else
     shell_command="cd $(printf '%q' "$PWD") && eval $(printf '%q' "$command_string")"
-  fi
 
-  if [ "$timeout_seconds" -gt 0 ] && test_have_timeout; then
-    if test_timeout_has_kill_after; then
-      command timeout --kill-after="$(test_timeout_kill_after "$timeout_seconds")" "${timeout_seconds}s" bash -lc "$shell_command" &
+    if [ "$timeout_seconds" -gt 0 ] && test_have_timeout; then
+      if test_timeout_has_kill_after; then
+        command timeout --kill-after="$(test_timeout_kill_after "$timeout_seconds")" "${timeout_seconds}s" bash -lc "$shell_command" &
+      else
+        command timeout "${timeout_seconds}s" bash -lc "$shell_command" &
+      fi
     else
-      command timeout "${timeout_seconds}s" bash -lc "$shell_command" &
+      if [ "$timeout_seconds" -gt 0 ]; then
+        test_warn_timeout_once
+      fi
+      bash -lc "$shell_command" &
     fi
-  else
-    if [ "$timeout_seconds" -gt 0 ]; then
-      test_warn_timeout_once
-    fi
-    bash -lc "$shell_command" &
+
+    child_pid=$!
+    test_register_child_pid "$child_pid"
+    wait "$child_pid"
+    exit_code=$?
+    test_unregister_child_pid "$child_pid"
   fi
 
-  child_pid=$!
-  test_register_child_pid "$child_pid"
-  wait "$child_pid"
-  exit_code=$?
-  test_unregister_child_pid "$child_pid"
+  if [ "$watchdog_timeout" -eq 1 ]; then
+    TEST_LAST_TIMEOUT=1
+    case "$exit_code" in
+      0|124|137|143)
+        exit_code=124
+        ;;
+    esac
+  else
+    case "$exit_code" in
+      124|137|143)
+        TEST_LAST_TIMEOUT=1
+        ;;
+    esac
+  fi
 
-  case "$exit_code" in
-    124|137|143)
-      TEST_LAST_TIMEOUT=1
-      ;;
-  esac
+  if [ -n "$timeout_marker" ]; then
+    rm -f -- "$timeout_marker" >/dev/null 2>&1 || true
+  fi
 
   return "$exit_code"
 }
