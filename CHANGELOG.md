@@ -46,7 +46,11 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added public workflow audit checklist product seed.
 - Updated installer/config/testing docs for downstream contract auditing.
 
-### Not Implemented
+### Changed
 
 - Documented public-alpha known limitations and refreshed docs navigation before release-readiness.
 - Clarified that CI/Termux are the supported validation path while arbitrary container rehydration remains best-effort.
+
+### Not Implemented
+
+- Kept package manager install and subtree sync out of v0.1.0.

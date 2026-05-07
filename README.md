@@ -36,7 +36,7 @@ v0.1.0 is a public-alpha helper set with implemented terminal workflows. It incl
 
 v0.1.0 does not include:
 
-- release-grade script implementation
+- release-grade packaging or unattended release automation
 - release automation
 - package manager install
 - subtree sync
