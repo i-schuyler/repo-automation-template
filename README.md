@@ -78,6 +78,8 @@ Run locally:
 
     scripts/run-tests
 
+The smoke suite now uses `tests/lib/test-common.sh` for named subchecks and cleanup.
+
 ## Coming Soon
 
 The basic workflow should remain useful as open source. Paid paths should fund maintenance, examples, and support instead of locking away the core workflow.

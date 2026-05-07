@@ -89,9 +89,11 @@ Example failure run:
     RUNNING repo automation tests...
     RESULT: pass=38 warn=1 fail=1 skipped=0
     FAIL:
-    - smoke: add-doc-pr docs-only boundary
+    - tests/smoke.sh (smoke:report-upstream-secret-scan - report-upstream secret scan blocks likely secret logs)
     Log: /path/to/run-tests-2026-05-06T120000.log
     Next: scripts/run-tests --explain
+
+For smoke-test failures, the compact summary should point at the named smoke subcheck and the log file when one exists.
 
 ## Recommended Codex usage
 
