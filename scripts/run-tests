@@ -7,50 +7,341 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/lib/repo-automation-common.sh"
 
-run_tests_info() {
-  printf 'PASS: %s\n' "$1"
+run_tests_mode="summary"
+run_tests_json=0
+run_tests_json_level="warn"
+run_tests_log_enabled=1
+run_tests_log_file=""
+run_tests_start_line="RUNNING repo automation tests..."
+run_tests_next_hint="Next: scripts/run-tests --explain"
+run_tests_checks=()
+
+run_tests_usage() {
+  printf 'Usage: scripts/run-tests [--summary] [--explain] [--quiet] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--help]\n'
 }
 
-run_tests_fail() {
-  printf 'FAIL: %s\n' "$1" >&2
+run_tests_timestamp() {
+  date '+%Y-%m-%dT%H%M%S'
 }
 
-run_tests_warn() {
-  printf 'WARN: %s\n' "$1" >&2
+run_tests_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//\"/\\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
 }
 
-run_tests_repo_root() {
-  local root
-  root="$(repo_auto_repo_root)" || return 1
-  printf '%s\n' "$root"
+run_tests_init_log() {
+  local temp_root
+
+  if [ "$run_tests_log_enabled" -ne 1 ]; then
+    return 0
+  fi
+
+  if [ -z "$run_tests_log_file" ]; then
+    temp_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+    mkdir -p "$temp_root" >/dev/null 2>&1 || {
+      run_tests_log_enabled=0
+      run_tests_log_file=""
+      return 0
+    }
+    run_tests_log_file="$temp_root/run-tests-$(run_tests_timestamp).log"
+  fi
+
+  : >"$run_tests_log_file" 2>/dev/null || {
+    run_tests_log_enabled=0
+    run_tests_log_file=""
+    return 0
+  }
+}
+
+run_tests_log() {
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    printf '%s\n' "$*" >>"$run_tests_log_file"
+  fi
+}
+
+run_tests_add_check() {
+  local name="$1"
+  local status="$2"
+  local message="$3"
+
+  run_tests_checks+=("${name}|${status}|${message}")
+  run_tests_log "${status^^}: ${name} - ${message}"
+}
+
+run_tests_record_pass() {
+  run_tests_add_check "$1" "pass" "$2"
+}
+
+run_tests_record_warn() {
+  run_tests_add_check "$1" "warn" "$2"
+}
+
+run_tests_record_fail() {
+  run_tests_add_check "$1" "fail" "$2"
+}
+
+run_tests_record_skip() {
+  run_tests_add_check "$1" "skipped" "$2"
 }
 
 run_tests_run_cmd() {
   local label="$1"
   shift
 
-  if "$@"; then
-    run_tests_info "$label"
-    return 0
+  run_tests_log "CHECK START: $label"
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    if "$@" >>"$run_tests_log_file" 2>&1; then
+      run_tests_record_pass "$label" "passed"
+      run_tests_log "CHECK END: $label"
+      return 0
+    fi
+  else
+    if "$@" >/dev/null 2>&1; then
+      run_tests_record_pass "$label" "passed"
+      run_tests_log "CHECK END: $label"
+      return 0
+    fi
   fi
 
-  run_tests_fail "$label"
+  run_tests_record_fail "$label" "failed"
+  run_tests_log "CHECK END: $label"
   return 1
 }
 
+run_tests_counts() {
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local entry status
+
+  for entry in "${run_tests_checks[@]}"; do
+    status="${entry#*|}"
+    status="${status%%|*}"
+    case "$status" in
+      pass) pass_count=$((pass_count + 1)) ;;
+      warn) warn_count=$((warn_count + 1)) ;;
+      fail) fail_count=$((fail_count + 1)) ;;
+      skipped) skipped_count=$((skipped_count + 1)) ;;
+    esac
+  done
+
+  printf '%s %s %s %s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+}
+
+run_tests_print_human() {
+  local overall_status="$1"
+  local pass_count="$2"
+  local warn_count="$3"
+  local fail_count="$4"
+  local skipped_count="$5"
+  local entry name status message
+
+  if [ "$run_tests_mode" != "quiet" ]; then
+    printf '%s\n' "$run_tests_start_line"
+  fi
+
+  if [ "$run_tests_mode" = "explain" ]; then
+    for entry in "${run_tests_checks[@]}"; do
+      name="${entry%%|*}"
+      message="${entry#*|}"
+      status="${message%%|*}"
+      message="${message#*|}"
+      printf '%s: %s - %s\n' "${status^^}" "$name" "$message"
+    done
+  fi
+
+  printf 'RESULT: pass=%s warn=%s fail=%s skipped=%s\n' \
+    "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+
+  if [ "$warn_count" -gt 0 ]; then
+    printf 'WARN:\n'
+    for entry in "${run_tests_checks[@]}"; do
+      name="${entry%%|*}"
+      message="${entry#*|}"
+      status="${message%%|*}"
+      if [ "$status" = "warn" ]; then
+        printf -- '- %s\n' "$name"
+      fi
+    done
+  fi
+
+  if [ "$fail_count" -gt 0 ]; then
+    printf 'FAIL:\n'
+    for entry in "${run_tests_checks[@]}"; do
+      name="${entry%%|*}"
+      message="${entry#*|}"
+      status="${message%%|*}"
+      if [ "$status" = "fail" ]; then
+        printf -- '- %s\n' "$name"
+      fi
+    done
+  fi
+
+  if [ "$run_tests_mode" != "quiet" ] && [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ] && [ "$run_tests_json" -eq 0 ]; then
+    printf 'Log: %s\n' "$run_tests_log_file"
+  fi
+
+  if [ "$warn_count" -gt 0 ] || [ "$fail_count" -gt 0 ]; then
+    printf '%s\n' "$run_tests_next_hint"
+  fi
+}
+
+run_tests_print_json() {
+  local overall_status="$1"
+  local pass_count="$2"
+  local warn_count="$3"
+  local fail_count="$4"
+  local skipped_count="$5"
+  local entry name status message json_checks=""
+  local first=1
+  local want_level="$run_tests_json_level"
+
+  for entry in "${run_tests_checks[@]}"; do
+    name="${entry%%|*}"
+    message="${entry#*|}"
+    status="${message%%|*}"
+    message="${message#*|}"
+
+    case "$want_level" in
+      fail)
+        [ "$status" = "fail" ] || continue
+        ;;
+      warn)
+        [ "$status" = "fail" ] || [ "$status" = "warn" ] || continue
+        ;;
+      all)
+        ;;
+    esac
+
+    if [ "$first" -eq 0 ]; then
+      json_checks+=","
+    fi
+    json_checks+="{\"name\":\"$(run_tests_json_escape "$name")\",\"status\":\"$(run_tests_json_escape "$status")\",\"message\":\"$(run_tests_json_escape "$message")\"}"
+    first=0
+  done
+
+  printf '{'
+  printf '"script":"run-tests",'
+  printf '"mode":"%s",' "$(run_tests_json_escape "$run_tests_mode")"
+  printf '"overall_status":"%s",' "$(run_tests_json_escape "$overall_status")"
+  printf '"pass_count":%s,' "$pass_count"
+  printf '"warn_count":%s,' "$warn_count"
+  printf '"fail_count":%s,' "$fail_count"
+  printf '"skipped_count":%s,' "$skipped_count"
+  printf '"json_level":"%s",' "$(run_tests_json_escape "$run_tests_json_level")"
+  printf '"checks":[%s],' "$json_checks"
+  printf '"log_file":"%s"' "$(run_tests_json_escape "$run_tests_log_file")"
+  printf '}\n'
+}
+
 run_tests_main() {
+  local arg
   local status=0
   local repo_root
+  local counts
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local overall_status="pass"
+  local name message
 
-  repo_root="$(run_tests_repo_root)" || {
-    run_tests_fail "resolve repo root"
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        run_tests_usage
+        return 0
+        ;;
+      --summary)
+        run_tests_mode="summary"
+        ;;
+      --explain)
+        run_tests_mode="explain"
+        ;;
+      --quiet)
+        run_tests_mode="quiet"
+        ;;
+      --log-file)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_auto_stop "--log-file requires a path"
+          return 1
+        fi
+        run_tests_log_file="$1"
+        run_tests_log_enabled=1
+        ;;
+      --no-log)
+        run_tests_log_enabled=0
+        run_tests_log_file=""
+        ;;
+      --json)
+        run_tests_json=1
+        ;;
+      --json-level)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_auto_stop "--json-level requires a value"
+          return 1
+        fi
+        case "$1" in
+          fail|warn|all)
+            run_tests_json_level="$1"
+            ;;
+          *)
+            repo_auto_stop "invalid --json-level value: $1"
+            return 1
+            ;;
+        esac
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  run_tests_init_log
+
+  repo_root="$(repo_auto_repo_root)" || {
+    run_tests_record_fail "resolve repo root" "failed"
+    counts="$(run_tests_counts)"
+    IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+    overall_status="fail"
+    if [ "$run_tests_json" -eq 1 ]; then
+      run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    else
+      run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    fi
     return 1
   }
+
 
   cd "$repo_root" || {
-    run_tests_fail "cd repo root"
+    run_tests_record_fail "cd repo root" "failed"
+    counts="$(run_tests_counts)"
+    IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+    overall_status="fail"
+    if [ "$run_tests_json" -eq 1 ]; then
+      run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    else
+      run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    fi
     return 1
   }
+
+  run_tests_log "$run_tests_start_line"
 
   run_tests_run_cmd "bash syntax scripts/lib/repo-automation-common.sh" bash -n scripts/lib/repo-automation-common.sh || status=1
   run_tests_run_cmd "bash syntax scripts/branch-cleanup" bash -n scripts/branch-cleanup || status=1
@@ -80,7 +371,7 @@ run_tests_main() {
       tests/smoke.sh \
       tests/version-consistency.sh || status=1
   else
-    run_tests_warn "shellcheck not installed locally; skipping shellcheck"
+    run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
   fi
 
   run_tests_run_cmd "scripts/pr-finish --help" bash -c 'scripts/pr-finish --help >/dev/null' || status=1
@@ -88,10 +379,46 @@ run_tests_main() {
   run_tests_run_cmd "scripts/repo-automation-report-upstream --help" bash -c 'scripts/repo-automation-report-upstream --help >/dev/null' || status=1
   run_tests_run_cmd "scripts/repo-doctor --help" bash -c 'scripts/repo-doctor --help >/dev/null' || status=1
   run_tests_run_cmd "scripts/repo-automation-install --help" bash -c 'scripts/repo-automation-install --help >/dev/null' || status=1
-  run_tests_run_cmd "tests/smoke.sh" tests/smoke.sh || status=1
+  if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
+    run_tests_record_skip "tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"
+  else
+    run_tests_run_cmd "tests/smoke.sh" tests/smoke.sh || status=1
+  fi
   run_tests_run_cmd "tests/version-consistency.sh" tests/version-consistency.sh || status=1
 
-  return "$status"
+  counts="$(run_tests_counts)"
+  IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+
+  if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+    overall_status="fail"
+  elif [ "$warn_count" -gt 0 ]; then
+    overall_status="warn"
+  else
+    overall_status="pass"
+  fi
+
+  if [ "$run_tests_json" -eq 1 ]; then
+    run_tests_print_json \
+      "$overall_status" \
+      "$pass_count" \
+      "$warn_count" \
+      "$fail_count" \
+      "$skipped_count"
+  else
+    run_tests_print_human \
+      "$overall_status" \
+      "$pass_count" \
+      "$warn_count" \
+      "$fail_count" \
+      "$skipped_count"
+  fi
+
+  if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+    return 1
+  fi
+  return 0
 }
 
 run_tests_main "$@"

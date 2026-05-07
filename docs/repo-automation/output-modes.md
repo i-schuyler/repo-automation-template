@@ -16,6 +16,8 @@ Long-running or high-detail commands should default to compact human output:
 - pass/warn/fail/skipped totals
 - log path when details exist
 - failing and warning check names only when action is needed
+- `--summary` is the default human mode for the implemented commands.
+- `--quiet` suppresses the start line and keeps only final totals plus warning/failure hints.
 
 Default output should not print every passing check.
 

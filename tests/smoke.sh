@@ -50,6 +50,18 @@ smoke_main() {
   local report_secret_json
   local report_preview_bug
   local report_preview_feature
+  local run_tests_default_out
+  local run_tests_explain_out
+  local run_tests_json
+  local run_tests_log_file
+  local run_tests_no_log_file
+  local run_tests_no_log_out
+  local doctor_default_out
+  local doctor_explain_out
+  local doctor_json_warn
+  local doctor_log_file
+  local doctor_no_log_file
+  local doctor_no_log_out
   local doctor_json
   local doctor_missing_json
   local install_plan_json
@@ -404,6 +416,120 @@ EOF
 
   rm -f "$report_bug_json" "$report_feature_json" "$report_secret_json" "$report_preview_bug" "$report_preview_feature" >/dev/null 2>&1 || true
 
+  run_tests_default_out="$test_base/run-tests-default-$$.txt"
+  if (
+    cd "$repo_root" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests > "$run_tests_default_out"
+  ) && ! grep -Eq '^PASS:' "$run_tests_default_out" && grep -Eq '^RESULT: pass=' "$run_tests_default_out"; then
+    smoke_info "run-tests default output is compact"
+  else
+    smoke_fail "run-tests default output is compact"
+    status=1
+  fi
+
+  run_tests_explain_out="$test_base/run-tests-explain-$$.txt"
+  if (
+    cd "$repo_root" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --explain > "$run_tests_explain_out"
+  ) && grep -Eq '^PASS: bash syntax scripts/run-tests - passed' "$run_tests_explain_out"; then
+    smoke_info "run-tests explain output shows details"
+  else
+    smoke_fail "run-tests explain output shows details"
+    status=1
+  fi
+
+  run_tests_json="$test_base/run-tests-warn-$$.json"
+  if (
+    cd "$repo_root" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --json --json-level warn > "$run_tests_json"
+  ) && python -m json.tool "$run_tests_json" >/dev/null && \
+    smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
+    smoke_info "run-tests json warn is parseable"
+  else
+    smoke_fail "run-tests json warn is parseable"
+    status=1
+  fi
+
+  run_tests_log_file="$test_base/run-tests-log-$$.log"
+  if (
+    cd "$repo_root" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --log-file "$run_tests_log_file" >/dev/null
+  ) && [ -f "$run_tests_log_file" ]; then
+    smoke_info "run-tests log-file creates a log"
+  else
+    smoke_fail "run-tests log-file creates a log"
+    status=1
+  fi
+
+  run_tests_no_log_file="$test_base/run-tests-no-log-$$.log"
+  run_tests_no_log_out="$test_base/run-tests-no-log-$$.txt"
+  if (
+    cd "$repo_root" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --log-file "$run_tests_no_log_file" --no-log > "$run_tests_no_log_out"
+  ) && [ ! -e "$run_tests_no_log_file" ] && ! grep -Eq '^Log:' "$run_tests_no_log_out"; then
+    smoke_info "run-tests no-log does not create a log"
+  else
+    smoke_fail "run-tests no-log does not create a log"
+    status=1
+  fi
+
+  doctor_default_out="$test_base/repo-doctor-quick-default-$$.txt"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --quick > "$doctor_default_out"
+  ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- git-remote-match$' "$doctor_default_out"; then
+    smoke_info "repo-doctor quick default output is compact"
+  else
+    smoke_fail "repo-doctor quick default output is compact"
+    status=1
+  fi
+
+  doctor_explain_out="$test_base/repo-doctor-quick-explain-$$.txt"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --quick --explain > "$doctor_explain_out"
+  ) && grep -Eq '^PASS: git-branch - current branch:' "$doctor_explain_out"; then
+    smoke_info "repo-doctor quick explain output shows details"
+  else
+    smoke_fail "repo-doctor quick explain output shows details"
+    status=1
+  fi
+
+  doctor_json_warn="$test_base/repo-doctor-quick-warn-$$.json"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --json --quick --json-level warn > "$doctor_json_warn"
+  ) && python -m json.tool "$doctor_json_warn" >/dev/null && \
+    smoke_json_assert "$doctor_json_warn" 'data.get("mode") == "quick" and data.get("json_level") == "warn" and any(check.get("status") == "warn" for check in data.get("checks", []))'; then
+    smoke_info "repo-doctor json quick warn is parseable"
+  else
+    smoke_fail "repo-doctor json quick warn is parseable"
+    status=1
+  fi
+
+  doctor_log_file="$test_base/repo-doctor-log-$$.log"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --quick --log-file "$doctor_log_file" >/dev/null
+  ) && [ -f "$doctor_log_file" ]; then
+    smoke_info "repo-doctor log-file creates a log"
+  else
+    smoke_fail "repo-doctor log-file creates a log"
+    status=1
+  fi
+
+  doctor_no_log_file="$test_base/repo-doctor-no-log-$$.log"
+  doctor_no_log_out="$test_base/repo-doctor-no-log-$$.txt"
+  if (
+    cd "$test_dir" || return 1
+    scripts/repo-doctor --quick --log-file "$doctor_no_log_file" --no-log > "$doctor_no_log_out"
+  ) && [ ! -e "$doctor_no_log_file" ] && ! grep -Eq '^Log:' "$doctor_no_log_out"; then
+    smoke_info "repo-doctor no-log does not create a log"
+  else
+    smoke_fail "repo-doctor no-log does not create a log"
+    status=1
+  fi
+
   if (
     cd "$test_dir" || return 1
     scripts/repo-doctor --quick >/dev/null
@@ -537,7 +663,7 @@ EOF
     cd "$install_target" || return 1
     scripts/repo-doctor --json --quick --no-run-tests > "$install_doctor_json"
   ) && python -m json.tool "$install_doctor_json" >/dev/null && \
-    smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("name") == "config-validate" and check.get("status") == "pass" for check in data.get("checks", []))'; then
+    smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("status") == "warn" for check in data.get("checks", [])) and all(check.get("status") != "pass" for check in data.get("checks", []))'; then
     smoke_info "repo-automation-install target repo-doctor json audit succeeds"
   else
     smoke_fail "repo-automation-install target repo-doctor json audit succeeds"

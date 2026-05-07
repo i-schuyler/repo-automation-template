@@ -7,14 +7,19 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/lib/repo-automation-common.sh"
 
-repo_doctor_mode="default"
+repo_doctor_mode="summary"
+repo_doctor_output_mode="summary"
 repo_doctor_json=0
+repo_doctor_json_level="warn"
+repo_doctor_log_enabled=1
+repo_doctor_log_file=""
 repo_doctor_skip_run_tests=0
 repo_doctor_single_check=""
 repo_doctor_stop_reason=""
+repo_doctor_checks=()
 
 repo_doctor_usage() {
-  printf 'Usage: scripts/repo-doctor [--help] [--quick] [--full] [--json] [--no-run-tests] [--check NAME]\n'
+  printf 'Usage: scripts/repo-doctor [--help] [--summary] [--explain] [--quiet] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--quick] [--full] [--no-run-tests] [--check NAME]\n'
 }
 
 repo_doctor_info() {
@@ -31,6 +36,10 @@ repo_doctor_stop() {
   return 1
 }
 
+repo_doctor_timestamp() {
+  date '+%Y-%m-%dT%H%M%S'
+}
+
 repo_doctor_json_escape() {
   local input="$1"
   input=${input//\\/\\\\}
@@ -41,11 +50,42 @@ repo_doctor_json_escape() {
   printf '%s' "$input"
 }
 
+repo_doctor_init_log() {
+  local temp_root
+
+  if [ "$repo_doctor_log_enabled" -ne 1 ]; then
+    return 0
+  fi
+
+  if [ -z "$repo_doctor_log_file" ]; then
+    temp_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+    mkdir -p "$temp_root" >/dev/null 2>&1 || {
+      repo_doctor_log_enabled=0
+      repo_doctor_log_file=""
+      return 0
+    }
+    repo_doctor_log_file="$temp_root/repo-doctor-$(repo_doctor_timestamp).log"
+  fi
+
+  : >"$repo_doctor_log_file" 2>/dev/null || {
+    repo_doctor_log_enabled=0
+    repo_doctor_log_file=""
+    return 0
+  }
+}
+
+repo_doctor_log() {
+  if [ "$repo_doctor_log_enabled" -eq 1 ] && [ -n "$repo_doctor_log_file" ]; then
+    printf '%s\n' "$*" >>"$repo_doctor_log_file"
+  fi
+}
+
 repo_doctor_add_check() {
   local name="$1"
   local status="$2"
   local message="$3"
-  checks+=("${name}|${status}|${message}")
+  repo_doctor_checks+=("${name}|${status}|${message}")
+  repo_doctor_log "${status^^}: ${name} - ${message}"
 }
 
 repo_doctor_status_weight() {
@@ -57,47 +97,85 @@ repo_doctor_status_weight() {
   esac
 }
 
+repo_doctor_json_should_include() {
+  local status="$1"
+  case "$repo_doctor_json_level" in
+    fail)
+      [ "$status" = "fail" ]
+      ;;
+    warn)
+      [ "$status" = "fail" ] || [ "$status" = "warn" ]
+      ;;
+    all)
+      return 0
+      ;;
+  esac
+}
+
+repo_doctor_counts() {
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local entry rest status
+
+  for entry in "${repo_doctor_checks[@]}"; do
+    rest="${entry#*|}"
+    status="${rest%%|*}"
+    case "$status" in
+      pass) pass_count=$((pass_count + 1)) ;;
+      warn) warn_count=$((warn_count + 1)) ;;
+      fail) fail_count=$((fail_count + 1)) ;;
+      *) skipped_count=$((skipped_count + 1)) ;;
+    esac
+  done
+
+  printf '%s %s %s %s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+}
+
 repo_doctor_print_json() {
   local overall_status="$1"
   local action_taken="$2"
-  local checks_ref_name="$3"
-  local pass_count="$4"
-  local warn_count="$5"
-  local fail_count="$6"
-  local skipped_count="$7"
-  local stop_reason="$8"
-  local -n checks_ref="$checks_ref_name"
-  local idx
+  local pass_count="$3"
+  local warn_count="$4"
+  local fail_count="$5"
+  local skipped_count="$6"
+  local stop_reason="$7"
+  local idx=0
+  local entry
   local name
   local status
   local message
+  local json_checks=""
 
-  printf '{'
-  printf '"mode":"%s",' "$(repo_doctor_json_escape "$repo_doctor_mode")"
-  printf '"overall_status":"%s",' "$(repo_doctor_json_escape "$overall_status")"
-  printf '"checks":['
-  idx=0
-  for entry in "${checks_ref[@]}"; do
+  for entry in "${repo_doctor_checks[@]}"; do
     name="${entry%%|*}"
     rest="${entry#*|}"
     status="${rest%%|*}"
     message="${rest#*|}"
-    if [ "$idx" -gt 0 ]; then
-      printf ','
+    if ! repo_doctor_json_should_include "$status"; then
+      continue
     fi
-    printf '{"name":"%s","status":"%s","message":"%s"}' \
-      "$(repo_doctor_json_escape "$name")" \
-      "$(repo_doctor_json_escape "$status")" \
-      "$(repo_doctor_json_escape "$message")"
+    if [ "$idx" -gt 0 ]; then
+      json_checks+=","
+    fi
+    json_checks+="{\"name\":\"$(repo_doctor_json_escape "$name")\",\"status\":\"$(repo_doctor_json_escape "$status")\",\"message\":\"$(repo_doctor_json_escape "$message")\"}"
     idx=$((idx + 1))
   done
-  printf '],'
+
+  printf '{'
+  printf '"script":"repo-doctor",'
+  printf '"mode":"%s",' "$(repo_doctor_json_escape "$repo_doctor_mode")"
+  printf '"overall_status":"%s",' "$(repo_doctor_json_escape "$overall_status")"
+  printf '"checks":[%s],' "$json_checks"
   printf '"pass_count":%s,' "$pass_count"
   printf '"warn_count":%s,' "$warn_count"
   printf '"fail_count":%s,' "$fail_count"
   printf '"skipped_count":%s,' "$skipped_count"
   printf '"action_taken":"%s",' "$(repo_doctor_json_escape "$action_taken")"
-  printf '"stop_reason":"%s"' "$(repo_doctor_json_escape "$stop_reason")"
+  printf '"stop_reason":"%s",' "$(repo_doctor_json_escape "$stop_reason")"
+  printf '"json_level":"%s",' "$(repo_doctor_json_escape "$repo_doctor_json_level")"
+  printf '"log_file":"%s"' "$(repo_doctor_json_escape "$repo_doctor_log_file")"
   printf '}\n'
 }
 
@@ -266,7 +344,7 @@ repo_doctor_check_run_tests() {
     return 0
   fi
 
-  if scripts/run-tests >/dev/null; then
+  if RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --quiet >/dev/null; then
     repo_doctor_add_check "run-tests" "pass" "scripts/run-tests passed"
     return 0
   fi
@@ -386,23 +464,59 @@ repo_doctor_print_human_summary() {
   local warn_count="$3"
   local fail_count="$4"
   local skipped_count="$5"
-  local -n checks_ref="$6"
-  local name status message
+  local entry
+  local name
+  local status
+  local message
 
-  for entry in "${checks_ref[@]}"; do
-    name="${entry%%|*}"
-    rest="${entry#*|}"
-    status="${rest%%|*}"
-    message="${rest#*|}"
-    case "$status" in
-      pass) printf 'PASS: %s - %s\n' "$name" "$message" ;;
-      warn) printf 'WARN: %s - %s\n' "$name" "$message" ;;
-      fail) printf 'FAIL: %s - %s\n' "$name" "$message" ;;
-      *) printf 'WARN: %s - %s\n' "$name" "$message" ;;
-    esac
-  done
-  printf 'RESULT: %s (pass=%s warn=%s fail=%s skipped=%s)\n' \
-    "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+  if [ "$repo_doctor_output_mode" != "quiet" ]; then
+    printf 'RUNNING repo doctor...\n'
+  fi
+
+  if [ "$repo_doctor_output_mode" = "explain" ]; then
+    for entry in "${repo_doctor_checks[@]}"; do
+      name="${entry%%|*}"
+      rest="${entry#*|}"
+      status="${rest%%|*}"
+      message="${rest#*|}"
+      printf '%s: %s - %s\n' "${status^^}" "$name" "$message"
+    done
+  fi
+
+  printf 'RESULT: pass=%s warn=%s fail=%s skipped=%s\n' \
+    "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+
+  if [ "$warn_count" -gt 0 ]; then
+    printf 'WARN:\n'
+    for entry in "${repo_doctor_checks[@]}"; do
+      name="${entry%%|*}"
+      rest="${entry#*|}"
+      status="${rest%%|*}"
+      if [ "$status" = "warn" ]; then
+        printf -- '- %s\n' "$name"
+      fi
+    done
+  fi
+
+  if [ "$fail_count" -gt 0 ]; then
+    printf 'FAIL:\n'
+    for entry in "${repo_doctor_checks[@]}"; do
+      name="${entry%%|*}"
+      rest="${entry#*|}"
+      status="${rest%%|*}"
+      if [ "$status" = "fail" ]; then
+        printf -- '- %s\n' "$name"
+      fi
+    done
+  fi
+
+  if [ "$repo_doctor_output_mode" != "quiet" ] && [ "$repo_doctor_log_enabled" -eq 1 ] && [ -n "$repo_doctor_log_file" ] && [ "$repo_doctor_json" -eq 0 ]; then
+    printf 'Log: %s\n' "$repo_doctor_log_file"
+  fi
+
+  if [ "$warn_count" -gt 0 ] || [ "$fail_count" -gt 0 ]; then
+    printf 'Next: scripts/repo-doctor --explain\n'
+  fi
 }
 
 repo_doctor_main() {
@@ -416,7 +530,8 @@ repo_doctor_main() {
   local skipped_count=0
   local status
   local checks_to_run=()
-  checks=()
+  local counts
+  repo_doctor_checks=()
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -424,6 +539,18 @@ repo_doctor_main() {
       --help)
         repo_doctor_usage
         return 0
+        ;;
+      --summary)
+        repo_doctor_mode="summary"
+        repo_doctor_output_mode="summary"
+        ;;
+      --explain)
+        repo_doctor_mode="explain"
+        repo_doctor_output_mode="explain"
+        ;;
+      --quiet)
+        repo_doctor_mode="quiet"
+        repo_doctor_output_mode="quiet"
         ;;
       --quick)
         repo_doctor_mode="quick"
@@ -435,6 +562,38 @@ repo_doctor_main() {
         ;;
       --json)
         repo_doctor_json=1
+        ;;
+      --json-level)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_doctor_stop "--json-level requires a value"
+          command_status=1
+          break
+        fi
+        case "$1" in
+          fail|warn|all)
+            repo_doctor_json_level="$1"
+            ;;
+          *)
+            repo_doctor_stop "invalid --json-level value: $1"
+            command_status=1
+            break
+            ;;
+        esac
+        ;;
+      --log-file)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_doctor_stop "--log-file requires a path"
+          command_status=1
+          break
+        fi
+        repo_doctor_log_file="$1"
+        repo_doctor_log_enabled=1
+        ;;
+      --no-log)
+        repo_doctor_log_enabled=0
+        repo_doctor_log_file=""
         ;;
       --no-run-tests)
         repo_doctor_skip_run_tests=1
@@ -457,6 +616,8 @@ repo_doctor_main() {
     shift
   done
 
+  repo_doctor_init_log
+
   if [ "$command_status" -eq 0 ]; then
     repo_root="$(repo_auto_repo_root)" || command_status=1
   fi
@@ -466,6 +627,10 @@ repo_doctor_main() {
       repo_doctor_stop "failed to enter repo root"
       command_status=1
     }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$repo_doctor_log_file" ]; then
+    repo_doctor_log "RUNNING repo doctor..."
   fi
 
   if [ "$command_status" -eq 0 ]; then
@@ -480,16 +645,10 @@ repo_doctor_main() {
     done
   fi
 
-  for entry in "${checks[@]}"; do
-    rest="${entry#*|}"
-    status="${rest%%|*}"
-    case "$status" in
-      pass) pass_count=$((pass_count + 1)) ;;
-      warn) warn_count=$((warn_count + 1)) ;;
-      fail) fail_count=$((fail_count + 1)) ;;
-      *) skipped_count=$((skipped_count + 1)) ;;
-    esac
-  done
+  counts="$(repo_doctor_counts)"
+  IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
 
   if [ "$fail_count" -gt 0 ] || [ "$command_status" -ne 0 ]; then
     overall_status="fail"
@@ -503,7 +662,6 @@ repo_doctor_main() {
     repo_doctor_print_json \
       "$overall_status" \
       "$action_taken" \
-      checks \
       "$pass_count" \
       "$warn_count" \
       "$fail_count" \
@@ -516,10 +674,10 @@ repo_doctor_main() {
       "$warn_count" \
       "$fail_count" \
       "$skipped_count" \
-      checks
+      repo_doctor_checks
   fi
 
-  if [ "$overall_status" = "fail" ]; then
+  if [ "$fail_count" -gt 0 ] || [ "$command_status" -ne 0 ]; then
     return 1
   fi
   return 0
