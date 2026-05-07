@@ -45,7 +45,7 @@ This is a public, practical seed for the workflow audit checklist product. It is
 - use `scripts/pr-finish` only for explicit status, watch, and merge flows
 - keep `scripts/add-doc-pr` on docs-only boundaries
 - prefer timeout-guarded diagnostics such as `scripts/run-tests --audit --timeout 120` and `scripts/repo-doctor --full --timeout 120` for final audits
-- keep smoke failures bounded with named subchecks and registered temp-dir cleanup
+- keep smoke failures bounded with named subchecks, scenario functions, and registered temp-dir cleanup
 - preview upstream issues before submission with `scripts/repo-automation-report-upstream`
 
 ## Branch / PR / CI Safety

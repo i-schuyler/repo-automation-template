@@ -78,7 +78,7 @@ Run locally:
 
     scripts/run-tests
 
-The smoke suite now uses `tests/lib/test-common.sh` for named subchecks and cleanup.
+The smoke suite now uses `tests/lib/test-common.sh` for named scenario execution, timeout ownership, and cleanup.
 
 ## Coming Soon
 

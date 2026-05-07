@@ -29,8 +29,31 @@ test_pass() {
 }
 
 test_run_named_check() {
-  TEST_CURRENT_CHECK="$1"
+  local check_name="${1:-}"
+  local scenario_function="${2:-}"
+  local timeout_seconds="${smoke_timeout_seconds:-0}"
+
+  if [ -z "$check_name" ] || [ -z "$scenario_function" ]; then
+    test_fail "missing named check or scenario function"
+    return 1
+  fi
+
+  TEST_CURRENT_CHECK="$check_name"
+  export TEST_CURRENT_CHECK
   printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
+
+  if test_run_with_timeout "$timeout_seconds" "$scenario_function"; then
+    test_pass "$TEST_CURRENT_CHECK"
+    return 0
+  fi
+
+  if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
+    test_fail "$TEST_CURRENT_CHECK timed out"
+  else
+    test_fail "$TEST_CURRENT_CHECK"
+  fi
+
+  return 1
 }
 
 test_register_temp_dir() {
@@ -64,6 +87,52 @@ test_register_child_pid() {
   esac
 
   TEST_CHILD_PIDS+=("$child_pid")
+}
+
+test_unregister_child_pid() {
+  local child_pid="${1:-}"
+  local updated_pids=()
+  local pid
+
+  case "$child_pid" in
+    ''|*[!0-9]*)
+      test_warn "missing child pid to unregister"
+      return 1
+      ;;
+  esac
+
+  for pid in "${TEST_CHILD_PIDS[@]}"; do
+    if [ "$pid" != "$child_pid" ]; then
+      updated_pids+=("$pid")
+    fi
+  done
+
+  TEST_CHILD_PIDS=("${updated_pids[@]}")
+}
+
+test_kill_registered_child_pid() {
+  local child_pid="${1:-}"
+  local child_pgid=""
+  local shell_pgid=""
+
+  case "$child_pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  if kill -0 "$child_pid" >/dev/null 2>&1; then
+    shell_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d '[:space:]')"
+    child_pgid="$(ps -o pgid= -p "$child_pid" 2>/dev/null | tr -d '[:space:]')"
+
+    if [ -n "$child_pgid" ] && [ -n "$shell_pgid" ] && [ "$child_pgid" = "$child_pid" ] && [ "$child_pgid" != "$shell_pgid" ]; then
+      kill -- "-$child_pid" >/dev/null 2>&1 || true
+    fi
+
+    kill "$child_pid" >/dev/null 2>&1 || true
+  fi
+
+  wait "$child_pid" >/dev/null 2>&1 || true
 }
 
 test_have_timeout() {
@@ -129,16 +198,16 @@ test_warn_timeout_once() {
 
 test_cleanup() {
   local temp_dir
+  local child_pid
 
   if [ "$TEST_CLEANUP_RAN" -eq 1 ]; then
     return 0
   fi
   TEST_CLEANUP_RAN=1
 
-  if [ "${#TEST_CHILD_PIDS[@]}" -gt 0 ]; then
-    kill "${TEST_CHILD_PIDS[@]}" >/dev/null 2>&1 || true
-    wait "${TEST_CHILD_PIDS[@]}" >/dev/null 2>&1 || true
-  fi
+  for child_pid in "${TEST_CHILD_PIDS[@]}"; do
+    test_kill_registered_child_pid "$child_pid"
+  done
 
   for temp_dir in "${TEST_TEMP_DIRS[@]}"; do
     case "$temp_dir" in
@@ -157,6 +226,7 @@ test_run_with_timeout() {
   local shell_command
   local child_pid
   local exit_code=0
+  local is_function=0
 
   TEST_LAST_TIMEOUT=0
 
@@ -165,7 +235,16 @@ test_run_with_timeout() {
     return 1
   fi
 
-  shell_command="cd $(printf '%q' "$PWD") && eval $(printf '%q' "$command_string")"
+  if printf '%s' "$command_string" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*$' && declare -F "$command_string" >/dev/null 2>&1; then
+    is_function=1
+  fi
+
+  if [ "$is_function" -eq 1 ]; then
+    shell_command="$(typeset -f)
+cd $(printf '%q' "$PWD") && $command_string"
+  else
+    shell_command="cd $(printf '%q' "$PWD") && eval $(printf '%q' "$command_string")"
+  fi
 
   if [ "$timeout_seconds" -gt 0 ] && test_have_timeout; then
     if test_timeout_has_kill_after; then
@@ -184,6 +263,7 @@ test_run_with_timeout() {
   test_register_child_pid "$child_pid"
   wait "$child_pid"
   exit_code=$?
+  test_unregister_child_pid "$child_pid"
 
   case "$exit_code" in
     124|137|143)

@@ -30,7 +30,9 @@ The test scaffold does not require GitHub auth and does not create issues or PRs
 Installer smoke coverage also checks that temporary downstream installs can load and validate config, keep scripts executable, normalize unsupported `EXPECTED_REMOTE_URL` values to empty, and run `scripts/repo-doctor --quick --no-run-tests` without needing GitHub auth.
 
 Smoke tests use temporary directories under `${TMPDIR:-$HOME/.cache}/repo-automation-template-tests`.
-Smoke tests source `tests/lib/test-common.sh` for named subchecks, timeout fallback warnings, and registered temp-dir cleanup.
+Smoke tests source `tests/lib/test-common.sh` for named subchecks, timeout ownership, and registered temp-dir cleanup.
+Smoke scenario execution stays in `tests/smoke.sh` for now; do not split it into many files yet.
+The shared harness owns child-process cleanup, temp-dir cleanup, and timeout fallback warnings.
 
 Tests do not delete remote branches and do not use force delete for local branches.
 
