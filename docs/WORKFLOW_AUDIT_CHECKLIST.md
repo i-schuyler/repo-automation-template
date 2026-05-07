@@ -94,3 +94,7 @@ The checklist is intentionally public and lightweight. It is meant to reduce chu
 ## Low-noise diagnostic output
 
 A healthy repo automation setup should make diagnostics easy to share without dumping pages of passing checks. Prefer compact summaries, warning/failure JSON, and temp log files for full detail.
+
+## Known limitations
+
+Before treating a repo as release-ready, read `docs/KNOWN_LIMITATIONS.md`. A healthy public-alpha install should pass the supported validation path, but arbitrary external container interruption is still best-effort.

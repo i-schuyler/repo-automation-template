@@ -105,3 +105,7 @@ The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST
 ### Low-token diagnostics
 
 The output-mode contract in `docs/repo-automation/output-modes.md` now keeps `scripts/run-tests` and `scripts/repo-doctor` compact by default: summary output first, detailed logs in temp files, `--explain` for full detail, `--audit` for the compact full suite, `--timeout` for bounded subchecks, and JSON modes for warnings/failures.
+
+### Public-alpha limitations
+
+Known limitations are documented in `docs/KNOWN_LIMITATIONS.md`. The supported health check path is `scripts/run-tests --audit --timeout 200`, `scripts/repo-doctor --full --timeout 200`, and the GitHub Actions `validate` check.

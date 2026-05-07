@@ -132,3 +132,7 @@ Terminal polish can come later. The priority is lower token usage, clear failure
 - Log files should live under ${TMPDIR:-$HOME/.cache} by default.
 - Failure summaries must identify enough context to act without dumping full logs.
 - Passing details should be available through --explain or log files, not default output.
+
+## Known limitation
+
+Compact output, logs, JSON modes, and timeout guards are designed to make diagnostics easier to share. They do not guarantee perfect cleanup after arbitrary external process termination in every container environment. See `docs/KNOWN_LIMITATIONS.md`.

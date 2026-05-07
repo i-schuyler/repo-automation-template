@@ -44,3 +44,9 @@ ShellCheck is required in CI. Locally, `scripts/run-tests` runs ShellCheck when 
 ## Output modes
 
 The shared output-mode contract is documented in [docs/repo-automation/output-modes.md](output-modes.md). `scripts/run-tests` and `scripts/repo-doctor` now implement compact summaries by default, temp log-file detail capture, `--explain`, `--quiet`, and `--json-level fail|warn|all`.
+
+## Known limitation
+
+The supported validation path is `scripts/run-tests --audit --timeout 200`, `scripts/repo-doctor --full --timeout 200`, and the GitHub Actions `validate` check.
+
+External container rehydration or arbitrary hard-kill environments may still interrupt nested smoke-test cleanup. This is documented in `docs/KNOWN_LIMITATIONS.md` and is not currently treated as a public-alpha blocker when Termux and GitHub Actions are green.

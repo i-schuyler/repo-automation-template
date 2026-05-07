@@ -100,3 +100,9 @@
 
 
 - Output-mode contract: compact summaries, temp log files, `--explain`, `--audit`, `--timeout`, and JSON levels for lower-token diagnostics.
+
+## Public alpha readiness
+
+Current public-alpha readiness includes implemented terminal helpers, downstream install/update support, upstream reporting, compact diagnostics, timeout-guarded audit runs, and harness-owned smoke scenarios.
+
+Before packaged release automation, remaining work should focus on docs CI, release notes, known limitations, and optional packaged bundles.

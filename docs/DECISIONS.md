@@ -79,3 +79,8 @@ This file records public repo decisions for `repo-automation-template`.
 - [LOCKED] JSON diagnostic output should support levels such as `fail`, `warn`, and `all` so Codex can consume only actionable details by default.
 - [LOCKED] Output-mode implementation starts with `scripts/run-tests` and `scripts/repo-doctor` before expanding to other scripts.
 - [LOCKED] Timeout-guarded diagnostics should default to compact summaries, use per-check timeout guards when `timeout` exists, and warn once before continuing without guards when it does not.
+
+- [LOCKED] Known limitations are documented instead of driving further script-hardening unless CI, Termux, or real downstream use exposes a reproducible failure.
+- [LOCKED] Public-alpha health is defined by `scripts/run-tests --audit --timeout 200`, `scripts/repo-doctor --full --timeout 200`, and the GitHub Actions `validate` check.
+- [LOCKED] Docs navigation must keep canonical project docs and public entry points discoverable from `docs/INDEX.md`.
+- [TENTATIVE] Docs CI should validate index links, important markdown coverage, and basic docs formatting in a follow-up implementation slice.
