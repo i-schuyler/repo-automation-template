@@ -36,6 +36,36 @@ PY
   return 1
 }
 
+smoke_add_doc_pr_failure_details() {
+  local json_file="$1"
+  local stderr_file="$2"
+  local details=""
+
+  if [ -s "$json_file" ] && python -m json.tool "$json_file" >/dev/null 2>&1; then
+    details="$(python - "$json_file" <<'PY'
+import json
+import pathlib
+import sys
+
+json_path = pathlib.Path(sys.argv[1])
+data = json.loads(json_path.read_text(encoding="utf-8"))
+print(
+    "changed_files="
+    + json.dumps(data.get("changed_files", []))
+    + "; blocked_files="
+    + json.dumps(data.get("blocked_files", []))
+)
+PY
+)"
+  elif [ -s "$stderr_file" ]; then
+    details="stderr=$(tr '\n' ' ' < "$stderr_file")"
+  fi
+
+  if [ -n "$details" ]; then
+    printf ' (%s)' "$details"
+  fi
+}
+
 smoke_setup_temp_repo() {
   local repo_root
 
@@ -173,6 +203,9 @@ EOF
 smoke_check_add_doc_pr_docs_only() {
   local status=0
   local add_doc_pr_json="$smoke_test_base/add-doc-pr-plan-$$.json"
+  local add_doc_pr_stderr="$smoke_test_base/add-doc-pr-plan-$$.stderr"
+  local add_doc_pr_failure_details=""
+
   if (
     cd "$smoke_test_dir" || return 1
     scripts/branch-cleanup --help >/dev/null
@@ -237,16 +270,18 @@ smoke_check_add_doc_pr_docs_only() {
     cd "$smoke_test_dir" || return 1
     mkdir -p docs || return 1
     printf 'docs only change\n' > docs/plan-doc.md || return 1
-    scripts/add-doc-pr --plan --json > "$add_doc_pr_json"
+    scripts/add-doc-pr --plan --json > "$add_doc_pr_json" 2> "$add_doc_pr_stderr"
   ) && python -m json.tool "$add_doc_pr_json" >/dev/null; then
     if smoke_json_assert "$add_doc_pr_json" '"docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
       test_pass "add-doc-pr docs-only plan/json succeeds"
     else
-      test_fail "add-doc-pr docs-only plan/json succeeds"
+      add_doc_pr_failure_details="$(smoke_add_doc_pr_failure_details "$add_doc_pr_json" "$add_doc_pr_stderr")"
+      test_fail "add-doc-pr docs-only plan/json succeeds${add_doc_pr_failure_details}"
       status=1
     fi
   else
-    test_fail "add-doc-pr docs-only plan/json succeeds"
+    add_doc_pr_failure_details="$(smoke_add_doc_pr_failure_details "$add_doc_pr_json" "$add_doc_pr_stderr")"
+    test_fail "add-doc-pr docs-only plan/json succeeds${add_doc_pr_failure_details}"
     status=1
   fi
 
@@ -257,7 +292,7 @@ smoke_check_add_doc_pr_docs_only() {
     :
   fi
 
-  rm -f "$add_doc_pr_json" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
