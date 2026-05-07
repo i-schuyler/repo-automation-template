@@ -16,6 +16,7 @@ CI runs the same core checks:
 - smoke coverage for `scripts/run-tests` compact defaults, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `scripts/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
 - smoke coverage for `scripts/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, and downstream install contract auditing in temporary repos
+- lightweight docs CI via `tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, and public entry-point navigation
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard
 
@@ -44,6 +45,8 @@ ShellCheck is required in CI. Locally, `scripts/run-tests` runs ShellCheck when 
 ## Output modes
 
 The shared output-mode contract is documented in [docs/repo-automation/output-modes.md](output-modes.md). `scripts/run-tests` and `scripts/repo-doctor` now implement compact summaries by default, temp log-file detail capture, `--explain`, `--quiet`, and `--json-level fail|warn|all`.
+
+`tests/docs-check.sh` is the standalone docs drift gate. It is also included in `scripts/run-tests`, so local audit runs and GitHub Actions both catch broken markdown links, missing `docs/INDEX.md` coverage, stale public phrasing, and missing public navigation links.
 
 ## Known limitation
 

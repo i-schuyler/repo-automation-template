@@ -568,11 +568,12 @@ EOF
   run_tests_run_cmd "bash syntax scripts/repo-doctor" bash -n scripts/repo-doctor || status=1
   run_tests_run_cmd "bash syntax scripts/repo-automation-install" bash -n scripts/repo-automation-install || status=1
   run_tests_run_cmd "bash syntax scripts/run-tests" bash -n scripts/run-tests || status=1
+  run_tests_run_cmd "bash syntax tests/docs-check.sh" bash -n tests/docs-check.sh || status=1
   run_tests_run_cmd "bash syntax tests/smoke.sh" bash -n tests/smoke.sh || status=1
   run_tests_run_cmd "bash syntax tests/version-consistency.sh" bash -n tests/version-consistency.sh || status=1
 
   if command -v shellcheck >/dev/null 2>&1; then
-    run_tests_run_cmd       "shellcheck scripts and tests"       shellcheck       -e SC2317       scripts/branch-cleanup       scripts/codex-slice-preflight       scripts/pr-finish       scripts/add-doc-pr       scripts/repo-automation-report-upstream       scripts/repo-doctor       scripts/repo-automation-install       scripts/run-tests       tests/smoke.sh       tests/version-consistency.sh || status=1
+    run_tests_run_cmd       "shellcheck scripts and tests"       shellcheck       -e SC2317       scripts/branch-cleanup       scripts/codex-slice-preflight       scripts/pr-finish       scripts/add-doc-pr       scripts/repo-automation-report-upstream       scripts/repo-doctor       scripts/repo-automation-install       scripts/run-tests       tests/docs-check.sh       tests/smoke.sh       tests/version-consistency.sh || status=1
   else
     run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
   fi
@@ -587,6 +588,7 @@ EOF
   else
     run_tests_run_smoke "tests/smoke.sh" tests/smoke.sh || status=1
   fi
+  run_tests_run_cmd "tests/docs-check.sh" tests/docs-check.sh || status=1
   run_tests_run_cmd "tests/version-consistency.sh" tests/version-consistency.sh || status=1
 
   counts="$(run_tests_counts)"
