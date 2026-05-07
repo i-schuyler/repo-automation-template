@@ -9,6 +9,8 @@ Default behavior is safe and read-only.
 - Default human output is `--summary`.
 - `--explain` prints the full PASS/WARN/FAIL detail.
 - `--quiet` keeps only the final result and warning/failure hints.
+- `--audit` is a compact alias for the full read-only diagnostic path.
+- `--timeout SECONDS` passes a per-check timeout through to `scripts/run-tests`.
 - `--log-file FILE` captures full details in a temp log.
 - `--no-log` suppresses log creation when explicitly requested.
 - `--json --json-level fail|warn|all` keeps stdout machine-readable and filters returned check detail.
@@ -62,4 +64,5 @@ Usage examples:
     scripts/repo-doctor --quick
     scripts/repo-doctor --full
     scripts/repo-doctor --json --quick --json-level warn
+    scripts/repo-doctor --audit --timeout 120
     scripts/repo-doctor --check config

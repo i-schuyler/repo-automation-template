@@ -5,6 +5,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 ## [0.1.0] - Unreleased
 
 - Implemented compact output modes for `scripts/run-tests` and `scripts/repo-doctor`.
+- Hardened audit/test portability with per-check timeout guards, compact audit mode, and named smoke subcheck reporting.
 ### Added
 
 - Added docs-only bootstrap canon.

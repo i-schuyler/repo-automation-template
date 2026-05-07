@@ -42,6 +42,14 @@ Scripts that implement this contract should support:
 - --no-log
   - disable detailed log creation when explicitly requested
 
+- --audit
+  - compact full-audit preset for diagnostic runs
+
+- --timeout SECONDS
+  - per-check timeout guard for long-running checks
+  - default conservative timeout is 120 seconds in `scripts/run-tests` and `scripts/repo-doctor`
+  - when the `timeout` command is unavailable, scripts warn once and continue without timeout guards
+
 - --json
   - stdout must be valid JSON only
   - human logs must go to stderr or log files

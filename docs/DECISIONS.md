@@ -74,3 +74,4 @@ This file records public repo decisions for `repo-automation-template`.
 - [LOCKED] Long-running diagnostic scripts should default to compact summaries, write details to temp logs, and expose `--explain` for full human detail.
 - [LOCKED] JSON diagnostic output should support levels such as `fail`, `warn`, and `all` so Codex can consume only actionable details by default.
 - [LOCKED] Output-mode implementation starts with `scripts/run-tests` and `scripts/repo-doctor` before expanding to other scripts.
+- [LOCKED] Timeout-guarded diagnostics should default to compact summaries, use per-check timeout guards when `timeout` exists, and warn once before continuing without guards when it does not.

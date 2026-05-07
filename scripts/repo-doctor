@@ -13,13 +13,14 @@ repo_doctor_json=0
 repo_doctor_json_level="warn"
 repo_doctor_log_enabled=1
 repo_doctor_log_file=""
+repo_doctor_timeout_seconds=120
 repo_doctor_skip_run_tests=0
 repo_doctor_single_check=""
 repo_doctor_stop_reason=""
 repo_doctor_checks=()
 
 repo_doctor_usage() {
-  printf 'Usage: scripts/repo-doctor [--help] [--summary] [--explain] [--quiet] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--quick] [--full] [--no-run-tests] [--check NAME]\n'
+  printf 'Usage: scripts/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout SECONDS] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--quick] [--full] [--no-run-tests] [--check NAME]\n'
 }
 
 repo_doctor_info() {
@@ -344,7 +345,7 @@ repo_doctor_check_run_tests() {
     return 0
   fi
 
-  if RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --quiet >/dev/null; then
+  if RUN_TESTS_SKIP_SMOKE=1 scripts/run-tests --quiet --timeout "$repo_doctor_timeout_seconds" >/dev/null; then
     repo_doctor_add_check "run-tests" "pass" "scripts/run-tests passed"
     return 0
   fi
@@ -556,9 +557,28 @@ repo_doctor_main() {
         repo_doctor_mode="quick"
         repo_doctor_skip_run_tests=1
         ;;
+      --audit)
+        repo_doctor_mode="audit"
+        repo_doctor_skip_run_tests=0
+        ;;
       --full)
         repo_doctor_mode="full"
         repo_doctor_skip_run_tests=0
+        ;;
+      --timeout)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_doctor_stop "--timeout requires a value"
+          command_status=1
+          break
+        fi
+        if repo_auto_is_positive_integer "$1"; then
+          repo_doctor_timeout_seconds="$1"
+        else
+          repo_doctor_stop "invalid --timeout value: $1"
+          command_status=1
+          break
+        fi
         ;;
       --json)
         repo_doctor_json=1
