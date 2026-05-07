@@ -206,6 +206,28 @@ run_tests_extract_smoke_failure() {
   printf 'failed\n'
 }
 
+run_tests_print_smoke_failure_excerpt() {
+  local output_file="$1"
+  local fail_line=""
+  local start_line=""
+  local end_line=""
+
+  if [ ! -f "$output_file" ]; then
+    return 0
+  fi
+
+  fail_line="$(grep -n '^FAIL: ' "$output_file" | head -n 1 | cut -d: -f1)"
+  if [ -z "$fail_line" ]; then
+    return 0
+  fi
+
+  start_line="$fail_line"
+  end_line=$((fail_line + 8))
+
+  printf 'SMOKE EXCERPT:\n'
+  sed -n "${start_line},${end_line}p" "$output_file"
+}
+
 run_tests_run_smoke() {
   local label="$1"
   shift
@@ -256,6 +278,9 @@ run_tests_run_smoke() {
   fi
 
   run_tests_record_fail "$label" "$failure_message" "$timed_out"
+  if [ "$run_tests_json" -eq 0 ]; then
+    run_tests_print_smoke_failure_excerpt "$output_file"
+  fi
   run_tests_log "CHECK END: $label"
   rm -f "$output_file" >/dev/null 2>&1 || true
   return 1
