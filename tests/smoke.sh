@@ -42,21 +42,7 @@ smoke_add_doc_pr_failure_details() {
   local details=""
 
   if [ -s "$json_file" ] && python -m json.tool "$json_file" >/dev/null 2>&1; then
-    details="$(python - "$json_file" <<'PY'
-import json
-import pathlib
-import sys
-
-json_path = pathlib.Path(sys.argv[1])
-data = json.loads(json_path.read_text(encoding="utf-8"))
-print(
-    "changed_files="
-    + json.dumps(data.get("changed_files", []))
-    + "; blocked_files="
-    + json.dumps(data.get("blocked_files", []))
-)
-PY
-)"
+    details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print("changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])))' "$json_file")"
   elif [ -s "$stderr_file" ]; then
     details="stderr=$(tr '\n' ' ' < "$stderr_file")"
   fi
