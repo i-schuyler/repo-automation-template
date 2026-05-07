@@ -45,3 +45,6 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Updated installer/config/testing docs for downstream contract auditing.
 
 ### Not Implemented
+
+- Documented public-alpha known limitations and refreshed docs navigation before release-readiness.
+- Clarified that CI/Termux are the supported validation path while arbitrary container rehydration remains best-effort.

@@ -18,3 +18,7 @@ The public workflow audit checklist seed is documented in [docs/WORKFLOW_AUDIT_C
 ## Fit
 
 This repo is aimed at people who repeatedly lose time to branch setup, docs PR scaffolding, stale cleanup, CI status interpretation, and downstream automation drift. The public template should reduce repeated churn. Paid paths can help users who want faster adoption, examples, audits, or provider-specific adaptation.
+
+## Public-alpha honesty
+
+Support and workflow-audit offerings should point users to `docs/KNOWN_LIMITATIONS.md` before any paid setup path goes live. The open-source toolkit should remain useful without payment links.

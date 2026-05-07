@@ -1,37 +1,53 @@
 # Docs Index
 
-Start here if you are evaluating, copying, or contributing to `repo-automation-template`.
+Start here if you are evaluating, copying, installing, or contributing to `repo-automation-template`.
+
+## Top-Level Project Files
+
+- [README](../README.md)
+- [Changelog](../CHANGELOG.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Support](../SUPPORT.md)
+- [License](../LICENSE)
+- [Version](../VERSION)
+- [Pull Request Template](../.github/pull_request_template.md)
+- [Automation Bug Issue Form](../.github/ISSUE_TEMPLATE/automation-bug.yml)
+- [Automation Feature Issue Form](../.github/ISSUE_TEMPLATE/automation-feature.yml)
 
 ## Canonical Docs Order
 
 1. [Decisions](DECISIONS.md)
-2. [Install Models](INSTALL_MODELS.md)
-3. [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
-4. [Versioning](VERSIONING.md)
-5. [Repo Automation Config](repo-automation/config.md)
-6. [Shared Bash Library](repo-automation/common-library.md)
-7. [Branch Cleanup](repo-automation/branch-cleanup.md)
-8. [Codex Slice Preflight](repo-automation/codex-slice-preflight.md)
-9. [PR Finish](repo-automation/pr-finish.md)
-10. [Add Doc PR](repo-automation/add-doc-pr.md)
-11. [Report Upstream](repo-automation/repo-automation-report-upstream.md)
-12. [Repo Doctor](repo-automation/repo-doctor.md)
-13. [Repo Automation Install](repo-automation/repo-automation-install.md)
-14. [Testing](repo-automation/testing.md)
-15. [Changelog](../CHANGELOG.md)
-16. [Roadmap](ROADMAP.md)
-17. [Drift Ledger](DRIFT_LEDGER.md)
-18. [Monetization](MONETIZATION.md)
-19. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
-20. [Issue Escalation](repo-automation/issue-escalation.md)
-21. [Source Provenance](repo-automation/source-provenance.md)
-22. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
+2. [Known Limitations](KNOWN_LIMITATIONS.md)
+3. [Install Models](INSTALL_MODELS.md)
+4. [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
+5. [Versioning](VERSIONING.md)
+6. [Repo Automation Config](repo-automation/config.md)
+7. [Shared Bash Library](repo-automation/common-library.md)
+8. [Branch Cleanup](repo-automation/branch-cleanup.md)
+9. [Codex Slice Preflight](repo-automation/codex-slice-preflight.md)
+10. [PR Finish](repo-automation/pr-finish.md)
+11. [Add Doc PR](repo-automation/add-doc-pr.md)
+12. [Report Upstream](repo-automation/repo-automation-report-upstream.md)
+13. [Repo Doctor](repo-automation/repo-doctor.md)
+14. [Repo Automation Install](repo-automation/repo-automation-install.md)
+15. [Output Modes](repo-automation/output-modes.md)
+16. [Testing](repo-automation/testing.md)
+17. [Roadmap](ROADMAP.md)
+18. [Drift Ledger](DRIFT_LEDGER.md)
+19. [Monetization](MONETIZATION.md)
+20. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
+21. [Downstream Install Contract](repo-automation/downstream-install-contract.md)
+22. [Issue Escalation](repo-automation/issue-escalation.md)
+23. [Source Provenance](repo-automation/source-provenance.md)
+
+## Downstream Examples
+
+- [Example Downstream Config](../examples/downstream/.repo-automation.conf.example)
+- [Example Downstream Repo Automation README](../examples/downstream/docs/repo-automation/README.md)
 
 ## Start Here
 
-- New users should read the README, then this index, then the install model docs.
-- Downstream maintainers should read the downstream feedback docs before filing upstream issues.
-- Maintainers changing versions should read the versioning docs before editing `VERSION` or `CHANGELOG.md`.
-- Contributors should read `CONTRIBUTING.md` and use issue forms.
-
-- [Output Modes](repo-automation/output-modes.md) — compact human output, JSON levels, and log-file contracts for low-token diagnostics.
+- New users should read the [README](../README.md), then [Known Limitations](KNOWN_LIMITATIONS.md), then [Install Models](INSTALL_MODELS.md).
+- Downstream maintainers should read [Downstream Feedback](DOWNSTREAM_FEEDBACK.md) before filing upstream issues.
+- Maintainers changing versions should read [Versioning](VERSIONING.md) before editing `VERSION`, `CHANGELOG.md`, or downstream examples.
+- Contributors should read [Contributing](../CONTRIBUTING.md) and use the issue forms.
