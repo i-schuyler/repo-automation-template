@@ -13,3 +13,5 @@
 ## Re-entry hint
 
 ## Passive monetization angle
+
+<!-- Optional: add notes here if relevant. -->
