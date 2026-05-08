@@ -624,9 +624,9 @@ smoke_check_installer_apply_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    scripts/repo-automation-install --target "$install_target" --json > "$install_plan_json"
+    scripts/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" '"scripts/branch-cleanup" in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" '"scripts/branch-cleanup" in data.get("files_to_add", []) and "tests/lib/test-common.sh" in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -657,7 +657,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     scripts/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/docs/repo-automation/README.md" ] && [ -f "$install_target/docs/repo-automation/local-overrides.md" ] && [ -f "$install_target/scripts/repo-doctor" ] && [ -f "$install_target/scripts/run-tests" ] && [ -f "$install_target/tests/smoke.sh" ] && [ -x "$install_target/scripts/repo-doctor" ] && [ -x "$install_target/scripts/run-tests" ] && [ -x "$install_target/tests/smoke.sh" ]; then
+  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/docs/repo-automation/README.md" ] && [ -f "$install_target/docs/repo-automation/local-overrides.md" ] && [ -f "$install_target/scripts/repo-doctor" ] && [ -f "$install_target/scripts/run-tests" ] && [ -f "$install_target/tests/lib/test-common.sh" ] && [ -f "$install_target/tests/smoke.sh" ] && [ -x "$install_target/scripts/repo-doctor" ] && [ -x "$install_target/scripts/run-tests" ] && [ -x "$install_target/tests/smoke.sh" ]; then
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"

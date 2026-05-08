@@ -284,6 +284,7 @@ repo_install_main() {
     "docs/repo-automation/testing.md"
   )
   local -a optional_test_files=(
+    "tests/lib/test-common.sh"
     "tests/smoke.sh"
     "tests/version-consistency.sh"
     "scripts/run-tests"

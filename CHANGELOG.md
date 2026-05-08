@@ -41,6 +41,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added doctor smoke coverage.
 - Added downstream install/update helper.
 - Added downstream install docs and smoke coverage.
+- Included `tests/lib/test-common.sh` in downstream `--include-tests` install plans and apply sets.
 - Fixed add-doc-pr smoke baseline and installer remote fallback contract checks.
 - Added installer output contract audit coverage in smoke tests.
 - Added public workflow audit checklist product seed.
