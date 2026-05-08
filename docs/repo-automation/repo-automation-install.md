@@ -26,7 +26,7 @@ By default, the helper manages:
 
 Optional installation:
 
-- `--include-tests` adds `tests/smoke.sh`, `tests/version-consistency.sh`, and `scripts/run-tests`
+- `--include-tests` adds `tests/lib/test-common.sh`, `tests/smoke.sh`, `tests/version-consistency.sh`, and `scripts/run-tests`
 - `--include-ci` adds `.github/workflows/ci.yml` (with warning because downstream CI usually needs adaptation)
 
 ## Local Overrides

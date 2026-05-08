@@ -11,7 +11,7 @@ Default installer-managed paths:
 - `docs/repo-automation/`
 - `.repo-automation.conf`
 - generated `docs/repo-automation/README.md`
-- optional `tests/` and `scripts/run-tests` when `--include-tests` is used
+- optional `tests/lib/test-common.sh`, `tests/smoke.sh`, `tests/version-consistency.sh`, and `scripts/run-tests` when `--include-tests` is used
 - optional `.github/workflows/ci.yml` when `--include-ci` is used
 
 Public config must not contain secrets or machine-local values.

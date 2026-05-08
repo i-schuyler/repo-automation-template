@@ -15,7 +15,7 @@ CI runs the same core checks:
 - smoke coverage for `scripts/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - smoke coverage for `scripts/run-tests` compact defaults, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `scripts/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
-- smoke coverage for `scripts/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, and downstream install contract auditing in temporary repos
+- smoke coverage for `scripts/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, and downstream install contract auditing in temporary repos, including the `tests/lib/test-common.sh` harness dependency under `--include-tests`
 - lightweight docs CI via `tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard
