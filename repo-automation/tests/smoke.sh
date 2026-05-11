@@ -56,14 +56,16 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
   cp "$smoke_repo_root/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/pr-finish" || return 1
   cp "$smoke_repo_root/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/add-doc-pr" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
   cp "$smoke_repo_root/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/bin/run-tests" || return 1
+  cp "$smoke_repo_root/repo-automation/manifest.json" "$smoke_test_dir/repo-automation/manifest.json" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -109,6 +111,7 @@ EOF
 - ../repo-automation/docs/add-doc-pr.md
 - ../repo-automation/docs/repo-automation-report-upstream.md
 - ../repo-automation/docs/repo-doctor.md
+- ../repo-automation/docs/managed-files.md
 - ../repo-automation/docs/repo-automation-install.md
 - ../repo-automation/docs/testing.md
 EOF
@@ -562,6 +565,36 @@ smoke_check_repo_doctor_contract() {
   return "$status"
 }
 
+smoke_check_automation_freshness_contract() {
+  local status=0
+  local freshness_default_out="$smoke_test_base/automation-freshness-default-$$.txt"
+  local freshness_json="$smoke_test_base/automation-freshness-$$.json"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/automation-freshness > "$freshness_default_out"
+  ) && grep -Eq '^RESULT: pass=' "$freshness_default_out" && ! grep -Eq '^FAIL:$' "$freshness_default_out"; then
+    test_pass "automation-freshness human default output is compact"
+  else
+    test_fail "automation-freshness human default output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/automation-freshness --machine-json --source-root="$smoke_test_dir" > "$freshness_json"
+  ) && python -m json.tool "$freshness_json" >/dev/null && \
+    smoke_json_assert "$freshness_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$smoke_test_dir"'" and data.get("manifest_path", "").endswith("repo-automation/manifest.json") and any(item.get("path") == "repo-automation/bin/automation-freshness" and item.get("present") for item in data.get("managed_files", []))'; then
+    test_pass "automation-freshness machine-json is parseable"
+  else
+    test_fail "automation-freshness machine-json is parseable"
+    status=1
+  fi
+
+  rm -f "$freshness_default_out" "$freshness_json" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_repo_doctor_missing_config() {
   local status=0
   local doctor_missing_json="$smoke_test_base/repo-doctor-missing-config-$$.json"
@@ -910,6 +943,7 @@ smoke_main() {
   test_run_named_check "smoke:report-upstream-secret-scan" smoke_check_report_upstream_secret_scan || status=1
   test_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
   test_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
+  test_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
   test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
   test_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1
   test_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1

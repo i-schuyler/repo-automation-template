@@ -148,17 +148,18 @@ repo_install_make_parent() {
 
 repo_install_write_config() {
   local path="$1"
-  local installed_version_or_ref="$2"
-  local installed_at="$3"
-  local local_overrides_doc="$4"
-  local default_branch="$5"
-  local state_dir_name="$6"
-  local expected_remote_url="$7"
+  local source_version="$2"
+  local installed_version_or_ref="$3"
+  local installed_at="$4"
+  local local_overrides_doc="$5"
+  local default_branch="$6"
+  local state_dir_name="$7"
+  local expected_remote_url="$8"
 
   cat > "$path" <<EOF
 # .repo-automation.conf
 REPO_AUTOMATION_CONF_VERSION="0.1"
-REPO_AUTOMATION_VERSION="$REPO_AUTOMATION_VERSION"
+REPO_AUTOMATION_VERSION="$source_version"
 UPSTREAM_REPO_FULL_NAME="$UPSTREAM_REPO_FULL_NAME"
 UPSTREAM_ISSUE_URL="$UPSTREAM_ISSUE_URL"
 INSTALLED_FROM="$INSTALLED_FROM"
@@ -604,6 +605,7 @@ repo_install_main() {
     if [ "$command_status" -eq 0 ]; then
       repo_install_write_config \
         "$target_root/.repo-automation.conf" \
+        "$source_version" \
         "$installed_version_or_ref" \
         "$installed_at" \
         "$local_overrides_doc" \

@@ -51,6 +51,7 @@ These names define the implemented helper set.
 - `repo-automation/bin/add-doc-pr`
 - `repo-automation/bin/repo-automation-report-upstream`
 - `repo-automation/bin/repo-doctor`
+- `repo-automation/bin/automation-freshness`
 - `repo-automation/bin/repo-automation-install`
 
 ## Start Here
@@ -59,6 +60,7 @@ These names define the implemented helper set.
 - Read [docs/INSTALL_MODELS.md](docs/INSTALL_MODELS.md) before copying this template into downstream repos.
 - Read [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) before filing shared automation bugs or features.
 - Read [repo-automation/docs/config.md](repo-automation/docs/config.md) before editing `.repo-automation.conf`.
+- Read [repo-automation/docs/managed-files.md](repo-automation/docs/managed-files.md) before changing the repo-owned automation manifest or freshness check.
 - Read [repo-automation/docs/common-library.md](repo-automation/docs/common-library.md) before adding future workflow scripts.
 - Read [repo-automation/docs/branch-cleanup.md](repo-automation/docs/branch-cleanup.md) before deleting local branches.
 - Read [repo-automation/docs/codex-slice-preflight.md](repo-automation/docs/codex-slice-preflight.md) before running slice preflight automation.
@@ -99,7 +101,8 @@ Do not add live payment links here unless a support path is actually live and cl
 
 Use GitHub Issues for bugs and feature requests. Downstream repo users should start with [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) so local repo-specific requests stay local and shared automation problems are filed upstream.
 Downstream repos can now use `repo-automation/bin/repo-automation-report-upstream` to prepare and submit upstream bug/feature reports from terminal after preview/redaction checks.
-`repo-automation/bin/repo-doctor` now provides a read-only PASS/WARN/FAIL health summary for config, scripts, tests, CI permissions, docs links, and issue templates.
+`repo-automation/bin/repo-doctor` now provides a read-only PASS/WARN/FAIL health summary for config, scripts, tests, CI permissions, manifest freshness, docs links, and issue templates.
+`repo-automation/bin/automation-freshness` checks the repo-owned automation manifest against the current working tree and supports `--machine-json` and `--source-root=/path/to/checkout`.
 `repo-automation/bin/repo-automation-install` now provides terminal preview/apply flows for installing or updating managed repo automation files into downstream repos.
 The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST.md](docs/WORKFLOW_AUDIT_CHECKLIST.md) and remains coming soon.
 

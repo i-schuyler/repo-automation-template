@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# repo-automation/bin/automation-freshness
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+automation_freshness_machine_json=0
+automation_freshness_source_root=""
+
+automation_freshness_usage() {
+  printf 'Usage: repo-automation/bin/automation-freshness [--machine-json] [--source-root=PATH] [--help]\n'
+}
+
+automation_freshness_stop() {
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+automation_freshness_main() {
+  local arg
+  local repo_root=""
+  local manifest_path=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        automation_freshness_usage
+        return 0
+        ;;
+      --machine-json)
+        automation_freshness_machine_json=1
+        ;;
+      --source-root=*)
+        automation_freshness_source_root="${arg#--source-root=}"
+        if [ -z "$automation_freshness_source_root" ]; then
+          automation_freshness_stop "--source-root requires a value"
+          return 1
+        fi
+        ;;
+      --source-root)
+        shift
+        if [ "$#" -eq 0 ]; then
+          automation_freshness_stop "--source-root requires a value"
+          return 1
+        fi
+        automation_freshness_source_root="$1"
+        ;;
+      *)
+        automation_freshness_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$automation_freshness_source_root" ]; then
+    repo_root="$(repo_auto_repo_root)" || return 1
+    automation_freshness_source_root="$repo_root"
+  elif [ ! -d "$automation_freshness_source_root" ]; then
+    automation_freshness_stop "source root does not exist: $automation_freshness_source_root"
+    return 1
+  else
+    automation_freshness_source_root="$(cd "$automation_freshness_source_root" && pwd -P)" || {
+      automation_freshness_stop "unable to access source root: $automation_freshness_source_root"
+      return 1
+    }
+  fi
+
+  manifest_path="$automation_freshness_source_root/repo-automation/manifest.json"
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    automation_freshness_stop "python3 is required"
+    return 1
+  fi
+
+  AUTOMATION_FRESHNESS_MACHINE_JSON="$automation_freshness_machine_json" \
+    python3 - "$manifest_path" "$automation_freshness_source_root" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+manifest_path = Path(sys.argv[1])
+source_root = Path(sys.argv[2])
+machine_json = os.environ.get("AUTOMATION_FRESHNESS_MACHINE_JSON") == "1"
+
+result = {
+    "script": "automation-freshness",
+    "source_root": str(source_root),
+    "manifest_path": str(manifest_path),
+    "schema": "",
+    "repository": "",
+    "managed_root": "",
+    "managed_count": 0,
+    "present_count": 0,
+    "missing_count": 0,
+    "validation_errors": [],
+    "missing_files": [],
+    "managed_files": [],
+    "overall_status": "fail",
+    "stop_reason": "",
+}
+
+validation_errors = result["validation_errors"]
+missing_files = result["missing_files"]
+managed_files = result["managed_files"]
+
+if not manifest_path.is_file():
+    validation_errors.append(f"missing manifest: {manifest_path}")
+else:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive parse guard
+        validation_errors.append(f"failed to parse manifest: {exc}")
+    else:
+        result["schema"] = str(manifest.get("schema", ""))
+        result["repository"] = str(manifest.get("repository", ""))
+        result["managed_root"] = str(manifest.get("managed_root", ""))
+
+        if manifest.get("schema") != "repo-automation-manifest/v1":
+            validation_errors.append("unexpected schema value")
+        if manifest.get("managed_root") != "repo-automation":
+            validation_errors.append("unexpected managed_root value")
+        if manifest.get("repository") != "repo-automation-template":
+            validation_errors.append("unexpected repository value")
+
+        entries = manifest.get("managed_files")
+        if not isinstance(entries, list):
+            validation_errors.append("managed_files must be a list")
+            entries = []
+
+        seen_paths = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                validation_errors.append("managed_files entries must be objects")
+                continue
+
+            path = entry.get("path")
+            owner = entry.get("owner", "")
+            kind = entry.get("kind", "")
+
+            if not isinstance(path, str) or not path:
+                validation_errors.append("managed_files entry missing path")
+                continue
+            if path in seen_paths:
+                validation_errors.append(f"duplicate managed path: {path}")
+                continue
+            seen_paths.add(path)
+            if not path.startswith("repo-automation/"):
+                validation_errors.append(f"managed path escapes repo-automation/: {path}")
+            if not isinstance(owner, str) or not owner:
+                validation_errors.append(f"managed_files entry missing owner: {path}")
+            if not isinstance(kind, str) or not kind:
+                validation_errors.append(f"managed_files entry missing kind: {path}")
+
+            exists = (source_root / path).exists()
+            status = "present" if exists else "missing"
+            if exists:
+                result["present_count"] += 1
+            else:
+                result["missing_count"] += 1
+                missing_files.append(path)
+            managed_files.append(
+                {
+                    "path": path,
+                    "owner": owner,
+                    "kind": kind,
+                    "present": exists,
+                    "status": status,
+                }
+            )
+
+        result["managed_count"] = len(managed_files)
+
+if validation_errors or missing_files:
+    if validation_errors:
+        result["stop_reason"] = validation_errors[0]
+    elif missing_files:
+        result["stop_reason"] = f"missing managed paths: {', '.join(missing_files)}"
+else:
+    result["overall_status"] = "pass"
+
+if machine_json:
+    print(json.dumps(result, separators=(",", ":")))
+else:
+    print("RUNNING repo-automation freshness...")
+    print(
+        "RESULT: pass={0} warn=0 fail={1} skipped=0".format(
+            result["present_count"],
+            result["missing_count"] + len(validation_errors),
+        )
+    )
+    if validation_errors or missing_files:
+        print("FAIL:")
+        for message in validation_errors:
+            print(f"- {message}")
+        for path in missing_files:
+            print(f"- {path}")
+
+sys.exit(0 if result["overall_status"] == "pass" else 1)
+PY
+}
+
+automation_freshness_main "$@"
+# repo-automation/bin/automation-freshness EOF

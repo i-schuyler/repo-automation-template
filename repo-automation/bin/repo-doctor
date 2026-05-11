@@ -290,11 +290,65 @@ repo_doctor_check_scripts() {
   repo_doctor_check_script_one "repo-automation/bin/codex-slice-preflight" "codex-slice-preflight" || status=1
   repo_doctor_check_script_one "repo-automation/bin/pr-finish" "pr-finish" || status=1
   repo_doctor_check_script_one "repo-automation/bin/add-doc-pr" "add-doc-pr" || status=1
+  if [ -f "repo-automation/bin/automation-freshness" ]; then
+    repo_doctor_check_script_one "repo-automation/bin/automation-freshness" "automation-freshness" || status=1
+  else
+    repo_doctor_add_check "automation-freshness-exists" "skipped" "repo-automation/bin/automation-freshness missing"
+  fi
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-report-upstream" "report-upstream" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-doctor" "repo-doctor" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-install" "repo-automation-install" || status=1
   repo_doctor_check_script_one "repo-automation/bin/run-tests" "run-tests" || status=1
   repo_doctor_check_script_one "repo-automation/lib/common.sh" "common-library" || status=1
+  return "$status"
+}
+
+repo_doctor_check_automation_freshness() {
+  local status=0
+  local freshness_json
+  local temp_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+
+  if [ ! -f repo-automation/bin/automation-freshness ]; then
+    repo_doctor_add_check "automation-freshness" "skipped" "repo-automation/bin/automation-freshness missing"
+    return 0
+  fi
+
+  mkdir -p "$temp_root" >/dev/null 2>&1 || true
+  freshness_json="$temp_root/repo-doctor-automation-freshness.json"
+
+  if repo-automation/bin/automation-freshness --machine-json > "$freshness_json" 2>/dev/null; then
+    :
+  else
+    status=1
+  fi
+
+  if [ ! -s "$freshness_json" ]; then
+    repo_doctor_add_check "automation-freshness" "fail" "automation-freshness did not produce JSON output"
+    rm -f "$freshness_json" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if command -v python >/dev/null 2>&1 && python -m json.tool "$freshness_json" >/dev/null 2>&1; then
+    if python - "$freshness_json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+sys.exit(0 if data.get("overall_status") == "pass" else 1)
+PY
+    then
+      repo_doctor_add_check "automation-freshness" "pass" "automation manifest freshness passed"
+    else
+      repo_doctor_add_check "automation-freshness" "fail" "automation manifest freshness reported missing files"
+      status=1
+    fi
+  else
+    repo_doctor_add_check "automation-freshness" "fail" "automation-freshness JSON is not parseable"
+    status=1
+  fi
+
+  rm -f "$freshness_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -355,6 +409,18 @@ repo_doctor_check_run_tests() {
 }
 
 repo_doctor_check_version_guard() {
+  local config_path
+
+  config_path="$(repo_auto_config_path)" || {
+    repo_doctor_add_check "version-consistency" "fail" "unable to resolve config path"
+    return 1
+  }
+
+  if [ ! -f "$config_path" ]; then
+    repo_doctor_add_check "version-consistency" "skipped" "missing .repo-automation.conf"
+    return 0
+  fi
+
   if [ ! -f repo-automation/tests/version-consistency.sh ]; then
     repo_doctor_add_check "version-consistency-script" "fail" "repo-automation/tests/version-consistency.sh missing"
     return 1
@@ -409,6 +475,7 @@ repo_doctor_check_docs_index() {
     "repo-automation/docs/add-doc-pr.md" \
     "repo-automation/docs/repo-automation-report-upstream.md" \
     "repo-automation/docs/repo-doctor.md" \
+    "repo-automation/docs/managed-files.md" \
     "repo-automation/docs/repo-automation-install.md" \
     "repo-automation/docs/testing.md"
   do
@@ -450,6 +517,7 @@ repo_doctor_run_check() {
     tests) repo_doctor_check_run_tests ;;
     version) repo_doctor_check_version_guard ;;
     ci) repo_doctor_check_ci_permissions ;;
+    automation-freshness) repo_doctor_check_automation_freshness ;;
     docs) repo_doctor_check_docs_index ;;
     issue-templates) repo_doctor_check_issue_templates ;;
     *)
@@ -691,7 +759,7 @@ repo_doctor_main() {
     if [ -n "$repo_doctor_single_check" ]; then
       checks_to_run=("$repo_doctor_single_check")
     else
-      checks_to_run=(git config scripts json tests version ci docs issue-templates)
+      checks_to_run=(git config scripts automation-freshness json tests version ci docs issue-templates)
     fi
 
     for check_name in "${checks_to_run[@]}"; do

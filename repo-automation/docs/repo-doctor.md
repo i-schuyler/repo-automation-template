@@ -17,7 +17,7 @@ Default behavior is safe and read-only.
 - `--quick` runs lighter checks and skips `repo-automation/bin/run-tests`.
 - `--full` includes `repo-automation/bin/run-tests`.
 - `--no-run-tests` explicitly skips `repo-automation/bin/run-tests`.
-- `--check=NAME` runs one named check (`git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `docs`, `issue-templates`).
+- `--check=NAME` runs one named check (`git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `automation-freshness`, `docs`, `issue-templates`).
 
 Human output uses PASS/WARN/FAIL when details are shown, but default summary output stays compact:
 
@@ -48,6 +48,7 @@ Checks include:
 - git repo/branch/worktree/remote health
 - config presence/load/validation/secret scan
 - script existence/executable/syntax checks
+- automation manifest freshness checks
 - JSON contract spot checks for branch cleanup and preflight
 - optional `repo-automation/bin/run-tests` execution
 - version consistency guard
@@ -66,3 +67,4 @@ Usage examples:
     repo-automation/bin/repo-doctor --json --quick --json-level=warn
     repo-automation/bin/repo-doctor --audit --timeout=120
     repo-automation/bin/repo-doctor --check=config
+    repo-automation/bin/repo-doctor --check=automation-freshness
