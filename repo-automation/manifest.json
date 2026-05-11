@@ -34,6 +34,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/prepare-release",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/repo-automation-install",
       "owner": "repo-automation-template",
       "kind": "script"

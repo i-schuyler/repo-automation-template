@@ -17,9 +17,10 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
 - smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, and downstream install contract auditing in temporary repos, including the `repo-automation/tests/lib/test-common.sh` harness dependency under `--include-tests`
+- smoke coverage for `repo-automation/bin/prepare-release` help, check, dry-run, apply, machine-JSON, and managed version placement updates in a temporary repo
 - lightweight docs CI via `repo-automation/tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks
 - JSON parseability checks for branch cleanup and preflight
-- version consistency guard
+- version consistency guard via `repo-automation/bin/prepare-release --check`
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.

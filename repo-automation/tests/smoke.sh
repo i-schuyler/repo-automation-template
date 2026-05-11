@@ -59,13 +59,14 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
   cp "$smoke_repo_root/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/bin/run-tests" || return 1
   cp "$smoke_repo_root/repo-automation/manifest.json" "$smoke_test_dir/repo-automation/manifest.json" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -87,6 +88,7 @@ EOF
 EOF
     mkdir -p docs .github/workflows .github/ISSUE_TEMPLATE || return 1
     cp -R "$smoke_repo_root/repo-automation/docs" repo-automation/ || return 1
+    mkdir -p examples/downstream/docs/repo-automation || return 1
     cat > docs/DECISIONS.md <<EOF
 # Decisions
 
@@ -95,12 +97,23 @@ EOF
     cat > docs/VERSIONING.md <<EOF
 # Versioning
 
+Current version: 0.1.0
+
 Version numbers must stay aligned in these places:
 - VERSION
 - .repo-automation.conf
 - REPO_AUTOMATION_VERSION
 - repo-automation/tests/version-consistency.sh
 - examples/downstream/.repo-automation.conf.example
+EOF
+    cat > docs/DOWNSTREAM_FEEDBACK.md <<'EOF'
+# Downstream Feedback
+
+Installed config should include:
+
+```sh
+INSTALLED_VERSION_OR_REF="0.1.0"
+```
 EOF
     cat > docs/INDEX.md <<EOF
 # Docs Index
@@ -117,7 +130,16 @@ EOF
 EOF
     mkdir -p examples/downstream || return 1
     cat > examples/downstream/.repo-automation.conf.example <<EOF
+REPO_AUTOMATION_VERSION="0.1.0"
 INSTALLED_VERSION_OR_REF="0.1.0-EXAMPLE"
+EOF
+    cat > examples/downstream/docs/repo-automation/README.md <<'EOF'
+# Downstream Repo Automation
+
+```text
+Repo automation installed context:
+- Installed version/ref: 0.1.0-EXAMPLE
+```
 EOF
     cat > .github/workflows/ci.yml <<EOF
 name: CI
@@ -565,6 +587,81 @@ smoke_check_repo_doctor_contract() {
   return "$status"
 }
 
+smoke_check_prepare_release_contract() {
+  local status=0
+  local prepare_release_help_out="$smoke_test_base/prepare-release-help-$$.txt"
+  local prepare_release_check_json="$smoke_test_base/prepare-release-check-$$.json"
+  local prepare_release_dry_run_json="$smoke_test_base/prepare-release-dry-run-$$.json"
+  local prepare_release_apply_json="$smoke_test_base/prepare-release-apply-$$.json"
+  local pre_dry_run_status="$smoke_test_base/prepare-release-pre-dry-run-status-$$.txt"
+  local post_dry_run_status="$smoke_test_base/prepare-release-post-dry-run-status-$$.txt"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --help > "$prepare_release_help_out"
+  ) && grep -q '^Usage: repo-automation/bin/prepare-release ' "$prepare_release_help_out"; then
+    test_pass "prepare-release help succeeds"
+  else
+    test_fail "prepare-release help succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --check --machine-json > "$prepare_release_check_json"
+  ) && python -m json.tool "$prepare_release_check_json" >/dev/null && \
+    smoke_json_assert "$prepare_release_check_json" 'data.get("mode") == "check" and data.get("overall_status") == "pass" and data.get("source_version") == "0.1.0" and data.get("target_version") == "0.1.0"'; then
+    test_pass "prepare-release check passes"
+  else
+    test_fail "prepare-release check passes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git status --short > "$pre_dry_run_status" &&
+      repo-automation/bin/prepare-release --version=0.2.0 --dry-run --machine-json > "$prepare_release_dry_run_json" &&
+      git status --short > "$post_dry_run_status"
+  ) && cmp -s "$pre_dry_run_status" "$post_dry_run_status" && python -m json.tool "$prepare_release_dry_run_json" >/dev/null && \
+    smoke_json_assert "$prepare_release_dry_run_json" 'data.get("mode") == "dry-run" and data.get("overall_status") == "pass" and data.get("target_version") == "0.2.0" and data.get("planned_count", 0) > 0 and data.get("updated_count", 0) == 0'; then
+    test_pass "prepare-release dry-run reports planned changes"
+  else
+    test_fail "prepare-release dry-run reports planned changes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --version=0.2.0 --apply --machine-json > "$prepare_release_apply_json"
+  ) && python -m json.tool "$prepare_release_apply_json" >/dev/null && \
+    smoke_json_assert "$prepare_release_apply_json" 'data.get("mode") == "apply" and data.get("overall_status") == "pass" and data.get("target_version") == "0.2.0" and data.get("updated_count", 0) > 0'; then
+    test_pass "prepare-release apply updates files"
+  else
+    test_fail "prepare-release apply updates files"
+    status=1
+  fi
+
+  if python -m json.tool "$prepare_release_apply_json" >/dev/null &&     smoke_json_assert "$prepare_release_apply_json" 'data.get("mode") == "apply" and data.get("overall_status") == "pass" and data.get("updated_count", 0) == 11 and any(entry.get("path", "").endswith("docs/VERSIONING.md") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("docs/DECISIONS.md") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("examples/downstream/.repo-automation.conf.example") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("docs/DOWNSTREAM_FEEDBACK.md") and entry.get("status") == "updated" for entry in data.get("results", []))'; then
+    test_pass "prepare-release updates managed version placements"
+  else
+    test_fail "prepare-release updates managed version placements"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --check >/dev/null
+  ); then
+    test_pass "prepare-release check passes after apply"
+  else
+    test_fail "prepare-release check passes after apply"
+    status=1
+  fi
+
+  rm -f "$prepare_release_help_out" "$prepare_release_check_json" "$prepare_release_dry_run_json" "$prepare_release_apply_json" "$pre_dry_run_status" "$post_dry_run_status" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_automation_freshness_contract() {
   local status=0
   local freshness_default_out="$smoke_test_base/automation-freshness-default-$$.txt"
@@ -948,6 +1045,7 @@ smoke_main() {
   test_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1
   test_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1
   test_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
+  test_run_named_check "smoke:prepare-release-contract" smoke_check_prepare_release_contract || status=1
 
   return "$status"
 }
