@@ -13,11 +13,11 @@ GitHub template repository mode may be useful after the folder layout and script
 
 ## 3. Installer/Import/Update Helper
 
-`repo-automation/bin/repo-automation-install` now provides the install/update helper path. It preserves local overrides, records installed version/ref, keeps the upstream issue flow visible, and offers a conservative `--starter-template` profile for reusable starter-template repos without broadening workflow permissions.
+`repo-automation/bin/repo-automation-install` now provides the install/update helper path. It preserves local overrides, records installed automation version/ref, keeps the upstream issue flow visible, and offers a conservative `--starter-template` profile for reusable starter-template repos without broadening workflow permissions, starter-template version ownership, or downstream app/product version ownership.
 
 ## 4. Future Git Subtree Advanced Mode
 
-Git subtree support is deferred because:
+Future git subtree support is deferred because:
 
 - early script API instability
 - phone/Codex sync complexity

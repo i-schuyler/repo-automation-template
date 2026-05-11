@@ -19,7 +19,7 @@ Default behavior is preview/plan-only. No issue is created unless `--submit` is 
 Issue body preview includes:
 
 - upstream repo target
-- installed version/ref
+- installed automation version/ref
 - installed date
 - local overrides doc
 - local overrides presence

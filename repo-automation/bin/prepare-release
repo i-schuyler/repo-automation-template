@@ -323,96 +323,96 @@ def process_file(path: Path, target_version: str, apply_mode: str):
     if rel == "VERSION":
         before = trim_trailing_newlines(text).strip()
         if before == target_version:
-            record(str(path), "version", "match", before, target_version)
+            record(str(path), "automation release version", "match", before, target_version)
             return
         if apply_mode == "check":
             record(str(path), "version", "mismatch", before, target_version)
             result["overall_status"] = "fail"
             return
         updated = ensure_terminal_newline(target_version)
-        record_change(path, "version", before, target_version, apply_mode)
+        record_change(path, "automation release version", before, target_version, apply_mode)
         changed = True
     elif rel == "README.md":
         updated, changed, before = update_version_line(text, target_version)
         if changed:
-            record_change(path, "current version", before, target_version, apply_mode)
+            record_change(path, "automation release version", before, target_version, apply_mode)
         elif before:
-            record(str(path), "current version", "match", before, target_version)
+            record(str(path), "automation release version", "match", before, target_version)
         else:
-            record(str(path), "current version", "skipped", reason="no visible version line")
+            record(str(path), "automation release version", "skipped", reason="no visible version line")
     elif rel == "CHANGELOG.md":
         updated, changed, before = update_release_heading(text, target_version)
         if changed:
-            record_change(path, "release heading", before, f"## [{target_version}] - Unreleased", apply_mode)
+            record_change(path, "automation release heading", before, f"## [{target_version}] - Unreleased", apply_mode)
         elif before:
-            record(str(path), "release heading", "match", before, f"## [{target_version}] - Unreleased")
+            record(str(path), "automation release heading", "match", before, f"## [{target_version}] - Unreleased")
         else:
-            record(str(path), "release heading", "skipped", reason="no unreleased heading")
+            record(str(path), "automation release heading", "skipped", reason="no unreleased heading")
     elif rel == "docs/VERSIONING.md":
         updated, changed, before = update_version_line(text, target_version)
         if changed:
-            record_change(path, "current version", before, target_version, apply_mode)
+            record_change(path, "automation release version", before, target_version, apply_mode)
         elif before:
-            record(str(path), "current version", "match", before, target_version)
+            record(str(path), "automation release version", "match", before, target_version)
         else:
-            record(str(path), "current version", "skipped", reason="no visible version line")
+            record(str(path), "automation release version", "skipped", reason="no visible version line")
     elif rel == "docs/DECISIONS.md":
         updated, changed, before = update_decisions_version(text, target_version)
         if changed:
-            record_change(path, "current version line", before, target_version, apply_mode)
+            record_change(path, "automation release version line", before, target_version, apply_mode)
         elif before:
-            record(str(path), "current version line", "match", before, target_version)
+            record(str(path), "automation release version line", "match", before, target_version)
         else:
-            record(str(path), "current version line", "skipped", reason="no current version line")
+            record(str(path), "automation release version line", "skipped", reason="no current version line")
     elif rel == ".repo-automation.conf":
         updated, changed, before = update_config_key(text, "REPO_AUTOMATION_VERSION", target_version)
         if changed:
-            record_change(path, "REPO_AUTOMATION_VERSION", before, target_version, apply_mode)
+            record_change(path, "automation release version", before, target_version, apply_mode)
         else:
             if before:
-                record(str(path), "REPO_AUTOMATION_VERSION", "match", before, target_version)
+                record(str(path), "automation release version", "match", before, target_version)
             else:
-                record(str(path), "REPO_AUTOMATION_VERSION", "missing", reason="missing REPO_AUTOMATION_VERSION")
+                record(str(path), "automation release version", "missing", reason="missing REPO_AUTOMATION_VERSION")
         text = updated
         updated, changed, before = update_config_key(text, "INSTALLED_VERSION_OR_REF", target_version)
         if changed:
-            record_change(path, "INSTALLED_VERSION_OR_REF", before, target_version, apply_mode)
+            record_change(path, "installed automation version/ref", before, target_version, apply_mode)
         elif before:
-            record(str(path), "INSTALLED_VERSION_OR_REF", "match", before, target_version)
+            record(str(path), "installed automation version/ref", "match", before, target_version)
         else:
-            record(str(path), "INSTALLED_VERSION_OR_REF", "missing", reason="missing INSTALLED_VERSION_OR_REF")
+            record(str(path), "installed automation version/ref", "missing", reason="missing INSTALLED_VERSION_OR_REF")
     elif rel == "examples/downstream/.repo-automation.conf.example":
         updated, changed, before = update_config_key(text, "REPO_AUTOMATION_VERSION", target_version)
         if changed:
-            record_change(path, "REPO_AUTOMATION_VERSION", before, target_version, apply_mode)
+            record_change(path, "automation release version", before, target_version, apply_mode)
         elif before:
-            record(str(path), "REPO_AUTOMATION_VERSION", "match", before, target_version)
+            record(str(path), "automation release version", "match", before, target_version)
         else:
-            record(str(path), "REPO_AUTOMATION_VERSION", "missing", reason="missing REPO_AUTOMATION_VERSION")
+            record(str(path), "automation release version", "missing", reason="missing REPO_AUTOMATION_VERSION")
         text = updated
         updated, changed, before = update_config_key(text, "INSTALLED_VERSION_OR_REF", f"{target_version}-EXAMPLE")
         if changed:
-            record_change(path, "INSTALLED_VERSION_OR_REF", before, f"{target_version}-EXAMPLE", apply_mode)
+            record_change(path, "installed automation version/ref", before, f"{target_version}-EXAMPLE", apply_mode)
         elif before:
-            record(str(path), "INSTALLED_VERSION_OR_REF", "match", before, f"{target_version}-EXAMPLE")
+            record(str(path), "installed automation version/ref", "match", before, f"{target_version}-EXAMPLE")
         else:
-            record(str(path), "INSTALLED_VERSION_OR_REF", "missing", reason="missing INSTALLED_VERSION_OR_REF")
+            record(str(path), "installed automation version/ref", "missing", reason="missing INSTALLED_VERSION_OR_REF")
     elif rel == "docs/DOWNSTREAM_FEEDBACK.md":
         updated, changed, before = update_installed_version_reference(text, target_version)
         if changed:
-            record_change(path, "installed version/ref", before, target_version, apply_mode)
+            record_change(path, "installed automation version/ref", before, target_version, apply_mode)
         elif before:
-            record(str(path), "installed version/ref", "match", before, target_version)
+            record(str(path), "installed automation version/ref", "match", before, target_version)
         else:
-            record(str(path), "installed version/ref", "skipped", reason="no installed version/ref line")
+            record(str(path), "installed automation version/ref", "skipped", reason="no installed version/ref line")
     elif rel == "examples/downstream/docs/repo-automation/README.md":
         updated, changed, before = update_downstream_ref(text, target_version, "-EXAMPLE")
         if changed:
-            record_change(path, "installed version/ref", before, f"{target_version}-EXAMPLE", apply_mode)
+            record_change(path, "installed automation version/ref", before, f"{target_version}-EXAMPLE", apply_mode)
         elif before:
-            record(str(path), "installed version/ref", "match", before, f"{target_version}-EXAMPLE")
+            record(str(path), "installed automation version/ref", "match", before, f"{target_version}-EXAMPLE")
         else:
-            record(str(path), "installed version/ref", "skipped", reason="no installed version/ref line")
+            record(str(path), "installed automation version/ref", "skipped", reason="no installed version/ref line")
 
     if changed and apply_mode == "apply":
         write_text(path, updated)
@@ -420,8 +420,8 @@ def process_file(path: Path, target_version: str, apply_mode: str):
 
 def emit_human() -> None:
     print(f"INFO: mode: {mode}")
-    print(f"INFO: source version: {result['source_version']}")
-    print(f"INFO: target version: {result['target_version']}")
+    print(f"INFO: source automation release version: {result['source_version']}")
+    print(f"INFO: target automation release version: {result['target_version']}")
     if result["results"]:
         print("INFO: placements:")
         for entry in result["results"]:

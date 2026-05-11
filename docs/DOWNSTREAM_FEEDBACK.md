@@ -15,6 +15,8 @@ INSTALLED_AT="YYYY-MM-DD"
 LOCAL_OVERRIDES_DOC="repo-automation/docs/local-overrides.md"
 ```
 
+`INSTALLED_VERSION_OR_REF` may be a tag, branch, commit, or other explicit installed automation ref.
+
 ## What To File Upstream
 
 File bugs/features upstream when the issue is in shared automation behavior.
@@ -34,7 +36,7 @@ Implemented helper behavior:
 - generate a local issue body preview before submission
 - show the upstream repo target
 - show issue type `bug` or `feature`
-- show installed version/ref
+- show installed automation version/ref
 - show whether local overrides are present
 - warn users to redact secrets before submission
 - prompt for confirmation before submission
@@ -45,7 +47,7 @@ Implemented helper behavior:
 Issue bodies should include:
 
 - downstream repo
-- installed version/ref
+- installed automation version/ref
 - command run
 - expected behavior
 - actual behavior

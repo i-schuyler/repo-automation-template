@@ -34,7 +34,7 @@ Optional installation:
 ## Profiles
 
 - default profile: the current downstream install/update contract
-- `--starter-template`: conservative starter-template profile for reusable repos; it installs repo-automation-owned PR and issue templates, but not workflow files or app/product CI
+- `--starter-template`: conservative starter-template profile for reusable repos; it installs repo-automation-owned PR and issue templates, but not workflow files, app/product CI, starter-template version fields, or downstream app/product version fields
 
 ## Local Overrides
 
@@ -46,7 +46,7 @@ Optional installation:
 The helper writes downstream install context into:
 
 - `.repo-automation.conf` (`INSTALLED_VERSION_OR_REF`, `INSTALLED_AT`, `UPSTREAM_REPO_FULL_NAME`, target defaults)
-- `repo-automation/docs/README.md` (copyable installed context, doctor/report-upstream commands)
+- `repo-automation/docs/README.md` (copyable installed automation context, doctor/report-upstream commands)
 - `EXPECTED_REMOTE_URL` is set only when the target origin is a supported GitHub SSH remote; unsupported or local/file/HTTPS origins are normalized to `""`
 
 ## Installer Output Audit

@@ -211,7 +211,7 @@ This repo has an installed copy of shared repo automation helpers.
 
 Repo automation installed context:
 - Upstream repo: $upstream_repo
-- Installed version/ref: $installed_version_or_ref
+- Installed automation version/ref: $installed_version_or_ref
 - Installed at: $installed_at
 - Local overrides doc: $local_overrides_doc
 - Local overrides present: $local_overrides_present
@@ -548,7 +548,7 @@ repo_install_main() {
     repo_install_info "dry-run: $dry_run"
     repo_install_info "include tests: $include_tests"
     repo_install_info "include ci: $include_ci"
-    repo_install_info "installed version/ref: $installed_version_or_ref"
+    repo_install_info "installed automation version/ref: $installed_version_or_ref"
     repo_install_info "target remote status: $target_remote_status"
     if [ "${#files_to_add[@]}" -gt 0 ]; then
       repo_install_info "files to add:"

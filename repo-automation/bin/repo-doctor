@@ -427,11 +427,11 @@ repo_doctor_check_version_guard() {
   fi
 
   if repo-automation/tests/version-consistency.sh >/dev/null; then
-    repo_doctor_add_check "version-consistency" "pass" "version consistency guard passed"
+    repo_doctor_add_check "version-consistency" "pass" "automation release version consistency guard passed"
     return 0
   fi
 
-  repo_doctor_add_check "version-consistency" "fail" "version consistency guard failed"
+  repo_doctor_add_check "version-consistency" "fail" "automation release version consistency guard failed"
   return 1
 }
 

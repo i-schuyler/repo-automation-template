@@ -7,11 +7,17 @@
 The config file records the public, installable shape of the repo automation template:
 
 - upstream repo identity
-- installed version and installation date
+- installed automation version/ref and installation date
 - local override documentation path
 - branch, docs, provider, timeout, and check-profile defaults
 
 The file is meant to be sourceable by Bash and readable in downstream repos without exposing secrets, tokens, host credentials, private keys, or machine-local private paths.
+
+## Version Fields
+
+- `REPO_AUTOMATION_CONF_VERSION` is the config schema version, not the release version
+- `REPO_AUTOMATION_VERSION` is the upstream repo-automation-template release version from `VERSION`
+- `INSTALLED_VERSION_OR_REF` is the installed automation ref recorded in the downstream repo; it may be a tag, branch, commit, or other explicit ref
 
 ## Required Variables
 
@@ -53,7 +59,7 @@ Keep this file public-safe. It should not include secrets, machine credentials, 
 Downstream installed configs should keep recording:
 
 - upstream repo
-- installed version/ref
+- installed automation version/ref
 - installed date
 - local overrides doc
 
@@ -65,9 +71,9 @@ Installer smoke tests should also audit the generated downstream config and help
 
 ## Version Drift
 
-Config values are part of the version drift surface. Changes here should stay aligned with `VERSION`, `CHANGELOG.md`, README-visible version text, `docs/DECISIONS.md`, and `docs/VERSIONING.md`.
+Config values are part of the version drift surface. Changes here should stay aligned with `VERSION`, `CHANGELOG.md`, README-visible version text, `docs/DECISIONS.md`, `docs/VERSIONING.md`, and `repo-automation/docs/version-modes.md`.
 
-See [docs/VERSIONING.md](../../docs/VERSIONING.md) for the current versioning contract.
+See [docs/VERSIONING.md](../../docs/VERSIONING.md) and [version-modes.md](version-modes.md) for the current versioning contract.
 
 ## Loading Rule
 
