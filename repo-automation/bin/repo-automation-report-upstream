@@ -399,7 +399,7 @@ report_upstream_main() {
     report_upstream_info "preview file: $preview_file"
     report_upstream_info "upstream repo target: $upstream_repo"
     report_upstream_info "issue type: $report_type"
-    report_upstream_info "installed version/ref: $installed_version_or_ref"
+    report_upstream_info "installed automation version/ref: $installed_version_or_ref"
     report_upstream_info "local overrides present: $local_overrides_present"
     report_upstream_info "redact secrets before submission"
   fi

@@ -30,55 +30,55 @@ version_main() {
   fi
 
   if grep -q '^REPO_AUTOMATION_VERSION="'"$expected_version"'"$' .repo-automation.conf; then
-    printf 'PASS: .repo-automation.conf REPO_AUTOMATION_VERSION matches VERSION
+    printf 'PASS: installed automation config REPO_AUTOMATION_VERSION matches VERSION
 '
   else
-    printf 'FAIL: .repo-automation.conf REPO_AUTOMATION_VERSION matches VERSION
+    printf 'FAIL: installed automation config REPO_AUTOMATION_VERSION matches VERSION
 ' >&2
     return 1
   fi
 
   if grep -q "Current version: $expected_version" README.md; then
-    printf 'PASS: README current version matches VERSION
+    printf 'PASS: automation README current version matches VERSION
 '
   else
-    printf 'FAIL: README current version matches VERSION
+    printf 'FAIL: automation README current version matches VERSION
 ' >&2
     return 1
   fi
 
   if grep -q "^## \[$expected_version\] - Unreleased$" CHANGELOG.md; then
-    printf 'PASS: CHANGELOG has unreleased heading for VERSION
+    printf 'PASS: automation CHANGELOG has unreleased heading for VERSION
 '
   else
-    printf 'FAIL: CHANGELOG has unreleased heading for VERSION
+    printf 'FAIL: automation CHANGELOG has unreleased heading for VERSION
 ' >&2
     return 1
   fi
 
   if grep -q "| Current version line | starts at $expected_version |" docs/DECISIONS.md; then
-    printf 'PASS: DECISIONS current version line matches VERSION
+    printf 'PASS: automation DECISIONS current version line matches VERSION
 '
   else
-    printf 'FAIL: DECISIONS current version line matches VERSION
+    printf 'FAIL: automation DECISIONS current version line matches VERSION
 ' >&2
     return 1
   fi
 
-  if grep -q "Version numbers must stay aligned in these places:" docs/VERSIONING.md &&      grep -q "repo-automation/tests/version-consistency.sh" docs/VERSIONING.md; then
-    printf 'PASS: VERSIONING documents version placements and test guard
+  if grep -q "Version Modes" docs/VERSIONING.md &&      grep -q "prepare-release" docs/VERSIONING.md &&      grep -q "REPO_AUTOMATION_CONF_VERSION" docs/VERSIONING.md; then
+    printf 'PASS: VERSIONING documents automation version modes and guard
 '
   else
-    printf 'FAIL: VERSIONING documents version placements and test guard
+    printf 'FAIL: VERSIONING documents automation version modes and guard
 ' >&2
     return 1
   fi
 
   if grep -q '^REPO_AUTOMATION_VERSION="'"$expected_version"'"$' examples/downstream/.repo-automation.conf.example ||      grep -q '^INSTALLED_VERSION_OR_REF="'"${expected_version}-EXAMPLE"'"$' examples/downstream/.repo-automation.conf.example; then
-    printf 'PASS: downstream example version is aligned or explicit EXAMPLE suffix
+    printf 'PASS: downstream example installed automation ref is aligned or explicit EXAMPLE suffix
 '
   else
-    printf 'FAIL: downstream example version is aligned or explicit EXAMPLE suffix
+    printf 'FAIL: downstream example installed automation ref is aligned or explicit EXAMPLE suffix
 ' >&2
     return 1
   fi

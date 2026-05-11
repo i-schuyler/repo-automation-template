@@ -106,7 +106,7 @@ Downstream repos can now use `repo-automation/bin/repo-automation-report-upstrea
 `repo-automation/bin/automation-freshness` checks the repo-owned automation manifest against the current working tree and supports `--machine-json` and `--source-root=/path/to/checkout`.
 `repo-automation/bin/repo-automation-install` now provides terminal preview/apply flows for installing or updating managed repo automation files into downstream repos.
 `repo-automation/bin/prepare-release` now provides terminal `--check`, `--dry-run`, `--apply`, and `--machine-json` flows for repo-local version placement updates.
-The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST.md](docs/WORKFLOW_AUDIT_CHECKLIST.md) and remains coming soon.
+The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST.md](docs/WORKFLOW_AUDIT_CHECKLIST.md) and remains coming soon. `repo-automation/bin/prepare-release` only updates the shared automation release version and the installed-ref examples, not downstream app/product versions or starter-template versions.
 
 
 ### Low-token diagnostics

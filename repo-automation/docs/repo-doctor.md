@@ -51,7 +51,7 @@ Checks include:
 - automation manifest freshness checks
 - JSON contract spot checks for branch cleanup and preflight
 - optional `repo-automation/bin/run-tests` execution
-- version consistency guard
+- automation release version consistency guard
 - CI workflow minimal-permissions checks
 - docs index helper-link coverage
 - automation issue-template presence
