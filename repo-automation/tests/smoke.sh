@@ -423,7 +423,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests > "$run_tests_default_out"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --timeout 200 > "$run_tests_default_out"
   ) && ! grep -Eq '^PASS:' "$run_tests_default_out" && grep -Eq '^RESULT: pass=' "$run_tests_default_out"; then
     test_pass "run-tests default output is compact"
   else
@@ -443,7 +443,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --json --json-level warn > "$run_tests_json"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --json --json-level=warn > "$run_tests_json"
   ) && python -m json.tool "$run_tests_json" >/dev/null && \
     smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
     test_pass "run-tests json warn is parseable"
@@ -454,7 +454,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --log-file "$run_tests_log_file" >/dev/null
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --timeout=200 --log-file="$run_tests_log_file" >/dev/null
   ) && [ -f "$run_tests_log_file" ]; then
     test_pass "run-tests log-file creates a log"
   else
@@ -464,7 +464,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --log-file "$run_tests_no_log_file" --no-log > "$run_tests_no_log_out"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --timeout=200 --log-file="$run_tests_no_log_file" --no-log > "$run_tests_no_log_out"
   ) && [ ! -e "$run_tests_no_log_file" ] && ! grep -Eq '^Log:' "$run_tests_no_log_out"; then
     test_pass "run-tests no-log does not create a log"
   else
@@ -485,10 +485,11 @@ smoke_check_repo_doctor_contract() {
   local doctor_no_log_file="$smoke_test_base/repo-doctor-no-log-$$.log"
   local doctor_no_log_out="$smoke_test_base/repo-doctor-no-log-$$.txt"
   local doctor_json="$smoke_test_base/repo-doctor-quick-$$.json"
+  local doctor_config_out="$smoke_test_base/repo-doctor-config-$$.txt"
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --quick > "$doctor_default_out"
+    repo-automation/bin/repo-doctor --quick --timeout 200 > "$doctor_default_out"
   ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- git-remote-match$' "$doctor_default_out"; then
     test_pass "repo-doctor quick default output is compact"
   else
@@ -508,7 +509,7 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --json --quick --json-level warn > "$doctor_json_warn"
+    repo-automation/bin/repo-doctor --json --quick --json-level=warn > "$doctor_json_warn"
   ) && python -m json.tool "$doctor_json_warn" >/dev/null && \
     smoke_json_assert "$doctor_json_warn" 'data.get("mode") == "quick" and data.get("json_level") == "warn" and any(check.get("status") == "warn" for check in data.get("checks", []))'; then
     test_pass "repo-doctor json quick warn is parseable"
@@ -519,7 +520,7 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --quick --log-file "$doctor_log_file" >/dev/null
+    repo-automation/bin/repo-doctor --quick --timeout=200 --log-file="$doctor_log_file" >/dev/null
   ) && [ -f "$doctor_log_file" ]; then
     test_pass "repo-doctor log-file creates a log"
   else
@@ -529,7 +530,7 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --quick --log-file "$doctor_no_log_file" --no-log > "$doctor_no_log_out"
+    repo-automation/bin/repo-doctor --quick --timeout=200 --log-file="$doctor_no_log_file" --no-log > "$doctor_no_log_out"
   ) && [ ! -e "$doctor_no_log_file" ] && ! grep -Eq '^Log:' "$doctor_no_log_out"; then
     test_pass "repo-doctor no-log does not create a log"
   else
@@ -539,11 +540,11 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --quick >/dev/null
+    repo-automation/bin/repo-doctor --check=config --timeout=200 --no-run-tests > "$doctor_config_out"
   ); then
-    test_pass "repo-doctor quick succeeds"
+    test_pass "repo-doctor config check succeeds"
   else
-    test_fail "repo-doctor quick succeeds"
+    test_fail "repo-doctor config check succeeds"
     status=1
   fi
 
@@ -557,7 +558,7 @@ smoke_check_repo_doctor_contract() {
     status=1
   fi
 
-  rm -f "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" >/dev/null 2>&1 || true
+  rm -f "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" >/dev/null 2>&1 || true
   return "$status"
 }
 

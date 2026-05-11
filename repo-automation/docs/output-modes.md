@@ -36,7 +36,7 @@ Scripts that implement this contract should support:
 - --quiet
   - only final result plus failure/warning hints
 
-- --log-file FILE
+- --log-file=FILE
   - write full detailed logs to FILE
 
 - --no-log
@@ -45,7 +45,7 @@ Scripts that implement this contract should support:
 - --audit
   - compact full-audit preset for diagnostic runs
 
-- --timeout SECONDS
+- --timeout=SECONDS
   - per-check timeout guard for long-running checks
   - default conservative timeout is 120 seconds in `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor`
   - when the `timeout` command is unavailable, scripts warn once and continue without timeout guards
@@ -54,7 +54,7 @@ Scripts that implement this contract should support:
   - stdout must be valid JSON only
   - human logs must go to stderr or log files
 
-- --json-level fail|warn|all
+- --json-level=fail|warn|all
   - fail: include failures only
   - warn: include failures and warnings
   - all: include all checks

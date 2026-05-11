@@ -20,7 +20,7 @@ repo_doctor_stop_reason=""
 repo_doctor_checks=()
 
 repo_doctor_usage() {
-  printf 'Usage: repo-automation/bin/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout SECONDS] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--quick] [--full] [--no-run-tests] [--check NAME]\n'
+  printf 'Usage: repo-automation/bin/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--quick] [--full] [--no-run-tests] [--check=NAME]\n'
 }
 
 repo_doctor_info() {
@@ -565,30 +565,53 @@ repo_doctor_main() {
         repo_doctor_mode="full"
         repo_doctor_skip_run_tests=0
         ;;
+      --timeout=*)
+        repo_doctor_timeout_seconds="${arg#--timeout=}"
+        if [ -z "$repo_doctor_timeout_seconds" ]; then
+          repo_doctor_stop "--timeout requires a value"
+          return 1
+        fi
+        if ! repo_auto_is_positive_integer "$repo_doctor_timeout_seconds"; then
+          repo_doctor_stop "invalid --timeout value: $repo_doctor_timeout_seconds"
+          return 1
+        fi
+        ;;
       --timeout)
         shift
         if [ "$#" -eq 0 ]; then
           repo_doctor_stop "--timeout requires a value"
-          command_status=1
-          break
+          return 1
         fi
         if repo_auto_is_positive_integer "$1"; then
           repo_doctor_timeout_seconds="$1"
         else
           repo_doctor_stop "invalid --timeout value: $1"
-          command_status=1
-          break
+          return 1
         fi
         ;;
       --json)
         repo_doctor_json=1
         ;;
+      --json-level=*)
+        repo_doctor_json_level="${arg#--json-level=}"
+        if [ -z "$repo_doctor_json_level" ]; then
+          repo_doctor_stop "--json-level requires a value"
+          return 1
+        fi
+        case "$repo_doctor_json_level" in
+          fail|warn|all)
+            ;;
+          *)
+            repo_doctor_stop "invalid --json-level value: $repo_doctor_json_level"
+            return 1
+            ;;
+        esac
+        ;;
       --json-level)
         shift
         if [ "$#" -eq 0 ]; then
           repo_doctor_stop "--json-level requires a value"
-          command_status=1
-          break
+          return 1
         fi
         case "$1" in
           fail|warn|all)
@@ -596,17 +619,23 @@ repo_doctor_main() {
             ;;
           *)
             repo_doctor_stop "invalid --json-level value: $1"
-            command_status=1
-            break
+            return 1
             ;;
         esac
+        ;;
+      --log-file=*)
+        repo_doctor_log_file="${arg#--log-file=}"
+        if [ -z "$repo_doctor_log_file" ]; then
+          repo_doctor_stop "--log-file requires a path"
+          return 1
+        fi
+        repo_doctor_log_enabled=1
         ;;
       --log-file)
         shift
         if [ "$#" -eq 0 ]; then
           repo_doctor_stop "--log-file requires a path"
-          command_status=1
-          break
+          return 1
         fi
         repo_doctor_log_file="$1"
         repo_doctor_log_enabled=1
@@ -618,19 +647,24 @@ repo_doctor_main() {
       --no-run-tests)
         repo_doctor_skip_run_tests=1
         ;;
+      --check=*)
+        repo_doctor_single_check="${arg#--check=}"
+        if [ -z "$repo_doctor_single_check" ]; then
+          repo_doctor_stop "--check requires a name"
+          return 1
+        fi
+        ;;
       --check)
         shift
         if [ "$#" -eq 0 ]; then
           repo_doctor_stop "--check requires a name"
-          command_status=1
-          break
+          return 1
         fi
         repo_doctor_single_check="$1"
         ;;
       *)
         repo_doctor_stop "unknown argument: $arg"
-        command_status=1
-        break
+        return 1
         ;;
     esac
     shift

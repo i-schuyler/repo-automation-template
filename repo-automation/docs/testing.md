@@ -37,7 +37,7 @@ The shared harness owns child-process cleanup, temp-dir cleanup, and timeout fal
 
 Tests do not delete remote branches and do not use force delete for local branches.
 
-`repo-automation/bin/run-tests` defaults to a 120-second per-check timeout. Use `--timeout SECONDS` to change it and `--audit` for the compact full suite. If the `timeout` command is unavailable, the scripts warn once and continue without timeout guards instead of failing the whole run.
+`repo-automation/bin/run-tests` defaults to a 120-second per-check timeout. Use `--timeout=SECONDS` to change it and `--audit` for the compact full suite. If the `timeout` command is unavailable, the scripts warn once and continue without timeout guards instead of failing the whole run.
 
 ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs ShellCheck when available and warns when missing.
 

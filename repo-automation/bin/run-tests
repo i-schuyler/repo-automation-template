@@ -20,7 +20,7 @@ run_tests_next_hint="Next: repo-automation/bin/run-tests --explain"
 run_tests_checks=()
 
 run_tests_usage() {
-  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--explain] [--quiet] [--timeout SECONDS] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--help]\n'
+  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--help]\n'
 }
 
 run_tests_timestamp() {
@@ -467,6 +467,17 @@ run_tests_main() {
       --quiet)
         run_tests_mode="quiet"
         ;;
+      --timeout=*)
+        timeout_value="${arg#--timeout=}"
+        if [ -z "$timeout_value" ]; then
+          repo_auto_stop "--timeout requires a value"
+          return 1
+        fi
+        if ! repo_auto_is_positive_integer "$timeout_value"; then
+          repo_auto_stop "invalid --timeout value: $timeout_value"
+          return 1
+        fi
+        ;;
       --timeout)
         shift
         if [ "$#" -eq 0 ]; then
@@ -479,6 +490,14 @@ run_tests_main() {
           repo_auto_stop "invalid --timeout value: $1"
           return 1
         fi
+        ;;
+      --log-file=*)
+        run_tests_log_file="${arg#--log-file=}"
+        if [ -z "$run_tests_log_file" ]; then
+          repo_auto_stop "--log-file requires a path"
+          return 1
+        fi
+        run_tests_log_enabled=1
         ;;
       --log-file)
         shift
@@ -495,6 +514,21 @@ run_tests_main() {
         ;;
       --json)
         run_tests_json=1
+        ;;
+      --json-level=*)
+        run_tests_json_level="${arg#--json-level=}"
+        if [ -z "$run_tests_json_level" ]; then
+          repo_auto_stop "--json-level requires a value"
+          return 1
+        fi
+        case "$run_tests_json_level" in
+          fail|warn|all)
+            ;;
+          *)
+            repo_auto_stop "invalid --json-level value: $run_tests_json_level"
+            return 1
+            ;;
+        esac
         ;;
       --json-level)
         shift

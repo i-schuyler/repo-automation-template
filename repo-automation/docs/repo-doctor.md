@@ -10,14 +10,14 @@ Default behavior is safe and read-only.
 - `--explain` prints the full PASS/WARN/FAIL detail.
 - `--quiet` keeps only the final result and warning/failure hints.
 - `--audit` is a compact alias for the full read-only diagnostic path.
-- `--timeout SECONDS` passes a per-check timeout through to `repo-automation/bin/run-tests`.
-- `--log-file FILE` captures full details in a temp log.
+- `--timeout=SECONDS` passes a per-check timeout through to `repo-automation/bin/run-tests`.
+- `--log-file=FILE` captures full details in a temp log.
 - `--no-log` suppresses log creation when explicitly requested.
-- `--json --json-level fail|warn|all` keeps stdout machine-readable and filters returned check detail.
+- `--json --json-level=fail|warn|all` keeps stdout machine-readable and filters returned check detail.
 - `--quick` runs lighter checks and skips `repo-automation/bin/run-tests`.
 - `--full` includes `repo-automation/bin/run-tests`.
 - `--no-run-tests` explicitly skips `repo-automation/bin/run-tests`.
-- `--check NAME` runs one named check (`git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `docs`, `issue-templates`).
+- `--check=NAME` runs one named check (`git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `docs`, `issue-templates`).
 
 Human output uses PASS/WARN/FAIL when details are shown, but default summary output stays compact:
 
@@ -29,7 +29,7 @@ JSON mode contract:
 
 - `--json` writes valid JSON only to stdout.
 - human INFO/WARN/STOP logs go to stderr.
-- `--json-level fail|warn|all` filters the `checks` array.
+- `--json-level=fail|warn|all` filters the `checks` array.
 - JSON includes:
   - `mode`
   - `overall_status`
