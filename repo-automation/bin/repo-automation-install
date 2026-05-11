@@ -1,0 +1,690 @@
+#!/usr/bin/env bash
+# repo-automation/bin/repo-automation-install
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+repo_install_json=0
+repo_install_stop_reason=""
+
+repo_install_usage() {
+  printf 'Usage: repo-automation/bin/repo-automation-install --target PATH [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--overwrite] [--no-overwrite] [--installed-version REF] [--installed-at YYYY-MM-DD] [--local-overrides-doc PATH] [--source-root PATH]\n'
+}
+
+repo_install_info() {
+  printf 'INFO: %s\n' "$*" >&2
+}
+
+repo_install_warn() {
+  printf 'WARN: %s\n' "$*" >&2
+}
+
+repo_install_stop() {
+  repo_install_stop_reason="$*"
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+repo_install_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+repo_install_json_array() {
+  local first=1
+  local value
+  for value in "$@"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(repo_install_json_escape "$value")"
+    first=0
+  done
+}
+
+repo_install_target_remote_status() {
+  local remote_url="${1:-}"
+
+  if [ -z "$remote_url" ]; then
+    printf 'missing\n'
+    return 0
+  fi
+
+  if [[ "$remote_url" =~ ^git@github.com:[^[:space:]]+/.+\.git$ ]]; then
+    printf 'present\n'
+    return 0
+  fi
+
+  printf 'unsupported\n'
+}
+
+repo_install_print_json() {
+  local mode="$1"
+  local source_root="$2"
+  local target_root="$3"
+  local apply="$4"
+  local dry_run="$5"
+  local include_ci="$6"
+  local include_tests="$7"
+  local installed_version_or_ref="$8"
+  local target_remote_status="$9"
+  local action_taken="${10}"
+  local stop_reason="${11}"
+  local target_dirty="${12}"
+  local files_to_add_name="${13}"
+  local files_to_update_name="${14}"
+  local files_to_skip_name="${15}"
+  local blocked_files_name="${16}"
+  local generated_files_name="${17}"
+  # shellcheck disable=SC2178
+  local -n files_to_add_ref="$files_to_add_name"
+  # shellcheck disable=SC2178
+  local -n files_to_update_ref="$files_to_update_name"
+  # shellcheck disable=SC2178
+  local -n files_to_skip_ref="$files_to_skip_name"
+  # shellcheck disable=SC2178
+  local -n blocked_files_ref="$blocked_files_name"
+  # shellcheck disable=SC2178
+  local -n generated_files_ref="$generated_files_name"
+
+  printf '{'
+  printf '"mode":"%s",' "$(repo_install_json_escape "$mode")"
+  printf '"source_root":"%s",' "$(repo_install_json_escape "$source_root")"
+  printf '"target_root":"%s",' "$(repo_install_json_escape "$target_root")"
+  printf '"apply":%s,' "$apply"
+  printf '"dry_run":%s,' "$dry_run"
+  printf '"include_ci":%s,' "$include_ci"
+  printf '"include_tests":%s,' "$include_tests"
+  printf '"installed_version_or_ref":"%s",' "$(repo_install_json_escape "$installed_version_or_ref")"
+  printf '"target_remote_status":"%s",' "$(repo_install_json_escape "$target_remote_status")"
+  printf '"files_to_add":['
+  repo_install_json_array "${files_to_add_ref[@]}"
+  printf '],'
+  printf '"files_to_update":['
+  repo_install_json_array "${files_to_update_ref[@]}"
+  printf '],'
+  printf '"files_to_skip":['
+  repo_install_json_array "${files_to_skip_ref[@]}"
+  printf '],'
+  printf '"blocked_files":['
+  repo_install_json_array "${blocked_files_ref[@]}"
+  printf '],'
+  printf '"generated_files":['
+  repo_install_json_array "${generated_files_ref[@]}"
+  printf '],'
+  printf '"target_dirty":%s,' "$target_dirty"
+  printf '"action_taken":"%s",' "$(repo_install_json_escape "$action_taken")"
+  printf '"stop_reason":"%s"' "$(repo_install_json_escape "$stop_reason")"
+  printf '}\n'
+}
+
+repo_install_is_script_path() {
+  case "${1:-}" in
+    repo-automation/bin/*|repo-automation/tests/*.sh)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+repo_install_make_parent() {
+  local path="$1"
+  local parent
+  parent="$(dirname "$path")"
+  mkdir -p "$parent"
+}
+
+repo_install_write_config() {
+  local path="$1"
+  local installed_version_or_ref="$2"
+  local installed_at="$3"
+  local local_overrides_doc="$4"
+  local default_branch="$5"
+  local state_dir_name="$6"
+  local expected_remote_url="$7"
+
+  cat > "$path" <<EOF
+# .repo-automation.conf
+REPO_AUTOMATION_CONF_VERSION="0.1"
+REPO_AUTOMATION_VERSION="$REPO_AUTOMATION_VERSION"
+UPSTREAM_REPO_FULL_NAME="$UPSTREAM_REPO_FULL_NAME"
+UPSTREAM_ISSUE_URL="$UPSTREAM_ISSUE_URL"
+INSTALLED_FROM="$INSTALLED_FROM"
+INSTALLED_VERSION_OR_REF="$installed_version_or_ref"
+INSTALLED_AT="$installed_at"
+LOCAL_OVERRIDES_DOC="$local_overrides_doc"
+
+DEFAULT_BRANCH="$default_branch"
+DOCS_DIR="docs"
+DOCS_INDEX="docs/INDEX.md"
+STATE_DIR_NAME="$state_dir_name"
+CI_PROVIDER="github"
+PR_PROVIDER="github"
+MERGE_MODE="squash"
+REMOTE_NAME="origin"
+EXPECTED_REMOTE_URL="$expected_remote_url"
+PREFLIGHT_REQUIRE_CLEAN_WORKTREE="true"
+
+DOC_PR_TIMEOUT_SECONDS=60
+DOC_PR_POLL_SECONDS=10
+IMPLEMENTATION_PR_TIMEOUT_SECONDS=300
+IMPLEMENTATION_PR_POLL_SECONDS=15
+
+DOC_BRANCH_PREFIX="docs"
+FEATURE_BRANCH_PREFIX="feature"
+FIX_BRANCH_PREFIX="fix"
+
+CHECK_PROFILE_DEFAULT="docs"
+CHECK_PROFILE_DOCS_COMMANDS=("git diff --check")
+CHECK_PROFILE_NONE_COMMANDS=()
+# .repo-automation.conf EOF
+EOF
+}
+
+repo_install_write_downstream_readme() {
+  local path="$1"
+  local upstream_repo="$2"
+  local installed_version_or_ref="$3"
+  local installed_at="$4"
+  local local_overrides_doc="$5"
+  local local_overrides_present="$6"
+
+  cat > "$path" <<EOF
+# Repo Automation Install Context
+
+This repo has an installed copy of shared repo automation helpers.
+
+Repo automation installed context:
+- Upstream repo: $upstream_repo
+- Installed version/ref: $installed_version_or_ref
+- Installed at: $installed_at
+- Local overrides doc: $local_overrides_doc
+- Local overrides present: $local_overrides_present
+- Run health check: repo-automation/bin/repo-doctor --quick
+- Report upstream: repo-automation/bin/repo-automation-report-upstream --type=bug --title="Short title" --dry-run
+EOF
+}
+
+repo_install_write_local_overrides_stub() {
+  local path="$1"
+  cat > "$path" <<'EOF'
+# Local Overrides
+
+Use this file for downstream-only behavior notes and local policy exceptions.
+Do not store secrets, credentials, or private keys in this file.
+EOF
+}
+
+repo_install_main() {
+  local mode_flag=""
+  local target_root=""
+  local source_root=""
+  local apply=false
+  local dry_run=false
+  local include_ci=false
+  local include_tests=false
+  local overwrite=false
+  local installed_version_arg=""
+  local installed_at_arg=""
+  local local_overrides_doc_arg=""
+  local mode="plan"
+  local action_taken="none"
+  local command_status=0
+  local repo_root=""
+  local source_version=""
+  local inferred_mode=""
+  local target_default_branch=""
+  local target_remote_url=""
+  local target_remote_status="missing"
+  local target_expected_remote_url=""
+  local target_state_dir_name=""
+  local local_overrides_doc=""
+  local installed_version_or_ref=""
+  local installed_at=""
+  local target_dirty=false
+  local local_overrides_present="unknown"
+  local target_status=""
+  local source_file=""
+  local target_file=""
+  local arg=""
+  local line=""
+  local -a managed_files=(
+    "repo-automation/lib/common.sh"
+    "repo-automation/bin/branch-cleanup"
+    "repo-automation/bin/codex-slice-preflight"
+    "repo-automation/bin/pr-finish"
+    "repo-automation/bin/add-doc-pr"
+    "repo-automation/bin/repo-automation-report-upstream"
+    "repo-automation/bin/repo-doctor"
+    "repo-automation/bin/repo-automation-install"
+    "repo-automation/docs/branch-cleanup.md"
+    "repo-automation/docs/codex-slice-preflight.md"
+    "repo-automation/docs/common-library.md"
+    "repo-automation/docs/config.md"
+    "repo-automation/docs/downstream-install-contract.md"
+    "repo-automation/docs/issue-escalation.md"
+    "repo-automation/docs/pr-finish.md"
+    "repo-automation/docs/add-doc-pr.md"
+    "repo-automation/docs/repo-automation-report-upstream.md"
+    "repo-automation/docs/repo-doctor.md"
+    "repo-automation/docs/repo-automation-install.md"
+    "repo-automation/docs/source-provenance.md"
+    "repo-automation/docs/testing.md"
+  )
+  local -a optional_test_files=(
+    "repo-automation/tests/lib/test-common.sh"
+    "repo-automation/tests/smoke.sh"
+    "repo-automation/tests/version-consistency.sh"
+    "repo-automation/bin/run-tests"
+  )
+  local -a optional_ci_files=(
+    ".github/workflows/ci.yml"
+  )
+  local -a files_to_add=()
+  local -a files_to_update=()
+  local -a files_to_skip=()
+  local -a blocked_files=()
+  local -a generated_files=(
+    ".repo-automation.conf"
+    "repo-automation/docs/README.md"
+  )
+  local -a files_to_process=()
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        repo_install_usage
+        return 0
+        ;;
+      --target)
+        shift
+        target_root="${1:-}"
+        ;;
+      --install)
+        mode_flag="install"
+        ;;
+      --update)
+        mode_flag="update"
+        ;;
+      --apply)
+        apply=true
+        ;;
+      --dry-run)
+        dry_run=true
+        ;;
+      --json)
+        repo_install_json=1
+        ;;
+      --include-ci)
+        include_ci=true
+        ;;
+      --include-tests)
+        include_tests=true
+        ;;
+      --overwrite)
+        overwrite=true
+        ;;
+      --no-overwrite)
+        overwrite=false
+        ;;
+      --installed-version)
+        shift
+        installed_version_arg="${1:-}"
+        ;;
+      --installed-at)
+        shift
+        installed_at_arg="${1:-}"
+        ;;
+      --local-overrides-doc)
+        shift
+        local_overrides_doc_arg="${1:-}"
+        ;;
+      --source-root)
+        shift
+        source_root="${1:-}"
+        ;;
+      *)
+        repo_install_stop "unknown argument: $arg"
+        command_status=1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$target_root" ]; then
+    repo_install_stop "--target PATH is required"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -z "$source_root" ]; then
+    repo_root="$(repo_auto_repo_root)" || command_status=1
+    source_root="$repo_root"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$source_root" || {
+      repo_install_stop "unable to access source root: $source_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      repo_install_stop "failed to load source .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      repo_install_stop "source config validation failed"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ ! -d "$target_root" ]; then
+      repo_install_stop "target path does not exist: $target_root"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if ! git -C "$target_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      repo_install_stop "target is not a git repository: $target_root"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -n "$mode_flag" ]; then
+      inferred_mode="$mode_flag"
+    elif [ -f "$target_root/.repo-automation.conf" ]; then
+      inferred_mode="update"
+    else
+      inferred_mode="install"
+    fi
+    mode="$inferred_mode"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    source_version="$(cat "$source_root/VERSION" 2>/dev/null)" || source_version=""
+    if [ -z "$source_version" ]; then
+      source_version="$REPO_AUTOMATION_VERSION"
+    fi
+    installed_version_or_ref="${installed_version_arg:-$source_version}"
+    installed_at="${installed_at_arg:-$(date +%Y-%m-%d)}"
+    local_overrides_doc="${local_overrides_doc_arg:-repo-automation/docs/local-overrides.md}"
+    target_default_branch="$(git -C "$target_root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+    if [ -z "$target_default_branch" ]; then
+      target_default_branch="$(git -C "$target_root" symbolic-ref --quiet --short HEAD 2>/dev/null)" || target_default_branch=""
+    fi
+    if [ -z "$target_default_branch" ]; then
+      target_default_branch="main"
+    fi
+    target_remote_url="$(git -C "$target_root" remote get-url origin 2>/dev/null)" || target_remote_url=""
+    target_remote_status="$(repo_install_target_remote_status "$target_remote_url")"
+    if [ "$target_remote_status" = "present" ]; then
+      target_expected_remote_url="$target_remote_url"
+    else
+      target_expected_remote_url=""
+    fi
+    target_state_dir_name="$(basename "$target_root")"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    files_to_process=("${managed_files[@]}")
+    if [ "$include_tests" = true ]; then
+      files_to_process+=("${optional_test_files[@]}")
+    fi
+    if [ "$include_ci" = true ]; then
+      files_to_process+=("${optional_ci_files[@]}")
+      repo_install_warn "--include-ci requested; downstream CI may require repo-specific adaptation"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    for line in "${files_to_process[@]}"; do
+      source_file="$source_root/$line"
+      target_file="$target_root/$line"
+      if [ ! -f "$source_file" ]; then
+        blocked_files+=("$line:missing-in-source")
+        continue
+      fi
+
+      if [ ! -e "$target_file" ]; then
+        files_to_add+=("$line")
+        continue
+      fi
+
+      if cmp -s "$source_file" "$target_file"; then
+        files_to_skip+=("$line:unchanged")
+        continue
+      fi
+
+      if [ "$mode" = "update" ]; then
+        files_to_update+=("$line")
+      elif [ "$overwrite" = true ]; then
+        files_to_update+=("$line")
+      else
+        blocked_files+=("$line:exists-no-overwrite")
+      fi
+    done
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -f "$target_root/$local_overrides_doc" ]; then
+      local_overrides_present="yes"
+      files_to_skip+=("$local_overrides_doc:preserved")
+    else
+      local_overrides_present="no"
+      generated_files+=("$local_overrides_doc")
+    fi
+
+    if [ -f "$target_root/repo-automation/docs/README.md" ]; then
+      files_to_update+=("repo-automation/docs/README.md")
+    else
+      files_to_add+=("repo-automation/docs/README.md")
+    fi
+    if [ -f "$target_root/.repo-automation.conf" ]; then
+      files_to_update+=(".repo-automation.conf")
+    else
+      files_to_add+=(".repo-automation.conf")
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    target_status="$(git -C "$target_root" status --porcelain)"
+    if [ -n "$target_status" ]; then
+      target_dirty=true
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$target_dirty" = true ]; then
+    repo_install_stop "apply mode requires a clean target working tree"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$dry_run" = false ] && [ "${#blocked_files[@]}" -gt 0 ]; then
+    repo_install_stop "apply blocked by existing conflicts; rerun with --overwrite or resolve manually"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repo_install_json" -eq 0 ]; then
+    repo_install_info "source root: $source_root"
+    repo_install_info "target root: $target_root"
+    repo_install_info "mode: $mode"
+    repo_install_info "target dirty: $target_dirty"
+    repo_install_info "apply requested: $apply"
+    repo_install_info "dry-run: $dry_run"
+    repo_install_info "include tests: $include_tests"
+    repo_install_info "include ci: $include_ci"
+    repo_install_info "installed version/ref: $installed_version_or_ref"
+    repo_install_info "target remote status: $target_remote_status"
+    if [ "${#files_to_add[@]}" -gt 0 ]; then
+      repo_install_info "files to add:"
+      printf '  %s\n' "${files_to_add[@]}" >&2
+    fi
+    if [ "${#files_to_update[@]}" -gt 0 ]; then
+      repo_install_info "files to update:"
+      printf '  %s\n' "${files_to_update[@]}" >&2
+    fi
+    if [ "${#files_to_skip[@]}" -gt 0 ]; then
+      repo_install_info "files to skip:"
+      printf '  %s\n' "${files_to_skip[@]}" >&2
+    fi
+    if [ "${#blocked_files[@]}" -gt 0 ]; then
+      repo_install_warn "blocked files:"
+      printf '  %s\n' "${blocked_files[@]}" >&2
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$dry_run" = false ]; then
+    for line in "${files_to_process[@]}"; do
+      source_file="$source_root/$line"
+      target_file="$target_root/$line"
+      if [ ! -f "$source_file" ]; then
+        continue
+      fi
+      if [ ! -e "$target_file" ]; then
+        repo_install_make_parent "$target_file" || {
+          repo_install_stop "failed to create parent path for $line"
+          command_status=1
+          break
+        }
+        cp "$source_file" "$target_file" || {
+          repo_install_stop "failed to copy $line"
+          command_status=1
+          break
+        }
+        if repo_install_is_script_path "$line"; then
+          chmod +x "$target_file" || {
+            repo_install_stop "failed to set executable mode on $line"
+            command_status=1
+            break
+          }
+        fi
+      elif [ "$mode" = "update" ] || [ "$overwrite" = true ]; then
+        if ! cmp -s "$source_file" "$target_file"; then
+          cp "$source_file" "$target_file" || {
+            repo_install_stop "failed to update $line"
+            command_status=1
+            break
+          }
+          if repo_install_is_script_path "$line"; then
+            chmod +x "$target_file" || {
+              repo_install_stop "failed to set executable mode on $line"
+              command_status=1
+              break
+            }
+          fi
+        fi
+      fi
+    done
+
+    if [ "$command_status" -eq 0 ]; then
+      repo_install_make_parent "$target_root/.repo-automation.conf" || {
+        repo_install_stop "failed to prepare target config path"
+        command_status=1
+      }
+    fi
+    if [ "$command_status" -eq 0 ]; then
+      repo_install_write_config \
+        "$target_root/.repo-automation.conf" \
+        "$installed_version_or_ref" \
+        "$installed_at" \
+        "$local_overrides_doc" \
+        "$target_default_branch" \
+        "$target_state_dir_name" \
+        "$target_expected_remote_url" || {
+          repo_install_stop "failed to write target .repo-automation.conf"
+          command_status=1
+        }
+    fi
+    if [ "$command_status" -eq 0 ]; then
+      repo_install_make_parent "$target_root/repo-automation/docs/README.md" || {
+        repo_install_stop "failed to prepare downstream docs path"
+        command_status=1
+      }
+    fi
+    if [ "$command_status" -eq 0 ]; then
+      repo_install_write_downstream_readme \
+        "$target_root/repo-automation/docs/README.md" \
+        "$UPSTREAM_REPO_FULL_NAME" \
+        "$installed_version_or_ref" \
+        "$installed_at" \
+        "$local_overrides_doc" \
+        "$local_overrides_present" || {
+          repo_install_stop "failed to write downstream install context README"
+          command_status=1
+        }
+    fi
+    if [ "$command_status" -eq 0 ] && [ ! -f "$target_root/$local_overrides_doc" ]; then
+      repo_install_make_parent "$target_root/$local_overrides_doc" || {
+        repo_install_stop "failed to prepare local overrides path"
+        command_status=1
+      }
+    fi
+    if [ "$command_status" -eq 0 ] && [ ! -f "$target_root/$local_overrides_doc" ]; then
+      repo_install_write_local_overrides_stub "$target_root/$local_overrides_doc" || {
+        repo_install_stop "failed to create local overrides doc"
+        command_status=1
+      }
+    fi
+
+    if [ "$command_status" -eq 0 ]; then
+      action_taken="applied"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$apply" = false ]; then
+    action_taken="planned"
+  fi
+  if [ "$command_status" -eq 0 ] && [ "$dry_run" = true ]; then
+    action_taken="dry-run"
+  fi
+
+  if [ "$repo_install_json" -eq 1 ]; then
+    repo_install_print_json \
+      "$mode" \
+      "$source_root" \
+      "$target_root" \
+      "$apply" \
+      "$dry_run" \
+      "$include_ci" \
+      "$include_tests" \
+      "$installed_version_or_ref" \
+      "$target_remote_status" \
+      "$action_taken" \
+      "$repo_install_stop_reason" \
+      "$target_dirty" \
+      files_to_add \
+      files_to_update \
+      files_to_skip \
+      blocked_files \
+      generated_files
+  elif [ "$command_status" -eq 0 ] && [ "$apply" = false ]; then
+    repo_install_info "plan-only mode: no files were written"
+    repo_install_info "rerun with --apply to write files"
+  elif [ "$command_status" -eq 0 ]; then
+    repo_install_info "apply complete"
+  fi
+
+  return "$command_status"
+}
+
+repo_install_main "$@"
+# repo-automation/bin/repo-automation-install EOF

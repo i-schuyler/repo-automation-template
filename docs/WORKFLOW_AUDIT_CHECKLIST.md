@@ -12,23 +12,23 @@ This is a public, practical seed for the workflow audit checklist product. It is
 
 1. Run the read-only repo doctor.
 
-       scripts/repo-doctor --quick
+       repo-automation/bin/repo-doctor --quick
 
 2. Run the local validation entrypoint.
 
-       scripts/run-tests
+       repo-automation/bin/run-tests
 
 3. Check whether the repo-local install and downstream context are current.
 
-       scripts/repo-automation-install --target /path/to/downstream --json
+       repo-automation/bin/repo-automation-install --target=/path/to/downstream --json
 
 4. Review version placement and changelog alignment.
 
-       scripts/repo-doctor --check version
+       repo-automation/bin/repo-doctor --check=version
 
 5. Check branch, PR, and CI helper safety contracts.
 
-       scripts/repo-doctor --check scripts
+       repo-automation/bin/repo-doctor --check=scripts
 
 ## Repo Automation Install Health
 
@@ -36,23 +36,23 @@ This is a public, practical seed for the workflow audit checklist product. It is
 - `REPO_AUTOMATION_VERSION` matches the source version line
 - installed docs show the upstream repo, installed version/ref, installed date, and local overrides doc
 - unsupported downstream origins normalize `EXPECTED_REMOTE_URL` to `""`
-- `scripts/repo-doctor --quick --no-run-tests` stays read-only and avoids GitHub auth
+- `repo-automation/bin/repo-doctor --quick --no-run-tests` stays read-only and avoids GitHub auth
 
 ## Agent Safety Rails
 
-- use `scripts/codex-slice-preflight` before branch work
-- keep `scripts/branch-cleanup` on plan-only unless `--apply` is explicit
-- use `scripts/pr-finish` only for explicit status, watch, and merge flows
-- keep `scripts/add-doc-pr` on docs-only boundaries
-- prefer timeout-guarded diagnostics such as `scripts/run-tests --audit --timeout 120` and `scripts/repo-doctor --full --timeout 120` for final audits
+- use `repo-automation/bin/codex-slice-preflight` before branch work
+- keep `repo-automation/bin/branch-cleanup` on plan-only unless `--apply` is explicit
+- use `repo-automation/bin/pr-finish` only for explicit status, watch, and merge flows
+- keep `repo-automation/bin/add-doc-pr` on docs-only boundaries
+- prefer timeout-guarded diagnostics such as `repo-automation/bin/run-tests --audit --timeout=120` and `repo-automation/bin/repo-doctor --full --timeout=120` for final audits
 - keep smoke failures bounded with named subchecks, scenario functions, and registered temp-dir cleanup
-- preview upstream issues before submission with `scripts/repo-automation-report-upstream`
+- preview upstream issues before submission with `repo-automation/bin/repo-automation-report-upstream`
 
 ## Branch / PR / CI Safety
 
 - confirm the current branch is not `main`
 - confirm the worktree is clean before apply/merge actions
-- require green checks before `scripts/pr-finish --merge`
+- require green checks before `repo-automation/bin/pr-finish --merge`
 - never force-delete local branches or delete remote branches from terminal helpers
 - keep CI permissions minimal and read-only by default
 
@@ -83,7 +83,7 @@ This is a public, practical seed for the workflow audit checklist product. It is
 ## When To Ask For Help
 
 - the quick audit returns `FAIL`
-- `scripts/run-tests` fails locally
+- `repo-automation/bin/run-tests` fails locally
 - a downstream install cannot validate its config
 - a branch helper wants to delete something unsafe
 - a PR helper blocks on checks you do not understand

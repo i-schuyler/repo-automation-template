@@ -1,0 +1,366 @@
+#!/usr/bin/env bash
+# repo-automation/bin/codex-slice-preflight
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+preflight_json=0
+preflight_stop_reason=""
+preflight_mode="run"
+
+preflight_usage() {
+  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch BRANCH [--check-only] [--delete-safe-stale] [--json] [--help]\n'
+}
+
+preflight_info() {
+  printf 'INFO: %s\n' "$*" >&2
+}
+
+preflight_warn() {
+  printf 'WARN: %s\n' "$*" >&2
+}
+
+preflight_stop() {
+  preflight_stop_reason="$*"
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+preflight_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+preflight_print_json() {
+  local branch="$1"
+  local default_branch="$2"
+  local remote_name="$3"
+  local current_branch="$4"
+  local divergence="$5"
+  local cleanup_mode="$6"
+  local cleanup_json="$7"
+  local stop_reason="$8"
+
+  printf '{'
+  printf '"branch":"%s",' "$(preflight_json_escape "$branch")"
+  printf '"mode":"%s",' "$(preflight_json_escape "$preflight_mode")"
+  printf '"default_branch":"%s",' "$(preflight_json_escape "$default_branch")"
+  printf '"remote_name":"%s",' "$(preflight_json_escape "$remote_name")"
+  printf '"current_branch":"%s",' "$(preflight_json_escape "$current_branch")"
+  printf '"divergence":"%s",' "$(preflight_json_escape "$divergence")"
+  printf '"branch_cleanup_mode":"%s",' "$(preflight_json_escape "$cleanup_mode")"
+  printf '"branch_cleanup_status":%s,' "${cleanup_json:-null}"
+  printf '"stop_reason":"%s"' "$(preflight_json_escape "$stop_reason")"
+  printf '}\n'
+}
+
+preflight_branch_exists_local() {
+  local name="$1"
+  git show-ref --verify --quiet "refs/heads/$name"
+}
+
+preflight_validate_branch_request() {
+  local requested="$1"
+  local default_branch="$2"
+
+  repo_auto_validate_branch_name "$requested" || {
+    preflight_stop "invalid --branch value: $requested"
+    return 1
+  }
+
+  if [ "$requested" = "$default_branch" ]; then
+    preflight_stop "requested branch must not equal default branch: $default_branch"
+    return 1
+  fi
+}
+
+preflight_main() {
+  local requested_branch=""
+  local check_only=0
+  local delete_safe_stale=0
+  local command_status=0
+  local repo_root=""
+  local current_branch=""
+  local default_branch=""
+  local remote_name=""
+  local expected_remote_url=""
+  local preflight_require_clean="true"
+  local active_cleanup_mode="plan"
+  local remote_url=""
+  local divergence=""
+  local ahead_count=0
+  local behind_count=0
+  local branch_preexists=0
+  local worktree_status=""
+  local cleanup_json=""
+  local arg
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --branch)
+        shift
+        requested_branch="${1:-}"
+        ;;
+      --check-only)
+        check_only=1
+        preflight_mode="check-only"
+        ;;
+      --delete-safe-stale)
+        delete_safe_stale=1
+        ;;
+      --json)
+        preflight_json=1
+        ;;
+      --help)
+        preflight_usage
+        return 0
+        ;;
+      *)
+        preflight_stop "unknown argument: $arg"
+        command_status=1
+        ;;
+    esac
+    shift
+  done
+
+  [ -n "$requested_branch" ] || {
+    preflight_stop "--branch is required"
+    command_status=1
+  }
+
+  repo_auto_require_command git || {
+    preflight_stop "git is required"
+    command_status=1
+  }
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_root=$(repo_auto_repo_root) || {
+      preflight_stop "failed to determine repo root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$repo_root" || {
+      preflight_stop "failed to enter repo root: $repo_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      preflight_stop "failed to load .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      preflight_stop "invalid .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    default_branch="${DEFAULT_BRANCH:-main}"
+    remote_name="${REMOTE_NAME:-origin}"
+    expected_remote_url="${EXPECTED_REMOTE_URL:-}"
+    preflight_require_clean="${PREFLIGHT_REQUIRE_CLEAN_WORKTREE:-true}"
+    active_cleanup_mode="plan"
+    if [ "$delete_safe_stale" -eq 1 ]; then
+      active_cleanup_mode="apply"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    preflight_validate_branch_request "$requested_branch" "$default_branch" || command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_branch_name "$remote_name" || {
+      preflight_stop "invalid remote name in config: $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    remote_url=$(git remote get-url "$remote_name" 2>/dev/null) || {
+      preflight_stop "failed to read remote URL for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
+    preflight_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    worktree_status=$(git status --porcelain)
+    if [ -n "$worktree_status" ] && [ "$check_only" -eq 0 ]; then
+      preflight_stop "working tree must be clean before preflight"
+      command_status=1
+    fi
+    if [ -n "$worktree_status" ] && [ "$check_only" -eq 1 ]; then
+      preflight_warn "working tree is dirty; normal preflight would stop before edits"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ "$active_cleanup_mode" = "apply" ]; then
+      cleanup_json=$("$repo_root/repo-automation/bin/branch-cleanup" --json --apply 2>/dev/null) || {
+        preflight_stop "branch-cleanup failed in apply mode"
+        command_status=1
+      }
+    else
+      cleanup_json=$("$repo_root/repo-automation/bin/branch-cleanup" --json --plan 2>/dev/null) || {
+        preflight_stop "branch-cleanup failed in plan mode"
+        command_status=1
+      }
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 1 ]; then
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || current_branch=""
+    divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null) || divergence="unknown"
+    [ "$preflight_json" -eq 1 ] || {
+      preflight_info "check-only complete"
+      preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch $requested_branch"
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    git checkout "$default_branch" >/dev/null 2>&1 || {
+      preflight_stop "failed to checkout $default_branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    git pull --ff-only || {
+      preflight_stop "git pull --ff-only failed on $default_branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    git remote prune "$remote_name" || {
+      preflight_stop "git remote prune failed for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    git fetch "$remote_name" --prune || {
+      preflight_stop "git fetch --prune failed for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    if command -v gh >/dev/null 2>&1; then
+      gh pr list --state open --json number,title,headRefName,baseRefName,isDraft,mergeable,statusCheckRollup >/dev/null 2>&1 || {
+        preflight_warn "gh is available but open PR listing failed"
+      }
+    elif [ "${PR_PROVIDER:-none}" = "github" ]; then
+      preflight_warn "gh not found; skipping open PR listing"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    if preflight_branch_exists_local "$requested_branch"; then
+      branch_preexists=1
+      git checkout "$requested_branch" >/dev/null 2>&1 || {
+        preflight_stop "failed to checkout existing branch: $requested_branch"
+        command_status=1
+      }
+    else
+      git switch -c "$requested_branch" >/dev/null 2>&1 || {
+        preflight_stop "failed to create branch: $requested_branch"
+        command_status=1
+      }
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+      preflight_stop "failed to determine current branch after checkout"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
+    preflight_stop "current branch is still default branch after preflight"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$preflight_require_clean" = "true" ]; then
+    worktree_status=$(git status --porcelain)
+    if [ -n "$worktree_status" ]; then
+      preflight_stop "working tree is dirty before edits begin"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null) || {
+      preflight_stop "failed to compute branch divergence"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+    behind_count=$(printf '%s' "$divergence" | awk '{print $1}')
+    ahead_count=$(printf '%s' "$divergence" | awk '{print $2}')
+
+    if [ "${behind_count:-0}" -gt 0 ] && [ "${ahead_count:-0}" -gt 0 ]; then
+      preflight_stop "branch diverged from $remote_name/$default_branch: $divergence"
+      command_status=1
+    fi
+
+    if [ "${ahead_count:-0}" -gt 0 ] && [ "$branch_preexists" -eq 0 ]; then
+      preflight_stop "new branch has unexpected ahead commits before edits: $divergence"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$preflight_json" -eq 0 ]; then
+    preflight_info "preflight ready"
+    preflight_info "current branch: $current_branch"
+    preflight_info "default branch: $default_branch"
+    preflight_info "divergence from $remote_name/$default_branch: $divergence"
+    preflight_info "next step: begin slice edits"
+  fi
+
+  if [ "$preflight_json" -eq 1 ]; then
+    preflight_print_json \
+      "$requested_branch" \
+      "${default_branch:-}" \
+      "${remote_name:-}" \
+      "${current_branch:-}" \
+      "${divergence:-}" \
+      "${active_cleanup_mode:-}" \
+      "${cleanup_json:-null}" \
+      "$preflight_stop_reason"
+  fi
+
+  return "$command_status"
+}
+
+preflight_main "$@"
+preflight_status=$?
+return "$preflight_status" 2>/dev/null || exit "$preflight_status"
+# repo-automation/bin/codex-slice-preflight EOF

@@ -1,0 +1,620 @@
+#!/usr/bin/env bash
+# repo-automation/bin/run-tests
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+run_tests_mode="summary"
+run_tests_json=0
+run_tests_json_level="warn"
+run_tests_log_enabled=1
+run_tests_log_file=""
+run_tests_timeout_seconds=120
+run_tests_timeout_available=""
+run_tests_timeout_warned=0
+run_tests_start_line="RUNNING repo automation tests..."
+run_tests_next_hint="Next: repo-automation/bin/run-tests --explain"
+run_tests_checks=()
+
+run_tests_usage() {
+  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--explain] [--quiet] [--timeout SECONDS] [--log-file FILE] [--no-log] [--json] [--json-level fail|warn|all] [--help]\n'
+}
+
+run_tests_timestamp() {
+  date '+%Y-%m-%dT%H%M%S'
+}
+
+run_tests_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//\"/\\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+run_tests_command_string() {
+  local arg
+  local quoted=""
+
+  for arg in "$@"; do
+    quoted+="$(printf '%q ' "$arg")"
+  done
+
+  printf '%s' "${quoted% }"
+}
+
+run_tests_timeout_supported() {
+  if [ -n "$run_tests_timeout_available" ]; then
+    [ "$run_tests_timeout_available" = "1" ]
+    return $?
+  fi
+
+  if command -v timeout >/dev/null 2>&1; then
+    run_tests_timeout_available=1
+  else
+    run_tests_timeout_available=0
+  fi
+
+  [ "$run_tests_timeout_available" = "1" ]
+}
+
+run_tests_timeout_warn_once() {
+  if [ "$run_tests_timeout_warned" -eq 1 ]; then
+    return 0
+  fi
+
+  run_tests_timeout_warned=1
+  run_tests_record_warn "timeout support unavailable" "timeout command not found; running checks without per-check timeout guards"
+}
+
+run_tests_init_log() {
+  local temp_root
+
+  if [ "$run_tests_log_enabled" -ne 1 ]; then
+    return 0
+  fi
+
+  if [ -z "$run_tests_log_file" ]; then
+    temp_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+    mkdir -p "$temp_root" >/dev/null 2>&1 || {
+      run_tests_log_enabled=0
+      run_tests_log_file=""
+      return 0
+    }
+    run_tests_log_file="$temp_root/run-tests-$(run_tests_timestamp).log"
+  fi
+
+  : >"$run_tests_log_file" 2>/dev/null || {
+    run_tests_log_enabled=0
+    run_tests_log_file=""
+    return 0
+  }
+}
+
+run_tests_log() {
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    printf '%s\n' "$*" >>"$run_tests_log_file"
+  fi
+}
+
+run_tests_add_check() {
+  local name="$1"
+  local status="$2"
+  local message="$3"
+  local timed_out="${4:-0}"
+
+  run_tests_checks+=("${name}|${status}|${timed_out}|${message}")
+  run_tests_log "${status^^}: ${name} - ${message}"
+}
+
+run_tests_record_pass() {
+  run_tests_add_check "$1" "pass" "$2" "0"
+}
+
+run_tests_record_warn() {
+  run_tests_add_check "$1" "warn" "$2" "0"
+}
+
+run_tests_record_fail() {
+  run_tests_add_check "$1" "fail" "$2" "${3:-0}"
+}
+
+run_tests_record_skip() {
+  run_tests_add_check "$1" "skipped" "$2" "0"
+}
+
+run_tests_run_cmd() {
+  local label="$1"
+  shift
+  local command_string
+  local exit_code=0
+  local timed_out=0
+  local timeout_seconds="$run_tests_timeout_seconds"
+  local use_timeout=0
+
+  command_string="$(run_tests_command_string "$@")"
+  run_tests_log "CHECK START: $label"
+  run_tests_log "COMMAND: $command_string"
+
+  if [ "$timeout_seconds" -gt 0 ] && run_tests_timeout_supported; then
+    use_timeout=1
+  elif [ "$timeout_seconds" -gt 0 ]; then
+    run_tests_timeout_warn_once
+  fi
+
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    if [ "$use_timeout" -eq 1 ]; then
+      timeout "${timeout_seconds}s" "$@" >>"$run_tests_log_file" 2>&1
+      exit_code=$?
+    else
+      "$@" >>"$run_tests_log_file" 2>&1
+      exit_code=$?
+    fi
+  else
+    if [ "$use_timeout" -eq 1 ]; then
+      timeout "${timeout_seconds}s" "$@" >/dev/null 2>&1
+      exit_code=$?
+    else
+      "$@" >/dev/null 2>&1
+      exit_code=$?
+    fi
+  fi
+
+  if [ "$exit_code" -eq 0 ]; then
+    run_tests_record_pass "$label" "passed"
+    run_tests_log "CHECK END: $label"
+    return 0
+  fi
+
+  if [ "$use_timeout" -eq 1 ] && [ "$exit_code" -eq 124 ]; then
+    timed_out=1
+    run_tests_record_fail "$label" "timed out after ${timeout_seconds}s" "$timed_out"
+  else
+    run_tests_record_fail "$label" "failed" "0"
+  fi
+  run_tests_log "CHECK END: $label"
+  return 1
+}
+
+run_tests_extract_smoke_failure() {
+  local output_file="$1"
+  local fail_line=""
+  local running_line=""
+
+  if [ ! -f "$output_file" ]; then
+    printf 'failed\n'
+    return 0
+  fi
+
+  fail_line="$(sed -n 's/^FAIL: //p' "$output_file" | head -n 1)"
+  if [ -n "$fail_line" ]; then
+    printf '%s\n' "$fail_line"
+    return 0
+  fi
+
+  running_line="$(sed -n 's/^RUNNING: //p' "$output_file" | tail -n 1)"
+  if [ -n "$running_line" ]; then
+    printf 'timed out during %s\n' "$running_line"
+    return 0
+  fi
+
+  printf 'failed\n'
+}
+
+run_tests_print_smoke_failure_excerpt() {
+  local output_file="$1"
+  local fail_line=""
+  local start_line=""
+  local end_line=""
+
+  if [ ! -f "$output_file" ]; then
+    return 0
+  fi
+
+  fail_line="$(grep -n '^FAIL: ' "$output_file" | head -n 1 | cut -d: -f1)"
+  if [ -z "$fail_line" ]; then
+    return 0
+  fi
+
+  start_line="$fail_line"
+  end_line=$((fail_line + 8))
+
+  printf 'SMOKE EXCERPT:\n'
+  sed -n "${start_line},${end_line}p" "$output_file"
+}
+
+run_tests_run_smoke() {
+  local label="$1"
+  shift
+  local command_string
+  local output_root
+  local output_file
+  local exit_code=0
+  local timed_out=0
+  local failure_message="failed"
+
+  command_string="$(run_tests_command_string "$@")"
+  output_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+  mkdir -p "$output_root" >/dev/null 2>&1 || output_root="${TMPDIR:-$HOME/.cache}"
+  output_file="$output_root/run-tests-smoke-$(run_tests_timestamp)-$$.log"
+
+  run_tests_log "CHECK START: $label"
+  run_tests_log "COMMAND: $command_string"
+
+  if [ "$run_tests_timeout_seconds" -gt 0 ] && run_tests_timeout_supported; then
+    timeout "${run_tests_timeout_seconds}s" "$@" >"$output_file" 2>&1
+    exit_code=$?
+  else
+    if [ "$run_tests_timeout_seconds" -gt 0 ]; then
+      run_tests_timeout_warn_once
+    fi
+    "$@" >"$output_file" 2>&1
+    exit_code=$?
+  fi
+
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    cat "$output_file" >>"$run_tests_log_file"
+  fi
+
+  if [ "$exit_code" -eq 0 ]; then
+    run_tests_record_pass "$label" "passed"
+    run_tests_log "CHECK END: $label"
+    rm -f "$output_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  if [ "$exit_code" -eq 124 ] && [ "$run_tests_timeout_seconds" -gt 0 ] && run_tests_timeout_supported; then
+    timed_out=1
+  fi
+
+  failure_message="$(run_tests_extract_smoke_failure "$output_file")"
+  if [ "$timed_out" -eq 1 ] && [ "$failure_message" = "failed" ]; then
+    failure_message="timed out after ${run_tests_timeout_seconds}s"
+  fi
+
+  run_tests_record_fail "$label" "$failure_message" "$timed_out"
+  if [ "$run_tests_json" -eq 0 ]; then
+    run_tests_print_smoke_failure_excerpt "$output_file"
+  fi
+  run_tests_log "CHECK END: $label"
+  rm -f "$output_file" >/dev/null 2>&1 || true
+  return 1
+}
+
+run_tests_counts() {
+
+
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local entry status
+
+  for entry in "${run_tests_checks[@]}"; do
+    status="${entry#*|}"
+    status="${status%%|*}"
+    case "$status" in
+      pass) pass_count=$((pass_count + 1)) ;;
+      warn) warn_count=$((warn_count + 1)) ;;
+      fail) fail_count=$((fail_count + 1)) ;;
+      skipped) skipped_count=$((skipped_count + 1)) ;;
+    esac
+  done
+
+  printf '%s %s %s %s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+}
+
+run_tests_print_human() {
+  local overall_status="$1"
+  local pass_count="$2"
+  local warn_count="$3"
+  local fail_count="$4"
+  local skipped_count="$5"
+  local entry name status message timed_out rest
+
+  if [ "$run_tests_mode" != "quiet" ]; then
+    printf '%s\n' "$run_tests_start_line"
+  fi
+
+  if [ "$run_tests_mode" = "explain" ]; then
+    for entry in "${run_tests_checks[@]}"; do
+      name="${entry%%|*}"
+      rest="${entry#*|}"
+      status="${rest%%|*}"
+      rest="${rest#*|}"
+      timed_out="${rest%%|*}"
+      message="${rest#*|}"
+      printf '%s: %s - %s\n' "${status^^}" "$name" "$message"
+    done
+  fi
+
+  printf 'RESULT: pass=%s warn=%s fail=%s skipped=%s\n' \
+    "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+
+  if [ "$warn_count" -gt 0 ]; then
+    printf 'WARN:\n'
+    for entry in "${run_tests_checks[@]}"; do
+      name="${entry%%|*}"
+      rest="${entry#*|}"
+      status="${rest%%|*}"
+      if [ "$status" = "warn" ]; then
+        printf -- '- %s\n' "$name"
+      fi
+    done
+  fi
+
+  if [ "$fail_count" -gt 0 ]; then
+    printf 'FAIL:\n'
+    for entry in "${run_tests_checks[@]}"; do
+      name="${entry%%|*}"
+      rest="${entry#*|}"
+      status="${rest%%|*}"
+      rest="${rest#*|}"
+      timed_out="${rest%%|*}"
+      message="${rest#*|}"
+      if [ "$status" = "fail" ]; then
+        if [ -n "$message" ] && [ "$message" != "failed" ]; then
+          printf -- '- %s (%s)\n' "$name" "$message"
+        else
+          printf -- '- %s\n' "$name"
+        fi
+      fi
+    done
+  fi
+
+  if [ "$run_tests_mode" != "quiet" ] && [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ] && [ "$run_tests_json" -eq 0 ]; then
+    printf 'Log: %s\n' "$run_tests_log_file"
+  fi
+
+  if [ "$warn_count" -gt 0 ] || [ "$fail_count" -gt 0 ]; then
+    printf '%s\n' "$run_tests_next_hint"
+  fi
+}
+
+run_tests_print_json() {
+
+  local overall_status="$1"
+  local pass_count="$2"
+  local warn_count="$3"
+  local fail_count="$4"
+  local skipped_count="$5"
+  local entry name status message timed_out rest json_checks=""
+  local first=1
+  local want_level="$run_tests_json_level"
+  local timed_out_json
+
+  for entry in "${run_tests_checks[@]}"; do
+    name="${entry%%|*}"
+    rest="${entry#*|}"
+    status="${rest%%|*}"
+    rest="${rest#*|}"
+    timed_out="${rest%%|*}"
+    message="${rest#*|}"
+
+    case "$want_level" in
+      fail)
+        [ "$status" = "fail" ] || continue
+        ;;
+      warn)
+        [ "$status" = "fail" ] || [ "$status" = "warn" ] || continue
+        ;;
+      all)
+        ;;
+    esac
+
+    if [ "$first" -eq 0 ]; then
+      json_checks+=', '
+    fi
+    if [ "$timed_out" = "1" ]; then
+      timed_out_json=true
+    else
+      timed_out_json=false
+    fi
+    json_checks+="{\"name\":\"$(run_tests_json_escape "$name")\","
+    json_checks+="\"status\":\"$(run_tests_json_escape "$status")\","
+    json_checks+="\"message\":\"$(run_tests_json_escape "$message")\","
+    json_checks+="\"timed_out\":${timed_out_json}}"
+    first=0
+  done
+
+  printf '{'
+  printf '"script":"run-tests",'
+  printf '"mode":"%s",' "$(run_tests_json_escape "$run_tests_mode")"
+  printf '"overall_status":"%s",' "$(run_tests_json_escape "$overall_status")"
+  printf '"pass_count":%s,' "$pass_count"
+  printf '"warn_count":%s,' "$warn_count"
+  printf '"fail_count":%s,' "$fail_count"
+  printf '"skipped_count":%s,' "$skipped_count"
+  printf '"json_level":"%s",' "$(run_tests_json_escape "$run_tests_json_level")"
+  printf '"checks":[%s],' "$json_checks"
+  printf '"log_file":"%s"' "$(run_tests_json_escape "$run_tests_log_file")"
+  printf '}\n'
+}
+
+run_tests_main() {
+  local arg
+  local status=0
+  local repo_root
+  local counts
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local overall_status="pass"
+  local timeout_value="$run_tests_timeout_seconds"
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        run_tests_usage
+        return 0
+        ;;
+      --summary)
+        run_tests_mode="summary"
+        ;;
+      --audit)
+        run_tests_mode="audit"
+        ;;
+      --explain)
+        run_tests_mode="explain"
+        ;;
+      --quiet)
+        run_tests_mode="quiet"
+        ;;
+      --timeout)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_auto_stop "--timeout requires a value"
+          return 1
+        fi
+        if repo_auto_is_positive_integer "$1"; then
+          timeout_value="$1"
+        else
+          repo_auto_stop "invalid --timeout value: $1"
+          return 1
+        fi
+        ;;
+      --log-file)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_auto_stop "--log-file requires a path"
+          return 1
+        fi
+        run_tests_log_file="$1"
+        run_tests_log_enabled=1
+        ;;
+      --no-log)
+        run_tests_log_enabled=0
+        run_tests_log_file=""
+        ;;
+      --json)
+        run_tests_json=1
+        ;;
+      --json-level)
+        shift
+        if [ "$#" -eq 0 ]; then
+          repo_auto_stop "--json-level requires a value"
+          return 1
+        fi
+        case "$1" in
+          fail|warn|all)
+            run_tests_json_level="$1"
+            ;;
+          *)
+            repo_auto_stop "invalid --json-level value: $1"
+            return 1
+            ;;
+        esac
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  run_tests_timeout_seconds="$timeout_value"
+  run_tests_init_log
+
+  repo_root="$(repo_auto_repo_root)" || {
+    run_tests_record_fail "resolve repo root" "failed"
+    counts="$(run_tests_counts)"
+    IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+    overall_status="fail"
+    if [ "$run_tests_json" -eq 1 ]; then
+      run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    else
+      run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    fi
+    return 1
+  }
+
+  cd "$repo_root" || {
+    run_tests_record_fail "cd repo root" "failed"
+    counts="$(run_tests_counts)"
+    IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+    overall_status="fail"
+    if [ "$run_tests_json" -eq 1 ]; then
+      run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    else
+      run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    fi
+    return 1
+  }
+
+  run_tests_log "$run_tests_start_line"
+
+  if [ "$run_tests_timeout_seconds" -gt 0 ] && ! run_tests_timeout_supported; then
+    run_tests_timeout_warn_once
+  fi
+
+  run_tests_run_cmd "bash syntax repo-automation/lib/common.sh" bash -n repo-automation/lib/common.sh || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/branch-cleanup" bash -n repo-automation/bin/branch-cleanup || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/codex-slice-preflight" bash -n repo-automation/bin/codex-slice-preflight || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/pr-finish" bash -n repo-automation/bin/pr-finish || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/add-doc-pr" bash -n repo-automation/bin/add-doc-pr || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-report-upstream" bash -n repo-automation/bin/repo-automation-report-upstream || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/repo-doctor" bash -n repo-automation/bin/repo-doctor || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-install" bash -n repo-automation/bin/repo-automation-install || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/run-tests" bash -n repo-automation/bin/run-tests || status=1
+  run_tests_run_cmd "bash syntax repo-automation/tests/docs-check.sh" bash -n repo-automation/tests/docs-check.sh || status=1
+  run_tests_run_cmd "bash syntax repo-automation/tests/smoke.sh" bash -n repo-automation/tests/smoke.sh || status=1
+  run_tests_run_cmd "bash syntax repo-automation/tests/version-consistency.sh" bash -n repo-automation/tests/version-consistency.sh || status=1
+
+  if command -v shellcheck >/dev/null 2>&1; then
+    run_tests_run_cmd       "shellcheck repo-automation scripts and tests"       shellcheck       -e SC2317       repo-automation/bin/branch-cleanup       repo-automation/bin/codex-slice-preflight       repo-automation/bin/pr-finish       repo-automation/bin/add-doc-pr       repo-automation/bin/repo-automation-report-upstream       repo-automation/bin/repo-doctor       repo-automation/bin/repo-automation-install       repo-automation/bin/run-tests       repo-automation/tests/docs-check.sh       repo-automation/tests/smoke.sh       repo-automation/tests/version-consistency.sh || status=1
+  else
+    run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
+  fi
+
+  run_tests_run_cmd "repo-automation/bin/pr-finish --help" bash -c 'repo-automation/bin/pr-finish --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/add-doc-pr --help" bash -c 'repo-automation/bin/add-doc-pr --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/repo-automation-report-upstream --help" bash -c 'repo-automation/bin/repo-automation-report-upstream --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/repo-doctor --help" bash -c 'repo-automation/bin/repo-doctor --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/repo-automation-install --help" bash -c 'repo-automation/bin/repo-automation-install --help >/dev/null' || status=1
+  if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
+    run_tests_record_skip "repo-automation/tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"
+  else
+    run_tests_run_smoke "repo-automation/tests/smoke.sh" repo-automation/tests/smoke.sh || status=1
+  fi
+  run_tests_run_cmd "repo-automation/tests/docs-check.sh" repo-automation/tests/docs-check.sh || status=1
+  run_tests_run_cmd "repo-automation/tests/version-consistency.sh" repo-automation/tests/version-consistency.sh || status=1
+
+  counts="$(run_tests_counts)"
+  IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+
+  if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+    overall_status="fail"
+  elif [ "$warn_count" -gt 0 ]; then
+    overall_status="warn"
+  else
+    overall_status="pass"
+  fi
+
+  if [ "$run_tests_json" -eq 1 ]; then
+    run_tests_print_json       "$overall_status"       "$pass_count"       "$warn_count"       "$fail_count"       "$skipped_count"
+  else
+    run_tests_print_human       "$overall_status"       "$pass_count"       "$warn_count"       "$fail_count"       "$skipped_count"
+  fi
+
+  if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+    return 1
+  fi
+  return 0
+}
+
+run_tests_main "$@"
+# repo-automation/bin/run-tests EOF
