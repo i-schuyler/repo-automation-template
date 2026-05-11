@@ -4,80 +4,84 @@
 set -u
 set -o pipefail
 
-version_info() {
-  printf 'PASS: %s\n' "$1"
-}
-
-version_fail() {
-  printf 'FAIL: %s\n' "$1" >&2
-}
-
 version_main() {
   local repo_root
   local expected_version
-  local status=0
 
   repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
   cd "$repo_root" || return 1
 
+  if [ -x repo-automation/bin/prepare-release ]; then
+    repo-automation/bin/prepare-release --check "$@"
+    return $?
+  fi
+
   if [ ! -f VERSION ]; then
-    version_fail "VERSION exists"
+    printf 'FAIL: VERSION exists
+' >&2
     return 1
   fi
-  version_info "VERSION exists"
 
   expected_version="$(tr -d '[:space:]' < VERSION)"
   if [ -z "$expected_version" ]; then
-    version_fail "VERSION is non-empty"
+    printf 'FAIL: VERSION is non-empty
+' >&2
     return 1
   fi
-  version_info "VERSION is non-empty"
 
-  if grep -q "^REPO_AUTOMATION_VERSION=\"$expected_version\"$" .repo-automation.conf; then
-    version_info ".repo-automation.conf REPO_AUTOMATION_VERSION matches VERSION"
+  if grep -q '^REPO_AUTOMATION_VERSION="'"$expected_version"'"$' .repo-automation.conf; then
+    printf 'PASS: .repo-automation.conf REPO_AUTOMATION_VERSION matches VERSION
+'
   else
-    version_fail ".repo-automation.conf REPO_AUTOMATION_VERSION matches VERSION"
-    status=1
+    printf 'FAIL: .repo-automation.conf REPO_AUTOMATION_VERSION matches VERSION
+' >&2
+    return 1
   fi
 
   if grep -q "Current version: $expected_version" README.md; then
-    version_info "README current version matches VERSION"
+    printf 'PASS: README current version matches VERSION
+'
   else
-    version_fail "README current version matches VERSION"
-    status=1
+    printf 'FAIL: README current version matches VERSION
+' >&2
+    return 1
   fi
 
   if grep -q "^## \[$expected_version\] - Unreleased$" CHANGELOG.md; then
-    version_info "CHANGELOG has unreleased heading for VERSION"
+    printf 'PASS: CHANGELOG has unreleased heading for VERSION
+'
   else
-    version_fail "CHANGELOG has unreleased heading for VERSION"
-    status=1
+    printf 'FAIL: CHANGELOG has unreleased heading for VERSION
+' >&2
+    return 1
   fi
 
   if grep -q "| Current version line | starts at $expected_version |" docs/DECISIONS.md; then
-    version_info "DECISIONS current version line matches VERSION"
+    printf 'PASS: DECISIONS current version line matches VERSION
+'
   else
-    version_fail "DECISIONS current version line matches VERSION"
-    status=1
+    printf 'FAIL: DECISIONS current version line matches VERSION
+' >&2
+    return 1
   fi
 
-  if grep -q "Version numbers must stay aligned in these places:" docs/VERSIONING.md && \
-     grep -q "repo-automation/tests/version-consistency.sh" docs/VERSIONING.md; then
-    version_info "VERSIONING documents version placements and test guard"
+  if grep -q "Version numbers must stay aligned in these places:" docs/VERSIONING.md &&      grep -q "repo-automation/tests/version-consistency.sh" docs/VERSIONING.md; then
+    printf 'PASS: VERSIONING documents version placements and test guard
+'
   else
-    version_fail "VERSIONING documents version placements and test guard"
-    status=1
+    printf 'FAIL: VERSIONING documents version placements and test guard
+' >&2
+    return 1
   fi
 
-  if grep -q "^REPO_AUTOMATION_VERSION=\"$expected_version\"$" examples/downstream/.repo-automation.conf.example || \
-     grep -q "^INSTALLED_VERSION_OR_REF=\"${expected_version}-EXAMPLE\"$" examples/downstream/.repo-automation.conf.example; then
-    version_info "downstream example version is aligned or explicit EXAMPLE suffix"
+  if grep -q '^REPO_AUTOMATION_VERSION="'"$expected_version"'"$' examples/downstream/.repo-automation.conf.example ||      grep -q '^INSTALLED_VERSION_OR_REF="'"${expected_version}-EXAMPLE"'"$' examples/downstream/.repo-automation.conf.example; then
+    printf 'PASS: downstream example version is aligned or explicit EXAMPLE suffix
+'
   else
-    version_fail "downstream example version is aligned or explicit EXAMPLE suffix"
-    status=1
+    printf 'FAIL: downstream example version is aligned or explicit EXAMPLE suffix
+' >&2
+    return 1
   fi
-
-  return "$status"
 }
 
 version_main "$@"

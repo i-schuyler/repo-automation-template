@@ -1,0 +1,501 @@
+#!/usr/bin/env bash
+# repo-automation/bin/prepare-release
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+prepare_release_mode="check"
+prepare_release_version=""
+prepare_release_machine_json=0
+prepare_release_help=0
+
+prepare_release_usage() {
+  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=SEMVER] [--dry-run] [--apply] [--machine-json] [--help]\n'
+}
+
+prepare_release_stop() {
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+prepare_release_validate_version() {
+  local value="${1:-}"
+
+  [[ "$value" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9._-]*)?$ ]]
+}
+
+prepare_release_main() {
+  local arg
+  local repo_root=""
+  local have_version=0
+  local have_check=0
+  local have_dry_run=0
+  local have_apply=0
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        prepare_release_help=1
+        prepare_release_usage
+        return 0
+        ;;
+      --machine-json)
+        prepare_release_machine_json=1
+        ;;
+      --check)
+        have_check=1
+        prepare_release_mode="check"
+        ;;
+      --dry-run)
+        have_dry_run=1
+        prepare_release_mode="dry-run"
+        ;;
+      --apply)
+        have_apply=1
+        prepare_release_mode="apply"
+        ;;
+      --version=*)
+        prepare_release_version="${arg#--version=}"
+        have_version=1
+        ;;
+      --version)
+        shift
+        if [ "$#" -eq 0 ]; then
+          prepare_release_stop "--version requires a value"
+          return 1
+        fi
+        prepare_release_version="$1"
+        have_version=1
+        ;;
+      *)
+        prepare_release_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$have_check" -eq 1 ] && [ "$have_version" -eq 1 ]; then
+    prepare_release_stop "--check cannot be combined with --version"
+    return 1
+  fi
+
+  if [ "$have_check" -eq 1 ] && { [ "$have_dry_run" -eq 1 ] || [ "$have_apply" -eq 1 ]; }; then
+    prepare_release_stop "--check cannot be combined with --dry-run or --apply"
+    return 1
+  fi
+
+  if [ "$have_dry_run" -eq 1 ] && [ "$have_apply" -eq 1 ]; then
+    prepare_release_stop "--dry-run cannot be combined with --apply"
+    return 1
+  fi
+
+  if [ "$have_version" -eq 1 ] && ! prepare_release_validate_version "$prepare_release_version"; then
+    prepare_release_stop "invalid --version value: $prepare_release_version"
+    return 1
+  fi
+
+  repo_root="$(repo_auto_repo_root)" || {
+    prepare_release_stop "failed to determine repo root"
+    return 1
+  }
+
+  cd "$repo_root" || {
+    prepare_release_stop "failed to enter repo root: $repo_root"
+    return 1
+  }
+
+  if [ "$have_check" -eq 0 ] && [ "$have_dry_run" -eq 0 ] && [ "$have_apply" -eq 0 ]; then
+    if [ "$have_version" -eq 1 ]; then
+      prepare_release_mode="dry-run"
+    else
+      prepare_release_mode="check"
+    fi
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    prepare_release_stop "python3 is required"
+    return 1
+  fi
+
+  PREPARE_RELEASE_MODE="$prepare_release_mode" \
+    PREPARE_RELEASE_VERSION="$prepare_release_version" \
+    PREPARE_RELEASE_MACHINE_JSON="$prepare_release_machine_json" \
+    PREPARE_RELEASE_HELP="$prepare_release_help" \
+    python3 - "$repo_root" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+mode = os.environ.get("PREPARE_RELEASE_MODE", "check")
+requested_version = os.environ.get("PREPARE_RELEASE_VERSION", "")
+machine_json = os.environ.get("PREPARE_RELEASE_MACHINE_JSON") == "1"
+
+version_pattern = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9._-]*)?$")
+
+result = {
+    "script": "prepare-release",
+    "mode": mode,
+    "repo_root": str(repo_root),
+    "source_version": "",
+    "target_version": "",
+    "overall_status": "fail",
+    "planned_count": 0,
+    "updated_count": 0,
+    "unchanged_count": 0,
+    "skipped_count": 0,
+    "missing_count": 0,
+    "results": [],
+    "stop_reason": "",
+}
+
+
+def stop(message: str) -> int:
+    result["stop_reason"] = message
+    if machine_json:
+        print(json.dumps(result, separators=(",", ":")))
+    else:
+        print(f"STOP: {message}", file=sys.stderr)
+    return 1
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+
+
+def trim_trailing_newlines(text: str) -> str:
+    return text.rstrip("\n")
+
+
+def ensure_terminal_newline(text: str) -> str:
+    if text.endswith("\n"):
+        return text
+    return text + "\n"
+
+
+def parse_version(value: str, label: str) -> str:
+    value = trim_trailing_newlines(value.strip())
+    if not value:
+        raise ValueError(f"{label} is empty")
+    if not version_pattern.fullmatch(value):
+        raise ValueError(f"invalid {label}: {value}")
+    return value
+
+
+def record(path: str, field: str, status: str, before: str = "", after: str = "", reason: str = "") -> None:
+    result["results"].append(
+        {
+            "path": path,
+            "field": field,
+            "status": status,
+            "before": before,
+            "after": after,
+            "reason": reason,
+        }
+    )
+    if status == "planned":
+        result["planned_count"] += 1
+    elif status == "updated":
+        result["updated_count"] += 1
+    elif status == "match":
+        result["unchanged_count"] += 1
+    elif status == "skipped":
+        result["skipped_count"] += 1
+    elif status == "missing":
+        result["missing_count"] += 1
+
+
+def record_change(path: Path, field: str, before: str, after: str, apply_mode: str) -> None:
+    if apply_mode == "check":
+        record(str(path), field, "mismatch", before, after)
+        result["overall_status"] = "fail"
+    elif apply_mode == "dry-run":
+        record(str(path), field, "planned", before, after)
+    else:
+        record(str(path), field, "updated", before, after)
+
+
+def update_version_line(text: str, target_version: str):
+    pattern = r"^(Current version: )(.+)$"
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        return text, False, ""
+    before = match.group(2).strip()
+    if before == target_version:
+        return text, False, before
+    new_text = re.sub(pattern, rf"\g<1>{target_version}", text, count=1, flags=re.M)
+    return new_text, True, before
+
+
+def update_release_heading(text: str, target_version: str):
+    pattern = r"^## \[[^]]+\] - Unreleased$"
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        return text, False, ""
+    before = match.group(0)
+    after = f"## [{target_version}] - Unreleased"
+    if before == after:
+        return text, False, before
+    new_text = re.sub(pattern, after, text, count=1, flags=re.M)
+    return new_text, True, before
+
+
+def update_decisions_version(text: str, target_version: str):
+    pattern = r"^(\| Current version line \| starts at )([^|]+)( \|)$"
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        return text, False, ""
+    before = match.group(2).strip()
+    if before == target_version:
+        return text, False, before
+    new_text = re.sub(pattern, rf"\g<1>{target_version}\g<3>", text, count=1, flags=re.M)
+    return new_text, True, before
+
+
+def update_downstream_ref(text: str, target_version: str, suffix: str = ""):
+    pattern = r"^(- Installed version/ref: )(.+)$"
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        return text, False, ""
+    before = match.group(2).strip()
+    after = f"{target_version}{suffix}"
+    if before == after:
+        return text, False, before
+    new_text = re.sub(pattern, rf"\g<1>{after}", text, count=1, flags=re.M)
+    return new_text, True, before
+
+
+def update_installed_version_reference(text: str, target_version: str):
+    config_pattern = r'^(INSTALLED_VERSION_OR_REF=")([^"]*)(")$'
+    config_match = re.search(config_pattern, text, flags=re.M)
+    if config_match:
+        before = config_match.group(2)
+        if before == target_version:
+            return text, False, before
+        new_text = re.sub(config_pattern, rf'\g<1>{target_version}\g<3>', text, count=1, flags=re.M)
+        return new_text, True, before
+
+    example_text, changed, before = update_downstream_ref(text, target_version)
+    if changed:
+        return example_text, True, before
+    return text, False, ""
+
+
+def update_config_key(text: str, key: str, target_value: str):
+    pattern = rf"^({re.escape(key)}=\")([^\"]*)(\")$"
+    match = re.search(pattern, text, flags=re.M)
+    if not match:
+        return text, False, ""
+    before = match.group(2)
+    if before == target_value:
+        return text, False, before
+    new_text = re.sub(pattern, rf"\g<1>{target_value}\g<3>", text, count=1, flags=re.M)
+    return new_text, True, before
+
+
+def process_file(path: Path, target_version: str, apply_mode: str):
+    if not path.exists():
+        record(str(path), "file", "missing", reason="file is missing")
+        return
+
+    text = read_text(path)
+    updated = text
+    changed = False
+    rel = path.relative_to(repo_root).as_posix()
+
+    if rel == "VERSION":
+        before = trim_trailing_newlines(text).strip()
+        if before == target_version:
+            record(str(path), "version", "match", before, target_version)
+            return
+        if apply_mode == "check":
+            record(str(path), "version", "mismatch", before, target_version)
+            result["overall_status"] = "fail"
+            return
+        updated = ensure_terminal_newline(target_version)
+        record_change(path, "version", before, target_version, apply_mode)
+        changed = True
+    elif rel == "README.md":
+        updated, changed, before = update_version_line(text, target_version)
+        if changed:
+            record_change(path, "current version", before, target_version, apply_mode)
+        elif before:
+            record(str(path), "current version", "match", before, target_version)
+        else:
+            record(str(path), "current version", "skipped", reason="no visible version line")
+    elif rel == "CHANGELOG.md":
+        updated, changed, before = update_release_heading(text, target_version)
+        if changed:
+            record_change(path, "release heading", before, f"## [{target_version}] - Unreleased", apply_mode)
+        elif before:
+            record(str(path), "release heading", "match", before, f"## [{target_version}] - Unreleased")
+        else:
+            record(str(path), "release heading", "skipped", reason="no unreleased heading")
+    elif rel == "docs/VERSIONING.md":
+        updated, changed, before = update_version_line(text, target_version)
+        if changed:
+            record_change(path, "current version", before, target_version, apply_mode)
+        elif before:
+            record(str(path), "current version", "match", before, target_version)
+        else:
+            record(str(path), "current version", "skipped", reason="no visible version line")
+    elif rel == "docs/DECISIONS.md":
+        updated, changed, before = update_decisions_version(text, target_version)
+        if changed:
+            record_change(path, "current version line", before, target_version, apply_mode)
+        elif before:
+            record(str(path), "current version line", "match", before, target_version)
+        else:
+            record(str(path), "current version line", "skipped", reason="no current version line")
+    elif rel == ".repo-automation.conf":
+        updated, changed, before = update_config_key(text, "REPO_AUTOMATION_VERSION", target_version)
+        if changed:
+            record_change(path, "REPO_AUTOMATION_VERSION", before, target_version, apply_mode)
+        else:
+            if before:
+                record(str(path), "REPO_AUTOMATION_VERSION", "match", before, target_version)
+            else:
+                record(str(path), "REPO_AUTOMATION_VERSION", "missing", reason="missing REPO_AUTOMATION_VERSION")
+        text = updated
+        updated, changed, before = update_config_key(text, "INSTALLED_VERSION_OR_REF", target_version)
+        if changed:
+            record_change(path, "INSTALLED_VERSION_OR_REF", before, target_version, apply_mode)
+        elif before:
+            record(str(path), "INSTALLED_VERSION_OR_REF", "match", before, target_version)
+        else:
+            record(str(path), "INSTALLED_VERSION_OR_REF", "missing", reason="missing INSTALLED_VERSION_OR_REF")
+    elif rel == "examples/downstream/.repo-automation.conf.example":
+        updated, changed, before = update_config_key(text, "REPO_AUTOMATION_VERSION", target_version)
+        if changed:
+            record_change(path, "REPO_AUTOMATION_VERSION", before, target_version, apply_mode)
+        elif before:
+            record(str(path), "REPO_AUTOMATION_VERSION", "match", before, target_version)
+        else:
+            record(str(path), "REPO_AUTOMATION_VERSION", "missing", reason="missing REPO_AUTOMATION_VERSION")
+        text = updated
+        updated, changed, before = update_config_key(text, "INSTALLED_VERSION_OR_REF", f"{target_version}-EXAMPLE")
+        if changed:
+            record_change(path, "INSTALLED_VERSION_OR_REF", before, f"{target_version}-EXAMPLE", apply_mode)
+        elif before:
+            record(str(path), "INSTALLED_VERSION_OR_REF", "match", before, f"{target_version}-EXAMPLE")
+        else:
+            record(str(path), "INSTALLED_VERSION_OR_REF", "missing", reason="missing INSTALLED_VERSION_OR_REF")
+    elif rel == "docs/DOWNSTREAM_FEEDBACK.md":
+        updated, changed, before = update_installed_version_reference(text, target_version)
+        if changed:
+            record_change(path, "installed version/ref", before, target_version, apply_mode)
+        elif before:
+            record(str(path), "installed version/ref", "match", before, target_version)
+        else:
+            record(str(path), "installed version/ref", "skipped", reason="no installed version/ref line")
+    elif rel == "examples/downstream/docs/repo-automation/README.md":
+        updated, changed, before = update_downstream_ref(text, target_version, "-EXAMPLE")
+        if changed:
+            record_change(path, "installed version/ref", before, f"{target_version}-EXAMPLE", apply_mode)
+        elif before:
+            record(str(path), "installed version/ref", "match", before, f"{target_version}-EXAMPLE")
+        else:
+            record(str(path), "installed version/ref", "skipped", reason="no installed version/ref line")
+
+    if changed and apply_mode == "apply":
+        write_text(path, updated)
+
+
+def emit_human() -> None:
+    print(f"INFO: mode: {mode}")
+    print(f"INFO: source version: {result['source_version']}")
+    print(f"INFO: target version: {result['target_version']}")
+    if result["results"]:
+        print("INFO: placements:")
+        for entry in result["results"]:
+            status = entry["status"]
+            path = entry["path"]
+            field = entry["field"]
+            before = entry["before"]
+            after = entry["after"]
+            reason = entry["reason"]
+            if status in {"planned", "updated"}:
+                print(f"INFO:   {path} {field}: {before} -> {after}")
+            elif status == "match":
+                print(f"PASS: {path} {field} matches {after}")
+            elif status == "skipped":
+                print(f"INFO:   {path} {field}: skipped ({reason})")
+            elif status == "missing":
+                print(f"FAIL: {path} {field}: missing ({reason})")
+            elif status == "mismatch":
+                print(f"FAIL: {path} {field}: {before} != {after}")
+    print(f"INFO: summary: planned={result['planned_count']} updated={result['updated_count']} unchanged={result['unchanged_count']} skipped={result['skipped_count']} missing={result['missing_count']}")
+
+
+try:
+    version_file = repo_root / "VERSION"
+    if not version_file.is_file():
+        raise FileNotFoundError(f"missing VERSION file: {version_file}")
+
+    source_version = parse_version(version_file.read_text(encoding="utf-8"), "VERSION")
+    target_version = requested_version or source_version
+    if not version_pattern.fullmatch(target_version):
+        raise ValueError(f"invalid target version: {target_version}")
+
+    result["source_version"] = source_version
+    result["target_version"] = target_version
+
+    if mode == "check":
+        if target_version != source_version:
+            raise ValueError("check mode does not accept --version")
+
+    files = [
+        repo_root / "VERSION",
+        repo_root / "README.md",
+        repo_root / "CHANGELOG.md",
+        repo_root / "docs" / "VERSIONING.md",
+        repo_root / "docs" / "DECISIONS.md",
+        repo_root / ".repo-automation.conf",
+        repo_root / "examples" / "downstream" / ".repo-automation.conf.example",
+        repo_root / "examples" / "downstream" / "docs" / "repo-automation" / "README.md",
+        repo_root / "docs" / "DOWNSTREAM_FEEDBACK.md",
+    ]
+
+    for file_path in files:
+        process_file(file_path, target_version, apply_mode=mode)
+
+    if mode == "check":
+        for entry in result["results"]:
+            if entry["status"] in {"mismatch", "missing"}:
+                result["overall_status"] = "fail"
+                break
+        else:
+            result["overall_status"] = "pass"
+    else:
+        result["overall_status"] = "pass"
+
+    if machine_json:
+        print(json.dumps(result, separators=(",", ":")))
+    else:
+        emit_human()
+
+    sys.exit(0 if result["overall_status"] == "pass" else 1)
+except Exception as exc:
+    raise SystemExit(stop(str(exc)))
+PY
+}
+
+prepare_release_main "$@"
+# repo-automation/bin/prepare-release EOF

@@ -35,3 +35,32 @@ Required behavior:
 - Installed downstream examples must show the same version or an explicit placeholder.
 
 CI enforces this through `repo-automation/tests/version-consistency.sh`.
+
+## Prepare Release Helper
+
+Use `repo-automation/bin/prepare-release` when you are ready to preview or apply a version update.
+
+Human-readable examples:
+
+```sh
+repo-automation/bin/prepare-release --check
+repo-automation/bin/prepare-release --version=0.2.0 --dry-run
+repo-automation/bin/prepare-release --version=0.2.0 --apply
+```
+
+Machine-readable example:
+
+```sh
+repo-automation/bin/prepare-release --check --machine-json
+```
+
+Mode summary:
+
+- `--check` reads `VERSION` as the expected version and reports any managed placement drift.
+- `--version=<semver>` sets the release target version for dry-run or apply flows.
+- `--dry-run` reports planned file changes without modifying files.
+- `--apply` updates all managed version placements.
+- `--machine-json` emits parseable JSON.
+- `--help` prints a usage summary.
+
+The helper keeps changelog edits conservative, does not touch `REPO_AUTOMATION_CONF_VERSION`, and only updates placements when the expected pattern is already present.

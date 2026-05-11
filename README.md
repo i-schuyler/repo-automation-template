@@ -49,6 +49,7 @@ These names define the implemented helper set.
 - `repo-automation/bin/branch-cleanup`
 - `repo-automation/bin/pr-finish`
 - `repo-automation/bin/add-doc-pr`
+- `repo-automation/bin/prepare-release`
 - `repo-automation/bin/repo-automation-report-upstream`
 - `repo-automation/bin/repo-doctor`
 - `repo-automation/bin/automation-freshness`
@@ -104,6 +105,7 @@ Downstream repos can now use `repo-automation/bin/repo-automation-report-upstrea
 `repo-automation/bin/repo-doctor` now provides a read-only PASS/WARN/FAIL health summary for config, scripts, tests, CI permissions, manifest freshness, docs links, and issue templates.
 `repo-automation/bin/automation-freshness` checks the repo-owned automation manifest against the current working tree and supports `--machine-json` and `--source-root=/path/to/checkout`.
 `repo-automation/bin/repo-automation-install` now provides terminal preview/apply flows for installing or updating managed repo automation files into downstream repos.
+`repo-automation/bin/prepare-release` now provides terminal `--check`, `--dry-run`, `--apply`, and `--machine-json` flows for repo-local version placement updates.
 The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST.md](docs/WORKFLOW_AUDIT_CHECKLIST.md) and remains coming soon.
 
 

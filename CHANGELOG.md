@@ -40,6 +40,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added repo doctor helper.
 - Added doctor smoke coverage.
 - Added downstream install/update helper.
+- Added local prepare-release helper for version checks, dry-run previews, apply updates, and machine JSON output.
 - Added downstream install docs and smoke coverage.
 - Included `repo-automation/tests/lib/test-common.sh` in downstream `--include-tests` install plans and apply sets.
 - Fixed add-doc-pr smoke baseline and installer remote fallback contract checks.
