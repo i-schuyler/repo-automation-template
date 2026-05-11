@@ -26,19 +26,19 @@ jobs:
       - name: Run checks
         run: |
           git diff --check
-          bash -n scripts/lib/repo-automation-common.sh
-          bash -n scripts/branch-cleanup
-          bash -n scripts/codex-slice-preflight
-          bash -n scripts/pr-finish
-          bash -n scripts/add-doc-pr
-          bash -n scripts/repo-automation-report-upstream
-          bash -n scripts/repo-doctor
-          bash -n scripts/repo-automation-install
-          bash -n scripts/run-tests
-          bash -n tests/docs-check.sh
-          bash -n tests/smoke.sh
-          bash -n tests/version-consistency.sh
+          bash -n repo-automation/lib/common.sh
+          bash -n repo-automation/bin/branch-cleanup
+          bash -n repo-automation/bin/codex-slice-preflight
+          bash -n repo-automation/bin/pr-finish
+          bash -n repo-automation/bin/add-doc-pr
+          bash -n repo-automation/bin/repo-automation-report-upstream
+          bash -n repo-automation/bin/repo-doctor
+          bash -n repo-automation/bin/repo-automation-install
+          bash -n repo-automation/bin/run-tests
+          bash -n repo-automation/tests/docs-check.sh
+          bash -n repo-automation/tests/smoke.sh
+          bash -n repo-automation/tests/version-consistency.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck -e SC2317 scripts/branch-cleanup scripts/codex-slice-preflight scripts/pr-finish scripts/add-doc-pr scripts/repo-automation-report-upstream scripts/repo-doctor scripts/repo-automation-install scripts/run-tests tests/docs-check.sh tests/smoke.sh tests/version-consistency.sh
+            shellcheck -e SC2317 repo-automation/bin/branch-cleanup repo-automation/bin/codex-slice-preflight repo-automation/bin/pr-finish repo-automation/bin/add-doc-pr repo-automation/bin/repo-automation-report-upstream repo-automation/bin/repo-doctor repo-automation/bin/repo-automation-install repo-automation/bin/run-tests repo-automation/tests/docs-check.sh repo-automation/tests/smoke.sh repo-automation/tests/version-consistency.sh
           fi
-          scripts/run-tests
+          repo-automation/bin/run-tests

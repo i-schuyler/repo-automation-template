@@ -12,7 +12,7 @@ UPSTREAM_ISSUE_URL="https://github.com/i-schuyler/repo-automation-template/issue
 INSTALLED_FROM="i-schuyler/repo-automation-template"
 INSTALLED_VERSION_OR_REF="0.1.0"
 INSTALLED_AT="YYYY-MM-DD"
-LOCAL_OVERRIDES_DOC="docs/repo-automation/local-overrides.md"
+LOCAL_OVERRIDES_DOC="repo-automation/docs/local-overrides.md"
 ```
 
 ## What To File Upstream
@@ -26,7 +26,7 @@ Redact secrets before filing. Do not paste tokens, private keys, passphrases, pr
 ## Terminal Helper
 
 ```sh
-scripts/repo-automation-report-upstream --type bug|feature
+repo-automation/bin/repo-automation-report-upstream --type=bug|feature
 ```
 
 Implemented helper behavior:

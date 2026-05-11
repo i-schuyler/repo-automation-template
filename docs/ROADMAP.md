@@ -33,10 +33,10 @@
 ## Slice 3: CI/Test Scaffold + Version Consistency Guard (Completed)
 
 - GitHub Actions CI scaffold with minimal permissions
-- `scripts/run-tests` local validation entrypoint
+- `repo-automation/bin/run-tests` local validation entrypoint
 - smoke tests for branch cleanup and preflight
 - JSON parseability checks in local and CI paths
-- version consistency guard via `tests/version-consistency.sh`
+- version consistency guard via `repo-automation/tests/version-consistency.sh`
 
 ## Slice 4: PR Finish + JSON Status (Completed)
 
@@ -72,7 +72,7 @@
 
 ## Slice 8: Downstream Installer/Import/Update Helper (Completed)
 
-- `scripts/repo-automation-install` install/update helper
+- `repo-automation/bin/repo-automation-install` install/update helper
 - provenance recording
 - installed version/ref checks
 - copyable installed-version/context block
@@ -96,7 +96,7 @@
 - compatibility mode for CI/PR providers
 - reusable GitHub Actions workflows as CI-only complement
 - package as template directory
-- output-mode contract now implemented for `scripts/run-tests` and `scripts/repo-doctor`; remaining scripts may adopt it later.
+- output-mode contract now implemented for `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor`; remaining scripts may adopt it later.
 
 
 - Output-mode contract: compact summaries, temp log files, `--explain`, `--audit`, `--timeout`, and JSON levels for lower-token diagnostics.

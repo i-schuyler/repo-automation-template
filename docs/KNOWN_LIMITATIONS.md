@@ -8,8 +8,8 @@ The project is intended to reduce repeatable repo maintenance churn for phone-fi
 
 The supported validation path is:
 
-    scripts/run-tests --audit --timeout 200
-    scripts/repo-doctor --full --timeout 200
+    repo-automation/bin/run-tests --audit --timeout=200
+    repo-automation/bin/repo-doctor --full --timeout=200
     GitHub Actions validate check
 
 If those pass in the working repo and CI is green, the repo is considered healthy for current public-alpha use.
@@ -67,7 +67,7 @@ Do not use it yet as an unattended release/deployment system.
 
 Use:
 
-    scripts/repo-automation-report-upstream --type bug --title "Short issue title" --dry-run
+    repo-automation/bin/repo-automation-report-upstream --type=bug --title="Short issue title" --dry-run
 
 Preview the issue first, confirm no secrets are included, then submit explicitly when ready.
 

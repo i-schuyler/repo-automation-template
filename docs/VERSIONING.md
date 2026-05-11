@@ -16,8 +16,8 @@ Version numbers must stay aligned in these places:
 - future release bundle metadata
 - future script metadata
 - `examples/downstream/.repo-automation.conf.example`
-- generated downstream installed docs (`docs/repo-automation/README.md`)
-- `tests/version-consistency.sh` guard expectations
+- generated downstream installed docs (`repo-automation/docs/README.md`)
+- `repo-automation/tests/version-consistency.sh` guard expectations
 
 ## CI Guard
 
@@ -34,4 +34,4 @@ Required behavior:
 - Future script metadata must match the release version.
 - Installed downstream examples must show the same version or an explicit placeholder.
 
-CI enforces this through `tests/version-consistency.sh`.
+CI enforces this through `repo-automation/tests/version-consistency.sh`.

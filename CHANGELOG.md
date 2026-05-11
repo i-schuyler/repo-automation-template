@@ -6,7 +6,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 
 ### Added
 
-- Implemented compact output modes for `scripts/run-tests` and `scripts/repo-doctor`.
+- Implemented compact output modes for `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor`.
 - Hardened audit/test portability with per-check timeout guards, compact audit mode, and named smoke subcheck reporting.
 - Moved smoke scenario execution into the shared harness and removed global timeout shadowing.
 - Added bounded smoke harness cleanup, named subchecks, and timeout-safe child cleanup.
@@ -41,7 +41,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Added doctor smoke coverage.
 - Added downstream install/update helper.
 - Added downstream install docs and smoke coverage.
-- Included `tests/lib/test-common.sh` in downstream `--include-tests` install plans and apply sets.
+- Included `repo-automation/tests/lib/test-common.sh` in downstream `--include-tests` install plans and apply sets.
 - Fixed add-doc-pr smoke baseline and installer remote fallback contract checks.
 - Added installer output contract audit coverage in smoke tests.
 - Added public workflow audit checklist product seed.

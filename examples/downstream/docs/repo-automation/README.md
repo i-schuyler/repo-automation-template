@@ -5,7 +5,7 @@ Downstream repos should keep this file visible after installing shared repo auto
 Recommended install/update path:
 
 ```sh
-scripts/repo-automation-install --target . --plan
+repo-automation/bin/repo-automation-install --target=. --plan
 ```
 
 Record:
@@ -25,7 +25,7 @@ Repo automation installed context:
 - Upstream repo: i-schuyler/repo-automation-template
 - Installed version/ref: 0.1.0-EXAMPLE
 - Installed at: YYYY-MM-DD
-- Local overrides doc: docs/repo-automation/local-overrides.md
+- Local overrides doc: repo-automation/docs/local-overrides.md
 - Local overrides present: yes/no/unknown
 - Command run:
 - Expected behavior:
@@ -38,7 +38,7 @@ File upstream when a bug or feature affects shared automation behavior. Keep rep
 Terminal reporting helper:
 
 ```sh
-scripts/repo-automation-report-upstream --type bug --title "Short title" --command "..." --expected "..." --actual "..." --dry-run
+repo-automation/bin/repo-automation-report-upstream --type=bug --title="Short title" --command="..." --expected="..." --actual="..." --dry-run
 ```
 
 Before filing, redact secrets, tokens, private keys, passphrases, private env values, sensitive private hostnames, and raw logs containing secrets.

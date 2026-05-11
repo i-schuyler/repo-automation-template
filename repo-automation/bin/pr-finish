@@ -1,0 +1,530 @@
+#!/usr/bin/env bash
+# repo-automation/bin/pr-finish
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+pr_finish_json=0
+pr_finish_stop_reason=""
+
+pr_finish_usage() {
+  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr NUMBER] [--json] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--help]\n'
+}
+
+pr_finish_info() {
+  printf 'INFO: %s\n' "$*" >&2
+}
+
+pr_finish_warn() {
+  printf 'WARN: %s\n' "$*" >&2
+}
+
+pr_finish_stop() {
+  pr_finish_stop_reason="$*"
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+pr_finish_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+pr_finish_json_array_strings() {
+  local first=1
+  local value
+  for value in "$@"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(pr_finish_json_escape "$value")"
+    first=0
+  done
+}
+
+pr_finish_checks_summary() {
+  local pr_number="$1"
+  gh pr checks "$pr_number" --required --json name,state,bucket --jq 'if length == 0 then "" else map("\(.name):\(.bucket)/\(.state)") | join("; ") end' 2>/dev/null
+}
+
+pr_finish_checks_collect() {
+  local pr_number="$1"
+  local checks_json_ref="$2"
+  local checks_status_ref="$3"
+  local checks_summary_ref="$4"
+  local rc=0
+  local checks_json=""
+  local checks_summary=""
+  local pass_count=0
+  local pending_count=0
+  local fail_count=0
+  local cancel_count=0
+  local skipping_count=0
+
+  checks_json=$(gh pr checks "$pr_number" --required --json name,state,bucket 2>/dev/null) || rc=$?
+  checks_summary=$(pr_finish_checks_summary "$pr_number")
+
+  if [ -z "$checks_json" ]; then
+    checks_json="[]"
+  fi
+
+  pass_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"pass"' | wc -l | tr -d '[:space:]')
+  pending_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"pending"' | wc -l | tr -d '[:space:]')
+  fail_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"fail"' | wc -l | tr -d '[:space:]')
+  cancel_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"cancel"' | wc -l | tr -d '[:space:]')
+  skipping_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"skipping"' | wc -l | tr -d '[:space:]')
+
+  if [ "${pass_count:-0}" -eq 0 ] && [ "${pending_count:-0}" -eq 0 ] && [ "${fail_count:-0}" -eq 0 ] && [ "${cancel_count:-0}" -eq 0 ] && [ "${skipping_count:-0}" -eq 0 ]; then
+    printf -v "$checks_status_ref" '%s' "missing"
+  elif [ "${fail_count:-0}" -gt 0 ] || [ "${cancel_count:-0}" -gt 0 ] || [ "${skipping_count:-0}" -gt 0 ]; then
+    printf -v "$checks_status_ref" '%s' "blocked"
+  elif [ "${pending_count:-0}" -gt 0 ]; then
+    printf -v "$checks_status_ref" '%s' "pending"
+  elif [ "${pass_count:-0}" -gt 0 ]; then
+    printf -v "$checks_status_ref" '%s' "green"
+  else
+    printf -v "$checks_status_ref" '%s' "unknown"
+  fi
+
+  if [ -z "$checks_summary" ]; then
+    checks_summary="no checks returned"
+  fi
+
+  printf -v "$checks_json_ref" '%s' "$checks_json"
+  printf -v "$checks_summary_ref" '%s' "$checks_summary"
+  return "$rc"
+}
+
+pr_finish_print_human_status() {
+  local mode="$1"
+  local current_branch="$2"
+  local pr_number="$3"
+  local pr_title="$4"
+  local pr_url="$5"
+  local pr_state="$6"
+  local is_draft="$7"
+  local mergeable="$8"
+  local checks_status="$9"
+  local checks_summary="${10}"
+  local merge_mode="${11}"
+  local delete_branch="${12}"
+  local can_merge="${13}"
+  local -n block_reasons_ref="${14}"
+
+  pr_finish_info "mode: $mode"
+  pr_finish_info "current branch: $current_branch"
+  pr_finish_info "pr: #$pr_number $pr_title"
+  pr_finish_info "pr url: $pr_url"
+  pr_finish_info "pr state: $pr_state"
+  pr_finish_info "draft: $is_draft"
+  pr_finish_info "mergeable: $mergeable"
+  pr_finish_info "checks status: $checks_status"
+  pr_finish_info "checks summary: $checks_summary"
+  pr_finish_info "merge mode: $merge_mode"
+  pr_finish_info "delete branch after merge: $delete_branch"
+  pr_finish_info "can merge now: $can_merge"
+  if [ "${#block_reasons_ref[@]}" -gt 0 ]; then
+    pr_finish_info "merge blocked reasons:"
+    printf '  %s\n' "${block_reasons_ref[@]}" >&2
+  fi
+}
+
+pr_finish_print_json() {
+  local mode="$1"
+  local current_branch="$2"
+  local pr_number="$3"
+  local pr_url="$4"
+  local pr_state="$5"
+  local is_draft="$6"
+  local mergeable="$7"
+  local checks_status="$8"
+  local checks_summary="$9"
+  local merge_mode="${10}"
+  local delete_branch="${11}"
+  local can_merge="${12}"
+  local action_taken="${13}"
+  local stop_reason="${14}"
+  local -n block_reasons_ref="${15}"
+
+  printf '{'
+  printf '"mode":"%s",' "$(pr_finish_json_escape "$mode")"
+  printf '"current_branch":"%s",' "$(pr_finish_json_escape "$current_branch")"
+  printf '"pr_number":"%s",' "$(pr_finish_json_escape "$pr_number")"
+  printf '"pr_url":"%s",' "$(pr_finish_json_escape "$pr_url")"
+  printf '"pr_state":"%s",' "$(pr_finish_json_escape "$pr_state")"
+  printf '"is_draft":"%s",' "$(pr_finish_json_escape "$is_draft")"
+  printf '"mergeable":"%s",' "$(pr_finish_json_escape "$mergeable")"
+  printf '"checks_status":"%s",' "$(pr_finish_json_escape "$checks_status")"
+  printf '"checks_summary":"%s",' "$(pr_finish_json_escape "$checks_summary")"
+  printf '"merge_mode":"%s",' "$(pr_finish_json_escape "$merge_mode")"
+  printf '"delete_branch":"%s",' "$(pr_finish_json_escape "$delete_branch")"
+  printf '"can_merge":"%s",' "$(pr_finish_json_escape "$can_merge")"
+  printf '"block_reasons":['
+  pr_finish_json_array_strings "${block_reasons_ref[@]}"
+  printf '],'
+  printf '"action_taken":"%s",' "$(pr_finish_json_escape "$action_taken")"
+  printf '"stop_reason":"%s"' "$(pr_finish_json_escape "$stop_reason")"
+  printf '}\n'
+}
+
+pr_finish_main() {
+  local mode="plan"
+  local do_watch=0
+  local do_merge=0
+  local json=0
+  local explicit_pr_number=""
+  local delete_branch=0
+  local merge_mode_override=""
+  local merge_mode=""
+  local command_status=0
+  local repo_root=""
+  local current_branch=""
+  local default_branch=""
+  local remote_name=""
+  local expected_remote_url=""
+  local remote_url=""
+  local pr_number=""
+  local pr_target=""
+  local pr_title=""
+  local pr_url=""
+  local pr_state=""
+  local is_draft=""
+  local mergeable=""
+  local checks_status=""
+  local checks_summary=""
+  local checks_json="[]"
+  local can_merge="false"
+  local action_taken="none"
+  local worktree_status=""
+  local merge_flag=""
+  local arg
+  local merge_output=""
+  local -a block_reasons=()
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        pr_finish_usage
+        return 0
+        ;;
+      --plan)
+        mode="plan"
+        do_watch=0
+        do_merge=0
+        ;;
+      --status)
+        mode="status"
+        do_watch=0
+        do_merge=0
+        ;;
+      --watch)
+        do_watch=1
+        ;;
+      --merge)
+        do_merge=1
+        ;;
+      --pr)
+        shift
+        explicit_pr_number="${1:-}"
+        ;;
+      --json)
+        json=1
+        pr_finish_json=1
+        ;;
+      --squash)
+        merge_mode_override="squash"
+        ;;
+      --merge-commit)
+        merge_mode_override="merge"
+        ;;
+      --rebase)
+        merge_mode_override="rebase"
+        ;;
+      --delete-branch)
+        delete_branch=1
+        ;;
+      --no-delete-branch)
+        delete_branch=0
+        ;;
+      *)
+        pr_finish_stop "unknown argument: $arg"
+        command_status=1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$do_merge" -eq 1 ]; then
+    mode="merge"
+  elif [ "$do_watch" -eq 1 ]; then
+    mode="watch"
+  fi
+
+  repo_auto_require_command git || {
+    pr_finish_stop "git is required"
+    command_status=1
+  }
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_root=$(repo_auto_repo_root) || {
+      pr_finish_stop "failed to determine repo root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$repo_root" || {
+      pr_finish_stop "failed to enter repo root: $repo_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      pr_finish_stop "failed to load .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      pr_finish_stop "invalid .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    default_branch="${DEFAULT_BRANCH:-main}"
+    remote_name="${REMOTE_NAME:-origin}"
+    expected_remote_url="${EXPECTED_REMOTE_URL:-}"
+    merge_mode="${MERGE_MODE:-squash}"
+  fi
+
+  if [ -n "$merge_mode_override" ]; then
+    merge_mode="$merge_mode_override"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_merge_mode "$merge_mode" || {
+      pr_finish_stop "invalid merge mode: $merge_mode"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "${PR_PROVIDER:-none}" != "github" ]; then
+    pr_finish_stop "PR_PROVIDER must be github for repo-automation/bin/pr-finish"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_require_command gh || {
+      pr_finish_stop "gh is required for pr-finish"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$explicit_pr_number" ]; then
+    repo_auto_is_positive_integer "$explicit_pr_number" || {
+      pr_finish_stop "invalid --pr value: $explicit_pr_number"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    remote_url=$(git remote get-url "$remote_name" 2>/dev/null) || {
+      pr_finish_stop "failed to read remote URL for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
+    pr_finish_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+      pr_finish_stop "failed to determine current branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_branch_name "$current_branch" || {
+      pr_finish_stop "invalid current branch name: $current_branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -n "$explicit_pr_number" ]; then
+      pr_target="$explicit_pr_number"
+    else
+      if [ "$current_branch" = "$default_branch" ]; then
+        pr_finish_stop "current branch is default branch; use --pr NUMBER"
+        command_status=1
+      else
+        pr_target="$current_branch"
+      fi
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    pr_number=$(gh pr view "$pr_target" --json number --jq '.number' 2>/dev/null) || {
+      pr_finish_stop "unable to find PR for target: $pr_target"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    pr_title=$(gh pr view "$pr_number" --json title --jq '.title' 2>/dev/null) || pr_title=""
+    pr_url=$(gh pr view "$pr_number" --json url --jq '.url' 2>/dev/null) || pr_url=""
+    pr_state=$(gh pr view "$pr_number" --json state --jq '.state' 2>/dev/null) || pr_state=""
+    is_draft=$(gh pr view "$pr_number" --json isDraft --jq '.isDraft' 2>/dev/null) || is_draft=""
+    mergeable=$(gh pr view "$pr_number" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable=""
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$do_watch" -eq 1 ]; then
+    if ! gh pr checks "$pr_number" --required --watch >&2; then
+      pr_finish_warn "gh pr checks --watch returned non-zero; re-checking status"
+    fi
+    action_taken="watched"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ "$pr_state" != "OPEN" ]; then
+      block_reasons+=("pr-not-open:$pr_state")
+    fi
+
+    if [ "$is_draft" = "true" ]; then
+      block_reasons+=("pr-is-draft")
+    fi
+
+    if [ "$mergeable" != "MERGEABLE" ]; then
+      block_reasons+=("pr-not-mergeable:$mergeable")
+    fi
+
+    case "$checks_status" in
+      green)
+        ;;
+      pending)
+        block_reasons+=("checks-pending")
+        ;;
+      blocked)
+        block_reasons+=("checks-failed")
+        ;;
+      missing)
+        block_reasons+=("checks-missing")
+        ;;
+      *)
+        block_reasons+=("checks-unknown")
+        ;;
+    esac
+
+    worktree_status=$(git status --porcelain)
+    if [ -n "$worktree_status" ]; then
+      block_reasons+=("working-tree-dirty")
+    fi
+
+    if [ "${#block_reasons[@]}" -eq 0 ]; then
+      can_merge="true"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$json" -eq 0 ]; then
+    pr_finish_print_human_status \
+      "$mode" \
+      "$current_branch" \
+      "$pr_number" \
+      "$pr_title" \
+      "$pr_url" \
+      "$pr_state" \
+      "$is_draft" \
+      "$mergeable" \
+      "$checks_status" \
+      "$checks_summary" \
+      "$merge_mode" \
+      "$delete_branch" \
+      "$can_merge" \
+      block_reasons
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$do_merge" -eq 1 ]; then
+    if [ "$can_merge" != "true" ]; then
+      pr_finish_stop "merge blocked by current PR state/check gates"
+      command_status=1
+    else
+      case "$merge_mode" in
+        squash)
+          merge_flag="--squash"
+          ;;
+        merge)
+          merge_flag="--merge"
+          ;;
+        rebase)
+          merge_flag="--rebase"
+          ;;
+      esac
+
+      if [ "$delete_branch" -eq 1 ]; then
+        merge_output=$(gh pr merge "$pr_number" "$merge_flag" --delete-branch 2>&1) || {
+          pr_finish_stop "gh pr merge failed: $merge_output"
+          command_status=1
+        }
+      else
+        merge_output=$(gh pr merge "$pr_number" "$merge_flag" 2>&1) || {
+          pr_finish_stop "gh pr merge failed: $merge_output"
+          command_status=1
+        }
+      fi
+
+      if [ "$command_status" -eq 0 ]; then
+        action_taken="merged"
+        [ "$json" -eq 1 ] || pr_finish_info "merge completed for PR #$pr_number"
+      fi
+    fi
+  fi
+
+  if [ "$pr_finish_json" -eq 1 ]; then
+    pr_finish_print_json \
+      "$mode" \
+      "${current_branch:-}" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "${pr_state:-}" \
+      "${is_draft:-}" \
+      "${mergeable:-}" \
+      "${checks_status:-}" \
+      "${checks_summary:-}" \
+      "${merge_mode:-}" \
+      "$delete_branch" \
+      "${can_merge:-false}" \
+      "$action_taken" \
+      "$pr_finish_stop_reason" \
+      block_reasons
+  fi
+
+  return "$command_status"
+}
+
+pr_finish_main "$@"
+pr_finish_status=$?
+return "$pr_finish_status" 2>/dev/null || exit "$pr_finish_status"
+# repo-automation/bin/pr-finish EOF
