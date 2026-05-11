@@ -15,7 +15,7 @@ repo_install_json=0
 repo_install_stop_reason=""
 
 repo_install_usage() {
-  printf 'Usage: repo-automation/bin/repo-automation-install --target PATH [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--overwrite] [--no-overwrite] [--installed-version REF] [--installed-at YYYY-MM-DD] [--local-overrides-doc PATH] [--source-root PATH]\n'
+  printf 'Usage: repo-automation/bin/repo-automation-install --target PATH [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version REF] [--installed-at YYYY-MM-DD] [--local-overrides-doc PATH] [--source-root PATH]\n'
 }
 
 repo_install_info() {
@@ -76,18 +76,19 @@ repo_install_print_json() {
   local target_root="$3"
   local apply="$4"
   local dry_run="$5"
-  local include_ci="$6"
-  local include_tests="$7"
-  local installed_version_or_ref="$8"
-  local target_remote_status="$9"
-  local action_taken="${10}"
-  local stop_reason="${11}"
-  local target_dirty="${12}"
-  local files_to_add_name="${13}"
-  local files_to_update_name="${14}"
-  local files_to_skip_name="${15}"
-  local blocked_files_name="${16}"
-  local generated_files_name="${17}"
+  local profile="$6"
+  local include_ci="$7"
+  local include_tests="$8"
+  local installed_version_or_ref="$9"
+  local target_remote_status="${10}"
+  local action_taken="${11}"
+  local stop_reason="${12}"
+  local target_dirty="${13}"
+  local files_to_add_name="${14}"
+  local files_to_update_name="${15}"
+  local files_to_skip_name="${16}"
+  local blocked_files_name="${17}"
+  local generated_files_name="${18}"
   # shellcheck disable=SC2178
   local -n files_to_add_ref="$files_to_add_name"
   # shellcheck disable=SC2178
@@ -105,6 +106,7 @@ repo_install_print_json() {
   printf '"target_root":"%s",' "$(repo_install_json_escape "$target_root")"
   printf '"apply":%s,' "$apply"
   printf '"dry_run":%s,' "$dry_run"
+  printf '"profile":"%s",' "$(repo_install_json_escape "$profile")"
   printf '"include_ci":%s,' "$include_ci"
   printf '"include_tests":%s,' "$include_tests"
   printf '"installed_version_or_ref":"%s",' "$(repo_install_json_escape "$installed_version_or_ref")"
@@ -234,6 +236,7 @@ repo_install_main() {
   local source_root=""
   local apply=false
   local dry_run=false
+  local profile="default"
   local include_ci=false
   local include_tests=false
   local overwrite=false
@@ -283,6 +286,11 @@ repo_install_main() {
     "repo-automation/docs/repo-automation-install.md"
     "repo-automation/docs/source-provenance.md"
     "repo-automation/docs/testing.md"
+  )
+  local -a starter_template_files=(
+    ".github/pull_request_template.md"
+    ".github/ISSUE_TEMPLATE/automation-bug.yml"
+    ".github/ISSUE_TEMPLATE/automation-feature.yml"
   )
   local -a optional_test_files=(
     "repo-automation/tests/lib/test-common.sh"
@@ -334,6 +342,9 @@ repo_install_main() {
         ;;
       --include-tests)
         include_tests=true
+        ;;
+      --starter-template)
+        profile="starter-template"
         ;;
       --overwrite)
         overwrite=true
@@ -448,6 +459,9 @@ repo_install_main() {
 
   if [ "$command_status" -eq 0 ]; then
     files_to_process=("${managed_files[@]}")
+    if [ "$profile" = "starter-template" ]; then
+      files_to_process+=("${starter_template_files[@]}")
+    fi
     if [ "$include_tests" = true ]; then
       files_to_process+=("${optional_test_files[@]}")
     fi
@@ -528,6 +542,7 @@ repo_install_main() {
     repo_install_info "source root: $source_root"
     repo_install_info "target root: $target_root"
     repo_install_info "mode: $mode"
+    repo_install_info "install profile: $profile"
     repo_install_info "target dirty: $target_dirty"
     repo_install_info "apply requested: $apply"
     repo_install_info "dry-run: $dry_run"
@@ -666,6 +681,7 @@ repo_install_main() {
       "$target_root" \
       "$apply" \
       "$dry_run" \
+      "$profile" \
       "$include_ci" \
       "$include_tests" \
       "$installed_version_or_ref" \

@@ -88,6 +88,9 @@ EOF
 EOF
     mkdir -p docs .github/workflows .github/ISSUE_TEMPLATE || return 1
     cp -R "$smoke_repo_root/repo-automation/docs" repo-automation/ || return 1
+    cp "$smoke_repo_root/.github/pull_request_template.md" .github/pull_request_template.md || return 1
+    cp "$smoke_repo_root/.github/ISSUE_TEMPLATE/automation-bug.yml" .github/ISSUE_TEMPLATE/automation-bug.yml || return 1
+    cp "$smoke_repo_root/.github/ISSUE_TEMPLATE/automation-feature.yml" .github/ISSUE_TEMPLATE/automation-feature.yml || return 1
     mkdir -p examples/downstream/docs/repo-automation || return 1
     cat > docs/DECISIONS.md <<EOF
 # Decisions
@@ -719,6 +722,50 @@ smoke_check_repo_doctor_missing_config() {
   return "$status"
 }
 
+smoke_check_installer_starter_template_profile() {
+  local status=0
+  local starter_plan_json="$smoke_test_base/repo-install-starter-plan-$$.json"
+  local starter_target="$smoke_test_base/install-starter-target-$$"
+
+  mkdir -p "$starter_target" || return 1
+  (
+    cd "$starter_target" || return 1
+    git init -b main >/dev/null || return 1
+    git config user.name "repo-automation-install-test" || return 1
+    git config user.email "repo-automation-install-test@example.com" || return 1
+    cp "$smoke_repo_root/README.md" README.md || return 1
+    cp "$smoke_repo_root/VERSION" VERSION || return 1
+    cp "$smoke_repo_root/CHANGELOG.md" CHANGELOG.md || return 1
+    cp -R "$smoke_repo_root/docs" . || return 1
+    cp -R "$smoke_repo_root/examples" . || return 1
+    git add -A || return 1
+    git commit -m "init starter target" >/dev/null || return 1
+  ) || status=1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target "$starter_target" --starter-template --json > "$starter_plan_json"
+  ) && python -m json.tool "$starter_plan_json" >/dev/null && \
+    smoke_json_assert "$starter_plan_json" 'data.get("mode") == "install" and data.get("profile") == "starter-template" and ".github/pull_request_template.md" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-bug.yml" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-feature.yml" in data.get("files_to_add", []) and ".github/workflows/ci.yml" not in data.get("files_to_add", [])'; then
+    test_pass "repo-automation-install starter-template plan/json includes template files"
+  else
+    test_fail "repo-automation-install starter-template plan/json includes template files"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target "$starter_target" --starter-template --apply >/dev/null
+  ) && [ -f "$starter_target/.repo-automation.conf" ] && [ -f "$starter_target/.github/pull_request_template.md" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-bug.yml" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-feature.yml" ] && [ ! -f "$starter_target/.github/workflows/ci.yml" ]; then
+    test_pass "repo-automation-install starter-template apply creates templates without CI"
+  else
+    test_fail "repo-automation-install starter-template apply creates templates without CI"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_installer_apply_contract() {
   local status=0
   local install_plan_json="$smoke_test_base/repo-install-plan-$$.json"
@@ -757,7 +804,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" '"repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -1043,6 +1090,7 @@ smoke_main() {
   test_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
   test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
   test_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1
+  test_run_named_check "smoke:install-starter-template-profile" smoke_check_installer_starter_template_profile || status=1
   test_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1
   test_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
   test_run_named_check "smoke:prepare-release-contract" smoke_check_prepare_release_contract || status=1
