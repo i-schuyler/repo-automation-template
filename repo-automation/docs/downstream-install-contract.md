@@ -12,6 +12,7 @@ Default installer-managed paths:
 - `.repo-automation.conf`
 - generated `repo-automation/docs/README.md`
 - optional `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests` when `--include-tests` is used
+- optional `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/automation-bug.yml`, and `.github/ISSUE_TEMPLATE/automation-feature.yml` when `--starter-template` is used
 - optional `.github/workflows/ci.yml` when `--include-ci` is used
 
 Public config must not contain secrets or machine-local values.
@@ -30,3 +31,4 @@ Downstream repos should have a visible repo-automation README showing:
 When available, downstream installs should include `repo-automation/bin/repo-automation-report-upstream` so upstream shared automation bugs/features can be prepared with preview/redaction safeguards before submission.
 Downstream installs should use `repo-automation/bin/repo-automation-install --target=<repo>` in plan mode first, then explicit `--apply`.
 Installer smoke tests should audit the downstream contract in temp repos before real rollout.
+The starter-template profile must stay conservative: it can add reusable repo automation templates, but it must not broaden workflow permissions or install app/product CI.
