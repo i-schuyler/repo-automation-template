@@ -27,6 +27,17 @@ run_tests_timestamp() {
   date '+%Y-%m-%dT%H%M%S'
 }
 
+run_tests_ensure_log_parent() {
+  local log_parent
+
+  if [ -z "$run_tests_log_file" ]; then
+    return 1
+  fi
+
+  log_parent="$(dirname "$run_tests_log_file")"
+  mkdir -p "$log_parent" >/dev/null 2>&1
+}
+
 run_tests_json_escape() {
   local input="$1"
   input=${input//\\/\\\\}
@@ -89,6 +100,12 @@ run_tests_init_log() {
     run_tests_log_file="$temp_root/run-tests-$(run_tests_timestamp).log"
   fi
 
+  run_tests_ensure_log_parent || {
+    run_tests_log_enabled=0
+    run_tests_log_file=""
+    return 0
+  }
+
   : >"$run_tests_log_file" 2>/dev/null || {
     run_tests_log_enabled=0
     run_tests_log_file=""
@@ -98,6 +115,11 @@ run_tests_init_log() {
 
 run_tests_log() {
   if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    run_tests_ensure_log_parent || {
+      run_tests_log_enabled=0
+      run_tests_log_file=""
+      return 0
+    }
     printf '%s\n' "$*" >>"$run_tests_log_file"
   fi
 }
@@ -145,6 +167,13 @@ run_tests_run_cmd() {
     use_timeout=1
   elif [ "$timeout_seconds" -gt 0 ]; then
     run_tests_timeout_warn_once
+  fi
+
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    run_tests_ensure_log_parent || {
+      run_tests_log_enabled=0
+      run_tests_log_file=""
+    }
   fi
 
   if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
@@ -255,6 +284,13 @@ run_tests_run_smoke() {
     fi
     "$@" >"$output_file" 2>&1
     exit_code=$?
+  fi
+
+  if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then
+    run_tests_ensure_log_parent || {
+      run_tests_log_enabled=0
+      run_tests_log_file=""
+    }
   fi
 
   if [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ]; then

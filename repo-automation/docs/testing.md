@@ -15,6 +15,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
+- smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, and downstream install contract auditing in temporary repos, including the `repo-automation/tests/lib/test-common.sh` harness dependency under `--include-tests`
 - lightweight docs CI via `repo-automation/tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks
 - JSON parseability checks for branch cleanup and preflight
@@ -38,6 +39,8 @@ The shared harness owns child-process cleanup, temp-dir cleanup, and timeout fal
 Tests do not delete remote branches and do not use force delete for local branches.
 
 `repo-automation/bin/run-tests` defaults to a 120-second per-check timeout. Use `--timeout=SECONDS` to change it and `--audit` for the compact full suite. If the `timeout` command is unavailable, the scripts warn once and continue without timeout guards instead of failing the whole run.
+
+The freshness helper keeps a smaller contract: human output by default, `--machine-json` for machine output, and `--source-root=/path/to/checkout` when checking a different checkout.
 
 ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs ShellCheck when available and warns when missing.
 
