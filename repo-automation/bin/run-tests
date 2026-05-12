@@ -8,6 +8,7 @@ set -o pipefail
 source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
 run_tests_mode="summary"
+run_tests_run_mode="full"
 run_tests_json=0
 run_tests_json_level="warn"
 run_tests_log_enabled=1
@@ -18,9 +19,10 @@ run_tests_timeout_warned=0
 run_tests_start_line="RUNNING repo automation tests..."
 run_tests_next_hint="Next: repo-automation/bin/run-tests --explain"
 run_tests_checks=()
+run_tests_changed_selected_subsets=()
 
 run_tests_usage() {
-  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--help]\n'
+  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--smoke] [--docs] [--version] [--changed] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--help]\n'
 }
 
 run_tests_timestamp() {
@@ -357,6 +359,14 @@ run_tests_print_human() {
     printf '%s\n' "$run_tests_start_line"
   fi
 
+  if [ "$run_tests_run_mode" = "changed" ]; then
+    if [ "${#run_tests_changed_selected_subsets[@]}" -eq 0 ]; then
+      printf 'Changed subsets: none\n'
+    else
+      printf 'Changed subsets: %s\n' "${run_tests_changed_selected_subsets[*]}"
+    fi
+  fi
+
   if [ "$run_tests_mode" = "explain" ]; then
     for entry in "${run_tests_checks[@]}"; do
       name="${entry%%|*}"
@@ -420,7 +430,9 @@ run_tests_print_json() {
   local fail_count="$4"
   local skipped_count="$5"
   local entry name status message timed_out rest json_checks=""
+  local selected_json=""
   local first=1
+  local first_selected=1
   local want_level="$run_tests_json_level"
   local timed_out_json
 
@@ -458,6 +470,16 @@ run_tests_print_json() {
     first=0
   done
 
+  if [ "$run_tests_run_mode" = "changed" ]; then
+    for entry in "${run_tests_changed_selected_subsets[@]}"; do
+      if [ "$first_selected" -eq 0 ]; then
+        selected_json+=', '
+      fi
+      selected_json+="\"$(run_tests_json_escape "$entry")\""
+      first_selected=0
+    done
+  fi
+
   printf '{'
   printf '"script":"run-tests",'
   printf '"mode":"%s",' "$(run_tests_json_escape "$run_tests_mode")"
@@ -468,8 +490,92 @@ run_tests_print_json() {
   printf '"skipped_count":%s,' "$skipped_count"
   printf '"json_level":"%s",' "$(run_tests_json_escape "$run_tests_json_level")"
   printf '"checks":[%s],' "$json_checks"
+  if [ "$run_tests_run_mode" = "changed" ]; then
+    printf '"selected_subsets":[%s],' "$selected_json"
+  fi
   printf '"log_file":"%s"' "$(run_tests_json_escape "$run_tests_log_file")"
   printf '}\n'
+}
+
+run_tests_collect_changed_files() {
+  local changed_ref_name="$1"
+  local -n changed_ref="$changed_ref_name"
+  local path
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && changed_ref+=("$path")
+  done <<EOF
+$(
+  {
+    git diff --name-only --cached --diff-filter=ACDMR
+    git diff --name-only --diff-filter=ACDMR
+    git ls-files --others --exclude-standard
+  } | sed '/^$/d' | sort -u
+)
+EOF
+}
+
+run_tests_changed_needs_docs() {
+  case "$1" in
+    README.md|CHANGELOG.md|CONTRIBUTING.md|SUPPORT.md|docs/*|repo-automation/docs/*|.github/pull_request_template.md|.github/ISSUE_TEMPLATE/*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+run_tests_changed_needs_version() {
+  case "$1" in
+    VERSION|README.md|CHANGELOG.md|docs/DECISIONS.md|docs/VERSIONING.md|examples/downstream/.repo-automation.conf.example|repo-automation/tests/version-consistency.sh|repo-automation/bin/prepare-release)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+run_tests_changed_needs_smoke() {
+  case "$1" in
+    repo-automation/bin/*|repo-automation/lib/*|repo-automation/tests/*|repo-automation/manifest.json|.github/workflows/*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+run_tests_print_results() {
+  local status="${1:-0}"
+  local counts
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local overall_status="pass"
+
+  counts="$(run_tests_counts)"
+  IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+
+  if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+    overall_status="fail"
+  elif [ "$warn_count" -gt 0 ]; then
+    overall_status="warn"
+  fi
+
+  if [ "$run_tests_json" -eq 1 ]; then
+    run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+  else
+    run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+  fi
+
+  if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+    return 1
+  fi
+
+  return 0
 }
 
 run_tests_main() {
@@ -496,6 +602,19 @@ run_tests_main() {
         ;;
       --audit)
         run_tests_mode="audit"
+        run_tests_run_mode="full"
+        ;;
+      --smoke)
+        run_tests_run_mode="smoke"
+        ;;
+      --docs)
+        run_tests_run_mode="docs"
+        ;;
+      --version)
+        run_tests_run_mode="version"
+        ;;
+      --changed)
+        run_tests_run_mode="changed"
         ;;
       --explain)
         run_tests_mode="explain"
@@ -629,6 +748,102 @@ EOF
     run_tests_timeout_warn_once
   fi
 
+  if [ "$run_tests_run_mode" = "smoke" ]; then
+    if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
+      run_tests_record_skip "repo-automation/tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"
+    else
+      run_tests_run_smoke "repo-automation/tests/smoke.sh" repo-automation/tests/smoke.sh || status=1
+    fi
+    run_tests_print_results "$status"
+    return $?
+  fi
+
+  if [ "$run_tests_run_mode" = "docs" ]; then
+    run_tests_run_cmd "repo-automation/tests/docs-check.sh" repo-automation/tests/docs-check.sh || status=1
+    run_tests_print_results "$status"
+    return $?
+  fi
+
+  if [ "$run_tests_run_mode" = "version" ]; then
+    run_tests_run_cmd "repo-automation/tests/version-consistency.sh" repo-automation/tests/version-consistency.sh || status=1
+    run_tests_print_results "$status"
+    return $?
+  fi
+
+  if [ "$run_tests_run_mode" = "changed" ]; then
+    local -a changed_files=()
+    local changed_file
+    local run_tests_run_smoke_changed=0
+    local run_tests_run_docs_changed=0
+    local run_tests_run_version_changed=0
+    local run_tests_run_smoke_only=0
+    local run_tests_run_docs_or_version_changed=0
+    local run_tests_run_unknown_changed=0
+
+    run_tests_changed_selected_subsets=()
+
+    if run_tests_collect_changed_files changed_files; then
+      if [ "${#changed_files[@]}" -eq 0 ]; then
+        run_tests_run_smoke_changed=1
+      else
+        for changed_file in "${changed_files[@]}"; do
+          local matched=0
+          if run_tests_changed_needs_docs "$changed_file"; then
+            run_tests_run_docs_changed=1
+            matched=1
+          fi
+          if run_tests_changed_needs_version "$changed_file"; then
+            run_tests_run_version_changed=1
+            matched=1
+          fi
+          if run_tests_changed_needs_smoke "$changed_file"; then
+            run_tests_run_smoke_changed=1
+            matched=1
+          fi
+          if [ "$matched" -eq 0 ]; then
+            run_tests_run_unknown_changed=1
+          fi
+        done
+      fi
+    else
+      run_tests_run_smoke_changed=1
+    fi
+
+    if [ "$run_tests_run_docs_changed" -eq 1 ]; then
+      run_tests_changed_selected_subsets+=("docs")
+      run_tests_run_docs_or_version_changed=1
+    fi
+
+    if [ "$run_tests_run_version_changed" -eq 1 ]; then
+      run_tests_changed_selected_subsets+=("version")
+      run_tests_run_docs_or_version_changed=1
+    fi
+
+    if [ "$run_tests_run_docs_or_version_changed" -eq 0 ] && { [ "$run_tests_run_smoke_changed" -eq 1 ] || [ "$run_tests_run_unknown_changed" -eq 1 ]; }; then
+      run_tests_changed_selected_subsets+=("smoke")
+      run_tests_run_smoke_only=1
+    fi
+
+    if [ "$run_tests_run_smoke_only" -eq 1 ]; then
+      if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
+        run_tests_record_skip "repo-automation/tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"
+      else
+        run_tests_run_smoke "repo-automation/tests/smoke.sh" repo-automation/tests/smoke.sh || status=1
+      fi
+    fi
+
+    if [ "$run_tests_run_docs_changed" -eq 1 ]; then
+      run_tests_run_cmd "repo-automation/tests/docs-check.sh" repo-automation/tests/docs-check.sh || status=1
+    fi
+
+    if [ "$run_tests_run_version_changed" -eq 1 ]; then
+      run_tests_run_cmd "repo-automation/tests/version-consistency.sh" repo-automation/tests/version-consistency.sh || status=1
+    fi
+
+    run_tests_print_results "$status"
+    return $?
+  fi
+
   run_tests_run_cmd "bash syntax repo-automation/lib/common.sh" bash -n repo-automation/lib/common.sh || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/branch-cleanup" bash -n repo-automation/bin/branch-cleanup || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/codex-slice-preflight" bash -n repo-automation/bin/codex-slice-preflight || status=1
@@ -637,6 +852,8 @@ EOF
   run_tests_run_cmd "bash syntax repo-automation/bin/prepare-release" bash -n repo-automation/bin/prepare-release || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-report-upstream" bash -n repo-automation/bin/repo-automation-report-upstream || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/repo-doctor" bash -n repo-automation/bin/repo-doctor || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/failure-log" bash -n repo-automation/bin/failure-log || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/status-packet" bash -n repo-automation/bin/status-packet || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-install" bash -n repo-automation/bin/repo-automation-install || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/run-tests" bash -n repo-automation/bin/run-tests || status=1
   run_tests_run_cmd "bash syntax repo-automation/tests/docs-check.sh" bash -n repo-automation/tests/docs-check.sh || status=1
@@ -644,7 +861,7 @@ EOF
   run_tests_run_cmd "bash syntax repo-automation/tests/version-consistency.sh" bash -n repo-automation/tests/version-consistency.sh || status=1
 
   if command -v shellcheck >/dev/null 2>&1; then
-    run_tests_run_cmd       "shellcheck repo-automation scripts and tests"       shellcheck       -e SC2317       repo-automation/bin/branch-cleanup       repo-automation/bin/codex-slice-preflight       repo-automation/bin/pr-finish       repo-automation/bin/add-doc-pr       repo-automation/bin/prepare-release       repo-automation/bin/repo-automation-report-upstream       repo-automation/bin/repo-doctor       repo-automation/bin/repo-automation-install       repo-automation/bin/run-tests       repo-automation/tests/docs-check.sh       repo-automation/tests/smoke.sh       repo-automation/tests/version-consistency.sh || status=1
+    run_tests_run_cmd       "shellcheck repo-automation scripts and tests"       shellcheck       -e SC2317       repo-automation/bin/branch-cleanup       repo-automation/bin/codex-slice-preflight       repo-automation/bin/pr-finish       repo-automation/bin/add-doc-pr       repo-automation/bin/prepare-release       repo-automation/bin/repo-automation-report-upstream       repo-automation/bin/repo-doctor       repo-automation/bin/failure-log       repo-automation/bin/status-packet       repo-automation/bin/repo-automation-install       repo-automation/bin/run-tests       repo-automation/tests/docs-check.sh       repo-automation/tests/smoke.sh       repo-automation/tests/version-consistency.sh || status=1
   else
     run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
   fi
@@ -654,6 +871,8 @@ EOF
   run_tests_run_cmd "repo-automation/bin/prepare-release --help" bash -c 'repo-automation/bin/prepare-release --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/repo-automation-report-upstream --help" bash -c 'repo-automation/bin/repo-automation-report-upstream --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/repo-doctor --help" bash -c 'repo-automation/bin/repo-doctor --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/failure-log --help" bash -c 'repo-automation/bin/failure-log --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/status-packet --help" bash -c 'repo-automation/bin/status-packet --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/repo-automation-install --help" bash -c 'repo-automation/bin/repo-automation-install --help >/dev/null' || status=1
   if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
     run_tests_record_skip "repo-automation/tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"

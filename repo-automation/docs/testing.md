@@ -13,8 +13,10 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/pr-finish` help and safe no-auth/no-gh failure behavior
 - smoke coverage for `repo-automation/bin/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
 - smoke coverage for `repo-automation/bin/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
-- smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--explain`, JSON levels, log files, and no-log behavior
+- smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
+- smoke coverage for `repo-automation/bin/failure-log` latest log excerpts, kind filtering, line limits, and machine JSON
+- smoke coverage for `repo-automation/bin/status-packet` human default output, machine JSON, and compact repo state reporting
 - smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
 - smoke coverage for `repo-automation/bin/starter-template-ready` human default output, `--machine-json`, `--source-root=/path/to/checkout`, and `--check-current`
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, starter-template profile template installation, and downstream install contract auditing in temporary repos, including the `repo-automation/tests/lib/test-common.sh` harness dependency under `--include-tests`
@@ -50,6 +52,7 @@ ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs Shel
 ## Output modes
 
 The shared output-mode contract is documented in [output-modes.md](output-modes.md). `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor` now implement compact summaries by default, temp log-file detail capture, `--explain`, `--quiet`, and `--json-level fail|warn|all`.
+`repo-automation/bin/failure-log` and `repo-automation/bin/status-packet` are the lightweight read-only helpers for when you need a log excerpt or a repo state packet instead of a fresh diagnostic run.
 
 `repo-automation/tests/docs-check.sh` is the standalone docs drift gate. It is also included in `repo-automation/bin/run-tests`, so local audit runs and GitHub Actions both catch broken markdown links, missing `docs/INDEX.md` coverage, stale public phrasing, missing public navigation links, and basic Markdown formatting regressions.
 The formatting pass checks for trailing whitespace, missing terminal newlines in Markdown files, balanced fenced code blocks, and blank-line separation around headings.

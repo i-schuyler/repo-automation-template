@@ -59,15 +59,18 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/failure-log" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
   cp "$smoke_repo_root/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/bin/run-tests" || return 1
   cp "$smoke_repo_root/repo-automation/manifest.json" "$smoke_test_dir/repo-automation/manifest.json" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
+  cp "$smoke_repo_root/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/docs-check.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -79,6 +82,16 @@ smoke_setup_temp_repo() {
 
 Current version: 0.1.0
 EOF
+    cat > CONTRIBUTING.md <<'EOF'
+# Contributing
+
+Smoke fixture contribution notes.
+EOF
+    cat > SUPPORT.md <<'EOF'
+# Support
+
+Smoke fixture support notes.
+EOF
     cat > VERSION <<EOF
 0.1.0
 EOF
@@ -86,6 +99,7 @@ EOF
 # Changelog
 
 ## [0.1.0] - Unreleased
+
 EOF
     mkdir -p docs .github/workflows .github/ISSUE_TEMPLATE || return 1
     cp -R "$smoke_repo_root/repo-automation/docs" repo-automation/ || return 1
@@ -97,6 +111,11 @@ EOF
 # Decisions
 
 | Current version line | starts at 0.1.0 |
+EOF
+    cat > docs/KNOWN_LIMITATIONS.md <<'EOF'
+# Known Limitations
+
+Smoke fixture limitations.
 EOF
     cat > docs/VERSIONING.md <<EOF
 # Versioning
@@ -119,19 +138,41 @@ Installed config should include:
 INSTALLED_VERSION_OR_REF="0.1.0"
 ```
 EOF
+    cat > docs/WORKFLOW_AUDIT_CHECKLIST.md <<'EOF'
+# Workflow Audit Checklist
+
+Smoke fixture checklist notes.
+EOF
     cat > docs/INDEX.md <<EOF
 # Docs Index
 
-- ../repo-automation/docs/branch-cleanup.md
-- ../repo-automation/docs/codex-slice-preflight.md
-- ../repo-automation/docs/pr-finish.md
-- ../repo-automation/docs/add-doc-pr.md
-- ../repo-automation/docs/repo-automation-report-upstream.md
-- ../repo-automation/docs/repo-doctor.md
-- ../repo-automation/docs/starter-template-readiness.md
-- ../repo-automation/docs/managed-files.md
-- ../repo-automation/docs/repo-automation-install.md
-- ../repo-automation/docs/testing.md
+- [README](../README.md)
+- [Changelog](../CHANGELOG.md)
+- [Contributing](../CONTRIBUTING.md)
+- [Support](../SUPPORT.md)
+- [Decisions](../docs/DECISIONS.md)
+- [Known Limitations](../docs/KNOWN_LIMITATIONS.md)
+- [Downstream Feedback](../docs/DOWNSTREAM_FEEDBACK.md)
+- [Versioning](../docs/VERSIONING.md)
+- [Workflow Audit Checklist](../docs/WORKFLOW_AUDIT_CHECKLIST.md)
+- [Pull Request Template](../.github/pull_request_template.md)
+- [Automation Bug Issue Form](../.github/ISSUE_TEMPLATE/automation-bug.yml)
+- [Automation Feature Issue Form](../.github/ISSUE_TEMPLATE/automation-feature.yml)
+- [Example Downstream Config](../examples/downstream/.repo-automation.conf.example)
+- [Example Downstream Repo Automation README](../examples/downstream/docs/repo-automation/README.md)
+- [Branch Cleanup](../repo-automation/docs/branch-cleanup.md)
+- [Codex Slice Preflight](../repo-automation/docs/codex-slice-preflight.md)
+- [PR Finish](../repo-automation/docs/pr-finish.md)
+- [Add Doc PR](../repo-automation/docs/add-doc-pr.md)
+- [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
+- [Repo Doctor](../repo-automation/docs/repo-doctor.md)
+- [Failure Log](../repo-automation/docs/failure-log.md)
+- [Status Packet](../repo-automation/docs/status-packet.md)
+- [Starter Template Readiness](../repo-automation/docs/starter-template-readiness.md)
+- [Managed Files](../repo-automation/docs/managed-files.md)
+- [Repo Automation Install](../repo-automation/docs/repo-automation-install.md)
+- [Output Modes](../repo-automation/docs/output-modes.md)
+- [Testing](../repo-automation/docs/testing.md)
 EOF
     mkdir -p examples/downstream || return 1
     cat > examples/downstream/.repo-automation.conf.example <<EOF
@@ -198,6 +239,28 @@ EOF
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     return 0
   ) || return 1
+}
+
+smoke_setup_subset_repo() {
+  local subset_base
+  local subset_dir
+
+  subset_base="$(mktemp -d "${TEST_TEMP_ROOT}/subset.XXXXXX")" || return 1
+  test_register_temp_dir "$subset_base" || return 1
+  subset_dir="$subset_base/repo"
+
+  cp -R "$smoke_test_dir" "$subset_dir" || return 1
+  cat > "$subset_dir/repo-automation/tests/smoke.sh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'PASS: subset smoke stub
+'
+EOF
+  chmod +x "$subset_dir/repo-automation/tests/smoke.sh" || return 1
+
+  printf '%s
+' "$subset_dir"
 }
 
 smoke_check_add_doc_pr_docs_only() {
@@ -503,7 +566,137 @@ smoke_check_run_tests_contract() {
     status=1
   fi
 
-  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" >/dev/null 2>&1 || true
+  local run_tests_subset_repo=""
+  local run_tests_subset_smoke_json="$smoke_test_base/run-tests-subset-smoke-$$.json"
+  local run_tests_subset_docs_json="$smoke_test_base/run-tests-subset-docs-$$.json"
+  local run_tests_subset_version_json="$smoke_test_base/run-tests-subset-version-$$.json"
+  local run_tests_subset_changed_docs_json="$smoke_test_base/run-tests-subset-changed-docs-$$.json"
+  local run_tests_subset_changed_smoke_json="$smoke_test_base/run-tests-subset-changed-smoke-$$.json"
+  local run_tests_status_packet_out="$smoke_test_base/status-packet-$$.txt"
+  local run_tests_status_packet_json="$smoke_test_base/status-packet-$$.json"
+  local run_tests_failure_root="$smoke_test_base/failure-log-root-$$"
+  local run_tests_failure_human_out="$smoke_test_base/failure-log-human-$$.txt"
+  local run_tests_failure_json="$smoke_test_base/failure-log-json-$$.json"
+  local run_tests_failure_doc_log="$run_tests_failure_root/repo-automation-template/repo-doctor-2026-05-11T010000.log"
+  local run_tests_failure_test_log="$run_tests_failure_root/repo-automation-template/run-tests-2026-05-11T020000.log"
+
+  run_tests_subset_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "run-tests subset fixture creates a repo"
+    status=1
+  }
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    repo-automation/bin/run-tests --smoke --json --json-level=all > "$run_tests_subset_smoke_json"
+  ) && python -m json.tool "$run_tests_subset_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_smoke_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/smoke.sh"'; then
+    test_pass "run-tests smoke subset runs only smoke"
+  else
+    test_fail "run-tests smoke subset runs only smoke"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    repo-automation/bin/run-tests --docs --json --json-level=all > "$run_tests_subset_docs_json"
+  ) && python -m json.tool "$run_tests_subset_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_docs_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/docs-check.sh"'; then
+    test_pass "run-tests docs subset runs only docs-check"
+  else
+    test_fail "run-tests docs subset runs only docs-check"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    repo-automation/bin/run-tests --version --json --json-level=all > "$run_tests_subset_version_json"
+  ) && python -m json.tool "$run_tests_subset_version_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_version_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/version-consistency.sh"'; then
+    test_pass "run-tests version subset runs only version-consistency"
+  else
+    test_fail "run-tests version subset runs only version-consistency"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    printf '\nsubset docs change\n' >> repo-automation/docs/testing.md || return 1
+    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_docs_json"
+  ) && python -m json.tool "$run_tests_subset_changed_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_docs_json" 'data.get("selected_subsets") == ["docs"] and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+    test_pass "run-tests changed subset follows docs-only changes"
+  else
+    test_fail "run-tests changed subset follows docs-only changes"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    printf '\nsubset scratch\n' > scratch.txt || return 1
+    repo-automation/bin/status-packet > "$run_tests_status_packet_out"
+  ) && grep -Eq '^Branch:' "$run_tests_status_packet_out" && grep -Eq '^Tracked changed files:' "$run_tests_status_packet_out" && grep -Eq '^Untracked files:' "$run_tests_status_packet_out"; then
+    test_pass "status-packet human output shows repo state"
+  else
+    test_fail "status-packet human output shows repo state"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    repo-automation/bin/status-packet --machine-json > "$run_tests_status_packet_json"
+  ) && python -m json.tool "$run_tests_status_packet_json" >/dev/null &&     smoke_json_assert "$run_tests_status_packet_json" 'data.get("branch") and "repo-automation/docs/testing.md" in data.get("changed_tracked_files", []) and "scratch.txt" in data.get("untracked_files", [])'; then
+    test_pass "status-packet machine-json is parseable"
+  else
+    test_fail "status-packet machine-json is parseable"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    git checkout -- repo-automation/docs/testing.md >/dev/null 2>&1 || return 1
+    rm -f scratch.txt || return 1
+    : > scratch-two.txt || return 1
+    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_smoke_json"
+  ) && python -m json.tool "$run_tests_subset_changed_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_smoke_json" 'data.get("selected_subsets") == ["smoke"] and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+    test_pass "run-tests changed subset falls back to smoke"
+  else
+    test_fail "run-tests changed subset falls back to smoke"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    rm -f scratch-two.txt || return 1
+  ); then
+    :
+  fi
+
+  mkdir -p "$run_tests_failure_root/repo-automation-template" || return 1
+  cat > "$run_tests_failure_doc_log" <<'EOF'
+INFO: repo-doctor - starting
+FAIL: repo-doctor-check - repo-doctor failure excerpt
+EOF
+  cat > "$run_tests_failure_test_log" <<'EOF'
+INFO: run-tests - starting
+FAIL: run-tests-check - run-tests failure excerpt
+EOF
+
+  if (
+    TMPDIR="$run_tests_failure_root" repo-automation/bin/failure-log --latest --kind=run-tests --lines=3 > "$run_tests_failure_human_out"
+  ) && grep -Eq 'run-tests failure excerpt' "$run_tests_failure_human_out" && grep -Eq '^Latest failure log:' "$run_tests_failure_human_out"; then
+    test_pass "failure-log human output shows latest run-tests excerpt"
+  else
+    test_fail "failure-log human output shows latest run-tests excerpt"
+    status=1
+  fi
+
+  if (
+    TMPDIR="$run_tests_failure_root" repo-automation/bin/failure-log --kind=repo-doctor --machine-json > "$run_tests_failure_json"
+  ) && python -m json.tool "$run_tests_failure_json" >/dev/null &&     smoke_json_assert "$run_tests_failure_json" 'data.get("kind") == "repo-doctor" and data.get("overall_status") == "pass" and data.get("excerpt")'; then
+    test_pass "failure-log machine-json is parseable"
+  else
+    test_fail "failure-log machine-json is parseable"
+    status=1
+  fi
+
+  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" "$run_tests_status_packet_out" "$run_tests_status_packet_json" "$run_tests_failure_human_out" "$run_tests_failure_json" >/dev/null 2>&1 || true
+  rm -f "$run_tests_failure_doc_log" "$run_tests_failure_test_log" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -899,7 +1092,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ]; then
+  ) && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ]; then
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"

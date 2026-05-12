@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+# repo-automation/bin/failure-log
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+failure_log_kind="any"
+failure_log_latest=1
+failure_log_lines=20
+failure_log_machine_json=0
+
+failure_log_usage() {
+  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=run-tests|repo-doctor|any] [--lines=N] [--machine-json] [--help]\n'
+}
+
+failure_log_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//\"/\\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+failure_log_temp_root() {
+  printf '%s/repo-automation-template\n' "${TMPDIR:-$HOME/.cache}"
+}
+
+failure_log_output_stop() {
+  local message="$1"
+
+  if [ "$failure_log_machine_json" -eq 1 ]; then
+    printf '{'
+    printf '"script":"failure-log",'
+    printf '"kind":"%s",' "$(failure_log_json_escape "$failure_log_kind")"
+    printf '"latest":%s,' "$failure_log_latest"
+    printf '"lines":%s,' "$failure_log_lines"
+    printf '"log_file":"",'
+    printf '"overall_status":"fail",'
+    printf '"stop_reason":"%s",' "$(failure_log_json_escape "$message")"
+    printf '"excerpt":[]'
+    printf '}\n'
+  else
+    printf 'STOP: %s\n' "$message" >&2
+  fi
+
+  return 1
+}
+
+failure_log_collect_candidates() {
+  local root="$1"
+
+  case "$failure_log_kind" in
+    run-tests)
+      find "$root" -maxdepth 1 -type f \( -name 'run-tests-*.log' -o -name 'run-tests-smoke-*.log' \) -print
+      ;;
+    repo-doctor)
+      find "$root" -maxdepth 1 -type f -name 'repo-doctor-*.log' -print
+      ;;
+    any)
+      find "$root" -maxdepth 1 -type f \( -name 'run-tests-*.log' -o -name 'run-tests-smoke-*.log' -o -name 'repo-doctor-*.log' \) -print
+      ;;
+  esac
+}
+
+failure_log_pick_latest() {
+  local root="$1"
+  local candidate=""
+  local latest_path=""
+  local latest_mtime=-1
+  local candidate_mtime=0
+
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    candidate_mtime="$(stat -c '%Y' "$candidate" 2>/dev/null || printf '0')"
+    if [ "$candidate_mtime" -gt "$latest_mtime" ]; then
+      latest_mtime="$candidate_mtime"
+      latest_path="$candidate"
+    fi
+  done <<EOF_CANDIDATES
+$(failure_log_collect_candidates "$root")
+EOF_CANDIDATES
+
+  printf '%s\n' "$latest_path"
+}
+
+failure_log_anchor_line() {
+  local log_file="$1"
+  local anchor_line=""
+
+  anchor_line="$(grep -nE '^(FAIL|STOP): ' "$log_file" | tail -n 1 | cut -d: -f1)"
+  if [ -n "$anchor_line" ]; then
+    printf '%s\n' "$anchor_line"
+    return 0
+  fi
+
+  anchor_line="$(grep -nE '^(WARN|INFO): ' "$log_file" | tail -n 1 | cut -d: -f1)"
+  if [ -n "$anchor_line" ]; then
+    printf '%s\n' "$anchor_line"
+    return 0
+  fi
+
+  printf '\n'
+}
+
+failure_log_print_excerpt() {
+  local log_file="$1"
+  local line_count="$2"
+  local anchor_line=""
+  local start_line=1
+  local end_line=1
+
+  if [ ! -f "$log_file" ]; then
+    return 0
+  fi
+
+  anchor_line="$(failure_log_anchor_line "$log_file")"
+  if [ -z "$anchor_line" ]; then
+    tail -n "$line_count" "$log_file"
+    return 0
+  fi
+
+  start_line=$((anchor_line - (line_count / 2)))
+  if [ "$start_line" -lt 1 ]; then
+    start_line=1
+  fi
+  end_line=$((start_line + line_count - 1))
+
+  sed -n "${start_line},${end_line}p" "$log_file"
+}
+
+failure_log_print_human() {
+  local log_file="$1"
+  local line_count="$2"
+
+  printf 'Latest failure log: %s\n' "$log_file"
+  printf 'Excerpt:\n'
+  failure_log_print_excerpt "$log_file" "$line_count"
+}
+
+failure_log_print_json() {
+  local log_file="$1"
+  local line_count="$2"
+  local excerpt_line
+  local excerpt=""
+  local first=1
+
+  while IFS= read -r excerpt_line; do
+    if [ "$first" -eq 0 ]; then
+      excerpt+=', '
+    fi
+    excerpt+="\"$(failure_log_json_escape "$excerpt_line")\""
+    first=0
+  done <<EOF_EXCERPT
+$(failure_log_print_excerpt "$log_file" "$line_count")
+EOF_EXCERPT
+
+  printf '{'
+  printf '"script":"failure-log",'
+  printf '"kind":"%s",' "$(failure_log_json_escape "$failure_log_kind")"
+  printf '"latest":%s,' "$failure_log_latest"
+  printf '"lines":%s,' "$line_count"
+  printf '"log_file":"%s",' "$(failure_log_json_escape "$log_file")"
+  printf '"overall_status":"pass",'
+  printf '"stop_reason":"",'
+  printf '"excerpt":[%s]' "$excerpt"
+  printf '}\n'
+}
+
+failure_log_main() {
+  local arg
+  local root
+  local log_file=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        failure_log_usage
+        return 0
+        ;;
+      --latest)
+        failure_log_latest=1
+        ;;
+      --kind=*)
+        failure_log_kind="${arg#--kind=}"
+        case "$failure_log_kind" in
+          run-tests|repo-doctor|any)
+            ;;
+          *)
+            failure_log_output_stop "invalid --kind value: $failure_log_kind"
+            return 1
+            ;;
+        esac
+        ;;
+      --lines=*)
+        failure_log_lines="${arg#--lines=}"
+        if ! repo_auto_is_positive_integer "$failure_log_lines"; then
+          failure_log_output_stop "invalid --lines value: $failure_log_lines"
+          return 1
+        fi
+        ;;
+      --machine-json)
+        failure_log_machine_json=1
+        ;;
+      *)
+        failure_log_output_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  root="$(failure_log_temp_root)"
+  if [ ! -d "$root" ]; then
+    failure_log_output_stop "no matching logs found in $root"
+    return 1
+  fi
+
+  log_file="$(failure_log_pick_latest "$root")"
+  if [ -z "$log_file" ]; then
+    failure_log_output_stop "no matching logs found in $root"
+    return 1
+  fi
+
+  if [ "$failure_log_machine_json" -eq 1 ]; then
+    failure_log_print_json "$log_file" "$failure_log_lines"
+  else
+    failure_log_print_human "$log_file" "$failure_log_lines"
+  fi
+}
+
+failure_log_main "$@"
+# repo-automation/bin/failure-log EOF

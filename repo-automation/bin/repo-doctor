@@ -323,6 +323,8 @@ repo_doctor_check_scripts() {
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-report-upstream" "report-upstream" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-doctor" "repo-doctor" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-install" "repo-automation-install" || status=1
+  repo_doctor_check_script_one "repo-automation/bin/failure-log" "failure-log" || status=1
+  repo_doctor_check_script_one "repo-automation/bin/status-packet" "status-packet" || status=1
   if repo_doctor_should_run_starter_template_readiness; then
     repo_doctor_check_script_one "repo-automation/bin/starter-template-ready" "starter-template-ready" || status=1
   fi
@@ -558,6 +560,8 @@ repo_doctor_check_docs_index() {
     "repo-automation/docs/add-doc-pr.md" \
     "repo-automation/docs/repo-automation-report-upstream.md" \
     "repo-automation/docs/repo-doctor.md" \
+    "repo-automation/docs/failure-log.md" \
+    "repo-automation/docs/status-packet.md" \
     "repo-automation/docs/managed-files.md" \
     "repo-automation/docs/repo-automation-install.md" \
     "repo-automation/docs/testing.md"

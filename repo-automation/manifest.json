@@ -59,6 +59,16 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/failure-log",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/bin/status-packet",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/run-tests",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -130,6 +140,16 @@
     },
     {
       "path": "repo-automation/docs/repo-doctor.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/failure-log.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/status-packet.md",
       "owner": "repo-automation-template",
       "kind": "doc"
     },

@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+# repo-automation/bin/status-packet
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+status_packet_machine_json=0
+status_packet_warnings=()
+status_packet_branch=""
+status_packet_status_short=""
+status_packet_tracked_files=()
+status_packet_untracked_files=()
+status_packet_recent_run_tests_log=""
+status_packet_recent_repo_doctor_log=""
+status_packet_pr_available=0
+status_packet_pr_number=""
+status_packet_pr_title=""
+status_packet_pr_state=""
+status_packet_pr_url=""
+status_packet_pr_head_ref=""
+status_packet_pr_base_ref=""
+
+status_packet_usage() {
+  printf 'Usage: repo-automation/bin/status-packet [--machine-json] [--help]\n'
+}
+
+status_packet_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//\"/\\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+status_packet_temp_root() {
+  printf '%s/repo-automation-template\n' "${TMPDIR:-$HOME/.cache}"
+}
+
+status_packet_warn() {
+  local message="$1"
+  status_packet_warnings+=("$message")
+}
+
+status_packet_collect_repo_state() {
+  local repo_root
+
+  repo_root="$(repo_auto_repo_root)" || return 1
+  cd "$repo_root" || return 1
+
+  status_packet_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$status_packet_branch" ]; then
+    status_packet_branch="HEAD"
+  fi
+
+  status_packet_status_short="$(git status --short --untracked-files=normal 2>/dev/null || true)"
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && status_packet_tracked_files+=("$path")
+  done <<EOF_TRACKED
+$(
+  {
+    git diff --name-only --cached --diff-filter=ACDMR
+    git diff --name-only --diff-filter=ACDMR
+  } | sed '/^$/d' | sort -u
+)
+EOF_TRACKED
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && status_packet_untracked_files+=("$path")
+  done <<EOF_UNTRACKED
+$(git ls-files --others --exclude-standard)
+EOF_UNTRACKED
+
+  return 0
+}
+
+status_packet_pick_latest_log() {
+  local root="$1"
+  local pattern="$2"
+  local candidate=""
+  local latest_path=""
+  local latest_mtime=-1
+  local candidate_mtime=0
+
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    candidate_mtime="$(stat -c '%Y' "$candidate" 2>/dev/null || printf '0')"
+    if [ "$candidate_mtime" -gt "$latest_mtime" ]; then
+      latest_mtime="$candidate_mtime"
+      latest_path="$candidate"
+    fi
+  done <<EOF_CANDIDATES
+$(find "$root" -maxdepth 1 -type f -name "$pattern" -print 2>/dev/null)
+EOF_CANDIDATES
+
+  printf '%s\n' "$latest_path"
+}
+
+status_packet_collect_recent_logs() {
+  local root="$1"
+
+  status_packet_recent_run_tests_log="$(status_packet_pick_latest_log "$root" 'run-tests-*.log')"
+  if [ -z "$status_packet_recent_run_tests_log" ]; then
+    status_packet_recent_run_tests_log="$(status_packet_pick_latest_log "$root" 'run-tests-smoke-*.log')"
+  fi
+  status_packet_recent_repo_doctor_log="$(status_packet_pick_latest_log "$root" 'repo-doctor-*.log')"
+}
+
+status_packet_collect_pr_info() {
+  local branch="$1"
+  local temp_root="$2"
+  local pr_json_file
+  local pr_line
+
+  if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
+    status_packet_warn "detached HEAD; skipped PR lookup"
+    return 0
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    status_packet_warn "gh unavailable; skipped PR lookup"
+    return 0
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    status_packet_warn "python3 unavailable; skipped PR lookup"
+    return 0
+  fi
+
+  mkdir -p "$temp_root" >/dev/null 2>&1 || true
+  pr_json_file="$temp_root/status-packet-pr-$$.json"
+
+  if ! gh pr list --head "$branch" --limit 1 --json number,title,state,url,headRefName,baseRefName >"$pr_json_file" 2>/dev/null; then
+    status_packet_warn "gh pr lookup failed; skipped PR lookup"
+    rm -f "$pr_json_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  pr_line="$(python3 - "$pr_json_file" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+items = json.loads(path.read_text(encoding='utf-8'))
+if not items:
+    raise SystemExit(1)
+item = items[0]
+print('\t'.join([
+    str(item.get('number', '')),
+    str(item.get('title', '')),
+    str(item.get('state', '')),
+    str(item.get('url', '')),
+    str(item.get('headRefName', '')),
+    str(item.get('baseRefName', '')),
+]))
+PY
+)"
+  if [ -n "$pr_line" ]; then
+    status_packet_pr_available=1
+    status_packet_pr_number="${pr_line%%$'\t'*}"
+    pr_line="${pr_line#*$'\t'}"
+    status_packet_pr_title="${pr_line%%$'\t'*}"
+    pr_line="${pr_line#*$'\t'}"
+    status_packet_pr_state="${pr_line%%$'\t'*}"
+    pr_line="${pr_line#*$'\t'}"
+    status_packet_pr_url="${pr_line%%$'\t'*}"
+    pr_line="${pr_line#*$'\t'}"
+    status_packet_pr_head_ref="${pr_line%%$'\t'*}"
+    pr_line="${pr_line#*$'\t'}"
+    status_packet_pr_base_ref="$pr_line"
+  fi
+
+  rm -f "$pr_json_file" >/dev/null 2>&1 || true
+  return 0
+}
+
+status_packet_print_human() {
+  local tracked_file
+  local untracked_file
+  local warning
+
+  printf 'Branch: %s\n' "$status_packet_branch"
+  printf 'Git status --short:\n'
+  if [ -n "$status_packet_status_short" ]; then
+    printf '%s\n' "$status_packet_status_short"
+  else
+    printf 'clean\n'
+  fi
+
+  printf 'Tracked changed files:\n'
+  if [ "${#status_packet_tracked_files[@]}" -eq 0 ]; then
+    printf -- '- none\n'
+  else
+    for tracked_file in "${status_packet_tracked_files[@]}"; do
+      printf -- '- %s\n' "$tracked_file"
+    done
+  fi
+
+  printf 'Untracked files:\n'
+  if [ "${#status_packet_untracked_files[@]}" -eq 0 ]; then
+    printf -- '- none\n'
+  else
+    for untracked_file in "${status_packet_untracked_files[@]}"; do
+      printf -- '- %s\n' "$untracked_file"
+    done
+  fi
+
+  printf 'Recent logs:\n'
+  if [ -n "$status_packet_recent_run_tests_log" ]; then
+    printf -- '- run-tests: %s\n' "$status_packet_recent_run_tests_log"
+  else
+    printf -- '- run-tests: none\n'
+  fi
+  if [ -n "$status_packet_recent_repo_doctor_log" ]; then
+    printf -- '- repo-doctor: %s\n' "$status_packet_recent_repo_doctor_log"
+  else
+    printf -- '- repo-doctor: none\n'
+  fi
+
+  printf 'Latest PR:\n'
+  if [ "$status_packet_pr_available" -eq 1 ]; then
+    printf ' - number: %s\n' "$status_packet_pr_number"
+    printf ' - title: %s\n' "$status_packet_pr_title"
+    printf ' - state: %s\n' "$status_packet_pr_state"
+    printf ' - url: %s\n' "$status_packet_pr_url"
+    printf ' - head: %s\n' "$status_packet_pr_head_ref"
+    printf ' - base: %s\n' "$status_packet_pr_base_ref"
+  else
+    printf -- '- none found\n'
+  fi
+
+  if [ "${#status_packet_warnings[@]}" -gt 0 ]; then
+    printf 'WARN:\n'
+    for warning in "${status_packet_warnings[@]}"; do
+      printf -- '- %s\n' "$warning"
+    done
+  fi
+}
+
+status_packet_json_array() {
+  local -n array_ref="$1"
+  local item
+  local first=1
+  local output=""
+
+  for item in "${array_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      output+=', '
+    fi
+    output+="\"$(status_packet_json_escape "$item")\""
+    first=0
+  done
+
+  printf '%s' "$output"
+}
+
+status_packet_print_json() {
+  printf '{'
+  printf '"script":"status-packet",'
+  printf '"machine_json":true,'
+  printf '"branch":"%s",' "$(status_packet_json_escape "$status_packet_branch")"
+  printf '"status_short":"%s",' "$(status_packet_json_escape "$status_packet_status_short")"
+  printf '"changed_tracked_files":[%s],' "$(status_packet_json_array status_packet_tracked_files)"
+  printf '"untracked_files":[%s],' "$(status_packet_json_array status_packet_untracked_files)"
+  printf '"recent_logs":{"run_tests":"%s","repo_doctor":"%s"},' "$(status_packet_json_escape "$status_packet_recent_run_tests_log")" "$(status_packet_json_escape "$status_packet_recent_repo_doctor_log")"
+  printf '"latest_pr":{"available":%s,"number":"%s","title":"%s","state":"%s","url":"%s","head_ref":"%s","base_ref":"%s"},' \
+    "$([ "$status_packet_pr_available" -eq 1 ] && printf true || printf false)" \
+    "$(status_packet_json_escape "$status_packet_pr_number")" \
+    "$(status_packet_json_escape "$status_packet_pr_title")" \
+    "$(status_packet_json_escape "$status_packet_pr_state")" \
+    "$(status_packet_json_escape "$status_packet_pr_url")" \
+    "$(status_packet_json_escape "$status_packet_pr_head_ref")" \
+    "$(status_packet_json_escape "$status_packet_pr_base_ref")"
+  printf '"warnings":[%s],' "$(status_packet_json_array status_packet_warnings)"
+  printf '"overall_status":"pass"'
+  printf '}\n'
+}
+
+status_packet_main() {
+  local arg
+  local repo_root=""
+  local temp_root
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        status_packet_usage
+        return 0
+        ;;
+      --machine-json)
+        status_packet_machine_json=1
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  repo_root="$(repo_auto_repo_root)" || return 1
+  cd "$repo_root" || return 1
+
+  status_packet_collect_repo_state || return 1
+  temp_root="$(status_packet_temp_root)"
+  status_packet_collect_recent_logs "$temp_root"
+  status_packet_collect_pr_info "$status_packet_branch" "$temp_root"
+
+  if [ "$status_packet_machine_json" -eq 1 ]; then
+    status_packet_print_json
+  else
+    status_packet_print_human
+  fi
+}
+
+status_packet_main "$@"
+# repo-automation/bin/status-packet EOF

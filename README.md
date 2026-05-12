@@ -30,6 +30,8 @@ v0.1.0 is a public-alpha helper set with implemented terminal workflows. It incl
 - branch cleanup and codex slice preflight helpers
 - pr finish helper for status/watch/explicit merge flows
 - repo doctor read-only health helper
+- failure-log recovery helper
+- status-packet recovery helper
 - downstream install/update helper
 
 ## Not In v0.1.0
@@ -52,6 +54,8 @@ These names define the implemented helper set.
 - `repo-automation/bin/prepare-release`
 - `repo-automation/bin/repo-automation-report-upstream`
 - `repo-automation/bin/repo-doctor`
+- `repo-automation/bin/failure-log`
+- `repo-automation/bin/status-packet`
 - `repo-automation/bin/automation-freshness`
 - `repo-automation/bin/repo-automation-install`
 
@@ -103,6 +107,8 @@ Do not add live payment links here unless a support path is actually live and cl
 Use GitHub Issues for bugs and feature requests. Downstream repo users should start with [docs/DOWNSTREAM_FEEDBACK.md](docs/DOWNSTREAM_FEEDBACK.md) so local repo-specific requests stay local and shared automation problems are filed upstream.
 Downstream repos can now use `repo-automation/bin/repo-automation-report-upstream` to prepare and submit upstream bug/feature reports from terminal after preview/redaction checks.
 `repo-automation/bin/repo-doctor` now provides a read-only PASS/WARN/FAIL health summary for config, scripts, tests, CI permissions, manifest freshness, docs links, and issue templates.
+`repo-automation/bin/failure-log` now pulls the latest useful excerpt from existing run-tests or repo-doctor logs without rerunning anything.
+`repo-automation/bin/status-packet` now provides a compact read-only branch, file, log, and lightweight PR snapshot.
 `repo-automation/bin/automation-freshness` checks the repo-owned automation manifest against the current working tree and supports `--machine-json` and `--source-root=/path/to/checkout`.
 `repo-automation/bin/repo-automation-install` now provides terminal preview/apply flows for installing or updating managed repo automation files into downstream repos.
 `repo-automation/bin/prepare-release` now provides terminal `--check`, `--dry-run`, `--apply`, and `--machine-json` flows for repo-local version placement updates.
@@ -112,6 +118,7 @@ The public workflow audit checklist seed lives in [docs/WORKFLOW_AUDIT_CHECKLIST
 ### Low-token diagnostics
 
 The output-mode contract in `repo-automation/docs/output-modes.md` now keeps `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor` compact by default: summary output first, detailed logs in temp files, `--explain` for full detail, `--audit` for the compact full suite, `--timeout` for bounded subchecks, and JSON modes for warnings/failures.
+`repo-automation/bin/failure-log` and `repo-automation/bin/status-packet` are the quick recovery companions when you want an excerpt or a compact state snapshot without rerunning checks.
 
 ### Public-alpha limitations
 
