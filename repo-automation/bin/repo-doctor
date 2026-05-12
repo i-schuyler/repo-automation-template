@@ -21,7 +21,7 @@ repo_doctor_checks=()
 
 repo_doctor_usage() {
   printf 'Usage: repo-automation/bin/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--quick] [--full] [--no-run-tests] [--check=NAME]\n'
-  printf 'Named checks: git, config, scripts, json, tests, version, ci, automation-freshness, starter-template-readiness, docs, issue-templates\n'
+  printf 'Named checks: artifact-guard, git, config, scripts, json, tests, version, ci, automation-freshness, starter-template-readiness, docs, issue-templates\n'
 }
 
 repo_doctor_info() {
@@ -129,7 +129,7 @@ repo_doctor_should_run_starter_template_readiness() {
 
 repo_doctor_check_is_registered() {
   case "$1" in
-    git|config|scripts|json|tests|version|ci|automation-freshness|starter-template-readiness|docs|issue-templates)
+    artifact-guard|git|config|scripts|json|tests|version|ci|automation-freshness|starter-template-readiness|docs|issue-templates)
       return 0
       ;;
     *)
@@ -334,6 +334,52 @@ repo_doctor_check_scripts() {
   repo_doctor_check_script_one "repo-automation/bin/run-tests" "run-tests" || status=1
   repo_doctor_check_script_one "repo-automation/lib/common.sh" "common-library" || status=1
   return "$status"
+}
+
+repo_doctor_root_artifact_guard_is_match() {
+  local path="$1"
+
+  case "$path" in
+    .tmp-*|tmp-*|scratch.txt|touched.json|range.json|*.tmp|*.log)
+      return 0
+      ;;
+    .cache|tmp|temp)
+      [ -d "$path" ]
+      return $?
+      ;;
+  esac
+
+  return 1
+}
+
+repo_doctor_check_artifact_guard() {
+  local status=0
+  local path
+  local display_path
+  local artifacts=()
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    if ! repo_doctor_root_artifact_guard_is_match "$path"; then
+      continue
+    fi
+    if git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+      continue
+    fi
+    display_path="$path"
+    [ -d "$path" ] && display_path="$path/"
+    artifacts+=("$display_path")
+  done <<EOF
+$(find . -mindepth 1 -maxdepth 1 -printf '%P\n' 2>/dev/null | LC_ALL=C sort)
+EOF
+
+  if [ "${#artifacts[@]}" -eq 0 ]; then
+    repo_doctor_add_check "artifact-guard" "pass" "no repo-root temp or cache artifacts detected"
+    return 0
+  fi
+
+  repo_doctor_add_check "artifact-guard" "fail" "repo-root artifacts detected: ${artifacts[*]}"
+  return 1
 }
 
 repo_doctor_check_automation_freshness() {
@@ -613,6 +659,7 @@ repo_doctor_check_issue_templates() {
 repo_doctor_run_check() {
   local check_name="$1"
   case "$check_name" in
+    artifact-guard) repo_doctor_check_artifact_guard ;;
     git) repo_doctor_check_git ;;
     config) repo_doctor_check_config ;;
     scripts) repo_doctor_check_scripts ;;
@@ -868,11 +915,11 @@ repo_doctor_main() {
       fi
     else
       if repo_doctor_is_installed_target; then
-        checks_to_run=(git config scripts automation-freshness json tests version)
+        checks_to_run=(artifact-guard git config scripts automation-freshness json tests version)
       else
-        checks_to_run=(git config scripts automation-freshness json tests version ci docs issue-templates)
+        checks_to_run=(artifact-guard git config scripts automation-freshness json tests version ci docs issue-templates)
         if repo_doctor_should_run_starter_template_readiness; then
-          checks_to_run=(git config scripts automation-freshness starter-template-readiness json tests version ci docs issue-templates)
+          checks_to_run=(artifact-guard git config scripts automation-freshness starter-template-readiness json tests version ci docs issue-templates)
         fi
       fi
     fi

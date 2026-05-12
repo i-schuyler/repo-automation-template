@@ -318,7 +318,7 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --help > "$repo_doctor_help" && grep -q 'starter-template-readiness' "$repo_doctor_help"
+    repo-automation/bin/repo-doctor --help > "$repo_doctor_help" && grep -q 'artifact-guard' "$repo_doctor_help" && grep -q 'starter-template-readiness' "$repo_doctor_help"
   ); then
     test_pass "repo-doctor help succeeds"
   else
@@ -926,6 +926,55 @@ smoke_check_repo_doctor_contract() {
   return "$status"
 }
 
+smoke_check_repo_doctor_artifact_guard() {
+  local status=0
+  local artifact_repo=""
+  local artifact_pass_json="$smoke_test_base/repo-doctor-artifact-pass-$$.json"
+  local artifact_fail_json="$smoke_test_base/repo-doctor-artifact-fail-$$.json"
+
+  artifact_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "repo-doctor artifact guard fixture creates a repo"
+    return 1
+  }
+
+  if (
+    cd "$artifact_repo" || return 1
+    printf 'tracked scratch file\n' > scratch.txt || return 1
+    git add scratch.txt >/dev/null 2>&1 || return 1
+    git commit -m "track scratch file" >/dev/null 2>&1 || return 1
+    repo-automation/bin/repo-doctor --check=artifact-guard --json --json-level=all > "$artifact_pass_json"
+  ) && python -m json.tool "$artifact_pass_json" >/dev/null && \
+    smoke_json_assert "$artifact_pass_json" 'data.get("overall_status") == "pass" and any(check.get("name") == "artifact-guard" and check.get("status") == "pass" for check in data.get("checks", []))'; then
+    test_pass "repo-doctor artifact guard ignores tracked root files"
+  else
+    test_fail "repo-doctor artifact guard ignores tracked root files"
+    status=1
+  fi
+
+  if (
+    cd "$artifact_repo" || return 1
+    mkdir -p .cache tmp temp || return 1
+    printf 'generated root artifact\n' > touched.json || return 1
+    printf 'generated root artifact\n' > range.json || return 1
+    printf 'generated root artifact\n' > .tmp-guard || return 1
+    printf 'generated root artifact\n' > tmp-guard.tmp || return 1
+    printf 'generated root artifact\n' > root.log || return 1
+    printf 'generated root artifact\n' > tmp-guard.log || return 1
+    repo-automation/bin/repo-doctor --check=artifact-guard --json > "$artifact_fail_json"
+    result=$?
+    [ "$result" -ne 0 ]
+  ) && python -m json.tool "$artifact_fail_json" >/dev/null && \
+    smoke_json_assert "$artifact_fail_json" 'data.get("overall_status") == "fail" and any(check.get("name") == "artifact-guard" and check.get("status") == "fail" and ".cache/" in check.get("message", "") and "tmp/" in check.get("message", "") and "temp/" in check.get("message", "") and "touched.json" in check.get("message", "") and "range.json" in check.get("message", "") and ".tmp-guard" in check.get("message", "") and "tmp-guard.tmp" in check.get("message", "") and "root.log" in check.get("message", "") and "tmp-guard.log" in check.get("message", "") and "scratch.txt" not in check.get("message", "") for check in data.get("checks", []))'; then
+    test_pass "repo-doctor artifact guard detects repo-root artifacts"
+  else
+    test_fail "repo-doctor artifact guard detects repo-root artifacts"
+    status=1
+  fi
+
+  rm -f "$artifact_pass_json" "$artifact_fail_json" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_prepare_release_contract() {
   local status=0
   local prepare_release_help_out="$smoke_test_base/prepare-release-help-$$.txt"
@@ -1485,6 +1534,7 @@ smoke_main() {
   test_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
   test_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
   test_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
+  test_run_named_check "smoke:repo-doctor-artifact-guard" smoke_check_repo_doctor_artifact_guard || status=1
   test_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
   test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
   test_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1

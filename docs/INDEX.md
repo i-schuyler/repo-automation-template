@@ -30,7 +30,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 12. [PR Finish](../repo-automation/docs/pr-finish.md)
 13. [Add Doc PR](../repo-automation/docs/add-doc-pr.md)
 14. [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
-15. [Repo Doctor](../repo-automation/docs/repo-doctor.md)
+15. [Repo Doctor](../repo-automation/docs/repo-doctor.md) for read-only health checks and the repo-root artifact guard
 16. [Failure Log](../repo-automation/docs/failure-log.md)
 17. [Status Packet](../repo-automation/docs/status-packet.md)
 18. [Touched Files](../repo-automation/docs/touched-files.md)
