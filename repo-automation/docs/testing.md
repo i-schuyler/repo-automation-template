@@ -14,7 +14,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
 - smoke coverage for `repo-automation/bin/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
-- smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, `--explain`, JSON levels, log files, and missing-config safe failure behavior
+- smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, the repo-root artifact guard, `--explain`, JSON levels, log files, and missing-config safe failure behavior
 - smoke coverage for `repo-automation/bin/failure-log` latest log excerpts, kind filtering, line limits, and machine JSON
 - smoke coverage for `repo-automation/bin/touched-files` commit-range output, working-tree fallback, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and machine JSON
@@ -32,7 +32,7 @@ The test scaffold does not require GitHub auth and does not create issues or PRs
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
 `repo-automation/bin/add-doc-pr` smoke coverage does not create real PRs.
 `repo-automation/bin/repo-automation-report-upstream` smoke coverage does not create real issues.
-`repo-automation/bin/repo-doctor` smoke coverage is local/no-auth and does not create GitHub objects.
+`repo-automation/bin/repo-doctor` smoke coverage is local/no-auth and does not create GitHub objects. It also checks the repo-root artifact guard against accidental root-level temp/cache files in temporary repositories.
 `repo-automation/bin/repo-automation-install` smoke coverage only uses temporary local target repos and does not touch real downstream repos.
 `repo-automation/bin/run-tests` smoke coverage does not create or modify GitHub objects.
 
