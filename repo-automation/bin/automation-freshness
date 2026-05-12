@@ -144,6 +144,7 @@ else:
             entries = []
 
         seen_paths = set()
+        manifest_paths = set()
         for entry in entries:
             if not isinstance(entry, dict):
                 validation_errors.append("managed_files entries must be objects")
@@ -160,6 +161,7 @@ else:
                 validation_errors.append(f"duplicate managed path: {path}")
                 continue
             seen_paths.add(path)
+            manifest_paths.add(path)
             if not path.startswith("repo-automation/"):
                 validation_errors.append(f"managed path escapes repo-automation/: {path}")
             if not isinstance(owner, str) or not owner:
@@ -188,6 +190,18 @@ else:
                     "status": status,
                 }
             )
+
+        if not installed_target:
+            source_paths = {
+                str(path.relative_to(source_root).as_posix())
+                for path in (source_root / "repo-automation").rglob("*")
+                if path.is_file()
+            }
+            unmanaged = sorted(source_paths - manifest_paths)
+            if unmanaged:
+                validation_errors.append(
+                    "repo-automation files missing from manifest: " + ", ".join(unmanaged)
+                )
 
         result["managed_count"] = len(managed_files)
 
@@ -218,7 +232,7 @@ else:
 
 sys.exit(0 if result["overall_status"] == "pass" else 1)
 PY
-}
 
+}
 automation_freshness_main "$@"
 # repo-automation/bin/automation-freshness EOF

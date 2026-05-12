@@ -4,6 +4,11 @@
   "managed_root": "repo-automation",
   "managed_files": [
     {
+      "path": "repo-automation/docs/version-modes.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/manifest.json",
       "owner": "repo-automation-template",
       "kind": "manifest"
@@ -207,6 +212,11 @@
       "path": "repo-automation/lib/common.sh",
       "owner": "repo-automation-template",
       "kind": "library"
+    },
+    {
+      "path": "repo-automation/tests/docs-check.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
     },
     {
       "path": "repo-automation/tests/lib/test-common.sh",

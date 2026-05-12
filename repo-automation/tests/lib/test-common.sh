@@ -1,4 +1,5 @@
 # repo-automation/tests/lib/test-common.sh
+# shellcheck shell=bash
 # Shared Bash test harness for smoke tests.
 
 TEST_TEMP_ROOT="${TMPDIR:-$HOME/.cache}/repo-automation-template-tests"
@@ -249,6 +250,10 @@ test_run_with_timeout() {
     fi
 
     (
+      # Keep cleanup ownership in the parent shell so a timed-out child cannot
+      # delete shared smoke fixtures that later checks still need.
+      trap - EXIT INT TERM
+      TEST_CLEANUP_RAN=1
       "$command_string"
     ) &
     child_pid=$!

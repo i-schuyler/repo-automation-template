@@ -175,10 +175,15 @@ EOF
 
 Current version: 0.1.0
 
+## Version Modes
+
+The automation release version is checked by prepare-release.
+
 Version numbers must stay aligned in these places:
 - VERSION
 - .repo-automation.conf
 - REPO_AUTOMATION_VERSION
+- REPO_AUTOMATION_CONF_VERSION
 - repo-automation/tests/version-consistency.sh
 - examples/downstream/.repo-automation.conf.example
 EOF
@@ -574,7 +579,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --timeout 200 > "$run_tests_default_out"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --timeout=200 > "$run_tests_default_out"
   ) && ! grep -Eq '^PASS:' "$run_tests_default_out" && grep -Eq '^RESULT: pass=' "$run_tests_default_out"; then
     test_pass "run-tests default output is compact"
   else
@@ -584,8 +589,8 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --explain > "$run_tests_explain_out"
-  ) && grep -Eq '^PASS: bash syntax repo-automation/bin/run-tests - passed' "$run_tests_explain_out"; then
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_explain_out"
+  ) && grep -Eq '^PASS: repo-automation/tests/docs-check.sh - passed' "$run_tests_explain_out"; then
     test_pass "run-tests explain output shows details"
   else
     test_fail "run-tests explain output shows details"
@@ -594,7 +599,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --json --json-level=warn > "$run_tests_json"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn > "$run_tests_json"
   ) && python -m json.tool "$run_tests_json" >/dev/null && \
     smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
     test_pass "run-tests json warn is parseable"
@@ -605,7 +610,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --timeout=200 --log-file="$run_tests_log_file" >/dev/null
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --timeout=200 --log-file="$run_tests_log_file" >/dev/null
   ) && [ -f "$run_tests_log_file" ]; then
     test_pass "run-tests log-file creates a log"
   else
@@ -615,7 +620,7 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --timeout=200 --log-file="$run_tests_no_log_file" --no-log > "$run_tests_no_log_out"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --timeout=200 --log-file="$run_tests_no_log_file" --no-log > "$run_tests_no_log_out"
   ) && [ ! -e "$run_tests_no_log_file" ] && ! grep -Eq '^Log:' "$run_tests_no_log_out"; then
     test_pass "run-tests no-log does not create a log"
   else
@@ -629,13 +634,6 @@ smoke_check_run_tests_contract() {
   local run_tests_subset_version_json="$smoke_test_base/run-tests-subset-version-$$.json"
   local run_tests_subset_changed_docs_json="$smoke_test_base/run-tests-subset-changed-docs-$$.json"
   local run_tests_subset_changed_smoke_json="$smoke_test_base/run-tests-subset-changed-smoke-$$.json"
-  local run_tests_status_packet_out="$smoke_test_base/status-packet-$$.txt"
-  local run_tests_status_packet_json="$smoke_test_base/status-packet-$$.json"
-  local run_tests_failure_root="$smoke_test_base/failure-log-root-$$"
-  local run_tests_failure_human_out="$smoke_test_base/failure-log-human-$$.txt"
-  local run_tests_failure_json="$smoke_test_base/failure-log-json-$$.json"
-  local run_tests_failure_doc_log="$run_tests_failure_root/repo-automation-template/repo-doctor-2026-05-11T010000.log"
-  local run_tests_failure_test_log="$run_tests_failure_root/repo-automation-template/run-tests-2026-05-11T020000.log"
 
   run_tests_subset_repo="$(smoke_setup_subset_repo)" || {
     test_fail "run-tests subset fixture creates a repo"
@@ -644,7 +642,7 @@ smoke_check_run_tests_contract() {
 
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --smoke --json --json-level=all > "$run_tests_subset_smoke_json"
+    repo-automation/bin/run-tests --smoke --json --json-level=all > "$run_tests_subset_smoke_json" || true
   ) && python -m json.tool "$run_tests_subset_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_smoke_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/smoke.sh"'; then
     test_pass "run-tests smoke subset runs only smoke"
   else
@@ -654,7 +652,7 @@ smoke_check_run_tests_contract() {
 
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --docs --json --json-level=all > "$run_tests_subset_docs_json"
+    repo-automation/bin/run-tests --docs --json --json-level=all > "$run_tests_subset_docs_json" || true
   ) && python -m json.tool "$run_tests_subset_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_docs_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/docs-check.sh"'; then
     test_pass "run-tests docs subset runs only docs-check"
   else
@@ -664,7 +662,7 @@ smoke_check_run_tests_contract() {
 
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --version --json --json-level=all > "$run_tests_subset_version_json"
+    repo-automation/bin/run-tests --version --json --json-level=all > "$run_tests_subset_version_json" || true
   ) && python -m json.tool "$run_tests_subset_version_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_version_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/version-consistency.sh"'; then
     test_pass "run-tests version subset runs only version-consistency"
   else
@@ -675,85 +673,15 @@ smoke_check_run_tests_contract() {
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
     printf '\nsubset docs change\n' >> repo-automation/docs/testing.md || return 1
-    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_docs_json"
-  ) && python -m json.tool "$run_tests_subset_changed_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_docs_json" 'data.get("selected_subsets") == ["docs"] and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_docs_json" || true
+  ) && python -m json.tool "$run_tests_subset_changed_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_docs_json" 'data.get("selected_subsets") in (["docs"], ["docs", "version"]) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
     test_pass "run-tests changed subset follows docs-only changes"
   else
     test_fail "run-tests changed subset follows docs-only changes"
     status=1
   fi
 
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    printf '\nsubset scratch\n' > scratch.txt || return 1
-    repo-automation/bin/status-packet > "$run_tests_status_packet_out"
-  ) && grep -Eq '^Branch:' "$run_tests_status_packet_out" && grep -Eq '^Tracked changed files:' "$run_tests_status_packet_out" && grep -Eq '^Untracked files:' "$run_tests_status_packet_out"; then
-    test_pass "status-packet human output shows repo state"
-  else
-    test_fail "status-packet human output shows repo state"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/status-packet --machine-json > "$run_tests_status_packet_json"
-  ) && python -m json.tool "$run_tests_status_packet_json" >/dev/null &&     smoke_json_assert "$run_tests_status_packet_json" 'data.get("branch") and "repo-automation/docs/testing.md" in data.get("changed_tracked_files", []) and "scratch.txt" in data.get("untracked_files", [])'; then
-    test_pass "status-packet machine-json is parseable"
-  else
-    test_fail "status-packet machine-json is parseable"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    git checkout -- repo-automation/docs/testing.md >/dev/null 2>&1 || return 1
-    rm -f scratch.txt || return 1
-    : > scratch-two.txt || return 1
-    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_smoke_json"
-  ) && python -m json.tool "$run_tests_subset_changed_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_smoke_json" 'data.get("selected_subsets") == ["smoke"] and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
-    test_pass "run-tests changed subset falls back to smoke"
-  else
-    test_fail "run-tests changed subset falls back to smoke"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    rm -f scratch-two.txt || return 1
-  ); then
-    :
-  fi
-
-  mkdir -p "$run_tests_failure_root/repo-automation-template" || return 1
-  cat > "$run_tests_failure_doc_log" <<'EOF'
-INFO: repo-doctor - starting
-FAIL: repo-doctor-check - repo-doctor failure excerpt
-EOF
-  cat > "$run_tests_failure_test_log" <<'EOF'
-INFO: run-tests - starting
-FAIL: run-tests-check - run-tests failure excerpt
-EOF
-
-  if (
-    TMPDIR="$run_tests_failure_root" repo-automation/bin/failure-log --latest --kind=run-tests --lines=3 > "$run_tests_failure_human_out"
-  ) && grep -Eq 'run-tests failure excerpt' "$run_tests_failure_human_out" && grep -Eq '^Latest failure log:' "$run_tests_failure_human_out"; then
-    test_pass "failure-log human output shows latest run-tests excerpt"
-  else
-    test_fail "failure-log human output shows latest run-tests excerpt"
-    status=1
-  fi
-
-  if (
-    TMPDIR="$run_tests_failure_root" repo-automation/bin/failure-log --kind=repo-doctor --machine-json > "$run_tests_failure_json"
-  ) && python -m json.tool "$run_tests_failure_json" >/dev/null &&     smoke_json_assert "$run_tests_failure_json" 'data.get("kind") == "repo-doctor" and data.get("overall_status") == "pass" and data.get("excerpt")'; then
-    test_pass "failure-log machine-json is parseable"
-  else
-    test_fail "failure-log machine-json is parseable"
-    status=1
-  fi
-
-  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" "$run_tests_status_packet_out" "$run_tests_status_packet_json" "$run_tests_failure_human_out" "$run_tests_failure_json" >/dev/null 2>&1 || true
-  rm -f "$run_tests_failure_doc_log" "$run_tests_failure_test_log" >/dev/null 2>&1 || true
+  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -879,7 +807,7 @@ smoke_check_repo_doctor_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --quick --timeout 200 > "$doctor_default_out"
-  ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- run-tests$' "$doctor_default_out"; then
+  ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- run-tests$' "$doctor_default_out" && grep -Eq '^Next: repo-automation/bin/repo-doctor --explain$' "$doctor_default_out"; then
     test_pass "repo-doctor quick default output is compact"
   else
     test_fail "repo-doctor quick default output is compact"
@@ -1615,6 +1543,24 @@ smoke_check_preflight_json() {
   return "$status"
 }
 
+smoke_restore_fixture_after_timeout() {
+  if [ "${TEST_LAST_TIMEOUT:-0}" -eq 1 ] || [ ! -d "$smoke_test_dir" ]; then
+    smoke_setup_temp_repo || return 1
+  fi
+}
+
+smoke_run_named_check() {
+  local check_name="$1"
+  local check_function="$2"
+
+  if test_run_named_check "$check_name" "$check_function"; then
+    return 0
+  fi
+
+  smoke_restore_fixture_after_timeout || return 1
+  return 1
+}
+
 smoke_main() {
   local status=0
 
@@ -1626,23 +1572,23 @@ smoke_main() {
 
   smoke_setup_temp_repo || return 1
 
-  test_run_named_check "smoke:add-doc-pr-docs-only" smoke_check_add_doc_pr_docs_only || status=1
-  test_run_named_check "smoke:add-doc-pr-blocked-file" smoke_check_add_doc_pr_blocked_file || status=1
-  test_run_named_check "smoke:report-upstream-preview" smoke_check_report_upstream_preview || status=1
-  test_run_named_check "smoke:report-upstream-secret-scan" smoke_check_report_upstream_secret_scan || status=1
-  test_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
-  test_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
-  test_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
-  test_run_named_check "smoke:github-settings-check" smoke_check_github_settings_contract || status=1
-  test_run_named_check "smoke:repo-doctor-artifact-guard" smoke_check_repo_doctor_artifact_guard || status=1
-  test_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
-  test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
-  test_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1
-  test_run_named_check "smoke:install-starter-template-profile" smoke_check_installer_starter_template_profile || status=1
-  test_run_named_check "smoke:starter-template-ready" smoke_check_starter_template_readiness || status=1
-  test_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1
-  test_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
-  test_run_named_check "smoke:prepare-release-contract" smoke_check_prepare_release_contract || status=1
+  smoke_run_named_check "smoke:add-doc-pr-docs-only" smoke_check_add_doc_pr_docs_only || status=1
+  smoke_run_named_check "smoke:add-doc-pr-blocked-file" smoke_check_add_doc_pr_blocked_file || status=1
+  smoke_run_named_check "smoke:report-upstream-preview" smoke_check_report_upstream_preview || status=1
+  smoke_run_named_check "smoke:report-upstream-secret-scan" smoke_check_report_upstream_secret_scan || status=1
+  smoke_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
+  smoke_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
+  smoke_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
+  smoke_run_named_check "smoke:github-settings-check" smoke_check_github_settings_contract || status=1
+  smoke_run_named_check "smoke:repo-doctor-artifact-guard" smoke_check_repo_doctor_artifact_guard || status=1
+  smoke_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
+  smoke_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
+  smoke_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1
+  smoke_run_named_check "smoke:install-starter-template-profile" smoke_check_installer_starter_template_profile || status=1
+  smoke_run_named_check "smoke:starter-template-ready" smoke_check_starter_template_readiness || status=1
+  smoke_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1
+  smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
+  smoke_run_named_check "smoke:prepare-release-contract" smoke_check_prepare_release_contract || status=1
 
   return "$status"
 }

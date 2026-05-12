@@ -21,11 +21,13 @@ fence_pattern = re.compile(r'^[ \t]{0,3}(`{3,}|~{3,})')
 heading_pattern = re.compile(r'^[ \t]{0,3}#{1,6}\s+\S')
 trailing_whitespace_pattern = re.compile(r'[ \t]+$', re.M)
 
+
 def rel(path: Path) -> str:
     try:
         return str(path.resolve().relative_to(repo_root))
     except ValueError:
         return str(path)
+
 
 def normalize_target(raw: str):
     target = raw.strip()
@@ -43,6 +45,7 @@ def normalize_target(raw: str):
         return None
     return unquote(target)
 
+
 def iter_files(suffixes):
     for path in repo_root.rglob('*'):
         if not path.is_file():
@@ -54,8 +57,10 @@ def iter_files(suffixes):
 
 failures = []
 
+
 def fail(category: str, message: str):
     failures.append(f'FAIL: {category}: {message}')
+
 
 def collect_link_targets(source_path: Path):
     text = source_path.read_text(encoding='utf-8', errors='ignore')
@@ -67,12 +72,14 @@ def collect_link_targets(source_path: Path):
         targets.append(target)
     return targets
 
+
 def check_local_links():
     for path in iter_files(markdown_suffixes):
         for target in collect_link_targets(path):
             linked = (path.parent / target).resolve()
             if not linked.exists():
                 fail('local links', f'{rel(path)} -> {target} -> missing {rel(linked)}')
+
 
 def index_targets():
     index_path = repo_root / 'docs' / 'INDEX.md'
@@ -84,6 +91,7 @@ def index_targets():
         except ValueError:
             targets.add(str(linked))
     return targets
+
 
 def check_docs_index_coverage():
     covered = index_targets()
@@ -97,6 +105,7 @@ def check_docs_index_coverage():
     missing = sorted(p for p in docs_files if p not in covered)
     if missing:
         fail('docs index coverage', 'missing from docs/INDEX.md: ' + ', '.join(missing))
+
 
 def check_public_entry_points():
     required = [
@@ -115,6 +124,26 @@ def check_public_entry_points():
     if missing:
         fail('public entry points', 'missing from docs/INDEX.md: ' + ', '.join(missing))
 
+
+def check_readme_integrity():
+    path = repo_root / 'README.md'
+    text = path.read_text(encoding='utf-8', errors='ignore')
+    required_fragments = [
+        'Current version:',
+        'docs/INDEX.md',
+        'docs/VERSIONING.md',
+        'repo-automation/docs/version-modes.md',
+        'repo-automation/bin/run-tests',
+        'repo-automation/bin/repo-doctor',
+        'repo-automation/bin/prepare-release',
+        'repo-automation/bin/automation-freshness',
+        'repo-automation/bin/touched-files',
+    ]
+    missing = [fragment for fragment in required_fragments if fragment not in text]
+    if missing:
+        fail('readme integrity', 'missing required text in README.md: ' + ', '.join(missing))
+
+
 def check_phrase_group(category, phrases, *, allowed_paths=None):
     for phrase in phrases:
         hits = []
@@ -129,6 +158,7 @@ def check_phrase_group(category, phrases, *, allowed_paths=None):
                 hits.append(rel_path)
         if hits:
             fail(category, f'"{phrase}" found in: ' + ', '.join(sorted(set(hits))))
+
 
 def check_markdown_formatting():
     for path in iter_files(markdown_suffixes):
@@ -170,6 +200,7 @@ def check_markdown_formatting():
 check_local_links()
 check_docs_index_coverage()
 check_public_entry_points()
+check_readme_integrity()
 check_phrase_group('stale phrasing', [
     ''.join(['docs-first ', 'bootstrap']),
     ''.join(['most script implementation']),
@@ -194,6 +225,7 @@ print('PASS: docs checks passed')
 print('PASS: local markdown links')
 print('PASS: docs index coverage')
 print('PASS: public entry points')
+print('PASS: readme integrity')
 print('PASS: phrase scans')
 print('PASS: markdown formatting')
 PY
