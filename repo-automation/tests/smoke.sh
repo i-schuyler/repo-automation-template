@@ -629,13 +629,6 @@ smoke_check_run_tests_contract() {
   local run_tests_subset_version_json="$smoke_test_base/run-tests-subset-version-$$.json"
   local run_tests_subset_changed_docs_json="$smoke_test_base/run-tests-subset-changed-docs-$$.json"
   local run_tests_subset_changed_smoke_json="$smoke_test_base/run-tests-subset-changed-smoke-$$.json"
-  local run_tests_status_packet_out="$smoke_test_base/status-packet-$$.txt"
-  local run_tests_status_packet_json="$smoke_test_base/status-packet-$$.json"
-  local run_tests_failure_root="$smoke_test_base/failure-log-root-$$"
-  local run_tests_failure_human_out="$smoke_test_base/failure-log-human-$$.txt"
-  local run_tests_failure_json="$smoke_test_base/failure-log-json-$$.json"
-  local run_tests_failure_doc_log="$run_tests_failure_root/repo-automation-template/repo-doctor-2026-05-11T010000.log"
-  local run_tests_failure_test_log="$run_tests_failure_root/repo-automation-template/run-tests-2026-05-11T020000.log"
 
   run_tests_subset_repo="$(smoke_setup_subset_repo)" || {
     test_fail "run-tests subset fixture creates a repo"
