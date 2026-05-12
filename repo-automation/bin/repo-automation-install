@@ -304,6 +304,7 @@ repo_install_main() {
     "repo-automation/docs/starter-template-readiness.md"
     "repo-automation/docs/source-provenance.md"
     "repo-automation/docs/testing.md"
+    "repo-automation/docs/version-modes.md"
   )
   local -a starter_template_files=(
     ".github/pull_request_template.md"
