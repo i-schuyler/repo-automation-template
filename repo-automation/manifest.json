@@ -89,6 +89,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/ci-log-dump",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/status-packet",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -190,6 +195,11 @@
     },
     {
       "path": "repo-automation/docs/ci-watch.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/ci-log-dump.md",
       "owner": "repo-automation-template",
       "kind": "doc"
     },

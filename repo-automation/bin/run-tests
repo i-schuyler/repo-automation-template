@@ -873,6 +873,7 @@ EOF
   run_tests_run_cmd "repo-automation/bin/touched-files --help" bash -c 'repo-automation/bin/touched-files --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/ci-status --help" bash -c 'repo-automation/bin/ci-status --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/ci-watch --help" bash -c 'repo-automation/bin/ci-watch --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/ci-log-dump --help" bash -c 'repo-automation/bin/ci-log-dump --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/status-packet --help" bash -c 'repo-automation/bin/status-packet --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/repo-automation-install --help" bash -c 'repo-automation/bin/repo-automation-install --help >/dev/null' || status=1
   if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
