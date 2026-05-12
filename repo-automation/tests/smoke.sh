@@ -175,10 +175,15 @@ EOF
 
 Current version: 0.1.0
 
+## Version Modes
+
+The automation release version is checked by prepare-release.
+
 Version numbers must stay aligned in these places:
 - VERSION
 - .repo-automation.conf
 - REPO_AUTOMATION_VERSION
+- REPO_AUTOMATION_CONF_VERSION
 - repo-automation/tests/version-consistency.sh
 - examples/downstream/.repo-automation.conf.example
 EOF
