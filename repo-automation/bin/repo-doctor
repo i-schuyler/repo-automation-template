@@ -292,11 +292,11 @@ repo_doctor_check_script_one() {
   fi
   repo_doctor_add_check "$name-exists" "pass" "$path exists"
 
-  if [ "$path" != "repo-automation/lib/common.sh" ] && [ ! -x "$path" ]; then
+  if [ "$path" != "repo-automation/lib/common.sh" ] && [[ "$path" != repo-automation/tests/lib/* ]] && [ ! -x "$path" ]; then
     repo_doctor_add_check "$name-executable" "fail" "$path is not executable"
     return 1
   fi
-  if [ "$path" != "repo-automation/lib/common.sh" ]; then
+  if [ "$path" != "repo-automation/lib/common.sh" ] && [[ "$path" != repo-automation/tests/lib/* ]]; then
     repo_doctor_add_check "$name-executable" "pass" "$path is executable"
   fi
 
@@ -311,24 +311,38 @@ repo_doctor_check_script_one() {
 
 repo_doctor_check_scripts() {
   local status=0
-  repo_doctor_check_script_one "repo-automation/bin/branch-cleanup" "branch-cleanup" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/codex-slice-preflight" "codex-slice-preflight" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/pr-finish" "pr-finish" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/add-doc-pr" "add-doc-pr" || status=1
+  local script_path
+  local script_name
+
+  while IFS= read -r script_path; do
+    [ -n "$script_path" ] || continue
+    case "$script_path" in
+      repo-automation/bin/automation-freshness|repo-automation/bin/run-tests|repo-automation/bin/starter-template-ready)
+        continue
+        ;;
+    esac
+    case "$script_path" in
+      repo-automation/lib/common.sh)
+        script_name="common-library"
+        ;;
+      repo-automation/tests/lib/test-common.sh)
+        script_name="test-common"
+        ;;
+      *)
+        script_name="$(basename "$script_path")"
+        script_name="${script_name%.sh}"
+        ;;
+    esac
+    repo_doctor_check_script_one "$script_path" "$script_name" || status=1
+  done <<EOF
+$(find repo-automation/bin repo-automation/lib repo-automation/tests -type f | LC_ALL=C sort)
+EOF
+
   if [ -f "repo-automation/bin/automation-freshness" ]; then
     repo_doctor_check_script_one "repo-automation/bin/automation-freshness" "automation-freshness" || status=1
   else
     repo_doctor_add_check "automation-freshness-exists" "skipped" "repo-automation/bin/automation-freshness missing"
   fi
-  repo_doctor_check_script_one "repo-automation/bin/repo-automation-report-upstream" "report-upstream" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/repo-doctor" "repo-doctor" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/github-settings-check" "github-settings-check" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/repo-automation-install" "repo-automation-install" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/failure-log" "failure-log" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/touched-files" "touched-files" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/ci-status" "ci-status" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/ci-watch" "ci-watch" || status=1
-  repo_doctor_check_script_one "repo-automation/bin/status-packet" "status-packet" || status=1
   if repo_doctor_should_run_starter_template_readiness; then
     repo_doctor_check_script_one "repo-automation/bin/starter-template-ready" "starter-template-ready" || status=1
   fi
@@ -337,7 +351,6 @@ repo_doctor_check_scripts() {
   else
     repo_doctor_add_check "run-tests-exists" "skipped" "repo-automation/bin/run-tests intentionally absent"
   fi
-  repo_doctor_check_script_one "repo-automation/lib/common.sh" "common-library" || status=1
   return "$status"
 }
 
@@ -1063,9 +1076,12 @@ repo_doctor_main() {
       if [ "$repo_doctor_mode" != "full" ]; then
         local filtered_checks=()
         for check_name in "${checks_to_run[@]}"; do
-          if [ "$check_name" != "github-settings-readiness" ]; then
-            filtered_checks+=("$check_name")
-          fi
+          case "$check_name" in
+            automation-freshness|json|version-consistency|github-settings-readiness)
+              continue
+              ;;
+          esac
+          filtered_checks+=("$check_name")
         done
         checks_to_run=("${filtered_checks[@]}")
       fi

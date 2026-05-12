@@ -65,7 +65,7 @@ version_main() {
     return 1
   fi
 
-  if grep -q "Version Modes" docs/VERSIONING.md &&      grep -q "prepare-release" docs/VERSIONING.md &&      grep -q "REPO_AUTOMATION_CONF_VERSION" docs/VERSIONING.md; then
+  if grep -q '^Current version: '"$expected_version"'$' docs/VERSIONING.md &&      grep -q 'Version Modes' docs/VERSIONING.md &&      grep -q 'prepare-release' docs/VERSIONING.md &&      grep -q 'REPO_AUTOMATION_CONF_VERSION' docs/VERSIONING.md; then
     printf 'PASS: VERSIONING documents automation version modes and guard
 '
   else

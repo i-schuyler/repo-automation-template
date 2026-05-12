@@ -844,28 +844,22 @@ EOF
     return $?
   fi
 
-  run_tests_run_cmd "bash syntax repo-automation/lib/common.sh" bash -n repo-automation/lib/common.sh || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/branch-cleanup" bash -n repo-automation/bin/branch-cleanup || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/codex-slice-preflight" bash -n repo-automation/bin/codex-slice-preflight || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/pr-finish" bash -n repo-automation/bin/pr-finish || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/add-doc-pr" bash -n repo-automation/bin/add-doc-pr || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/prepare-release" bash -n repo-automation/bin/prepare-release || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-report-upstream" bash -n repo-automation/bin/repo-automation-report-upstream || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/repo-doctor" bash -n repo-automation/bin/repo-doctor || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/github-settings-check" bash -n repo-automation/bin/github-settings-check || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/failure-log" bash -n repo-automation/bin/failure-log || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/touched-files" bash -n repo-automation/bin/touched-files || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/ci-status" bash -n repo-automation/bin/ci-status || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/ci-watch" bash -n repo-automation/bin/ci-watch || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/status-packet" bash -n repo-automation/bin/status-packet || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-install" bash -n repo-automation/bin/repo-automation-install || status=1
-  run_tests_run_cmd "bash syntax repo-automation/bin/run-tests" bash -n repo-automation/bin/run-tests || status=1
-  run_tests_run_cmd "bash syntax repo-automation/tests/docs-check.sh" bash -n repo-automation/tests/docs-check.sh || status=1
-  run_tests_run_cmd "bash syntax repo-automation/tests/smoke.sh" bash -n repo-automation/tests/smoke.sh || status=1
-  run_tests_run_cmd "bash syntax repo-automation/tests/version-consistency.sh" bash -n repo-automation/tests/version-consistency.sh || status=1
+  while IFS= read -r shell_path; do
+    [ -n "$shell_path" ] || continue
+    run_tests_run_cmd "bash syntax $shell_path" bash -n "$shell_path" || status=1
+  done <<EOF
+$(find repo-automation/bin repo-automation/lib repo-automation/tests -type f | LC_ALL=C sort)
+EOF
 
   if command -v shellcheck >/dev/null 2>&1; then
-    run_tests_run_cmd       "shellcheck repo-automation scripts and tests"       shellcheck       -e SC2317       repo-automation/bin/branch-cleanup       repo-automation/bin/codex-slice-preflight       repo-automation/bin/pr-finish       repo-automation/bin/add-doc-pr       repo-automation/bin/prepare-release       repo-automation/bin/repo-automation-report-upstream       repo-automation/bin/repo-doctor       repo-automation/bin/github-settings-check       repo-automation/bin/failure-log       repo-automation/bin/touched-files       repo-automation/bin/ci-status       repo-automation/bin/ci-watch       repo-automation/bin/status-packet       repo-automation/bin/repo-automation-install       repo-automation/bin/run-tests       repo-automation/tests/docs-check.sh       repo-automation/tests/smoke.sh       repo-automation/tests/version-consistency.sh || status=1
+    shellcheck_args=(-e SC2317)
+    while IFS= read -r shell_path; do
+      [ -n "$shell_path" ] || continue
+      shellcheck_args+=("$shell_path")
+    done <<EOF
+$(find repo-automation/bin repo-automation/lib repo-automation/tests -type f | LC_ALL=C sort)
+EOF
+    run_tests_run_cmd "shellcheck repo-automation scripts and tests" shellcheck "${shellcheck_args[@]}" || status=1
   else
     run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
   fi

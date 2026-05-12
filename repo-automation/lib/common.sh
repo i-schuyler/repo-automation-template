@@ -1,4 +1,5 @@
 # repo-automation/lib/common.sh
+# shellcheck shell=bash
 
 repo_auto_info() {
   printf 'INFO: %s\n' "$*"
@@ -107,6 +108,7 @@ repo_auto_is_positive_integer() {
 repo_auto_validate_branch_name() {
   local branch_name="${1:-}"
 
+  # shellcheck disable=SC1083,SC1001,SC2221,SC2222
   case "$branch_name" in
     ''|-*|*[[:space:]]*|*..*|*@{*|*~*|*\^*|*:*|*\?*|*\**|*[[]*|*\\*|/*|*//*|*/|.|..|*.lock)
       return 1

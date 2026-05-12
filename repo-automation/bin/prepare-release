@@ -232,6 +232,11 @@ def record_change(path: Path, field: str, before: str, after: str, apply_mode: s
         record(str(path), field, "updated", before, after)
 
 
+def record_required_missing(path: Path, field: str, reason: str) -> None:
+    record(str(path), field, "missing", reason=reason)
+    result["overall_status"] = "fail"
+
+
 def update_version_line(text: str, target_version: str):
     pattern = r"^(Current version: )(.+)$"
     match = re.search(pattern, text, flags=re.M)
@@ -339,7 +344,7 @@ def process_file(path: Path, target_version: str, apply_mode: str):
         elif before:
             record(str(path), "automation release version", "match", before, target_version)
         else:
-            record(str(path), "automation release version", "skipped", reason="no visible version line")
+            record_required_missing(path, "automation release version", "missing visible version line")
     elif rel == "CHANGELOG.md":
         updated, changed, before = update_release_heading(text, target_version)
         if changed:
@@ -347,15 +352,23 @@ def process_file(path: Path, target_version: str, apply_mode: str):
         elif before:
             record(str(path), "automation release heading", "match", before, f"## [{target_version}] - Unreleased")
         else:
-            record(str(path), "automation release heading", "skipped", reason="no unreleased heading")
+            record_required_missing(path, "automation release heading", "missing unreleased heading")
     elif rel == "docs/VERSIONING.md":
-        updated, changed, before = update_version_line(text, target_version)
-        if changed:
-            record_change(path, "automation release version", before, target_version, apply_mode)
-        elif before:
-            record(str(path), "automation release version", "match", before, target_version)
+        required_versioning_coverage = (
+            "Version Modes" in text
+            and "prepare-release" in text
+            and "REPO_AUTOMATION_CONF_VERSION" in text
+        )
+        if not required_versioning_coverage:
+            record_required_missing(path, "automation release version", "missing version-mode coverage")
         else:
-            record(str(path), "automation release version", "skipped", reason="no visible version line")
+            updated, changed, before = update_version_line(text, target_version)
+            if changed:
+                record_change(path, "automation release version", before, target_version, apply_mode)
+            elif before:
+                record(str(path), "automation release version", "match", before, target_version)
+            else:
+                record_required_missing(path, "automation release version", "missing visible version line")
     elif rel == "docs/DECISIONS.md":
         updated, changed, before = update_decisions_version(text, target_version)
         if changed:
@@ -363,7 +376,7 @@ def process_file(path: Path, target_version: str, apply_mode: str):
         elif before:
             record(str(path), "automation release version line", "match", before, target_version)
         else:
-            record(str(path), "automation release version line", "skipped", reason="no current version line")
+            record_required_missing(path, "automation release version line", "missing current version line")
     elif rel == ".repo-automation.conf":
         updated, changed, before = update_config_key(text, "REPO_AUTOMATION_VERSION", target_version)
         if changed:

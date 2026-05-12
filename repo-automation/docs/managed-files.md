@@ -23,7 +23,7 @@ Each managed file entry records:
 - `owner`
 - `kind`
 
-That is enough for a quick human edit and for the freshness helper to compare the manifest with the working tree.
+That is enough for a quick human edit and for the freshness helper to compare the manifest with the working tree, including source-repo files that exist on disk but were not added to the manifest.
 
 ## Freshness Check
 
