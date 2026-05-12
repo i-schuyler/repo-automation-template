@@ -48,7 +48,7 @@ Checks include:
 - repo-root artifact and cache guard for accidental temp files and directories
 - git repo/branch/worktree/remote health
 - config presence/load/validation/secret scan
-- script existence/executable/syntax checks
+- script existence/executable/syntax checks, with optional `repo-automation/bin/run-tests` support in installed downstream targets that intentionally omit the helper
 - automation manifest freshness checks
 - JSON contract spot checks for branch cleanup and preflight
 - optional `repo-automation/bin/run-tests` execution

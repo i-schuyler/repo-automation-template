@@ -15,7 +15,7 @@ repo_install_json=0
 repo_install_stop_reason=""
 
 repo_install_usage() {
-  printf 'Usage: repo-automation/bin/repo-automation-install --target PATH [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version REF] [--installed-at YYYY-MM-DD] [--local-overrides-doc PATH] [--source-root PATH]\n'
+  printf 'Usage: repo-automation/bin/repo-automation-install --target PATH|--target=PATH [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version REF|--installed-version=REF] [--installed-at YYYY-MM-DD|--installed-at=YYYY-MM-DD] [--local-overrides-doc PATH|--local-overrides-doc=PATH] [--source-root PATH|--source-root=PATH]\n'
 }
 
 repo_install_info() {
@@ -279,6 +279,7 @@ repo_install_main() {
     "repo-automation/bin/ci-status"
     "repo-automation/bin/ci-watch"
     "repo-automation/bin/status-packet"
+    "repo-automation/bin/prepare-release"
     "repo-automation/bin/repo-automation-install"
     "repo-automation/docs/branch-cleanup.md"
     "repo-automation/docs/codex-slice-preflight.md"
@@ -286,6 +287,8 @@ repo_install_main() {
     "repo-automation/docs/config.md"
     "repo-automation/docs/downstream-install-contract.md"
     "repo-automation/docs/issue-escalation.md"
+    "repo-automation/docs/managed-files.md"
+    "repo-automation/docs/output-modes.md"
     "repo-automation/docs/pr-finish.md"
     "repo-automation/docs/add-doc-pr.md"
     "repo-automation/docs/repo-automation-report-upstream.md"
@@ -296,6 +299,7 @@ repo_install_main() {
     "repo-automation/docs/ci-watch.md"
     "repo-automation/docs/status-packet.md"
     "repo-automation/docs/repo-automation-install.md"
+    "repo-automation/docs/starter-template-readiness.md"
     "repo-automation/docs/source-provenance.md"
     "repo-automation/docs/testing.md"
   )
@@ -337,6 +341,9 @@ repo_install_main() {
         shift
         target_root="${1:-}"
         ;;
+      --target=*)
+        target_root="${arg#--target=}"
+        ;;
       --install)
         mode_flag="install"
         ;;
@@ -371,17 +378,29 @@ repo_install_main() {
         shift
         installed_version_arg="${1:-}"
         ;;
+      --installed-version=*)
+        installed_version_arg="${arg#--installed-version=}"
+        ;;
       --installed-at)
         shift
         installed_at_arg="${1:-}"
+        ;;
+      --installed-at=*)
+        installed_at_arg="${arg#--installed-at=}"
         ;;
       --local-overrides-doc)
         shift
         local_overrides_doc_arg="${1:-}"
         ;;
+      --local-overrides-doc=*)
+        local_overrides_doc_arg="${arg#--local-overrides-doc=}"
+        ;;
       --source-root)
         shift
         source_root="${1:-}"
+        ;;
+      --source-root=*)
+        source_root="${arg#--source-root=}"
         ;;
       *)
         repo_install_stop "unknown argument: $arg"
