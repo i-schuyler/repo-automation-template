@@ -156,7 +156,8 @@ repo_install_write_config() {
   local local_overrides_doc="$5"
   local default_branch="$6"
   local state_dir_name="$7"
-  local expected_remote_url="$8"
+  local check_profile_default="$8"
+  local expected_remote_url="$9"
 
   cat > "$path" <<EOF
 # .repo-automation.conf
@@ -189,7 +190,7 @@ DOC_BRANCH_PREFIX="docs"
 FEATURE_BRANCH_PREFIX="feature"
 FIX_BRANCH_PREFIX="fix"
 
-CHECK_PROFILE_DEFAULT="docs"
+CHECK_PROFILE_DEFAULT="$check_profile_default"
 CHECK_PROFILE_DOCS_COMMANDS=("git diff --check")
 CHECK_PROFILE_NONE_COMMANDS=()
 # .repo-automation.conf EOF
@@ -237,6 +238,7 @@ repo_install_main() {
   local apply=false
   local dry_run=false
   local profile="default"
+  local check_profile_default="docs"
   local include_ci=false
   local include_tests=false
   local overwrite=false
@@ -291,6 +293,9 @@ repo_install_main() {
     ".github/pull_request_template.md"
     ".github/ISSUE_TEMPLATE/automation-bug.yml"
     ".github/ISSUE_TEMPLATE/automation-feature.yml"
+    "repo-automation/bin/starter-template-ready"
+    "repo-automation/bin/automation-freshness"
+    "repo-automation/manifest.json"
   )
   local -a optional_test_files=(
     "repo-automation/tests/lib/test-common.sh"
@@ -461,6 +466,7 @@ repo_install_main() {
     files_to_process=("${managed_files[@]}")
     if [ "$profile" = "starter-template" ]; then
       files_to_process+=("${starter_template_files[@]}")
+      check_profile_default="starter-template"
     fi
     if [ "$include_tests" = true ]; then
       files_to_process+=("${optional_test_files[@]}")
@@ -626,6 +632,7 @@ repo_install_main() {
         "$local_overrides_doc" \
         "$target_default_branch" \
         "$target_state_dir_name" \
+        "$check_profile_default" \
         "$target_expected_remote_url" || {
           repo_install_stop "failed to write target .repo-automation.conf"
           command_status=1

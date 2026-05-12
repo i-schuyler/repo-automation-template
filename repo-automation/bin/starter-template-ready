@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+# repo-automation/bin/starter-template-ready
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+starter_template_ready_machine_json=0
+starter_template_ready_source_root=""
+starter_template_ready_check_current=0
+
+starter_template_ready_usage() {
+  printf 'Usage: repo-automation/bin/starter-template-ready [--help] [--machine-json] [--source-root=PATH] [--check-current]\n'
+}
+
+starter_template_ready_stop() {
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+starter_template_ready_main() {
+  local arg
+  local repo_root=""
+  local freshness_helper="$script_dir/automation-freshness"
+  local manifest_path=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        starter_template_ready_usage
+        return 0
+        ;;
+      --machine-json)
+        starter_template_ready_machine_json=1
+        ;;
+      --source-root=*)
+        starter_template_ready_source_root="${arg#--source-root=}"
+        if [ -z "$starter_template_ready_source_root" ]; then
+          starter_template_ready_stop "--source-root requires a value"
+          return 1
+        fi
+        ;;
+      --source-root)
+        shift
+        if [ "$#" -eq 0 ]; then
+          starter_template_ready_stop "--source-root requires a value"
+          return 1
+        fi
+        starter_template_ready_source_root="$1"
+        ;;
+      --check-current)
+        starter_template_ready_check_current=1
+        starter_template_ready_source_root=""
+        ;;
+      *)
+        starter_template_ready_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$starter_template_ready_check_current" -eq 1 ] || [ -z "$starter_template_ready_source_root" ]; then
+    repo_root="$(repo_auto_repo_root)" || return 1
+    starter_template_ready_source_root="$repo_root"
+  elif [ ! -d "$starter_template_ready_source_root" ]; then
+    starter_template_ready_stop "source root does not exist: $starter_template_ready_source_root"
+    return 1
+  else
+    starter_template_ready_source_root="$(cd "$starter_template_ready_source_root" && pwd -P)" || {
+      starter_template_ready_stop "unable to access source root: $starter_template_ready_source_root"
+      return 1
+    }
+  fi
+
+  manifest_path="$starter_template_ready_source_root/repo-automation/manifest.json"
+
+  if [ ! -f "$manifest_path" ]; then
+    starter_template_ready_stop "missing manifest: $manifest_path"
+    return 1
+  fi
+
+  if [ ! -x "$freshness_helper" ]; then
+    starter_template_ready_stop "required helper missing: $freshness_helper"
+    return 1
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    starter_template_ready_stop "python3 is required"
+    return 1
+  fi
+
+  cd "$starter_template_ready_source_root" || {
+    starter_template_ready_stop "failed to enter source root: $starter_template_ready_source_root"
+    return 1
+  }
+
+  if ! repo_auto_load_config >/dev/null; then
+    return 1
+  fi
+
+  if ! repo_auto_validate_required_config >/dev/null; then
+    return 1
+  fi
+
+  STARTER_TEMPLATE_READY_MACHINE_JSON="$starter_template_ready_machine_json" \
+    python3 - "$starter_template_ready_source_root" "$freshness_helper" "$manifest_path" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+source_root = Path(sys.argv[1])
+freshness_helper = Path(sys.argv[2])
+manifest_path = Path(sys.argv[3])
+machine_json = os.environ.get("STARTER_TEMPLATE_READY_MACHINE_JSON") == "1"
+
+starter_template_paths = [
+    ".github/pull_request_template.md",
+    ".github/ISSUE_TEMPLATE/automation-bug.yml",
+    ".github/ISSUE_TEMPLATE/automation-feature.yml",
+]
+docs_index_links = [
+    "repo-automation/docs/managed-files.md",
+    "repo-automation/docs/repo-doctor.md",
+    "repo-automation/docs/repo-automation-install.md",
+    "repo-automation/docs/starter-template-readiness.md",
+]
+
+result = {
+    "script": "starter-template-ready",
+    "source_root": str(source_root),
+    "manifest_path": str(manifest_path),
+    "overall_status": "fail",
+    "stop_reason": "",
+    "pass_count": 0,
+    "fail_count": 0,
+    "checks": [],
+}
+
+
+def add_check(name: str, status: str, message: str) -> None:
+    result["checks"].append({
+        "name": name,
+        "status": status,
+        "message": message,
+    })
+    if status == "pass":
+        result["pass_count"] += 1
+    elif status == "fail":
+        result["fail_count"] += 1
+
+
+def fail(name: str, message: str) -> None:
+    add_check(name, "fail", message)
+    if not result["stop_reason"]:
+        result["stop_reason"] = message
+
+
+config_path = source_root / ".repo-automation.conf"
+if config_path.is_file():
+    add_check("config-exists", "pass", "repo automation config exists")
+else:
+    fail("config-exists", f"missing repo automation config: {config_path}")
+
+freshness_proc = subprocess.run(
+    [str(freshness_helper), "--machine-json", f"--source-root={source_root}"],
+    check=False,
+    capture_output=True,
+    text=True,
+)
+
+if freshness_proc.stdout.strip():
+    try:
+        freshness_data = json.loads(freshness_proc.stdout)
+    except json.JSONDecodeError as exc:
+        fail("automation-freshness", f"automation-freshness JSON is not parseable: {exc}")
+    else:
+        if freshness_data.get("overall_status") == "pass":
+            add_check("automation-freshness", "pass", "managed automation files are fresh")
+        else:
+            missing_files = freshness_data.get("missing_files") or []
+            validation_errors = freshness_data.get("validation_errors") or []
+            details = []
+            if validation_errors:
+                details.extend(str(item) for item in validation_errors)
+            if missing_files:
+                details.append("missing managed paths: " + ", ".join(str(item) for item in missing_files))
+            message = freshness_data.get("stop_reason") or "; ".join(details) or "automation freshness failed"
+            fail("automation-freshness", str(message))
+else:
+    fail("automation-freshness", "automation-freshness did not produce JSON output")
+
+for rel_path in starter_template_paths:
+    path = source_root / rel_path
+    if path.is_file():
+        add_check(f"starter-template-file-{rel_path}", "pass", f"present: {rel_path}")
+    else:
+        fail(f"starter-template-file-{rel_path}", f"missing starter-template automation file: {rel_path}")
+
+docs_index = source_root / "docs" / "INDEX.md"
+if not docs_index.is_file():
+    fail("docs-index", f"missing docs index: {docs_index}")
+else:
+    docs_index_text = docs_index.read_text(encoding="utf-8", errors="ignore")
+    missing_links = [link for link in docs_index_links if link not in docs_index_text]
+    if missing_links:
+        fail("docs-index", "docs/INDEX.md is missing: " + ", ".join(missing_links))
+    else:
+        add_check("docs-index", "pass", "starter-template automation docs are discoverable from docs/INDEX.md")
+
+if result["fail_count"] == 0:
+    result["overall_status"] = "pass"
+
+if machine_json:
+    print(json.dumps(result, separators=(",", ":")))
+else:
+    print("RUNNING starter-template readiness...")
+    print(
+        "RESULT: pass={0} warn=0 fail={1} skipped=0".format(
+            result["pass_count"],
+            result["fail_count"],
+        )
+    )
+    if result["fail_count"] > 0:
+        print("FAIL:")
+        for check in result["checks"]:
+            if check["status"] == "fail":
+                print(f"- {check['message']}")
+
+sys.exit(0 if result["overall_status"] == "pass" else 1)
+PY
+}
+
+starter_template_ready_main "$@"
+# repo-automation/bin/starter-template-ready EOF

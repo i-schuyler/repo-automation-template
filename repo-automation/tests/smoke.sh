@@ -59,6 +59,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
   cp "$smoke_repo_root/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/bin/run-tests" || return 1
@@ -66,7 +67,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -127,6 +128,7 @@ EOF
 - ../repo-automation/docs/add-doc-pr.md
 - ../repo-automation/docs/repo-automation-report-upstream.md
 - ../repo-automation/docs/repo-doctor.md
+- ../repo-automation/docs/starter-template-readiness.md
 - ../repo-automation/docs/managed-files.md
 - ../repo-automation/docs/repo-automation-install.md
 - ../repo-automation/docs/testing.md
@@ -203,6 +205,7 @@ smoke_check_add_doc_pr_docs_only() {
   local add_doc_pr_json="$smoke_test_base/add-doc-pr-plan-$$.json"
   local add_doc_pr_stderr="$smoke_test_base/add-doc-pr-plan-$$.stderr"
   local add_doc_pr_failure_details=""
+  local repo_doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -246,7 +249,7 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --help >/dev/null
+    repo-automation/bin/repo-doctor --help > "$repo_doctor_help" && grep -q 'starter-template-readiness' "$repo_doctor_help"
   ); then
     test_pass "repo-doctor help succeeds"
   else
@@ -298,7 +301,7 @@ smoke_check_add_doc_pr_docs_only() {
     :
   fi
 
-  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$repo_doctor_help" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -518,7 +521,7 @@ smoke_check_repo_doctor_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --quick --timeout 200 > "$doctor_default_out"
-  ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- git-remote-match$' "$doctor_default_out"; then
+  ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- run-tests$' "$doctor_default_out"; then
     test_pass "repo-doctor quick default output is compact"
   else
     test_fail "repo-doctor quick default output is compact"
@@ -763,6 +766,67 @@ smoke_check_installer_starter_template_profile() {
     status=1
   fi
 
+  return "$status"
+}
+
+smoke_check_starter_template_readiness() {
+  local status=0
+  local readiness_json="$smoke_test_base/starter-template-ready-$$.json"
+  local readiness_missing_json="$smoke_test_base/starter-template-ready-missing-$$.json"
+  local readiness_doctor_out="$smoke_test_base/repo-doctor-starter-template-readiness-$$.txt"
+  local readiness_missing_template="$smoke_test_dir/.github/pull_request_template.md"
+  local readiness_missing_backup="$smoke_test_base/pull_request_template.md.bak"
+  local readiness_human="$smoke_test_base/starter-template-ready-human-$$.txt"
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/starter-template-ready --machine-json --source-root="$smoke_test_dir" > "$readiness_json"
+  ) && python -m json.tool "$readiness_json" >/dev/null &&     smoke_json_assert "$readiness_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$smoke_test_dir"'"'; then
+    test_pass "starter-template-ready source-root machine-json passes"
+  else
+    test_fail "starter-template-ready source-root machine-json passes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/starter-template-ready --check-current > "$readiness_human"
+  ) && grep -Eq '^RUNNING starter-template readiness\.\.\.$' "$readiness_human" && grep -Eq '^RESULT: pass=[0-9]+ warn=0 fail=0 skipped=0$' "$readiness_human"; then
+    test_pass "starter-template-ready default human output passes"
+  else
+    test_fail "starter-template-ready default human output passes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --check=starter-template-readiness --no-run-tests > "$readiness_doctor_out"
+  ) && grep -Eq '^RESULT: pass=[0-9]+ warn=0 fail=0 skipped=0$' "$readiness_doctor_out"; then
+    test_pass "repo-doctor starter-template-readiness check passes"
+  else
+    test_fail "repo-doctor starter-template-readiness check passes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    mv "$readiness_missing_template" "$readiness_missing_backup" || return 1
+    repo-automation/bin/starter-template-ready --machine-json --source-root="$smoke_test_dir" > "$readiness_missing_json"
+    result=$?
+    mv "$readiness_missing_backup" "$readiness_missing_template" || return 1
+    [ "$result" -ne 0 ]
+  ) && python -m json.tool "$readiness_missing_json" >/dev/null &&     smoke_json_assert "$readiness_missing_json" 'data.get("overall_status") == "fail" and ".github/pull_request_template.md" in (data.get("stop_reason") or "")'; then
+    test_pass "starter-template-ready reports missing starter-template files"
+  else
+    test_fail "starter-template-ready reports missing starter-template files"
+    status=1
+    (
+      cd "$smoke_repo_root" || true
+      [ -f "$readiness_missing_template" ] || mv "$readiness_missing_backup" "$readiness_missing_template" >/dev/null 2>&1 || true
+    )
+  fi
+
+  rm -f "$readiness_json" "$readiness_missing_json" "$readiness_human" "$readiness_doctor_out" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1091,6 +1155,7 @@ smoke_main() {
   test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
   test_run_named_check "smoke:installer-apply-contract" smoke_check_installer_apply_contract || status=1
   test_run_named_check "smoke:install-starter-template-profile" smoke_check_installer_starter_template_profile || status=1
+  test_run_named_check "smoke:starter-template-ready" smoke_check_starter_template_readiness || status=1
   test_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1
   test_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
   test_run_named_check "smoke:prepare-release-contract" smoke_check_prepare_release_contract || status=1
