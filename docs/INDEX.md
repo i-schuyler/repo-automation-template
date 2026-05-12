@@ -38,7 +38,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 20. [CI Status](../repo-automation/docs/ci-status.md)
 21. [CI Watch](../repo-automation/docs/ci-watch.md)
 22. [CI Log Dump](../repo-automation/docs/ci-log-dump.md)
-23. [Starter Template Readiness](../repo-automation/docs/starter-template-ready.md)
+23. [Starter Template Readiness](../repo-automation/docs/starter-template-readiness.md)
 24. [Repo Automation Install](../repo-automation/docs/repo-automation-install.md)
 25. [Starter Template Smoke Workflow](../repo-automation/docs/testing.md)
 26. [Output Modes](../repo-automation/docs/output-modes.md)
