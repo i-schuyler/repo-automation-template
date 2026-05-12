@@ -93,6 +93,10 @@ from pathlib import Path
 manifest_path = Path(sys.argv[1])
 source_root = Path(sys.argv[2])
 machine_json = os.environ.get("AUTOMATION_FRESHNESS_MACHINE_JSON") == "1"
+installed_target = (
+    (source_root / ".repo-automation.conf").is_file()
+    and (source_root / "repo-automation" / "docs" / "README.md").is_file()
+)
 
 result = {
     "script": "automation-freshness",
@@ -164,6 +168,11 @@ else:
                 validation_errors.append(f"managed_files entry missing kind: {path}")
 
             exists = (source_root / path).exists()
+            if not exists and installed_target and (
+                path == "repo-automation/bin/run-tests"
+                or path.startswith("repo-automation/tests/")
+            ):
+                continue
             status = "present" if exists else "missing"
             if exists:
                 result["present_count"] += 1

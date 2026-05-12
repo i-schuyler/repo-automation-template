@@ -1111,6 +1111,10 @@ smoke_check_installer_starter_template_profile() {
   local status=0
   local starter_plan_json="$smoke_test_base/repo-install-starter-plan-$$.json"
   local starter_target="$smoke_test_base/install-starter-target-$$"
+  local starter_remote="$smoke_test_base/install-starter-target-$$-remote.git"
+  local starter_ready_json="$smoke_test_base/starter-template-ready-install-$$.json"
+  local starter_doctor_json="$smoke_test_base/repo-doctor-starter-install-$$.json"
+  local starter_artifact_json="$smoke_test_base/repo-doctor-starter-source-artifact-$$.json"
 
   mkdir -p "$starter_target" || return 1
   (
@@ -1125,13 +1129,16 @@ smoke_check_installer_starter_template_profile() {
     cp -R "$smoke_repo_root/examples" . || return 1
     git add -A || return 1
     git commit -m "init starter target" >/dev/null || return 1
+    git init --bare --initial-branch=main "$starter_remote" >/dev/null || return 1
+    git remote add origin "$starter_remote" || return 1
+    git push -u origin main >/dev/null || return 1
   ) || status=1
 
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$starter_target" --starter-template --json > "$starter_plan_json"
   ) && python -m json.tool "$starter_plan_json" >/dev/null && \
-    smoke_json_assert "$starter_plan_json" 'data.get("mode") == "install" and data.get("profile") == "starter-template" and ".github/pull_request_template.md" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-bug.yml" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-feature.yml" in data.get("files_to_add", []) and ".github/workflows/ci.yml" not in data.get("files_to_add", [])'; then
+    smoke_json_assert "$starter_plan_json" 'data.get("mode") == "install" and data.get("profile") == "starter-template" and ".github/pull_request_template.md" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-bug.yml" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-feature.yml" in data.get("files_to_add", []) and ".github/workflows/ci.yml" not in data.get("files_to_add", []) and data.get("target_remote_status") in ("missing", "unsupported", "present")'; then
     test_pass "repo-automation-install starter-template plan/json includes template files"
   else
     test_fail "repo-automation-install starter-template plan/json includes template files"
@@ -1141,10 +1148,43 @@ smoke_check_installer_starter_template_profile() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$starter_target" --starter-template --apply >/dev/null
-  ) && [ -f "$starter_target/.repo-automation.conf" ] && [ -f "$starter_target/.github/pull_request_template.md" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-bug.yml" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-feature.yml" ] && [ ! -f "$starter_target/.github/workflows/ci.yml" ]; then
+  ) && [ -f "$starter_target/.repo-automation.conf" ] && [ -f "$starter_target/.github/pull_request_template.md" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-bug.yml" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-feature.yml" ] && [ ! -f "$starter_target/.github/workflows/ci.yml" ] && grep -qx 'CHECK_PROFILE_DEFAULT="starter-template"' "$starter_target/.repo-automation.conf"; then
     test_pass "repo-automation-install starter-template apply creates templates without CI"
   else
     test_fail "repo-automation-install starter-template apply creates templates without CI"
+    status=1
+  fi
+
+  if (
+    cd "$starter_target" || return 1
+    repo-automation/bin/starter-template-ready --check-current --machine-json > "$starter_ready_json"
+  ) && python -m json.tool "$starter_ready_json" >/dev/null && \
+    smoke_json_assert "$starter_ready_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$starter_target"'"'; then
+    test_pass "starter-template-ready passes for installed starter target"
+  else
+    test_fail "starter-template-ready passes for installed starter target"
+    status=1
+  fi
+
+  if (
+    cd "$starter_target" || return 1
+    repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn > "$starter_doctor_json"
+  ) && python -m json.tool "$starter_doctor_json" >/dev/null && \
+    smoke_json_assert "$starter_doctor_json" 'data.get("mode") == "quick" and data.get("overall_status") in ("pass", "warn") and not any(check.get("status") == "fail" for check in data.get("checks", []))'; then
+    test_pass "repo-doctor quick/no-run-tests passes for installed starter target"
+  else
+    test_fail "repo-doctor quick/no-run-tests passes for installed starter target"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/repo-doctor --check=artifact-guard --json --json-level=all > "$starter_artifact_json"
+  ) && python -m json.tool "$starter_artifact_json" >/dev/null && \
+    smoke_json_assert "$starter_artifact_json" 'data.get("overall_status") == "pass" and any(check.get("name") == "artifact-guard" and check.get("status") == "pass" for check in data.get("checks", []))'; then
+    test_pass "source repo artifact guard remains clean after starter-template smoke"
+  else
+    test_fail "source repo artifact guard remains clean after starter-template smoke"
     status=1
   fi
 

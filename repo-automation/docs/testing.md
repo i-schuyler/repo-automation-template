@@ -23,6 +23,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
 - smoke coverage for `repo-automation/bin/starter-template-ready` human default output, `--machine-json`, `--source-root=/path/to/checkout`, and `--check-current`
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, starter-template profile template installation, and downstream install contract auditing in temporary repos, including the `repo-automation/tests/lib/test-common.sh` harness dependency under `--include-tests`
+- starter-template install smoke coverage that exercises `repo-automation/bin/repo-automation-install --starter-template --apply` in a temporary target repo, verifies `repo-automation/bin/starter-template-ready --check-current`, verifies `repo-automation/bin/repo-doctor --quick --no-run-tests`, and checks that the source repo artifact guard stays clean after the run
 - smoke coverage for `repo-automation/bin/prepare-release` help, check, dry-run, apply, machine-JSON, and managed version placement updates in a temporary repo
 - lightweight docs CI via `repo-automation/tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks
 - JSON parseability checks for branch cleanup and preflight
@@ -37,6 +38,7 @@ The test scaffold does not require GitHub auth and does not create issues or PRs
 `repo-automation/bin/run-tests` smoke coverage does not create or modify GitHub objects.
 
 Installer smoke coverage also checks that temporary downstream installs can load and validate config, keep scripts executable, normalize unsupported `EXPECTED_REMOTE_URL` values to empty, and run `repo-automation/bin/repo-doctor --quick --no-run-tests` without needing GitHub auth.
+Starter-template smoke coverage uses a temporary target repo under `${TMPDIR:-$HOME/.cache}` and keeps the install contract bounded to the conservative template profile plus the quick doctor/readiness path.
 
 Smoke tests use temporary directories under `${TMPDIR:-$HOME/.cache}/repo-automation-template-tests`.
 Smoke tests source `repo-automation/tests/lib/test-common.sh` for named subchecks, timeout ownership, and registered temp-dir cleanup.

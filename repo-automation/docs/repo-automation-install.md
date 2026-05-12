@@ -60,6 +60,14 @@ The installer plan/apply output should stay auditable in temporary repos:
 - downstream `repo-doctor --quick --no-run-tests` should succeed or warn only in a valid temp repo
 - no target commits, pushes, PRs, or merges should be created
 
+Starter-template smoke workflow for a temp target repo:
+
+    repo-automation/bin/repo-automation-install --target=/path/to/downstream --starter-template --apply
+    cd /path/to/downstream && repo-automation/bin/starter-template-ready --check-current
+    cd /path/to/downstream && repo-automation/bin/repo-doctor --quick --no-run-tests
+
+The smoke path stays read-only outside the fixture repo and is intended to prove the conservative starter-template profile end to end without broadening workflow permissions or requiring GitHub auth.
+
 ## JSON Contract
 
 With `--json`, stdout includes:

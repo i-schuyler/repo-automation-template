@@ -331,7 +331,11 @@ repo_doctor_check_scripts() {
   if repo_doctor_should_run_starter_template_readiness; then
     repo_doctor_check_script_one "repo-automation/bin/starter-template-ready" "starter-template-ready" || status=1
   fi
-  repo_doctor_check_script_one "repo-automation/bin/run-tests" "run-tests" || status=1
+  if [ -f "repo-automation/bin/run-tests" ]; then
+    repo_doctor_check_script_one "repo-automation/bin/run-tests" "run-tests" || status=1
+  else
+    repo_doctor_add_check "run-tests-exists" "skipped" "repo-automation/bin/run-tests intentionally absent"
+  fi
   repo_doctor_check_script_one "repo-automation/lib/common.sh" "common-library" || status=1
   return "$status"
 }
@@ -560,14 +564,14 @@ repo_doctor_check_version_guard() {
     return 0
   fi
 
-  if [ ! -f repo-automation/tests/version-consistency.sh ]; then
-    repo_doctor_add_check "version-consistency-script" "fail" "repo-automation/tests/version-consistency.sh missing"
-    return 1
-  fi
-
   if repo_doctor_is_installed_target; then
     repo_doctor_add_check "version-consistency" "skipped" "installed downstream target uses repo-automation/docs/README.md provenance"
     return 0
+  fi
+
+  if [ ! -f repo-automation/tests/version-consistency.sh ]; then
+    repo_doctor_add_check "version-consistency-script" "fail" "repo-automation/tests/version-consistency.sh missing"
+    return 1
   fi
 
   if repo-automation/tests/version-consistency.sh >/dev/null; then
