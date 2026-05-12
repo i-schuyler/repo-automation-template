@@ -1,0 +1,425 @@
+#!/usr/bin/env bash
+# repo-automation/bin/github-settings-check
+
+set -u
+set -o pipefail
+
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'STOP: python3 is required\n' >&2
+  exit 1
+fi
+
+python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import quote
+
+
+def stop(message: str) -> int:
+    print(f"STOP: {message}", file=sys.stderr)
+    return 1
+
+
+def run_command(argv: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        argv,
+        cwd=str(cwd) if cwd is not None else None,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+def add_check(result: dict[str, object], name: str, status: str, message: str) -> None:
+    checks = result["checks"]
+    assert isinstance(checks, list)
+    checks.append({"name": name, "status": status, "message": message})
+    key = f"{status}_count"
+    if key in result:
+        result[key] = int(result[key]) + 1
+
+
+def parse_github_remote(url: str) -> str | None:
+    url = url.strip()
+    patterns = [
+        r"^(?:git@|ssh://git@)github\.com[:/](?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$",
+        r"^https://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$",
+        r"^http://github\.com/(?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, url)
+        if match:
+            owner = match.group("owner")
+            repo = match.group("repo")
+            if owner and repo:
+                return f"{owner}/{repo}"
+    return None
+
+
+def current_worktree_root() -> Path:
+    proc = run_command(["git", "rev-parse", "--show-toplevel"])
+    if proc.returncode == 0:
+        root = proc.stdout.strip()
+        if root:
+            return Path(root)
+    return Path.cwd()
+
+
+def infer_repo_from_origin(worktree_root: Path) -> tuple[str | None, str]:
+    proc = run_command(["git", "remote", "get-url", "origin"], cwd=worktree_root)
+    if proc.returncode != 0:
+        return None, "missing origin remote"
+    remote_url = proc.stdout.strip()
+    if not remote_url:
+        return None, "missing origin remote URL"
+    repo = parse_github_remote(remote_url)
+    if repo:
+        return repo, "origin"
+    return None, f"origin remote is not a github.com repository: {remote_url}"
+
+
+def gh_api_json(repo: str, endpoint: str) -> tuple[object | None, str]:
+    proc = run_command(["gh", "api", endpoint])
+    if proc.returncode != 0:
+        error = proc.stderr.strip() or proc.stdout.strip() or f"gh api {endpoint} failed"
+        return None, error
+    try:
+        return json.loads(proc.stdout), ""
+    except json.JSONDecodeError as exc:
+        return None, f"gh api {endpoint} returned invalid JSON: {exc}"
+
+
+def gh_authenticated() -> tuple[bool, str]:
+    proc = run_command(["gh", "auth", "status", "--hostname", "github.com"])
+    if proc.returncode == 0:
+        return True, ""
+    error = proc.stderr.strip() or proc.stdout.strip()
+    if error:
+        return False, error
+    return False, "gh auth status failed"
+
+
+def as_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="repo-automation/bin/github-settings-check",
+        add_help=True,
+    )
+    parser.add_argument("--repo", metavar="OWNER/REPO")
+    parser.add_argument("--machine-json", action="store_true")
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args()
+
+    repo = ""
+    repo_source = "unavailable"
+    worktree_root = current_worktree_root()
+    gh_available = shutil.which("gh") is not None
+    gh_ready = False
+    gh_message = ""
+    repo_message = ""
+
+    result: dict[str, object] = {
+        "script": "github-settings-check",
+        "mode": "machine-json" if args.machine_json else ("quiet" if args.quiet else "summary"),
+        "repo": repo,
+        "repo_source": repo_source,
+        "worktree_root": str(worktree_root),
+        "gh_status": "missing",
+        "settings_available": False,
+        "default_branch": "",
+        "delete_branch_on_merge": None,
+        "allow_merge_commit": None,
+        "allow_squash_merge": None,
+        "allow_rebase_merge": None,
+        "actions_enabled": None,
+        "actions_allowed_actions": "",
+        "branch_protection_status": "unknown",
+        "pr_template_exists": False,
+        "issue_templates_exist": False,
+        "ci_workflow_exists": False,
+        "pass_count": 0,
+        "warn_count": 0,
+        "fail_count": 0,
+        "skipped_count": 0,
+        "overall_status": "warn",
+        "stop_reason": "",
+        "checks": [],
+    }
+
+    if args.repo:
+        repo = args.repo.strip()
+        if not re.match(r"^[^/\s]+/[^/\s]+$", repo):
+            return stop(f"invalid --repo value: {args.repo}")
+        repo_source = "flag"
+    else:
+        repo, repo_source = infer_repo_from_origin(worktree_root)
+        if repo is None:
+            repo_message = (
+                "unable to infer a GitHub repo from origin remote; "
+                "pass --repo=OWNER/REPO or use a github.com origin remote"
+            )
+
+    result["repo"] = repo or ""
+    result["repo_source"] = repo_source
+
+    if gh_available:
+        gh_ready, gh_message = gh_authenticated()
+        result["gh_status"] = "authenticated" if gh_ready else "unauthenticated"
+    else:
+        result["gh_status"] = "missing"
+
+    if repo:
+        add_check(result, "github-context", "pass", f"GitHub repo context detected: {repo} ({repo_source})")
+    else:
+        add_check(result, "github-context", "warn", repo_message)
+
+    if gh_available and gh_ready:
+        add_check(result, "gh-auth", "pass", "gh is authenticated for github.com")
+    elif gh_available:
+        add_check(
+            result,
+            "gh-auth",
+            "warn",
+            gh_message or "gh is not authenticated for github.com; run gh auth login and rerun",
+        )
+    else:
+        add_check(
+            result,
+            "gh-auth",
+            "warn",
+            "gh is not installed; install GitHub CLI and rerun",
+        )
+
+    repo_settings: dict[str, object] | None = None
+
+    if repo and gh_available and gh_ready:
+        repo_settings_obj, settings_error = gh_api_json(repo, f"repos/{repo}")
+        if repo_settings_obj is None:
+            add_check(
+                result,
+                "settings-fetch",
+                "warn",
+                settings_error or f"unable to query GitHub settings for {repo}",
+            )
+        else:
+            if isinstance(repo_settings_obj, dict):
+                repo_settings = repo_settings_obj
+                result["settings_available"] = True
+                add_check(result, "settings-fetch", "pass", f"GitHub settings retrieved for {repo}")
+            else:
+                add_check(result, "settings-fetch", "warn", f"unexpected GitHub settings payload for {repo}")
+    else:
+        add_check(result, "settings-fetch", "skipped", "GitHub settings were not queried")
+
+    if repo_settings is not None:
+        default_branch = str(repo_settings.get("default_branch") or "")
+        result["default_branch"] = default_branch
+        if default_branch:
+            add_check(result, "default-branch", "pass", f"default branch: {default_branch}")
+        else:
+            add_check(result, "default-branch", "warn", "default branch is unavailable")
+
+        delete_branch_on_merge = as_bool(repo_settings.get("delete_branch_on_merge"))
+        result["delete_branch_on_merge"] = delete_branch_on_merge
+        if delete_branch_on_merge is True:
+            add_check(result, "delete-branch-on-merge", "pass", "delete branch on merge is enabled")
+        elif delete_branch_on_merge is False:
+            add_check(result, "delete-branch-on-merge", "warn", "delete branch on merge is disabled")
+        else:
+            add_check(result, "delete-branch-on-merge", "warn", "delete branch on merge setting is unavailable")
+
+        allow_merge_commit = as_bool(repo_settings.get("allow_merge_commit"))
+        allow_squash_merge = as_bool(repo_settings.get("allow_squash_merge"))
+        allow_rebase_merge = as_bool(repo_settings.get("allow_rebase_merge"))
+        result["allow_merge_commit"] = allow_merge_commit
+        result["allow_squash_merge"] = allow_squash_merge
+        result["allow_rebase_merge"] = allow_rebase_merge
+        enabled_methods = [
+            name
+            for name, enabled in (
+                ("merge", allow_merge_commit),
+                ("squash", allow_squash_merge),
+                ("rebase", allow_rebase_merge),
+            )
+            if enabled is True
+        ]
+        if enabled_methods:
+            add_check(
+                result,
+                "merge-methods",
+                "pass",
+                "merge methods enabled: " + ", ".join(enabled_methods),
+            )
+        else:
+            add_check(result, "merge-methods", "warn", "no merge methods are enabled")
+
+        actions_obj, actions_error = gh_api_json(repo, f"repos/{repo}/actions/permissions")
+        if isinstance(actions_obj, dict):
+            actions_enabled = as_bool(actions_obj.get("enabled"))
+            result["actions_enabled"] = actions_enabled
+            allowed_actions = str(actions_obj.get("allowed_actions") or "")
+            result["actions_allowed_actions"] = allowed_actions
+            if actions_enabled is True:
+                detail = "actions are enabled"
+                if allowed_actions:
+                    detail += f" (allowed_actions={allowed_actions})"
+                add_check(result, "actions-permissions", "pass", detail)
+            elif actions_enabled is False:
+                detail = "actions are disabled"
+                if allowed_actions:
+                    detail += f" (allowed_actions={allowed_actions})"
+                add_check(result, "actions-permissions", "warn", detail)
+            else:
+                add_check(result, "actions-permissions", "warn", "actions permissions are unavailable")
+        else:
+            add_check(result, "actions-permissions", "warn", actions_error or "actions permissions could not be queried")
+
+        if default_branch:
+            protection_obj, protection_error = gh_api_json(
+                repo,
+                f"repos/{repo}/branches/{quote(default_branch, safe='')}/protection",
+            )
+            if protection_obj is not None:
+                result["branch_protection_status"] = "present"
+                add_check(result, "branch-protection", "pass", f"default branch protection exists for {default_branch}")
+            else:
+                rulesets_obj, rulesets_error = gh_api_json(repo, f"repos/{repo}/rulesets")
+                if isinstance(rulesets_obj, list):
+                    rulesets_present = bool(rulesets_obj)
+                    if rulesets_present:
+                        result["branch_protection_status"] = "rulesets-present"
+                        add_check(
+                            result,
+                            "branch-protection",
+                            "pass",
+                            f"branch rulesets exist for {repo}",
+                        )
+                    else:
+                        result["branch_protection_status"] = "absent"
+                        add_check(
+                            result,
+                            "branch-protection",
+                            "warn",
+                            f"default branch protection is not enabled for {default_branch}",
+                        )
+                else:
+                    result["branch_protection_status"] = "unknown"
+                    branch_message = protection_error or rulesets_error or "branch protection could not be queried"
+                    add_check(result, "branch-protection", "warn", branch_message)
+        else:
+            add_check(result, "branch-protection", "skipped", "default branch is unavailable")
+    else:
+        if repo and gh_available and gh_ready:
+            add_check(result, "default-branch", "skipped", "GitHub settings were not queried")
+            add_check(result, "delete-branch-on-merge", "skipped", "GitHub settings were not queried")
+            add_check(result, "merge-methods", "skipped", "GitHub settings were not queried")
+            add_check(result, "actions-permissions", "skipped", "GitHub settings were not queried")
+            add_check(result, "branch-protection", "skipped", "GitHub settings were not queried")
+        else:
+            add_check(result, "default-branch", "skipped", "GitHub settings were not queried")
+            add_check(result, "delete-branch-on-merge", "skipped", "GitHub settings were not queried")
+            add_check(result, "merge-methods", "skipped", "GitHub settings were not queried")
+            add_check(result, "actions-permissions", "skipped", "GitHub settings were not queried")
+            add_check(result, "branch-protection", "skipped", "GitHub settings were not queried")
+
+    pr_template = worktree_root / ".github" / "pull_request_template.md"
+    issue_template_dir = worktree_root / ".github" / "ISSUE_TEMPLATE"
+    ci_workflow = worktree_root / ".github" / "workflows" / "ci.yml"
+
+    pr_template_exists = pr_template.is_file()
+    issue_templates_exist = any(
+        path.is_file() and path.suffix.lower() in {".yml", ".yaml"}
+        for path in issue_template_dir.glob("*")
+    ) if issue_template_dir.exists() else False
+    ci_workflow_exists = ci_workflow.is_file()
+
+    result["pr_template_exists"] = pr_template_exists
+    result["issue_templates_exist"] = issue_templates_exist
+    result["ci_workflow_exists"] = ci_workflow_exists
+
+    if pr_template_exists:
+        add_check(result, "pr-template-local", "pass", "pull request template exists locally")
+    else:
+        add_check(result, "pr-template-local", "fail", "missing .github/pull_request_template.md")
+
+    if issue_templates_exist:
+        add_check(result, "issue-templates-local", "pass", "issue templates exist locally")
+    else:
+        add_check(result, "issue-templates-local", "fail", "missing local issue templates in .github/ISSUE_TEMPLATE")
+
+    if ci_workflow_exists:
+        add_check(result, "ci-workflow-local", "pass", "CI workflow exists locally")
+    else:
+        add_check(result, "ci-workflow-local", "fail", "missing .github/workflows/ci.yml")
+
+    if result["fail_count"] > 0:
+        result["overall_status"] = "fail"
+    elif result["warn_count"] > 0:
+        result["overall_status"] = "warn"
+    else:
+        result["overall_status"] = "pass"
+
+    if not result["stop_reason"]:
+        if result["fail_count"] > 0:
+            for check in result["checks"]:
+                if check["status"] == "fail":
+                    result["stop_reason"] = check["message"]
+                    break
+        elif result["warn_count"] > 0:
+            for check in result["checks"]:
+                if check["status"] == "warn":
+                    result["stop_reason"] = check["message"]
+                    break
+
+    if args.machine_json:
+        print(json.dumps(result, separators=(",", ":")))
+        return 0 if result["overall_status"] != "fail" else 1
+
+    if not args.quiet:
+        print("RUNNING github settings readiness...")
+
+    print(
+        "RESULT: pass={0} warn={1} fail={2} skipped={3}".format(
+            result["pass_count"],
+            result["warn_count"],
+            result["fail_count"],
+            result["skipped_count"],
+        )
+    )
+
+    if result["warn_count"] > 0:
+        print("WARN:")
+        for check in result["checks"]:
+            if check["status"] == "warn":
+                print(f"- {check['name']}: {check['message']}")
+
+    if result["skipped_count"] > 0:
+        print("SKIP:")
+        for check in result["checks"]:
+            if check["status"] == "skipped":
+                print(f"- {check['name']}: {check['message']}")
+
+    if result["fail_count"] > 0:
+        print("FAIL:")
+        for check in result["checks"]:
+            if check["status"] == "fail":
+                print(f"- {check['name']}: {check['message']}")
+
+    return 0 if result["overall_status"] != "fail" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+PY

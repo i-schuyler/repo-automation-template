@@ -21,7 +21,7 @@ repo_doctor_checks=()
 
 repo_doctor_usage() {
   printf 'Usage: repo-automation/bin/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--quick] [--full] [--no-run-tests] [--check=NAME]\n'
-  printf 'Named checks: artifact-guard, git, config, scripts, json, tests, version, ci, automation-freshness, starter-template-readiness, docs, issue-templates\n'
+  printf 'Named checks: artifact-guard, git, config, scripts, json, tests, version, ci, automation-freshness, starter-template-readiness, github-settings-readiness, docs, issue-templates\n'
 }
 
 repo_doctor_info() {
@@ -129,7 +129,7 @@ repo_doctor_should_run_starter_template_readiness() {
 
 repo_doctor_check_is_registered() {
   case "$1" in
-    artifact-guard|git|config|scripts|json|tests|version|ci|automation-freshness|starter-template-readiness|docs|issue-templates)
+    artifact-guard|git|config|scripts|json|tests|version|ci|automation-freshness|starter-template-readiness|github-settings-readiness|docs|issue-templates)
       return 0
       ;;
     *)
@@ -322,6 +322,7 @@ repo_doctor_check_scripts() {
   fi
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-report-upstream" "report-upstream" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-doctor" "repo-doctor" || status=1
+  repo_doctor_check_script_one "repo-automation/bin/github-settings-check" "github-settings-check" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-install" "repo-automation-install" || status=1
   repo_doctor_check_script_one "repo-automation/bin/failure-log" "failure-log" || status=1
   repo_doctor_check_script_one "repo-automation/bin/touched-files" "touched-files" || status=1
@@ -623,6 +624,7 @@ repo_doctor_check_docs_index() {
     "repo-automation/docs/add-doc-pr.md" \
     "repo-automation/docs/repo-automation-report-upstream.md" \
     "repo-automation/docs/repo-doctor.md" \
+    "repo-automation/docs/github-settings-check.md" \
     "repo-automation/docs/failure-log.md" \
     "repo-automation/docs/touched-files.md" \
     "repo-automation/docs/ci-status.md" \
@@ -660,6 +662,136 @@ repo_doctor_check_issue_templates() {
   return "$status"
 }
 
+repo_doctor_detect_github_repo() {
+  local remote_name="${REMOTE_NAME:-origin}"
+  local remote_url repo_path
+
+  remote_url="$(git remote get-url "$remote_name" 2>/dev/null || true)"
+  case "$remote_url" in
+    git@github.com:*/*)
+      repo_path="${remote_url#git@github.com:}"
+      ;;
+    ssh://git@github.com/*/*)
+      repo_path="${remote_url#ssh://git@github.com/}"
+      ;;
+    https://github.com/*/*)
+      repo_path="${remote_url#https://github.com/}"
+      ;;
+    http://github.com/*/*)
+      repo_path="${remote_url#http://github.com/}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  repo_path="${repo_path%.git}"
+  repo_path="${repo_path%/}"
+  case "$repo_path" in
+    */*)
+      printf '%s\n' "$repo_path"
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+repo_doctor_check_github_settings_readiness() {
+  local temp_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+  local helper_json="$temp_root/repo-doctor-github-settings.json"
+  local repo_slug=""
+  local helper_summary=""
+  local helper_status=""
+  local helper_message=""
+  local helper_default_branch=""
+  local helper_repo=""
+  local status=0
+
+  if [ ! -x "repo-automation/bin/github-settings-check" ]; then
+    repo_doctor_add_check "github-settings-readiness" "fail" "repo-automation/bin/github-settings-check missing"
+    return 1
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    repo_doctor_add_check "github-settings-readiness" "warn" "gh is not installed; skipped github settings readiness"
+    return 0
+  fi
+
+  if ! gh auth status --hostname github.com >/dev/null 2>&1; then
+    repo_doctor_add_check "github-settings-readiness" "warn" "gh is not authenticated for github.com; skipped github settings readiness"
+    return 0
+  fi
+
+  repo_slug="$(repo_doctor_detect_github_repo)" || {
+    repo_doctor_add_check "github-settings-readiness" "warn" "unable to infer a GitHub repo from the configured remote; skipped github settings readiness"
+    return 0
+  }
+
+  mkdir -p "$temp_root" >/dev/null 2>&1 || true
+
+  if ! repo-automation/bin/github-settings-check --repo="$repo_slug" --machine-json --quiet > "$helper_json" 2>/dev/null; then
+    status=1
+  fi
+
+  if [ ! -s "$helper_json" ]; then
+    repo_doctor_add_check "github-settings-readiness" "fail" "github-settings-check did not produce JSON output"
+    rm -f "$helper_json" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! python3 -m json.tool "$helper_json" >/dev/null 2>&1; then
+    repo_doctor_add_check "github-settings-readiness" "fail" "github-settings-check JSON is not parseable"
+    rm -f "$helper_json" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if helper_summary="$(python3 - "$helper_json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+print("\t".join([
+    str(data.get("overall_status") or "warn"),
+    str(data.get("stop_reason") or ""),
+    str(data.get("default_branch") or ""),
+    str(data.get("repo") or ""),
+]))
+PY
+)"; then
+    IFS="$(printf '\t')" read -r helper_status helper_message helper_default_branch helper_repo <<EOF
+$helper_summary
+EOF
+    case "$helper_status" in
+      pass)
+        if [ -n "$helper_default_branch" ]; then
+          repo_doctor_add_check "github-settings-readiness" "pass" "GitHub settings readiness passed for $helper_repo (default branch: $helper_default_branch)"
+        else
+          repo_doctor_add_check "github-settings-readiness" "pass" "GitHub settings readiness passed for $helper_repo"
+        fi
+        ;;
+      warn)
+        repo_doctor_add_check "github-settings-readiness" "warn" "${helper_message:-github settings readiness reported a warning}"
+        ;;
+      fail)
+        repo_doctor_add_check "github-settings-readiness" "fail" "${helper_message:-github settings readiness failed}"
+        status=1
+        ;;
+      *)
+        repo_doctor_add_check "github-settings-readiness" "fail" "github-settings-check returned an unexpected status"
+        status=1
+        ;;
+    esac
+  else
+    repo_doctor_add_check "github-settings-readiness" "fail" "github-settings-check JSON summary parse failed"
+    status=1
+  fi
+
+  rm -f "$helper_json" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 repo_doctor_run_check() {
   local check_name="$1"
   case "$check_name" in
@@ -673,6 +805,7 @@ repo_doctor_run_check() {
     ci) repo_doctor_check_ci_permissions ;;
     automation-freshness) repo_doctor_check_automation_freshness ;;
     starter-template-readiness) repo_doctor_check_starter_template_readiness ;;
+    github-settings-readiness) repo_doctor_check_github_settings_readiness ;;
     docs) repo_doctor_check_docs_index ;;
     issue-templates) repo_doctor_check_issue_templates ;;
     *)
@@ -921,10 +1054,20 @@ repo_doctor_main() {
       if repo_doctor_is_installed_target; then
         checks_to_run=(artifact-guard git config scripts automation-freshness json tests version)
       else
-        checks_to_run=(artifact-guard git config scripts automation-freshness json tests version ci docs issue-templates)
+        checks_to_run=(artifact-guard git config scripts automation-freshness json tests version ci github-settings-readiness docs issue-templates)
         if repo_doctor_should_run_starter_template_readiness; then
-          checks_to_run=(artifact-guard git config scripts automation-freshness starter-template-readiness json tests version ci docs issue-templates)
+          checks_to_run=(artifact-guard git config scripts automation-freshness starter-template-readiness json tests version ci github-settings-readiness docs issue-templates)
         fi
+      fi
+
+      if [ "$repo_doctor_mode" != "full" ]; then
+        local filtered_checks=()
+        for check_name in "${checks_to_run[@]}"; do
+          if [ "$check_name" != "github-settings-readiness" ]; then
+            filtered_checks+=("$check_name")
+          fi
+        done
+        checks_to_run=("${filtered_checks[@]}")
       fi
     fi
 
