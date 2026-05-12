@@ -21,6 +21,7 @@ If mode is not explicitly passed:
 By default, the helper manages:
 
 - shared scripts in `repo-automation/bin/` and `repo-automation/lib/`
+- default downstream helpers `repo-automation/bin/failure-log` and `repo-automation/bin/status-packet`
 - repo-automation docs in `repo-automation/docs/`
 - generated downstream `.repo-automation.conf`
 - generated downstream `repo-automation/docs/README.md`
