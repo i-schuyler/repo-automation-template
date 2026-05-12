@@ -113,6 +113,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/touched-files" || return 1
   cp "$smoke_repo_root/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-status" || return 1
   cp "$smoke_repo_root/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/ci-watch" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/ci-log-dump" "$smoke_test_dir/repo-automation/bin/ci-log-dump" || return 1
   cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
@@ -331,6 +332,7 @@ smoke_check_add_doc_pr_docs_only() {
   local add_doc_pr_stderr="$smoke_test_base/add-doc-pr-plan-$$.stderr"
   local add_doc_pr_failure_details=""
   local repo_doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
+  local ci_log_dump_help="$smoke_test_base/ci-log-dump-help-$$.txt"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -394,6 +396,16 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --help > "$ci_log_dump_help"
+  ) && grep -q 'Usage: repo-automation/bin/ci-log-dump' "$ci_log_dump_help"; then
+    test_pass "ci-log-dump help succeeds"
+  else
+    test_fail "ci-log-dump help succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     mkdir -p docs || return 1
     printf 'docs only change\n' > docs/plan-doc.md || return 1
     repo-automation/bin/add-doc-pr --plan --json > "$add_doc_pr_json" 2> "$add_doc_pr_stderr"
@@ -426,7 +438,7 @@ smoke_check_add_doc_pr_docs_only() {
     :
   fi
 
-  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$repo_doctor_help" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$repo_doctor_help" "$ci_log_dump_help" >/dev/null 2>&1 || true
   return "$status"
 }
 

@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+# repo-automation/bin/ci-log-dump
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+ci_log_dump_repo=""
+ci_log_dump_pr=""
+ci_log_dump_run_id=""
+ci_log_dump_out_dir=""
+ci_log_dump_tail_lines=160
+ci_log_dump_failed_only=1
+ci_log_dump_latest_failed=0
+ci_log_dump_machine_json=0
+
+ci_log_dump_usage() {
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=OWNER/REPO] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--machine-json] [--help]\n'
+}
+
+ci_log_dump_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//\"/\\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+ci_log_dump_stop() {
+  local message="$1"
+
+  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+    printf '{'
+    printf '"script":"ci-log-dump",'
+    printf '"repo":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_repo")"
+    printf '"pr":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_pr")"
+    printf '"run_id":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_run_id")"
+    printf '"out_dir":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_out_dir")"
+    printf '"tail_lines":%s,' "$ci_log_dump_tail_lines"
+    printf '"failed_only":%s,' "$ci_log_dump_failed_only"
+    printf '"latest_failed":%s,' "$ci_log_dump_latest_failed"
+    printf '"log_path":"",'
+    printf '"file_size_bytes":0,'
+    printf '"overall_status":"fail",'
+    printf '"stop_reason":"%s",' "$(ci_log_dump_json_escape "$message")"
+    printf '"tail_excerpt":[]'
+    printf '}\n'
+  else
+    printf 'STOP: %s\n' "$message" >&2
+  fi
+  return 1
+}
+
+ci_log_dump_repo_from_remote() {
+  local remote_url
+  local repo
+
+  remote_url="$(git remote get-url origin 2>/dev/null || true)"
+  case "$remote_url" in
+    git@github.com:*)
+      repo="${remote_url#git@github.com:}"
+      ;;
+    https://github.com/*)
+      repo="${remote_url#https://github.com/}"
+      ;;
+    http://github.com/*)
+      repo="${remote_url#http://github.com/}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  repo="${repo%.git}"
+  repo="${repo%/}"
+  case "$repo" in
+    */*)
+      printf '%s\n' "$repo"
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+ci_log_dump_default_out_dir() {
+  local preferred="/storage/emulated/0/Documents/HeartloomVault/40_STAGING/log-dump"
+  local fallback="${TMPDIR:-$HOME/.cache}/repo-automation-log-dump"
+
+  if mkdir -p "$preferred" >/dev/null 2>&1; then
+    printf '%s\n' "$preferred"
+    return 0
+  fi
+
+  mkdir -p "$fallback" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$fallback"
+}
+
+ci_log_dump_require_gh() {
+  if ! command -v gh >/dev/null 2>&1; then
+    ci_log_dump_stop 'gh is required for ci-log-dump; install GitHub CLI and rerun'
+    return 1
+  fi
+}
+
+ci_log_dump_pick_head_branch() {
+  gh pr view "$1" --repo "$ci_log_dump_repo" --json headRefName --jq '.headRefName'
+}
+
+ci_log_dump_pick_run_id_for_branch() {
+  local branch_name="$1"
+  local event_name="$2"
+  gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName \
+    | python3 -c 'import json,sys; items=json.load(sys.stdin); print(next((str(i.get("databaseId","")) for i in items if i.get("conclusion")=="failure"), items[0].get("databaseId","") if items else ""))'
+}
+
+ci_log_dump_tail_excerpt() {
+  tail -n "$ci_log_dump_tail_lines" "$1"
+}
+
+ci_log_dump_print_json() {
+  local log_path="$1"
+  local size_bytes="$2"
+  local run_id="$3"
+  local line
+  local excerpt=""
+  local first=1
+
+  while IFS= read -r line; do
+    if [ "$first" -eq 0 ]; then
+      excerpt+=','
+    fi
+    excerpt+="\"$(ci_log_dump_json_escape "$line")\""
+    first=0
+  done <<EOF_EXCERPT
+$(ci_log_dump_tail_excerpt "$log_path")
+EOF_EXCERPT
+
+  printf '{'
+  printf '"script":"ci-log-dump",'
+  printf '"repo":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_repo")"
+  printf '"pr":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_pr")"
+  printf '"run_id":"%s",' "$(ci_log_dump_json_escape "$run_id")"
+  printf '"out_dir":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_out_dir")"
+  printf '"tail_lines":%s,' "$ci_log_dump_tail_lines"
+  printf '"failed_only":%s,' "$ci_log_dump_failed_only"
+  printf '"latest_failed":%s,' "$ci_log_dump_latest_failed"
+  printf '"log_path":"%s",' "$(ci_log_dump_json_escape "$log_path")"
+  printf '"file_size_bytes":%s,' "$size_bytes"
+  printf '"overall_status":"pass",'
+  printf '"stop_reason":"",'
+  printf '"tail_excerpt":[%s]' "$excerpt"
+  printf '}\n'
+}
+
+ci_log_dump_main() {
+  local arg
+  local worktree_root
+  local target_repo
+  local run_id
+  local log_path
+  local size_bytes
+  local gh_log_file
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        ci_log_dump_usage
+        return 0
+        ;;
+      --repo=*)
+        ci_log_dump_repo="${arg#--repo=}"
+        ;;
+      --pr=*)
+        ci_log_dump_pr="${arg#--pr=}"
+        if ! repo_auto_is_positive_integer "$ci_log_dump_pr"; then
+          ci_log_dump_stop "invalid --pr value: $ci_log_dump_pr"
+          return 1
+        fi
+        ;;
+      --run-id=*)
+        ci_log_dump_run_id="${arg#--run-id=}"
+        if ! repo_auto_is_positive_integer "$ci_log_dump_run_id"; then
+          ci_log_dump_stop "invalid --run-id value: $ci_log_dump_run_id"
+          return 1
+        fi
+        ;;
+      --out-dir=*)
+        ci_log_dump_out_dir="${arg#--out-dir=}"
+        ;;
+      --tail=*)
+        ci_log_dump_tail_lines="${arg#--tail=}"
+        if ! repo_auto_is_positive_integer "$ci_log_dump_tail_lines"; then
+          ci_log_dump_stop "invalid --tail value: $ci_log_dump_tail_lines"
+          return 1
+        fi
+        ;;
+      --failed-only)
+        ci_log_dump_failed_only=1
+        ;;
+      --latest-failed)
+        ci_log_dump_latest_failed=1
+        ;;
+      --machine-json)
+        ci_log_dump_machine_json=1
+        ;;
+      *)
+        ci_log_dump_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  worktree_root="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+  if [ -z "$ci_log_dump_repo" ]; then
+    target_repo="$(ci_log_dump_repo_from_remote)" || {
+      ci_log_dump_stop 'unable to infer --repo from origin remote; pass --repo=OWNER/REPO'
+      return 1
+    }
+    ci_log_dump_repo="$target_repo"
+  fi
+
+  if [ -z "$ci_log_dump_out_dir" ]; then
+    ci_log_dump_out_dir="$(ci_log_dump_default_out_dir)" || {
+      ci_log_dump_stop 'unable to select an output directory'
+      return 1
+    }
+  fi
+
+  ci_log_dump_require_gh || return 1
+
+  if [ -n "$ci_log_dump_run_id" ]; then
+    run_id="$ci_log_dump_run_id"
+  elif [ -n "$ci_log_dump_pr" ]; then
+    target_repo="$(ci_log_dump_pick_head_branch "$ci_log_dump_pr" 2>/dev/null || true)"
+    [ -n "$target_repo" ] || {
+      ci_log_dump_stop "unable to resolve head branch for PR #$ci_log_dump_pr"
+      return 1
+    }
+    run_id="$(ci_log_dump_pick_run_id_for_branch "$target_repo" pull_request)" || {
+      ci_log_dump_stop "no failed pull_request run found for PR #$ci_log_dump_pr"
+      return 1
+    }
+  else
+    target_repo="$(git -C "$worktree_root" branch --show-current 2>/dev/null || true)"
+    [ -n "$target_repo" ] || {
+      ci_log_dump_stop 'unable to determine current branch; pass --pr or --run-id'
+      return 1
+    }
+    run_id="$(ci_log_dump_pick_run_id_for_branch "$target_repo" push)" || {
+      ci_log_dump_stop 'no failed run found for the current branch'
+      return 1
+    }
+  fi
+
+  gh_log_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  if [ "$ci_log_dump_failed_only" -eq 1 ]; then
+    gh run view "$run_id" --repo "$ci_log_dump_repo" --log-failed >"$gh_log_file" || {
+      rm -f "$gh_log_file" >/dev/null 2>&1 || true
+      ci_log_dump_stop "failed to fetch failed log for run $run_id"
+      return 1
+    }
+  else
+    gh run view "$run_id" --repo "$ci_log_dump_repo" --log >"$gh_log_file" || {
+      rm -f "$gh_log_file" >/dev/null 2>&1 || true
+      ci_log_dump_stop "failed to fetch log for run $run_id"
+      return 1
+    }
+  fi
+
+  mkdir -p "$ci_log_dump_out_dir" >/dev/null 2>&1 || {
+    rm -f "$gh_log_file" >/dev/null 2>&1 || true
+    ci_log_dump_stop "unable to create output directory: $ci_log_dump_out_dir"
+    return 1
+  }
+
+  log_path="$ci_log_dump_out_dir/actions_run_${run_id}_$(date +%Y%m%d-%H%M%S).log"
+  cat "$gh_log_file" >"$log_path"
+  size_bytes="$(wc -c <"$log_path" | tr -d '[:space:]')"
+  rm -f "$gh_log_file" >/dev/null 2>&1 || true
+
+  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+    ci_log_dump_print_json "$log_path" "$size_bytes" "$run_id"
+  else
+    printf 'Target repo: %s\n' "$ci_log_dump_repo"
+    if [ -n "$ci_log_dump_pr" ]; then
+      printf 'PR number: %s\n' "$ci_log_dump_pr"
+    fi
+    printf 'Run id: %s\n' "$run_id"
+    printf 'Saved log path: %s\n' "$log_path"
+    printf 'File size: %s bytes\n' "$size_bytes"
+    printf 'Tail excerpt:\n'
+    ci_log_dump_tail_excerpt "$log_path"
+  fi
+}
+
+ci_log_dump_main "$@"
+# repo-automation/bin/ci-log-dump EOF

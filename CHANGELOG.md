@@ -6,6 +6,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 
 ### Added
 
+- Added read-only `repo-automation/bin/ci-log-dump` helper for failed GitHub Actions log capture, durable output, and tail excerpts.
 - Implemented compact output modes for `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor`.
 - Hardened audit/test portability with per-check timeout guards, compact audit mode, and named smoke subcheck reporting.
 - Moved smoke scenario execution into the shared harness and removed global timeout shadowing.

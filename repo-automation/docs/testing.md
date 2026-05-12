@@ -20,6 +20,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/touched-files` commit-range output, working-tree fallback, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-watch` read-only polling, timeout handling, and machine JSON
+- smoke coverage for `repo-automation/bin/ci-log-dump` read-only failed-run discovery, durable log capture, tail excerpts, and machine JSON
 - smoke coverage for `repo-automation/bin/status-packet` human default output, machine JSON, and compact repo state reporting
 - smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
 - smoke coverage for `repo-automation/bin/starter-template-ready` human default output, `--machine-json`, `--source-root=/path/to/checkout`, and `--check-current`

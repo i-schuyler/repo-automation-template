@@ -138,6 +138,7 @@ def check_readme_integrity():
         'repo-automation/bin/prepare-release',
         'repo-automation/bin/automation-freshness',
         'repo-automation/bin/touched-files',
+        'repo-automation/bin/ci-log-dump',
     ]
     missing = [fragment for fragment in required_fragments if fragment not in text]
     if missing:
