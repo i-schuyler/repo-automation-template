@@ -15,6 +15,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, the repo-root artifact guard, `--explain`, JSON levels, log files, and missing-config safe failure behavior
+- smoke coverage for `repo-automation/bin/github-settings-check` read-only settings reporting, machine JSON, and repo-doctor integration when GitHub CLI auth and a GitHub remote are available
 - smoke coverage for `repo-automation/bin/failure-log` latest log excerpts, kind filtering, line limits, and machine JSON
 - smoke coverage for `repo-automation/bin/touched-files` commit-range output, working-tree fallback, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and machine JSON

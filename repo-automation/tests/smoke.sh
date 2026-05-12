@@ -36,6 +36,55 @@ PY
   return 1
 }
 
+smoke_write_gh_stub() {
+  local gh_stub_dir="$1"
+
+  mkdir -p "$gh_stub_dir" || return 1
+  cat > "$gh_stub_dir/gh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+cmd="${1:-}"
+sub="${2:-}"
+shift 2 >/dev/null 2>&1 || true
+case "$cmd $sub" in
+  'auth status')
+    exit 0
+    ;;
+  'pr checks')
+    printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
+    ;;
+  'pr list')
+    printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
+    ;;
+  'run list')
+    printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
+    ;;
+  'api repos/'*)
+    endpoint="$sub"
+    case "$endpoint" in
+      */actions/permissions)
+        printf '%s\n' "${GH_STUB_ACTIONS_PERMISSIONS_JSON:-{\"enabled\":true,\"allowed_actions\":\"all\"}}"
+        ;;
+      */branches/*/protection)
+        printf '%s\n' "${GH_STUB_BRANCH_PROTECTION_JSON:-{\"required_status_checks\":{}}}"
+        ;;
+      */rulesets)
+        printf '%s\n' "${GH_STUB_RULESETS_JSON:-[]}"
+        ;;
+      *)
+        printf '%s\n' "${GH_STUB_REPO_JSON:-{\"default_branch\":\"main\",\"delete_branch_on_merge\":true,\"allow_merge_commit\":true,\"allow_squash_merge\":true,\"allow_rebase_merge\":true}}"
+        ;;
+    esac
+    ;;
+  *)
+    printf 'gh stub unexpected command: %s %s\n' "$cmd" "$sub" >&2
+    exit 1
+    ;;
+esac
+EOF
+  chmod +x "$gh_stub_dir/gh" || return 1
+}
+
 smoke_setup_temp_repo() {
   local repo_root
 
@@ -59,6 +108,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/github-settings-check" || return 1
   cp "$smoke_repo_root/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/failure-log" || return 1
   cp "$smoke_repo_root/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/touched-files" || return 1
   cp "$smoke_repo_root/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-status" || return 1
@@ -73,7 +123,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/docs-check.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -169,6 +219,7 @@ EOF
 - [Add Doc PR](../repo-automation/docs/add-doc-pr.md)
 - [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
 - [Repo Doctor](../repo-automation/docs/repo-doctor.md)
+- [GitHub Settings Check](../repo-automation/docs/github-settings-check.md)
 - [Failure Log](../repo-automation/docs/failure-log.md)
 - [Touched Files](../repo-automation/docs/touched-files.md)
 - [CI Status](../repo-automation/docs/ci-status.md)
@@ -318,7 +369,7 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --help > "$repo_doctor_help" && grep -q 'artifact-guard' "$repo_doctor_help" && grep -q 'starter-template-readiness' "$repo_doctor_help"
+    repo-automation/bin/repo-doctor --help > "$repo_doctor_help" && grep -q 'artifact-guard' "$repo_doctor_help" && grep -q 'starter-template-readiness' "$repo_doctor_help" && grep -q 'github-settings-readiness' "$repo_doctor_help"
   ); then
     test_pass "repo-doctor help succeeds"
   else
@@ -718,33 +769,7 @@ smoke_check_touched_files_and_ci_contract() {
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local touched_range_repo=""
 
-  mkdir -p "$gh_stub_dir" || return 1
-  cat > "$gh_stub_dir/gh" <<'EOF'
-#!/usr/bin/env bash
-set -u
-cmd="${1:-}"
-sub="${2:-}"
-shift 2 >/dev/null 2>&1 || true
-case "$cmd $sub" in
-  'auth status')
-    exit 0
-    ;;
-  'pr checks')
-    printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
-    ;;
-  'pr list')
-    printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
-    ;;
-  'run list')
-    printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
-    ;;
-  *)
-    printf 'gh stub unexpected command: %s %s\n' "$cmd" "$sub" >&2
-    exit 1
-    ;;
-esac
-EOF
-  chmod +x "$gh_stub_dir/gh" || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -923,6 +948,40 @@ smoke_check_repo_doctor_contract() {
   fi
 
   rm -f "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+smoke_check_github_settings_contract() {
+  local status=0
+  local github_settings_json="$smoke_test_base/github-settings-check-$$.json"
+  local github_settings_doctor_json="$smoke_test_base/repo-doctor-github-settings-$$.json"
+  local gh_stub_dir="$smoke_test_base/gh-stub-settings"
+
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --machine-json > "$github_settings_json"
+  ) && python -m json.tool "$github_settings_json" >/dev/null && \
+    smoke_json_assert "$github_settings_json" 'data.get("overall_status") == "pass" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("default_branch") == "main" and data.get("actions_enabled") is True and data.get("pr_template_exists") is True and data.get("issue_templates_exist") is True and data.get("ci_workflow_exists") is True'; then
+    test_pass "github-settings-check machine-json is parseable"
+  else
+    test_fail "github-settings-check machine-json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/repo-doctor --check=github-settings-readiness --json --json-level=all > "$github_settings_doctor_json"
+  ) && python -m json.tool "$github_settings_doctor_json" >/dev/null && \
+    smoke_json_assert "$github_settings_doctor_json" 'data.get("overall_status") == "pass" and any(check.get("name") == "github-settings-readiness" and check.get("status") == "pass" for check in data.get("checks", []))'; then
+    test_pass "repo-doctor github-settings-readiness check passes"
+  else
+    test_fail "repo-doctor github-settings-readiness check passes"
+    status=1
+  fi
+
+  rm -f "$github_settings_json" "$github_settings_doctor_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1574,6 +1633,7 @@ smoke_main() {
   test_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
   test_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
   test_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
+  test_run_named_check "smoke:github-settings-check" smoke_check_github_settings_contract || status=1
   test_run_named_check "smoke:repo-doctor-artifact-guard" smoke_check_repo_doctor_artifact_guard || status=1
   test_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
   test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1

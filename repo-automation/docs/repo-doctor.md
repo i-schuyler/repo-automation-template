@@ -17,7 +17,7 @@ Default behavior is safe and read-only.
 - `--quick` runs lighter checks and skips `repo-automation/bin/run-tests`.
 - `--full` includes `repo-automation/bin/run-tests`.
 - `--no-run-tests` explicitly skips `repo-automation/bin/run-tests`.
-- `--check=NAME` runs one named check (`artifact-guard`, `git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `automation-freshness`, `docs`, `issue-templates`, `starter-template-readiness`).
+- `--check=NAME` runs one named check (`artifact-guard`, `git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `automation-freshness`, `docs`, `issue-templates`, `starter-template-readiness`, `github-settings-readiness`).
 
 Human output uses PASS/WARN/FAIL when details are shown, but default summary output stays compact:
 
@@ -57,6 +57,7 @@ Checks include:
 - docs index helper-link coverage
 - automation issue-template presence
 - starter-template readiness gate
+- GitHub settings readiness helper checks when `gh` and a GitHub remote are available
 
 Usage examples:
 
@@ -72,3 +73,4 @@ Usage examples:
     repo-automation/bin/repo-doctor --check=config
     repo-automation/bin/repo-doctor --check=automation-freshness
     repo-automation/bin/repo-doctor --check=starter-template-readiness
+    repo-automation/bin/repo-doctor --check=github-settings-readiness
