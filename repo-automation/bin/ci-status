@@ -1,0 +1,323 @@
+#!/usr/bin/env bash
+# repo-automation/bin/ci-status
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+ci_status_pr=""
+ci_status_branch=""
+ci_status_machine_json=0
+ci_status_summary_json=""
+
+ci_status_usage() {
+  printf 'Usage: repo-automation/bin/ci-status [--pr=NUMBER | --branch=NAME] [--machine-json] [--help]\n'
+}
+
+ci_status_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//"/\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+ci_status_status_from_checks() {
+  local checks_file="$1"
+  python3 - "$checks_file" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+items = json.loads(path.read_text(encoding='utf-8'))
+counts = {'pass': 0, 'fail': 0, 'pending': 0, 'skipping': 0, 'cancel': 0}
+for item in items:
+    bucket = item.get('bucket', '')
+    if bucket in counts:
+        counts[bucket] += 1
+if counts['fail'] or counts['cancel']:
+    overall = 'fail'
+elif counts['pending']:
+    overall = 'pending'
+elif counts['pass'] or counts['skipping']:
+    overall = 'pass'
+else:
+    overall = 'warn'
+print(json.dumps({'overall_status': overall, 'checks': items, 'bucket_counts': counts}))
+PY
+}
+
+ci_status_status_from_runs() {
+  local runs_file="$1"
+  python3 - "$runs_file" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+items = json.loads(path.read_text(encoding='utf-8'))
+latest = items[0] if items else {}
+status = latest.get('status', '')
+conclusion = latest.get('conclusion', '')
+if not items:
+    overall = 'warn'
+elif status in {'queued', 'in_progress', 'requested', 'waiting', 'pending', 'action_required'}:
+    overall = 'pending'
+elif conclusion in {'success', 'neutral', 'skipped'}:
+    overall = 'pass'
+else:
+    overall = 'fail'
+print(json.dumps({'overall_status': overall, 'latest_run': latest, 'run_count': len(items)}))
+PY
+}
+
+ci_status_check_auth() {
+  if ! command -v gh >/dev/null 2>&1; then
+    repo_auto_stop 'gh is required for ci-status; install GitHub CLI and rerun'
+    return 1
+  fi
+
+  if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
+    repo_auto_stop 'gh is not authenticated for github.com; run gh auth login and rerun'
+    return 1
+  fi
+}
+
+ci_status_load_pr() {
+  local pr_number="$1"
+  local checks_file
+  local stderr_file
+  local rc=0
+  local summary_json
+
+  checks_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-status-checks.XXXXXX")"
+  stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-status-checks-stderr.XXXXXX")"
+
+  gh pr checks "$pr_number" --json bucket,name,state,workflow,description,link,startedAt,completedAt,event >"$checks_file" 2>"$stderr_file"
+  rc=$?
+
+  if [ "$rc" -eq 4 ]; then
+    rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop 'gh authentication failed for ci-status; run gh auth status and gh auth login'
+    return 1
+  fi
+
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 8 ]; then
+    if grep -Eqi 'could not resolve to a Pull Request|pull request not found|not found' "$stderr_file" 2>/dev/null; then
+      rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+      repo_auto_stop "no pull request found for #$pr_number; use --branch=NAME or open the PR first"
+      return 1
+    fi
+    if grep -Eqi 'dial tcp|no such host|connection refused|i/o timeout|network is unreachable|offline' "$stderr_file" 2>/dev/null; then
+      rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+      repo_auto_stop 'GitHub access failed for ci-status; check your network and rerun'
+      return 1
+    fi
+    rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop "gh pr checks failed for #$pr_number"
+    return 1
+  fi
+
+  if [ ! -s "$checks_file" ]; then
+    rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop "gh pr checks returned no data for #$pr_number"
+    return 1
+  fi
+
+  summary_json="$(ci_status_status_from_checks "$checks_file")" || {
+    rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop "unable to parse ci status checks for #$pr_number"
+    return 1
+  }
+
+  ci_status_summary_json="$(python3 - "$summary_json" "$pr_number" <<'PY'
+import json
+import sys
+
+summary = json.loads(sys.argv[1])
+pr_number = sys.argv[2]
+summary.update({'script': 'ci-status', 'machine_json': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''})
+print(json.dumps(summary))
+PY
+)"
+  rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
+}
+
+ci_status_load_branch() {
+  local branch_name="$1"
+  local pr_lookup_file
+  local runs_file
+  local stderr_file
+  local pr_number=""
+  local rc=0
+  local summary_json
+
+  pr_lookup_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-status-pr.XXXXXX")"
+  runs_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-status-runs.XXXXXX")"
+  stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-status-runs-stderr.XXXXXX")"
+
+  if gh pr list --head "$branch_name" --state all --limit 1 --json number,title,state,url,headRefName,baseRefName >"$pr_lookup_file" 2>/dev/null; then
+    pr_number="$(python3 - "$pr_lookup_file" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+items = json.loads(path.read_text(encoding='utf-8'))
+if items:
+    print(items[0].get('number', ''))
+PY
+)"
+  fi
+
+  rm -f "$pr_lookup_file" >/dev/null 2>&1 || true
+
+  if [ -n "$pr_number" ]; then
+    ci_status_load_pr "$pr_number"
+    return $?
+  fi
+
+  gh run list --branch "$branch_name" --limit 1 --json attempt,conclusion,createdAt,displayTitle,event,headBranch,headSha,name,number,startedAt,status,updatedAt,url,workflowName >"$runs_file" 2>"$stderr_file"
+  rc=$?
+
+  if [ "$rc" -eq 4 ]; then
+    rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop 'gh authentication failed for ci-status; run gh auth status and gh auth login'
+    return 1
+  fi
+
+  if [ "$rc" -ne 0 ]; then
+    if grep -Eqi 'dial tcp|no such host|connection refused|i/o timeout|network is unreachable|offline' "$stderr_file" 2>/dev/null; then
+      rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
+      repo_auto_stop 'GitHub access failed for ci-status; check your network and rerun'
+      return 1
+    fi
+    rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop "gh run list failed for branch $branch_name"
+    return 1
+  fi
+
+  if [ ! -s "$runs_file" ] || grep -q '^\[\]' "$runs_file" 2>/dev/null; then
+    rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop "no pull request or workflow run found for branch $branch_name"
+    return 1
+  fi
+
+  summary_json="$(ci_status_status_from_runs "$runs_file")" || {
+    rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
+    repo_auto_stop "unable to parse ci status runs for branch $branch_name"
+    return 1
+  }
+
+  ci_status_summary_json="$(python3 - "$summary_json" "$branch_name" <<'PY'
+import json
+import sys
+
+summary = json.loads(sys.argv[1])
+branch_name = sys.argv[2]
+summary.update({'script': 'ci-status', 'machine_json': True, 'mode': 'branch', 'pr': '', 'branch': branch_name})
+print(json.dumps(summary))
+PY
+)"
+  rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
+}
+
+ci_status_collect() {
+  if [ -n "$ci_status_pr" ]; then
+    ci_status_load_pr "$ci_status_pr" || return 1
+  elif [ -n "$ci_status_branch" ]; then
+    ci_status_load_branch "$ci_status_branch" || return 1
+  else
+    repo_auto_stop 'provide --pr=NUMBER or --branch=NAME'
+    return 1
+  fi
+}
+
+ci_status_print_human() {
+  python3 - "$ci_status_summary_json" <<'PY'
+import json
+import sys
+
+summary = json.loads(sys.argv[1])
+mode = summary.get('mode', '')
+overall = summary.get('overall_status', 'fail')
+if mode == 'pr':
+    print(f"Target: PR #{summary.get('pr', '')}")
+    print(f"Overall status: {overall}")
+    print('Checks:')
+    for item in summary.get('checks', []):
+        print(f"- {item.get('name', '')}: {item.get('bucket', '')}")
+else:
+    print(f"Target: branch {summary.get('branch', '')}")
+    print(f"Overall status: {overall}")
+    print('Latest run:')
+    run = summary.get('latest_run', {})
+    if not run:
+        print('- none')
+    else:
+        pieces = [f"#{run.get('number', '')}", run.get('name', ''), run.get('status', ''), run.get('conclusion', '')]
+        print('- ' + ' '.join(piece for piece in pieces if piece).strip())
+PY
+}
+
+ci_status_print_json() {
+  printf '%s\n' "$ci_status_summary_json"
+}
+
+ci_status_main() {
+  local arg
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        ci_status_usage
+        return 0
+        ;;
+      --pr=*)
+        ci_status_pr="${arg#--pr=}"
+        if ! repo_auto_is_positive_integer "$ci_status_pr"; then
+          repo_auto_stop "invalid --pr value: $ci_status_pr"
+          return 1
+        fi
+        ;;
+      --branch=*)
+        ci_status_branch="${arg#--branch=}"
+        if ! repo_auto_validate_branch_name "$ci_status_branch"; then
+          repo_auto_stop "invalid --branch value: $ci_status_branch"
+          return 1
+        fi
+        ;;
+      --machine-json)
+        ci_status_machine_json=1
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -n "$ci_status_pr" ] && [ -n "$ci_status_branch" ]; then
+    repo_auto_stop 'use only one of --pr=NUMBER or --branch=NAME'
+    return 1
+  fi
+
+  ci_status_check_auth || return 1
+  ci_status_collect || return 1
+
+  if [ "$ci_status_machine_json" -eq 1 ]; then
+    ci_status_print_json
+  else
+    ci_status_print_human
+  fi
+}
+
+ci_status_main "$@"
+# repo-automation/bin/ci-status EOF

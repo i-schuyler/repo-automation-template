@@ -64,6 +64,21 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/touched-files",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/bin/ci-status",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/bin/ci-watch",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/status-packet",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -145,6 +160,21 @@
     },
     {
       "path": "repo-automation/docs/failure-log.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/touched-files.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/ci-status.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/ci-watch.md",
       "owner": "repo-automation-template",
       "kind": "doc"
     },

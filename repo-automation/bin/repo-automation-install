@@ -275,6 +275,9 @@ repo_install_main() {
     "repo-automation/bin/repo-automation-report-upstream"
     "repo-automation/bin/repo-doctor"
     "repo-automation/bin/failure-log"
+    "repo-automation/bin/touched-files"
+    "repo-automation/bin/ci-status"
+    "repo-automation/bin/ci-watch"
     "repo-automation/bin/status-packet"
     "repo-automation/bin/repo-automation-install"
     "repo-automation/docs/branch-cleanup.md"
@@ -288,6 +291,9 @@ repo_install_main() {
     "repo-automation/docs/repo-automation-report-upstream.md"
     "repo-automation/docs/repo-doctor.md"
     "repo-automation/docs/failure-log.md"
+    "repo-automation/docs/touched-files.md"
+    "repo-automation/docs/ci-status.md"
+    "repo-automation/docs/ci-watch.md"
     "repo-automation/docs/status-packet.md"
     "repo-automation/docs/repo-automation-install.md"
     "repo-automation/docs/source-provenance.md"
@@ -450,6 +456,9 @@ repo_install_main() {
     installed_at="${installed_at_arg:-$(date +%Y-%m-%d)}"
     local_overrides_doc="${local_overrides_doc_arg:-repo-automation/docs/local-overrides.md}"
     target_default_branch="$(git -C "$target_root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+    if [ -z "$target_default_branch" ]; then
+      target_default_branch="$(git -C "$target_root" ls-remote --symref origin HEAD 2>/dev/null | awk '/^ref:/ { sub("refs/heads/", "", $2); print $2; exit }')"
+    fi
     if [ -z "$target_default_branch" ]; then
       target_default_branch="$(git -C "$target_root" symbolic-ref --quiet --short HEAD 2>/dev/null)" || target_default_branch=""
     fi

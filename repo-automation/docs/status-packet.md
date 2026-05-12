@@ -6,8 +6,8 @@ Default human output includes:
 
 - current branch
 - `git status --short`
-- changed tracked files
-- untracked files
+- touched tracked files, using the same commit-range fallback behavior as `repo-automation/bin/touched-files`
+- untracked files when the touched-files helper falls back to working-tree mode
 - recent local `run-tests` and `repo-doctor` log paths, when discoverable
 - latest PR metadata only when `gh` is available and a lookup is cheap enough to try
 

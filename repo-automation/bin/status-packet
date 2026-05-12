@@ -9,6 +9,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
 status_packet_machine_json=0
 status_packet_warnings=()
+status_packet_script_dir="$(cd "$(dirname "$0")" && pwd)"
 status_packet_branch=""
 status_packet_status_short=""
 status_packet_tracked_files=()
@@ -46,6 +47,82 @@ status_packet_warn() {
   status_packet_warnings+=("$message")
 }
 
+status_packet_append_unique() {
+  declare -n array_ref="$1"
+  local item="$2"
+  local existing
+
+  for existing in "${array_ref[@]}"; do
+    if [ "$existing" = "$item" ]; then
+      return 0
+    fi
+  done
+
+  array_ref+=("$item")
+}
+
+status_packet_collect_touched_files() {
+  local repo_root="$1"
+  local touched_json_file
+  local touched_lines
+  local touched_line
+  local tracked_output
+  local untracked_output
+  local path
+
+  if [ -x "$status_packet_script_dir/touched-files" ]; then
+    touched_json_file="$(mktemp "${TMPDIR:-$HOME/.cache}/status-packet-touched.XXXXXX")"
+    if "$status_packet_script_dir/touched-files" --machine-json >"$touched_json_file" 2>/dev/null; then
+      touched_lines="$(python3 - "$touched_json_file" <<'INNERPY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+data = json.loads(path.read_text(encoding='utf-8'))
+for item in data.get('commit_range_files', []):
+    print(f'COMMIT	{item}')
+INNERPY
+)"
+      rm -f "$touched_json_file" >/dev/null 2>&1 || true
+      while IFS= read -r touched_line; do
+        case "$touched_line" in
+          COMMIT$'	'*)
+            status_packet_append_unique status_packet_tracked_files "${touched_line#COMMIT$'	'}"
+            ;;
+        esac
+      done <<EOF_TOUCHED
+$touched_lines
+EOF_TOUCHED
+    else
+      rm -f "$touched_json_file" >/dev/null 2>&1 || true
+      status_packet_warn "touched-files lookup failed; falling back to local git file lists"
+    fi
+  else
+    status_packet_warn "touched-files unavailable; falling back to local git file lists"
+  fi
+
+  tracked_output="$(cd "$repo_root" && {
+    git diff --name-only --cached --diff-filter=ACDMR
+    git diff --name-only --diff-filter=ACDMR
+  } | sed '/^$/d' | sort -u)" || return 1
+  untracked_output="$(cd "$repo_root" && git ls-files --others --exclude-standard)" || return 1
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && status_packet_append_unique status_packet_tracked_files "$path"
+  done <<EOF_TRACKED
+$tracked_output
+EOF_TRACKED
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && status_packet_append_unique status_packet_untracked_files "$path"
+  done <<EOF_UNTRACKED
+$untracked_output
+EOF_UNTRACKED
+
+  return 0
+}
+
 status_packet_collect_repo_state() {
   local repo_root
 
@@ -58,23 +135,7 @@ status_packet_collect_repo_state() {
   fi
 
   status_packet_status_short="$(git status --short --untracked-files=normal 2>/dev/null || true)"
-
-  while IFS= read -r path; do
-    [ -n "$path" ] && status_packet_tracked_files+=("$path")
-  done <<EOF_TRACKED
-$(
-  {
-    git diff --name-only --cached --diff-filter=ACDMR
-    git diff --name-only --diff-filter=ACDMR
-  } | sed '/^$/d' | sort -u
-)
-EOF_TRACKED
-
-  while IFS= read -r path; do
-    [ -n "$path" ] && status_packet_untracked_files+=("$path")
-  done <<EOF_UNTRACKED
-$(git ls-files --others --exclude-standard)
-EOF_UNTRACKED
+  status_packet_collect_touched_files "$repo_root" || return 1
 
   return 0
 }
@@ -244,16 +305,17 @@ status_packet_print_human() {
 }
 
 status_packet_json_array() {
-  local -n array_ref="$1"
   local item
+  local escaped_item
   local first=1
   local output=""
 
-  for item in "${array_ref[@]}"; do
+  for item in "$@"; do
     if [ "$first" -eq 0 ]; then
       output+=', '
     fi
-    output+="\"$(status_packet_json_escape "$item")\""
+    printf -v escaped_item '"%s"' "$(status_packet_json_escape "$item")"
+    output+="$escaped_item"
     first=0
   done
 
@@ -266,20 +328,14 @@ status_packet_print_json() {
   printf '"machine_json":true,'
   printf '"branch":"%s",' "$(status_packet_json_escape "$status_packet_branch")"
   printf '"status_short":"%s",' "$(status_packet_json_escape "$status_packet_status_short")"
-  printf '"changed_tracked_files":[%s],' "$(status_packet_json_array status_packet_tracked_files)"
-  printf '"untracked_files":[%s],' "$(status_packet_json_array status_packet_untracked_files)"
+  printf '"changed_tracked_files":[%s],' "$(status_packet_json_array "${status_packet_tracked_files[@]}")"
+  printf '"untracked_files":[%s],' "$(status_packet_json_array "${status_packet_untracked_files[@]}")"
   printf '"recent_logs":{"run_tests":"%s","repo_doctor":"%s"},' "$(status_packet_json_escape "$status_packet_recent_run_tests_log")" "$(status_packet_json_escape "$status_packet_recent_repo_doctor_log")"
-  printf '"latest_pr":{"available":%s,"number":"%s","title":"%s","state":"%s","url":"%s","head_ref":"%s","base_ref":"%s"},' \
-    "$([ "$status_packet_pr_available" -eq 1 ] && printf true || printf false)" \
-    "$(status_packet_json_escape "$status_packet_pr_number")" \
-    "$(status_packet_json_escape "$status_packet_pr_title")" \
-    "$(status_packet_json_escape "$status_packet_pr_state")" \
-    "$(status_packet_json_escape "$status_packet_pr_url")" \
-    "$(status_packet_json_escape "$status_packet_pr_head_ref")" \
-    "$(status_packet_json_escape "$status_packet_pr_base_ref")"
-  printf '"warnings":[%s],' "$(status_packet_json_array status_packet_warnings)"
+  printf '"latest_pr":{"available":%s,"number":"%s","title":"%s","state":"%s","url":"%s","head_ref":"%s","base_ref":"%s"},'     "$([ "$status_packet_pr_available" -eq 1 ] && printf true || printf false)"     "$(status_packet_json_escape "$status_packet_pr_number")"     "$(status_packet_json_escape "$status_packet_pr_title")"     "$(status_packet_json_escape "$status_packet_pr_state")"     "$(status_packet_json_escape "$status_packet_pr_url")"     "$(status_packet_json_escape "$status_packet_pr_head_ref")"     "$(status_packet_json_escape "$status_packet_pr_base_ref")"
+  printf '"warnings":[%s],' "$(status_packet_json_array "${status_packet_warnings[@]}")"
   printf '"overall_status":"pass"'
-  printf '}\n'
+  printf '}
+'
 }
 
 status_packet_main() {
