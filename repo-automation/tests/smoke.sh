@@ -60,6 +60,9 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
   cp "$smoke_repo_root/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/failure-log" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/touched-files" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-status" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/ci-watch" || return 1
   cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
@@ -70,7 +73,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/docs-check.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -167,6 +170,9 @@ EOF
 - [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
 - [Repo Doctor](../repo-automation/docs/repo-doctor.md)
 - [Failure Log](../repo-automation/docs/failure-log.md)
+- [Touched Files](../repo-automation/docs/touched-files.md)
+- [CI Status](../repo-automation/docs/ci-status.md)
+- [CI Watch](../repo-automation/docs/ci-watch.md)
 - [Status Packet](../repo-automation/docs/status-packet.md)
 - [Starter Template Readiness](../repo-automation/docs/starter-template-readiness.md)
 - [Managed Files](../repo-automation/docs/managed-files.md)
@@ -700,6 +706,140 @@ EOF
   return "$status"
 }
 
+
+smoke_check_touched_files_and_ci_contract() {
+  local status=0
+  local touched_worktree_json="$smoke_test_base/touched-files-worktree-$$.json"
+  local touched_range_json="$smoke_test_base/touched-files-range-$$.json"
+  local ci_status_pr_json="$smoke_test_base/ci-status-pr-$$.json"
+  local ci_status_branch_json="$smoke_test_base/ci-status-branch-$$.json"
+  local ci_status_failure_stderr="$smoke_test_base/ci-status-failure-$$.txt"
+  local ci_watch_timeout_stderr="$smoke_test_base/ci-watch-timeout-$$.txt"
+  local gh_stub_dir="$smoke_test_base/gh-stub"
+  local touched_range_repo=""
+
+  mkdir -p "$gh_stub_dir" || return 1
+  cat > "$gh_stub_dir/gh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+cmd="${1:-}"
+sub="${2:-}"
+shift 2 >/dev/null 2>&1 || true
+case "$cmd $sub" in
+  'auth status')
+    exit 0
+    ;;
+  'pr checks')
+    printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
+    ;;
+  'pr list')
+    printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
+    ;;
+  'run list')
+    printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
+    ;;
+  *)
+    printf 'gh stub unexpected command: %s %s\n' "$cmd" "$sub" >&2
+    exit 1
+    ;;
+esac
+EOF
+  chmod +x "$gh_stub_dir/gh" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '\nsmoke touched-files\n' >> README.md || return 1
+    : > scratch.txt || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/touched-files --machine-json > "$touched_worktree_json"
+  ) && python -m json.tool "$touched_worktree_json" >/dev/null && \
+    smoke_json_assert "$touched_worktree_json" 'data.get("mode") == "working-tree" and "README.md" in data.get("working_tree_tracked_files", []) and "scratch.txt" in data.get("untracked_files", [])'; then
+    test_pass "touched-files working-tree fallback is parseable"
+  else
+    test_fail "touched-files working-tree fallback is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f scratch.txt >/dev/null 2>&1 || true
+    git checkout -- README.md >/dev/null 2>&1 || true
+  ); then
+    :
+  fi
+
+  touched_range_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "touched-files commit-range fixture creates a repo"
+    status=1
+  }
+
+  if [ -n "$touched_range_repo" ] && (
+    cd "$touched_range_repo" || return 1
+    git checkout -b feature/touched-files-range >/dev/null 2>&1 || return 1
+    printf '
+range touch
+' >> repo-automation/docs/testing.md || return 1
+    git add repo-automation/docs/testing.md || return 1
+    git commit -m "range touch" >/dev/null || return 1
+    repo-automation/bin/touched-files --machine-json > "$touched_range_json"
+  ) && python -m json.tool "$touched_range_json" >/dev/null &&     smoke_json_assert "$touched_range_json" 'data.get("mode") == "commit-range" and "repo-automation/docs/testing.md" in data.get("commit_range_files", [])'; then
+    test_pass "touched-files commit-range output is parseable"
+  else
+    test_fail "touched-files commit-range output is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --machine-json > "$ci_status_pr_json"
+  ) && python -m json.tool "$ci_status_pr_json" >/dev/null && \
+    smoke_json_assert "$ci_status_pr_json" 'data.get("mode") == "pr" and data.get("overall_status") == "pending" and len(data.get("checks", [])) == 1'; then
+    test_pass "ci-status pr machine-json is parseable"
+  else
+    test_fail "ci-status pr machine-json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[{"number":99,"name":"ci","status":"completed","conclusion":"success"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/demo --machine-json > "$ci_status_branch_json"
+  ) && python -m json.tool "$ci_status_branch_json" >/dev/null && \
+    smoke_json_assert "$ci_status_branch_json" 'data.get("mode") == "branch" and data.get("overall_status") == "pass" and data.get("latest_run", {}).get("number") == 99'; then
+    test_pass "ci-status branch machine-json is parseable"
+  else
+    test_fail "ci-status branch machine-json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/missing > /dev/null 2> "$ci_status_failure_stderr"
+  ); then
+    test_fail "ci-status missing branch fails cleanly"
+    status=1
+  elif grep -Eq 'no pull request or workflow run found' "$ci_status_failure_stderr"; then
+    test_pass "ci-status missing branch fails cleanly"
+  else
+    test_fail "ci-status missing branch fails cleanly"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 > /dev/null 2> "$ci_watch_timeout_stderr"
+  ); then
+    test_fail "ci-watch timeout fails cleanly"
+    status=1
+  elif grep -Eq 'timed out after 1s while waiting for CI' "$ci_watch_timeout_stderr"; then
+    test_pass "ci-watch timeout fails cleanly"
+  else
+    test_fail "ci-watch timeout fails cleanly"
+    status=1
+  fi
+
+  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_pr_json" "$ci_status_branch_json" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_repo_doctor_contract() {
   local status=0
   local doctor_default_out="$smoke_test_base/repo-doctor-quick-default-$$.txt"
@@ -1124,7 +1264,7 @@ smoke_check_installer_apply_contract() {
     cd "$install_target" || return 1
     repo-automation/bin/repo-doctor --json --quick --no-run-tests > "$install_doctor_json"
   ) && python -m json.tool "$install_doctor_json" >/dev/null && \
-    smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("status") == "warn" for check in data.get("checks", [])) and all(check.get("status") != "pass" for check in data.get("checks", []))'; then
+    smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("status") == "warn" for check in data.get("checks", [])) and not any(check.get("status") == "fail" for check in data.get("checks", []))'; then
     test_pass "repo-automation-install target repo-doctor json audit succeeds"
   else
     test_fail "repo-automation-install target repo-doctor json audit succeeds"
@@ -1343,6 +1483,7 @@ smoke_main() {
   test_run_named_check "smoke:report-upstream-preview" smoke_check_report_upstream_preview || status=1
   test_run_named_check "smoke:report-upstream-secret-scan" smoke_check_report_upstream_secret_scan || status=1
   test_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
+  test_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
   test_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
   test_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
   test_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1

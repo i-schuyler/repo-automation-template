@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# repo-automation/bin/ci-watch
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+ci_watch_pr=""
+ci_watch_branch=""
+ci_watch_poll_seconds=10
+ci_watch_timeout_seconds=600
+ci_watch_machine_json=0
+ci_watch_summary_json=""
+
+ci_watch_usage() {
+  printf 'Usage: repo-automation/bin/ci-watch [--pr=NUMBER | --branch=NAME] [--poll-seconds=SECONDS] [--timeout=SECONDS] [--machine-json] [--help]\n'
+}
+
+ci_watch_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//"/\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+ci_watch_status_value() {
+  python3 - "$1" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+print(data.get('overall_status', 'fail'))
+PY
+}
+
+ci_watch_poll() {
+  local ci_status_out
+  local ci_status_err
+
+  ci_status_out="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-watch-status.XXXXXX")"
+  ci_status_err="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-watch-status-stderr.XXXXXX")"
+
+  if [ -n "$ci_watch_pr" ]; then
+    if ! "$(dirname "$0")/ci-status" --pr="$ci_watch_pr" --machine-json >"$ci_status_out" 2>"$ci_status_err"; then
+      cat "$ci_status_err" >&2
+      rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
+      return 1
+    fi
+  else
+    if ! "$(dirname "$0")/ci-status" --branch="$ci_watch_branch" --machine-json >"$ci_status_out" 2>"$ci_status_err"; then
+      cat "$ci_status_err" >&2
+      rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
+      return 1
+    fi
+  fi
+
+  ci_watch_summary_json="$(cat "$ci_status_out")"
+  rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
+}
+
+ci_watch_print_human() {
+  local status="$1"
+  local elapsed="$2"
+  printf 'CI watch status: %s after %ss\n' "$status" "$elapsed"
+}
+
+ci_watch_print_json() {
+  local status="$1"
+  local elapsed="$2"
+  printf '{'
+  printf '"script":"ci-watch",'
+  printf '"machine_json":true,'
+  printf '"pr":"%s",' "$(ci_watch_json_escape "$ci_watch_pr")"
+  printf '"branch":"%s",' "$(ci_watch_json_escape "$ci_watch_branch")"
+  printf '"poll_seconds":%s,' "$ci_watch_poll_seconds"
+  printf '"timeout_seconds":%s,' "$ci_watch_timeout_seconds"
+  printf '"elapsed_seconds":%s,' "$elapsed"
+  printf '"overall_status":"%s",' "$(ci_watch_json_escape "$status")"
+  printf '"ci_status":%s' "$ci_watch_summary_json"
+  printf '}\n'
+}
+
+ci_watch_main() {
+  local arg
+  local started_at
+  local elapsed
+  local status
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        ci_watch_usage
+        return 0
+        ;;
+      --pr=*)
+        ci_watch_pr="${arg#--pr=}"
+        if ! repo_auto_is_positive_integer "$ci_watch_pr"; then
+          repo_auto_stop "invalid --pr value: $ci_watch_pr"
+          return 1
+        fi
+        ;;
+      --branch=*)
+        ci_watch_branch="${arg#--branch=}"
+        if ! repo_auto_validate_branch_name "$ci_watch_branch"; then
+          repo_auto_stop "invalid --branch value: $ci_watch_branch"
+          return 1
+        fi
+        ;;
+      --poll-seconds=*)
+        ci_watch_poll_seconds="${arg#--poll-seconds=}"
+        if ! repo_auto_is_positive_integer "$ci_watch_poll_seconds"; then
+          repo_auto_stop "invalid --poll-seconds value: $ci_watch_poll_seconds"
+          return 1
+        fi
+        ;;
+      --timeout=*)
+        ci_watch_timeout_seconds="${arg#--timeout=}"
+        if ! repo_auto_is_positive_integer "$ci_watch_timeout_seconds"; then
+          repo_auto_stop "invalid --timeout value: $ci_watch_timeout_seconds"
+          return 1
+        fi
+        ;;
+      --machine-json)
+        ci_watch_machine_json=1
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$ci_watch_pr" ] && [ -z "$ci_watch_branch" ]; then
+    repo_auto_stop 'provide --pr=NUMBER or --branch=NAME'
+    return 1
+  fi
+
+  started_at="$(date +%s)"
+
+  while :; do
+    if ! ci_watch_poll; then
+      return 1
+    fi
+
+    status="$(ci_watch_status_value "$ci_watch_summary_json")"
+    elapsed="$(( $(date +%s) - started_at ))"
+
+    case "$status" in
+      pass|fail)
+        if [ "$ci_watch_machine_json" -eq 1 ]; then
+          ci_watch_print_json "$status" "$elapsed"
+        else
+          ci_watch_print_human "$status" "$elapsed"
+        fi
+        return 0
+        ;;
+      pending)
+        if [ "$elapsed" -ge "$ci_watch_timeout_seconds" ]; then
+          repo_auto_stop "timed out after ${ci_watch_timeout_seconds}s while waiting for CI"
+          return 1
+        fi
+        sleep "$ci_watch_poll_seconds"
+        ;;
+      *)
+        if [ "$ci_watch_machine_json" -eq 1 ]; then
+          ci_watch_print_json "$status" "$elapsed"
+        else
+          ci_watch_print_human "$status" "$elapsed"
+        fi
+        return 1
+        ;;
+    esac
+  done
+}
+
+ci_watch_main "$@"
+# repo-automation/bin/ci-watch EOF

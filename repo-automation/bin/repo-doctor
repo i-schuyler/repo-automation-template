@@ -324,6 +324,9 @@ repo_doctor_check_scripts() {
   repo_doctor_check_script_one "repo-automation/bin/repo-doctor" "repo-doctor" || status=1
   repo_doctor_check_script_one "repo-automation/bin/repo-automation-install" "repo-automation-install" || status=1
   repo_doctor_check_script_one "repo-automation/bin/failure-log" "failure-log" || status=1
+  repo_doctor_check_script_one "repo-automation/bin/touched-files" "touched-files" || status=1
+  repo_doctor_check_script_one "repo-automation/bin/ci-status" "ci-status" || status=1
+  repo_doctor_check_script_one "repo-automation/bin/ci-watch" "ci-watch" || status=1
   repo_doctor_check_script_one "repo-automation/bin/status-packet" "status-packet" || status=1
   if repo_doctor_should_run_starter_template_readiness; then
     repo_doctor_check_script_one "repo-automation/bin/starter-template-ready" "starter-template-ready" || status=1
@@ -477,7 +480,6 @@ repo_doctor_check_json_contracts() {
   rm -f "$branch_json" "$preflight_json" >/dev/null 2>&1 || true
   return "$status"
 }
-
 repo_doctor_check_run_tests() {
   if [ "$repo_doctor_skip_run_tests" -eq 1 ]; then
     repo_doctor_add_check "run-tests" "warn" "repo-automation/bin/run-tests skipped"
@@ -491,6 +493,12 @@ repo_doctor_check_run_tests() {
 
   repo_doctor_add_check "run-tests" "fail" "repo-automation/bin/run-tests failed"
   return 1
+}
+
+repo_doctor_is_installed_target() {
+  [ -f "repo-automation/docs/README.md" ] || return 1
+  [ -f ".repo-automation.conf" ] || return 1
+  return 0
 }
 
 repo_doctor_check_version_guard() {
@@ -509,6 +517,11 @@ repo_doctor_check_version_guard() {
   if [ ! -f repo-automation/tests/version-consistency.sh ]; then
     repo_doctor_add_check "version-consistency-script" "fail" "repo-automation/tests/version-consistency.sh missing"
     return 1
+  fi
+
+  if repo_doctor_is_installed_target; then
+    repo_doctor_add_check "version-consistency" "skipped" "installed downstream target uses repo-automation/docs/README.md provenance"
+    return 0
   fi
 
   if repo-automation/tests/version-consistency.sh >/dev/null; then
@@ -561,6 +574,9 @@ repo_doctor_check_docs_index() {
     "repo-automation/docs/repo-automation-report-upstream.md" \
     "repo-automation/docs/repo-doctor.md" \
     "repo-automation/docs/failure-log.md" \
+    "repo-automation/docs/touched-files.md" \
+    "repo-automation/docs/ci-status.md" \
+    "repo-automation/docs/ci-watch.md" \
     "repo-automation/docs/status-packet.md" \
     "repo-automation/docs/managed-files.md" \
     "repo-automation/docs/repo-automation-install.md" \
@@ -851,9 +867,13 @@ repo_doctor_main() {
         command_status=1
       fi
     else
-      checks_to_run=(git config scripts automation-freshness json tests version ci docs issue-templates)
-      if repo_doctor_should_run_starter_template_readiness; then
-        checks_to_run=(git config scripts automation-freshness starter-template-readiness json tests version ci docs issue-templates)
+      if repo_doctor_is_installed_target; then
+        checks_to_run=(git config scripts automation-freshness json tests version)
+      else
+        checks_to_run=(git config scripts automation-freshness json tests version ci docs issue-templates)
+        if repo_doctor_should_run_starter_template_readiness; then
+          checks_to_run=(git config scripts automation-freshness starter-template-readiness json tests version ci docs issue-templates)
+        fi
       fi
     fi
 

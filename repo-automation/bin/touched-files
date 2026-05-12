@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# repo-automation/bin/touched-files
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+touched_files_base="main"
+touched_files_head="HEAD"
+touched_files_machine_json=0
+touched_files_mode="commit-range"
+touched_files_commit_range_files=()
+touched_files_working_tree_tracked_files=()
+touched_files_untracked_files=()
+
+touched_files_usage() {
+  printf 'Usage: repo-automation/bin/touched-files [--base=REF] [--head=REF] [--machine-json] [--help]\n'
+}
+
+touched_files_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//"/\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
+touched_files_json_array() {
+  local -n array_ref="$1"
+  local item
+  local first=1
+  local output=""
+
+  for item in "${array_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      output+=', '
+    fi
+    output+="\"$(touched_files_json_escape "$item")\""
+    first=0
+  done
+
+  printf '%s' "$output"
+}
+
+touched_files_collect_commit_range() {
+  local repo_root="$1"
+  local output
+  local path
+
+  output="$(cd "$repo_root" && git diff --name-only --diff-filter=ACDMR "${touched_files_base}...${touched_files_head}" 2>/dev/null)" || {
+    repo_auto_stop "unable to diff ${touched_files_base}...${touched_files_head}"
+    return 1
+  }
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && touched_files_commit_range_files+=("$path")
+  done <<EOF_RANGE
+$output
+EOF_RANGE
+
+  return 0
+}
+
+touched_files_collect_working_tree() {
+  local repo_root="$1"
+  local tracked_output
+  local untracked_output
+  local path
+
+  tracked_output="$(cd "$repo_root" && {
+    git diff --name-only --cached --diff-filter=ACDMR
+    git diff --name-only --diff-filter=ACDMR
+  } | sed '/^$/d' | sort -u)" || return 1
+  untracked_output="$(cd "$repo_root" && git ls-files --others --exclude-standard)" || return 1
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && touched_files_working_tree_tracked_files+=("$path")
+  done <<EOF_TRACKED
+$tracked_output
+EOF_TRACKED
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && touched_files_untracked_files+=("$path")
+  done <<EOF_UNTRACKED
+$untracked_output
+EOF_UNTRACKED
+
+  return 0
+}
+
+touched_files_collect() {
+  local repo_root
+
+  repo_root="$(repo_auto_repo_root)" || return 1
+  cd "$repo_root" || return 1
+
+  if ! git rev-parse --verify "${touched_files_base}^{commit}" >/dev/null 2>&1; then
+    repo_auto_stop "unknown --base ref: ${touched_files_base}"
+    return 1
+  fi
+
+  if ! git rev-parse --verify "${touched_files_head}^{commit}" >/dev/null 2>&1; then
+    repo_auto_stop "unknown --head ref: ${touched_files_head}"
+    return 1
+  fi
+
+  touched_files_collect_commit_range "$repo_root" || return 1
+  if [ "${#touched_files_commit_range_files[@]}" -eq 0 ]; then
+    touched_files_mode="working-tree"
+    touched_files_collect_working_tree "$repo_root" || return 1
+  fi
+}
+
+touched_files_print_human() {
+  local item
+
+  printf 'Base: %s\n' "$touched_files_base"
+  printf 'Head: %s\n' "$touched_files_head"
+
+  if [ "$touched_files_mode" = "commit-range" ]; then
+    printf 'Commit-range files:\n'
+    if [ "${#touched_files_commit_range_files[@]}" -eq 0 ]; then
+      printf -- '- none\n'
+    else
+      for item in "${touched_files_commit_range_files[@]}"; do
+        printf -- '- %s\n' "$item"
+      done
+    fi
+    return 0
+  fi
+
+  printf 'No commit-range changes found; showing working tree files:\n'
+  printf 'Tracked files:\n'
+  if [ "${#touched_files_working_tree_tracked_files[@]}" -eq 0 ]; then
+    printf -- '- none\n'
+  else
+    for item in "${touched_files_working_tree_tracked_files[@]}"; do
+      printf -- '- %s\n' "$item"
+    done
+  fi
+
+  printf 'Untracked files:\n'
+  if [ "${#touched_files_untracked_files[@]}" -eq 0 ]; then
+    printf -- '- none\n'
+  else
+    for item in "${touched_files_untracked_files[@]}"; do
+      printf -- '- %s\n' "$item"
+    done
+  fi
+}
+
+touched_files_print_json() {
+  printf '{'
+  printf '"script":"touched-files",'
+  printf '"machine_json":true,'
+  printf '"base":"%s",' "$(touched_files_json_escape "$touched_files_base")"
+  printf '"head":"%s",' "$(touched_files_json_escape "$touched_files_head")"
+  printf '"mode":"%s",' "$(touched_files_json_escape "$touched_files_mode")"
+  printf '"commit_range_files":[%s],' "$(touched_files_json_array touched_files_commit_range_files)"
+  printf '"working_tree_tracked_files":[%s],' "$(touched_files_json_array touched_files_working_tree_tracked_files)"
+  printf '"untracked_files":[%s],' "$(touched_files_json_array touched_files_untracked_files)"
+  printf '"overall_status":"pass"'
+  printf '}\n'
+}
+
+touched_files_main() {
+  local arg
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        touched_files_usage
+        return 0
+        ;;
+      --base=*)
+        touched_files_base="${arg#--base=}"
+        if [ -z "$touched_files_base" ]; then
+          repo_auto_stop "missing value for --base"
+          return 1
+        fi
+        ;;
+      --head=*)
+        touched_files_head="${arg#--head=}"
+        if [ -z "$touched_files_head" ]; then
+          repo_auto_stop "missing value for --head"
+          return 1
+        fi
+        ;;
+      --machine-json)
+        touched_files_machine_json=1
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  touched_files_collect || return 1
+
+  if [ "$touched_files_machine_json" -eq 1 ]; then
+    touched_files_print_json
+  else
+    touched_files_print_human
+  fi
+}
+
+touched_files_main "$@"
+# repo-automation/bin/touched-files EOF

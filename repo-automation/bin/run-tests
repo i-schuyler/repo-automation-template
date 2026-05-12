@@ -853,6 +853,9 @@ EOF
   run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-report-upstream" bash -n repo-automation/bin/repo-automation-report-upstream || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/repo-doctor" bash -n repo-automation/bin/repo-doctor || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/failure-log" bash -n repo-automation/bin/failure-log || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/touched-files" bash -n repo-automation/bin/touched-files || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/ci-status" bash -n repo-automation/bin/ci-status || status=1
+  run_tests_run_cmd "bash syntax repo-automation/bin/ci-watch" bash -n repo-automation/bin/ci-watch || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/status-packet" bash -n repo-automation/bin/status-packet || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/repo-automation-install" bash -n repo-automation/bin/repo-automation-install || status=1
   run_tests_run_cmd "bash syntax repo-automation/bin/run-tests" bash -n repo-automation/bin/run-tests || status=1
@@ -861,7 +864,7 @@ EOF
   run_tests_run_cmd "bash syntax repo-automation/tests/version-consistency.sh" bash -n repo-automation/tests/version-consistency.sh || status=1
 
   if command -v shellcheck >/dev/null 2>&1; then
-    run_tests_run_cmd       "shellcheck repo-automation scripts and tests"       shellcheck       -e SC2317       repo-automation/bin/branch-cleanup       repo-automation/bin/codex-slice-preflight       repo-automation/bin/pr-finish       repo-automation/bin/add-doc-pr       repo-automation/bin/prepare-release       repo-automation/bin/repo-automation-report-upstream       repo-automation/bin/repo-doctor       repo-automation/bin/failure-log       repo-automation/bin/status-packet       repo-automation/bin/repo-automation-install       repo-automation/bin/run-tests       repo-automation/tests/docs-check.sh       repo-automation/tests/smoke.sh       repo-automation/tests/version-consistency.sh || status=1
+    run_tests_run_cmd       "shellcheck repo-automation scripts and tests"       shellcheck       -e SC2317       repo-automation/bin/branch-cleanup       repo-automation/bin/codex-slice-preflight       repo-automation/bin/pr-finish       repo-automation/bin/add-doc-pr       repo-automation/bin/prepare-release       repo-automation/bin/repo-automation-report-upstream       repo-automation/bin/repo-doctor       repo-automation/bin/failure-log       repo-automation/bin/touched-files       repo-automation/bin/ci-status       repo-automation/bin/ci-watch       repo-automation/bin/status-packet       repo-automation/bin/repo-automation-install       repo-automation/bin/run-tests       repo-automation/tests/docs-check.sh       repo-automation/tests/smoke.sh       repo-automation/tests/version-consistency.sh || status=1
   else
     run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
   fi
@@ -872,6 +875,9 @@ EOF
   run_tests_run_cmd "repo-automation/bin/repo-automation-report-upstream --help" bash -c 'repo-automation/bin/repo-automation-report-upstream --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/repo-doctor --help" bash -c 'repo-automation/bin/repo-doctor --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/failure-log --help" bash -c 'repo-automation/bin/failure-log --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/touched-files --help" bash -c 'repo-automation/bin/touched-files --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/ci-status --help" bash -c 'repo-automation/bin/ci-status --help >/dev/null' || status=1
+  run_tests_run_cmd "repo-automation/bin/ci-watch --help" bash -c 'repo-automation/bin/ci-watch --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/status-packet --help" bash -c 'repo-automation/bin/status-packet --help >/dev/null' || status=1
   run_tests_run_cmd "repo-automation/bin/repo-automation-install --help" bash -c 'repo-automation/bin/repo-automation-install --help >/dev/null' || status=1
   if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
