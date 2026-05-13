@@ -776,8 +776,7 @@ EOF
     local run_tests_run_smoke_changed=0
     local run_tests_run_docs_changed=0
     local run_tests_run_version_changed=0
-    local run_tests_run_smoke_only=0
-    local run_tests_run_docs_or_version_changed=0
+    local run_tests_run_smoke_selected=0
     local run_tests_run_unknown_changed=0
 
     run_tests_changed_selected_subsets=()
@@ -811,20 +810,18 @@ EOF
 
     if [ "$run_tests_run_docs_changed" -eq 1 ]; then
       run_tests_changed_selected_subsets+=("docs")
-      run_tests_run_docs_or_version_changed=1
     fi
 
     if [ "$run_tests_run_version_changed" -eq 1 ]; then
       run_tests_changed_selected_subsets+=("version")
-      run_tests_run_docs_or_version_changed=1
     fi
 
-    if [ "$run_tests_run_docs_or_version_changed" -eq 0 ] && { [ "$run_tests_run_smoke_changed" -eq 1 ] || [ "$run_tests_run_unknown_changed" -eq 1 ]; }; then
+    if [ "$run_tests_run_smoke_changed" -eq 1 ] || [ "$run_tests_run_unknown_changed" -eq 1 ]; then
       run_tests_changed_selected_subsets+=("smoke")
-      run_tests_run_smoke_only=1
+      run_tests_run_smoke_selected=1
     fi
 
-    if [ "$run_tests_run_smoke_only" -eq 1 ]; then
+    if [ "$run_tests_run_smoke_selected" -eq 1 ]; then
       if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
         run_tests_record_skip "repo-automation/tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"
       else

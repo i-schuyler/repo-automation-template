@@ -335,6 +335,13 @@ printf 'PASS: subset smoke stub
 '
 EOF
   chmod +x "$subset_dir/repo-automation/tests/smoke.sh" || return 1
+  (
+    cd "$subset_dir" || return 1
+    git config user.name "repo-automation-test" || return 1
+    git config user.email "repo-automation-test@example.com" || return 1
+    git add repo-automation/tests/smoke.sh >/dev/null 2>&1 || return 1
+    git commit -m "Stub smoke check" >/dev/null 2>&1 || return 1
+  ) || return 1
 
   printf '%s
 ' "$subset_dir"
@@ -660,6 +667,7 @@ smoke_check_run_tests_contract() {
   local run_tests_subset_version_json="$smoke_test_base/run-tests-subset-version-$$.json"
   local run_tests_subset_changed_docs_json="$smoke_test_base/run-tests-subset-changed-docs-$$.json"
   local run_tests_subset_changed_smoke_json="$smoke_test_base/run-tests-subset-changed-smoke-$$.json"
+  local run_tests_subset_changed_bin_json="$smoke_test_base/run-tests-subset-changed-bin-$$.json"
 
   run_tests_subset_repo="$(smoke_setup_subset_repo)" || {
     test_fail "run-tests subset fixture creates a repo"
@@ -707,7 +715,43 @@ smoke_check_run_tests_contract() {
     status=1
   fi
 
-  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" >/dev/null 2>&1 || true
+  local run_tests_subset_changed_smoke_repo=""
+  run_tests_subset_changed_smoke_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "run-tests changed subset follows docs plus smoke changes"
+    status=1
+  }
+
+  if [ -n "$run_tests_subset_changed_smoke_repo" ] && (
+    cd "$run_tests_subset_changed_smoke_repo" || return 1
+    printf '\nsubset docs plus smoke change\n' >> repo-automation/docs/testing.md || return 1
+    printf '\n# subset smoke change\n' >> repo-automation/tests/smoke.sh || return 1
+    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_smoke_json" || true
+  ) && python -m json.tool "$run_tests_subset_changed_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_smoke_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+    test_pass "run-tests changed subset follows docs plus smoke changes"
+  else
+    test_fail "run-tests changed subset follows docs plus smoke changes"
+    status=1
+  fi
+
+  local run_tests_subset_changed_bin_repo=""
+  run_tests_subset_changed_bin_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "run-tests changed subset follows docs plus bin changes"
+    status=1
+  }
+
+  if [ -n "$run_tests_subset_changed_bin_repo" ] && (
+    cd "$run_tests_subset_changed_bin_repo" || return 1
+    printf '\nsubset docs plus bin change\n' >> repo-automation/docs/testing.md || return 1
+    printf '\n# subset bin change\n' >> repo-automation/bin/failure-log || return 1
+    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_bin_json" || true
+  ) && python -m json.tool "$run_tests_subset_changed_bin_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_bin_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+    test_pass "run-tests changed subset follows docs plus bin changes"
+  else
+    test_fail "run-tests changed subset follows docs plus bin changes"
+    status=1
+  fi
+
+  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
