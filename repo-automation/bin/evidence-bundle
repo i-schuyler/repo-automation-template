@@ -33,7 +33,9 @@ evidence_bundle_post_codex_zip=""
 evidence_bundle_repo_zip_zip=""
 evidence_bundle_zip_size=""
 evidence_bundle_zip_mtime=""
+# shellcheck disable=SC2034 # referenced indirectly via nameref helper functions
 evidence_bundle_included_sections=()
+# shellcheck disable=SC2034 # referenced indirectly via nameref helper functions
 evidence_bundle_skipped_sections=()
 
 evidence_bundle_usage() {
