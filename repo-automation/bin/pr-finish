@@ -438,6 +438,11 @@ pr_finish_main() {
         ;;
     esac
 
+    if [ "$do_watch" -eq 1 ] && [ "$checks_status" != "green" ]; then
+      pr_finish_warn "watch completed with checks status: $checks_status"
+      command_status=1
+    fi
+
     worktree_status=$(git status --porcelain)
     if [ -n "$worktree_status" ]; then
       block_reasons+=("working-tree-dirty")

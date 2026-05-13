@@ -27,6 +27,7 @@ smoke_contract_names=(
   "smoke:repo-doctor-contract"
   "smoke:status-packet-contract"
   "smoke:post-codex-packet-contract"
+  "smoke:pr-finish-watch-exit"
   "smoke:repo-zip-contract"
   "smoke:evidence-bundle-contract"
   "smoke:github-settings-check"
@@ -47,6 +48,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/repo-doctor.sh"
   "repo-automation/tests/contracts/status-packet.sh"
   "repo-automation/tests/contracts/post-codex-packet.sh"
+  "repo-automation/tests/contracts/pr-finish-watch.sh"
   "repo-automation/tests/contracts/repo-zip.sh"
   "repo-automation/tests/contracts/evidence-bundle.sh"
   "repo-automation/tests/contracts/github-settings-check.sh"
@@ -2283,6 +2285,52 @@ smoke_check_branch_cleanup_json() {
     test_pass "unique branch shows expected non-candidate reason"
   else
     test_fail "unique branch shows expected non-candidate reason"
+    status=1
+  fi
+
+  return "$status"
+}
+
+
+smoke_check_pr_finish_watch_exit() {
+  local status=0
+  local blocked_stderr="$smoke_test_dir/pr-finish-watch-blocked.log"
+  local green_stderr="$smoke_test_dir/pr-finish-watch-green.log"
+  local gh_stub_dir="$smoke_test_base/gh-stub"
+  local local_bash_path=""
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr 123 >/dev/null 2> "$blocked_stderr"
+  ); then
+    test_fail "pr-finish watch exits nonzero when checks are blocked"
+    status=1
+  else
+    if grep -q 'watch completed with checks status: blocked' "$blocked_stderr"; then
+      test_pass "pr-finish watch exits nonzero when checks are blocked"
+    else
+      test_fail "pr-finish watch exits nonzero when checks are blocked"
+      status=1
+    fi
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr 123 >/dev/null 2> "$green_stderr"
+  ); then
+    test_pass "pr-finish watch exits zero when checks are green"
+  else
+    test_fail "pr-finish watch exits zero when checks are green"
     status=1
   fi
 
