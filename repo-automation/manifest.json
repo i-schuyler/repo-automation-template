@@ -134,6 +134,11 @@
       "kind": "test"
     },
     {
+      "path": "repo-automation/tests/contracts/pr-finish-watch.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
       "path": "repo-automation/tests/contracts/repo-zip.sh",
       "owner": "repo-automation-template",
       "kind": "test"
