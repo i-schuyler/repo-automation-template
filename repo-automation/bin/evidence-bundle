@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+# repo-automation/bin/evidence-bundle
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+evidence_bundle_output_base=""
+evidence_bundle_label=""
+evidence_bundle_pr=""
+evidence_bundle_lines=20
+evidence_bundle_post_codex=0
+evidence_bundle_include_repo_zip=0
+evidence_bundle_repo_root=""
+evidence_bundle_repo_name=""
+evidence_bundle_repo_name_slug=""
+evidence_bundle_timestamp=""
+evidence_bundle_branch=""
+evidence_bundle_head=""
+evidence_bundle_label_slug=""
+evidence_bundle_bundle_dir=""
+evidence_bundle_bundle_root=""
+evidence_bundle_bundle_zip=""
+evidence_bundle_summary_file=""
+evidence_bundle_index_file=""
+evidence_bundle_status_short_file=""
+evidence_bundle_touched_json_file=""
+evidence_bundle_failure_log_file=""
+evidence_bundle_ci_log_dump_dir=""
+evidence_bundle_post_codex_zip=""
+evidence_bundle_repo_zip_zip=""
+evidence_bundle_zip_size=""
+evidence_bundle_zip_mtime=""
+# shellcheck disable=SC2034 # referenced indirectly via nameref helper functions
+evidence_bundle_included_sections=()
+# shellcheck disable=SC2034 # referenced indirectly via nameref helper functions
+evidence_bundle_skipped_sections=()
+
+evidence_bundle_usage() {
+  printf 'Usage: repo-automation/bin/evidence-bundle [--out-dir PATH] [--label NAME] [--pr NUMBER] [--post-codex] [--include-repo-zip] [--lines N] [--help]\n'
+}
+
+evidence_bundle_info() {
+  printf 'INFO: %s\n' "$*"
+}
+
+evidence_bundle_warn() {
+  printf 'WARN: %s\n' "$*" >&2
+}
+
+evidence_bundle_stop() {
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+evidence_bundle_slug() {
+  local value="${1:-}"
+
+  printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
+}
+
+evidence_bundle_join_sections() {
+  local -n sections_ref="$1"
+  local joined=""
+  local item=""
+
+  for item in "${sections_ref[@]}"; do
+    if [ -n "$joined" ]; then
+      joined+=", "
+    fi
+    joined+="$item"
+  done
+
+  printf '%s' "$joined"
+}
+
+evidence_bundle_record_section() {
+  local -n sections_ref="$1"
+  local section_name="$2"
+  local existing=""
+
+  for existing in "${sections_ref[@]}"; do
+    if [ "$existing" = "$section_name" ]; then
+      return 0
+    fi
+  done
+
+  sections_ref+=("$section_name")
+}
+
+evidence_bundle_stat_value() {
+  local path="$1"
+  local field="$2"
+
+  case "$field" in
+    size)
+      stat -c '%s' "$path" 2>/dev/null || printf '0'
+      ;;
+    mtime)
+      stat -c '%y' "$path" 2>/dev/null || printf ''
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
+evidence_bundle_init_paths() {
+  local label_suffix=""
+  local bundle_prefix=""
+
+  evidence_bundle_repo_root="$(repo_auto_repo_root)" || return 1
+  evidence_bundle_repo_name="$(basename "$evidence_bundle_repo_root")"
+  evidence_bundle_repo_name_slug="$(evidence_bundle_slug "$evidence_bundle_repo_name")"
+  if [ -z "$evidence_bundle_repo_name_slug" ]; then
+    evidence_bundle_repo_name_slug="repo"
+  fi
+
+  evidence_bundle_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  if [ -n "$evidence_bundle_label" ]; then
+    evidence_bundle_label_slug="$(evidence_bundle_slug "$evidence_bundle_label")"
+    if [ -n "$evidence_bundle_label_slug" ]; then
+      label_suffix="-${evidence_bundle_label_slug}"
+    fi
+  fi
+
+  evidence_bundle_output_base="${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}"
+  evidence_bundle_output_base="${evidence_bundle_output_base%/}/evidence-bundle"
+  mkdir -p "$evidence_bundle_output_base" || return 1
+
+  bundle_prefix="evidence-bundle-${evidence_bundle_repo_name_slug}-${evidence_bundle_timestamp}${label_suffix}"
+  evidence_bundle_bundle_dir="$(mktemp -d "$evidence_bundle_output_base/${bundle_prefix}.XXXXXX")" || return 1
+  evidence_bundle_bundle_root="$(basename "$evidence_bundle_bundle_dir")"
+  evidence_bundle_bundle_zip="${evidence_bundle_bundle_dir}.zip"
+  evidence_bundle_summary_file="$evidence_bundle_bundle_dir/summary.txt"
+  evidence_bundle_index_file="$evidence_bundle_output_base/index.tsv"
+  evidence_bundle_status_short_file="$evidence_bundle_bundle_dir/git-status-short.txt"
+  evidence_bundle_touched_json_file="$evidence_bundle_bundle_dir/touched-files.json"
+  evidence_bundle_failure_log_file="$evidence_bundle_bundle_dir/failure-log.txt"
+  evidence_bundle_ci_log_dump_dir="$evidence_bundle_bundle_dir/ci-log-dump"
+}
+
+evidence_bundle_capture_git_status() {
+  cd "$evidence_bundle_repo_root" || return 1
+  git status --short --untracked-files=normal > "$evidence_bundle_status_short_file" || return 1
+  evidence_bundle_record_section evidence_bundle_included_sections "git-status-short"
+}
+
+evidence_bundle_capture_touched_files() {
+  local touched_tmp_file=""
+
+  touched_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-touched.XXXXXX")" || return 1
+  if (
+    cd "$evidence_bundle_repo_root" || exit 1
+    repo-automation/bin/touched-files --machine-json
+  ) > "$touched_tmp_file"; then
+    mv "$touched_tmp_file" "$evidence_bundle_touched_json_file" || return 1
+    evidence_bundle_record_section evidence_bundle_included_sections "touched-files"
+    return 0
+  fi
+
+  rm -f "$touched_tmp_file" >/dev/null 2>&1 || true
+  evidence_bundle_record_section evidence_bundle_skipped_sections "touched-files (unavailable)"
+  evidence_bundle_warn "touched-files output unavailable"
+  return 0
+}
+
+evidence_bundle_capture_failure_log() {
+  local failure_tmp_file=""
+
+  failure_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-failure.XXXXXX")" || return 1
+  if repo-automation/bin/failure-log --latest --kind=any --lines="$evidence_bundle_lines" > "$failure_tmp_file"; then
+    mv "$failure_tmp_file" "$evidence_bundle_failure_log_file" || return 1
+    evidence_bundle_record_section evidence_bundle_included_sections "failure-log"
+    return 0
+  fi
+
+  rm -f "$failure_tmp_file" >/dev/null 2>&1 || true
+  evidence_bundle_record_section evidence_bundle_skipped_sections "failure-log (unavailable)"
+  return 0
+}
+
+evidence_bundle_capture_ci_log_dump() {
+  local ci_tmp_file=""
+  local saved_log_path=""
+
+  if [ -z "$evidence_bundle_pr" ]; then
+    evidence_bundle_record_section evidence_bundle_skipped_sections "ci-log-dump (no --pr)"
+    return 0
+  fi
+
+  ci_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-ci-log.XXXXXX")" || return 1
+  if (
+    cd "$evidence_bundle_repo_root" || exit 1
+    repo-automation/bin/ci-log-dump --pr="$evidence_bundle_pr" --out-dir="$evidence_bundle_ci_log_dump_dir"
+  ) > "$ci_tmp_file" 2>&1; then
+    saved_log_path="$(sed -n 's/^Saved log path: //p' "$ci_tmp_file" | tail -n 1)"
+    mv "$ci_tmp_file" "$evidence_bundle_ci_log_dump_dir/output.txt" || return 1
+    if [ -n "$saved_log_path" ]; then
+      evidence_bundle_info "ci log dump saved log path: $saved_log_path"
+    fi
+    evidence_bundle_record_section evidence_bundle_included_sections "ci-log-dump"
+    return 0
+  fi
+
+  rm -f "$ci_tmp_file" >/dev/null 2>&1 || true
+  evidence_bundle_record_section evidence_bundle_skipped_sections "ci-log-dump (unavailable)"
+  evidence_bundle_warn "ci-log-dump unavailable for PR #$evidence_bundle_pr"
+  return 0
+}
+
+evidence_bundle_capture_post_codex() {
+  local post_tmp_file=""
+  local packet_dir=""
+
+  if [ "$evidence_bundle_post_codex" -eq 0 ]; then
+    evidence_bundle_record_section evidence_bundle_skipped_sections "post-codex-packet (not requested)"
+    return 0
+  fi
+
+  post_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-post-codex.XXXXXX")" || return 1
+  if (
+    cd "$evidence_bundle_repo_root" || exit 1
+    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/post-codex-packet --label "$evidence_bundle_label" --keep-dir
+  ) > "$post_tmp_file" 2>&1; then
+    packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$post_tmp_file" | tail -n 1)"
+    evidence_bundle_post_codex_zip="$(sed -n 's/^INFO: packet zip: //p' "$post_tmp_file" | tail -n 1)"
+    mv "$post_tmp_file" "$evidence_bundle_bundle_dir/post-codex/output.txt" || return 1
+    if [ -n "$packet_dir" ]; then
+      evidence_bundle_info "post-codex packet dir: $packet_dir"
+    fi
+    if [ -n "$evidence_bundle_post_codex_zip" ]; then
+      evidence_bundle_info "post-codex packet zip: $evidence_bundle_post_codex_zip"
+    fi
+    evidence_bundle_record_section evidence_bundle_included_sections "post-codex-packet"
+    return 0
+  fi
+
+  rm -f "$post_tmp_file" >/dev/null 2>&1 || true
+  evidence_bundle_record_section evidence_bundle_skipped_sections "post-codex-packet (unavailable)"
+  evidence_bundle_warn "post-codex-packet unavailable"
+  return 0
+}
+
+evidence_bundle_capture_repo_zip() {
+  local repo_zip_tmp_file=""
+  local packet_dir=""
+
+  if [ "$evidence_bundle_include_repo_zip" -eq 0 ]; then
+    evidence_bundle_record_section evidence_bundle_skipped_sections "repo-zip (not requested)"
+    return 0
+  fi
+
+  repo_zip_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-repo-zip.XXXXXX")" || return 1
+  if (
+    cd "$evidence_bundle_repo_root" || exit 1
+    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/repo-zip --label "$evidence_bundle_label"
+  ) > "$repo_zip_tmp_file" 2>&1; then
+    packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$repo_zip_tmp_file" | tail -n 1)"
+    evidence_bundle_repo_zip_zip="$(sed -n 's/^INFO: zip path: //p' "$repo_zip_tmp_file" | tail -n 1)"
+    mv "$repo_zip_tmp_file" "$evidence_bundle_bundle_dir/repo-zip/output.txt" || return 1
+    if [ -n "$packet_dir" ]; then
+      evidence_bundle_info "repo-zip packet dir: $packet_dir"
+    fi
+    if [ -n "$evidence_bundle_repo_zip_zip" ]; then
+      evidence_bundle_info "repo-zip zip path: $evidence_bundle_repo_zip_zip"
+    fi
+    evidence_bundle_record_section evidence_bundle_included_sections "repo-zip"
+    return 0
+  fi
+
+  rm -f "$repo_zip_tmp_file" >/dev/null 2>&1 || true
+  evidence_bundle_record_section evidence_bundle_skipped_sections "repo-zip (unavailable)"
+  evidence_bundle_warn "repo-zip unavailable"
+  return 0
+}
+
+evidence_bundle_write_summary() {
+  local included_sections=""
+  local skipped_sections=""
+
+  included_sections="$(evidence_bundle_join_sections evidence_bundle_included_sections)"
+  skipped_sections="$(evidence_bundle_join_sections evidence_bundle_skipped_sections)"
+
+  cat > "$evidence_bundle_summary_file" <<EOF
+Repo path: $evidence_bundle_repo_root
+Repo name: $evidence_bundle_repo_name
+Branch: $evidence_bundle_branch
+HEAD: $evidence_bundle_head
+PR number: ${evidence_bundle_pr:-}
+Timestamp: $evidence_bundle_timestamp
+Bundle dir: $evidence_bundle_bundle_dir
+Bundle zip: $evidence_bundle_bundle_zip
+Output base: $evidence_bundle_output_base
+Status short file: $evidence_bundle_status_short_file
+Touched files file: $evidence_bundle_touched_json_file
+Failure log file: $evidence_bundle_failure_log_file
+CI log dump dir: $evidence_bundle_ci_log_dump_dir
+Post-codex packet zip: ${evidence_bundle_post_codex_zip:-}
+Repo snapshot zip: ${evidence_bundle_repo_zip_zip:-}
+Included sections: $included_sections
+Skipped sections: $skipped_sections
+EOF
+}
+
+evidence_bundle_write_index() {
+  local included_sections=""
+  local skipped_sections=""
+
+  if [ ! -f "$evidence_bundle_index_file" ]; then
+    cat > "$evidence_bundle_index_file" <<'EOF'
+timestamp	branch	head	pr	bundle_dir	bundle_zip	included_sections	skipped_sections
+EOF
+  fi
+
+  included_sections="$(evidence_bundle_join_sections evidence_bundle_included_sections)"
+  skipped_sections="$(evidence_bundle_join_sections evidence_bundle_skipped_sections)"
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$evidence_bundle_timestamp" \
+    "$evidence_bundle_branch" \
+    "$evidence_bundle_head" \
+    "${evidence_bundle_pr:-}" \
+    "$evidence_bundle_bundle_dir" \
+    "$evidence_bundle_bundle_zip" \
+    "$included_sections" \
+    "$skipped_sections" >> "$evidence_bundle_index_file"
+}
+
+evidence_bundle_create_zip() {
+  python3 - "$evidence_bundle_bundle_dir" "$evidence_bundle_bundle_zip" "$evidence_bundle_bundle_root" <<'PY' || return 1
+from pathlib import Path
+import sys
+import zipfile
+
+bundle_dir = Path(sys.argv[1])
+zip_path = Path(sys.argv[2])
+bundle_root = sys.argv[3]
+
+with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as archive:
+    for path in sorted(bundle_dir.rglob('*')):
+        if path.is_file():
+            archive.write(path, Path(bundle_root, path.relative_to(bundle_dir)).as_posix())
+PY
+}
+
+evidence_bundle_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        evidence_bundle_usage
+        return 0
+        ;;
+      --out-dir)
+        shift
+        evidence_bundle_output_base="${1:-}"
+        ;;
+      --label)
+        shift
+        evidence_bundle_label="${1:-}"
+        ;;
+      --pr)
+        shift
+        evidence_bundle_pr="${1:-}"
+        if ! repo_auto_is_positive_integer "$evidence_bundle_pr"; then
+          evidence_bundle_stop "invalid --pr value: $evidence_bundle_pr"
+          return 1
+        fi
+        ;;
+      --lines)
+        shift
+        evidence_bundle_lines="${1:-}"
+        if ! repo_auto_is_positive_integer "$evidence_bundle_lines"; then
+          evidence_bundle_stop "invalid --lines value: $evidence_bundle_lines"
+          return 1
+        fi
+        ;;
+      --post-codex)
+        evidence_bundle_post_codex=1
+        ;;
+      --include-repo-zip)
+        evidence_bundle_include_repo_zip=1
+        ;;
+      *)
+        evidence_bundle_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -n "$evidence_bundle_output_base" ]; then
+    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_output_base"
+  fi
+
+  repo_auto_require_command git || return 1
+  repo_auto_require_command python3 || return 1
+
+  mkdir -p "${TMPDIR:-$HOME/.cache}" || return 1
+  evidence_bundle_init_paths || return 1
+  cd "$evidence_bundle_repo_root" || return 1
+  evidence_bundle_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$evidence_bundle_branch" ]; then
+    evidence_bundle_branch="HEAD"
+  fi
+  evidence_bundle_head="$(git rev-parse HEAD 2>/dev/null || true)"
+
+  evidence_bundle_capture_git_status || return 1
+  evidence_bundle_capture_touched_files || return 1
+  evidence_bundle_capture_failure_log || return 1
+  evidence_bundle_capture_ci_log_dump || return 1
+  evidence_bundle_capture_post_codex || return 1
+  evidence_bundle_capture_repo_zip || return 1
+  evidence_bundle_write_summary || return 1
+  evidence_bundle_create_zip || return 1
+  evidence_bundle_zip_size="$(evidence_bundle_stat_value "$evidence_bundle_bundle_zip" size)"
+  evidence_bundle_zip_mtime="$(evidence_bundle_stat_value "$evidence_bundle_bundle_zip" mtime)"
+  evidence_bundle_write_index || return 1
+
+  evidence_bundle_info "bundle dir: $evidence_bundle_bundle_dir"
+  evidence_bundle_info "bundle zip: $evidence_bundle_bundle_zip"
+  evidence_bundle_info "included sections: $(evidence_bundle_join_sections evidence_bundle_included_sections)"
+  evidence_bundle_info "skipped sections: $(evidence_bundle_join_sections evidence_bundle_skipped_sections)"
+  evidence_bundle_info "bundle size: $evidence_bundle_zip_size bytes"
+  evidence_bundle_info "bundle modified time: $evidence_bundle_zip_mtime"
+  evidence_bundle_info "summary file: $evidence_bundle_summary_file"
+  evidence_bundle_info "status short file: $evidence_bundle_status_short_file"
+  evidence_bundle_info "touched files file: $evidence_bundle_touched_json_file"
+  evidence_bundle_info "failure log file: $evidence_bundle_failure_log_file"
+  evidence_bundle_info "ci log dump dir: $evidence_bundle_ci_log_dump_dir"
+  evidence_bundle_info "post-codex packet zip: ${evidence_bundle_post_codex_zip:-}"
+  evidence_bundle_info "repo snapshot zip: ${evidence_bundle_repo_zip_zip:-}"
+
+  return 0
+}
+
+evidence_bundle_main "$@"
+# repo-automation/bin/evidence-bundle EOF

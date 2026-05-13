@@ -28,6 +28,7 @@ smoke_contract_names=(
   "smoke:status-packet-contract"
   "smoke:post-codex-packet-contract"
   "smoke:repo-zip-contract"
+  "smoke:evidence-bundle-contract"
   "smoke:github-settings-check"
   "smoke:installer-contract"
   "smoke:starter-template-contract"
@@ -47,6 +48,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/status-packet.sh"
   "repo-automation/tests/contracts/post-codex-packet.sh"
   "repo-automation/tests/contracts/repo-zip.sh"
+  "repo-automation/tests/contracts/evidence-bundle.sh"
   "repo-automation/tests/contracts/github-settings-check.sh"
   "repo-automation/tests/contracts/installer.sh"
   "repo-automation/tests/contracts/starter-template.sh"
@@ -116,6 +118,9 @@ case "$cmd $sub" in
     ;;
   'pr checks')
     printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
+    ;;
+  'pr view')
+    printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
     ;;
   'pr list')
     printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
@@ -191,6 +196,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/repo-zip" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/evidence-bundle" || return 1
   cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
@@ -202,7 +208,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/contracts/" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -310,6 +316,7 @@ EOF
 - [CI Watch](../repo-automation/docs/ci-watch.md)
 - [Status Packet](../repo-automation/docs/status-packet.md)
 - [Repo Zip](../repo-automation/docs/repo-zip.md)
+- [Evidence Bundle](../repo-automation/docs/evidence-bundle.md)
 - [Starter Template Readiness](../repo-automation/docs/starter-template-readiness.md)
 - [Managed Files](../repo-automation/docs/managed-files.md)
 - [Repo Automation Install](../repo-automation/docs/repo-automation-install.md)
@@ -1399,6 +1406,246 @@ PY
 }
 
 
+smoke_check_evidence_bundle_contract() {
+  local status=0
+  local output_root=""
+  local failure_log_root=""
+  local gh_stub_dir=""
+  local nested_dir=""
+  local default_output_log=""
+  local default_bundle_dir=""
+  local default_bundle_zip=""
+  local default_summary_file=""
+  local default_status_file=""
+  local default_touched_file=""
+  local default_failure_log_file=""
+  local default_bundle_root=""
+  local post_output_log=""
+  local post_bundle_dir=""
+  local post_bundle_zip=""
+  local post_summary_file=""
+  local post_bundle_root=""
+  local pr_output_log=""
+  local pr_bundle_dir=""
+  local pr_bundle_zip=""
+  local pr_summary_file=""
+  local pr_bundle_root=""
+
+  smoke_setup_temp_repo || return 1
+  output_root="$smoke_test_base/evidence-bundle-output"
+  failure_log_root="$smoke_test_base/evidence-bundle-tmp"
+  gh_stub_dir="$smoke_test_base/gh-stub-evidence-bundle"
+  nested_dir="$smoke_test_dir/nested/subdir"
+  default_output_log="$smoke_test_base/evidence-bundle-default.log"
+  post_output_log="$smoke_test_base/evidence-bundle-post.log"
+  pr_output_log="$smoke_test_base/evidence-bundle-pr.log"
+
+  mkdir -p "$failure_log_root/repo-automation-template" "$nested_dir" || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  cd "$smoke_test_dir" || return 1
+  printf 'tracked base\n' > tracked.txt || return 1
+  git add tracked.txt || return 1
+  git commit -m "add tracked bundle file" >/dev/null || return 1
+  printf '\ntracked update\n' >> tracked.txt || return 1
+  printf 'ignored.log\n' > .gitignore || return 1
+  git add .gitignore || return 1
+  git commit -m "add bundle ignore rule" >/dev/null || return 1
+  printf 'untracked content\n' > untracked.txt || return 1
+  printf 'ignored artifact\n' > ignored.log || return 1
+  printf 'latest failure line\n' > "$failure_log_root/repo-automation-template/run-tests-20260512-120000.log" || return 1
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label review
+  ) > "$default_output_log"; then
+    :
+  else
+    test_fail "evidence-bundle helper runs successfully"
+    status=1
+  fi
+
+  default_bundle_dir="$(sed -n 's/^INFO: bundle dir: //p' "$default_output_log" | tail -n 1)"
+  default_bundle_zip="$(sed -n 's/^INFO: bundle zip: //p' "$default_output_log" | tail -n 1)"
+  default_summary_file="$default_bundle_dir/summary.txt"
+  default_status_file="$default_bundle_dir/git-status-short.txt"
+  default_touched_file="$default_bundle_dir/touched-files.json"
+  default_failure_log_file="$default_bundle_dir/failure-log.txt"
+  default_bundle_root="$(basename "$default_bundle_dir")"
+
+  if [ -d "$default_bundle_dir" ] && [ -f "$default_bundle_zip" ] && [ -f "$default_summary_file" ] && [ -f "$default_status_file" ] && [ -f "$default_touched_file" ] && [ -f "$default_failure_log_file" ]; then
+    test_pass "evidence-bundle helper creates bundle artifacts"
+  else
+    test_fail "evidence-bundle helper creates bundle artifacts"
+    status=1
+  fi
+
+  if grep -Fqx "Repo path: $smoke_test_dir" "$default_summary_file" && grep -Eq '^Branch: main$' "$default_summary_file" && grep -Eq '^HEAD: [0-9a-f]{40}$' "$default_summary_file" && grep -Eq '^PR number: $' "$default_summary_file" && grep -Eq '^Bundle dir: ' "$default_summary_file" && grep -Eq '^Bundle zip: ' "$default_summary_file" && grep -Eq '^Included sections: .*git-status-short.*touched-files.*failure-log' "$default_summary_file" && grep -Eq '^Skipped sections: .*ci-log-dump \(no --pr\).*post-codex-packet \(not requested\).*repo-zip \(not requested\)' "$default_summary_file"; then
+    test_pass "evidence-bundle summary reports core metadata"
+  else
+    test_fail "evidence-bundle summary reports core metadata"
+    status=1
+  fi
+
+  if grep -Eq 'tracked\.txt' "$default_status_file" && grep -Eq 'untracked\.txt' "$default_status_file"; then
+    test_pass "evidence-bundle status snapshot captures tracked and untracked files"
+  else
+    test_fail "evidence-bundle status snapshot captures tracked and untracked files"
+    status=1
+  fi
+
+  if smoke_json_assert "$default_touched_file" 'data.get("mode") == "working-tree" and "tracked.txt" in data.get("working_tree_tracked_files", []) and "untracked.txt" in data.get("untracked_files", []) and "ignored.log" not in data.get("untracked_files", [])'; then
+    test_pass "evidence-bundle touched-files output captures working tree evidence"
+  else
+    test_fail "evidence-bundle touched-files output captures working tree evidence"
+    status=1
+  fi
+
+  if grep -Eq '^Latest failure log: ' "$default_failure_log_file" && ! grep -q 'gh stub unexpected command' "$default_output_log"; then
+    test_pass "evidence-bundle default mode avoids network-only CI behavior"
+  else
+    test_fail "evidence-bundle default mode avoids network-only CI behavior"
+    status=1
+  fi
+
+  if python3 - "$default_bundle_zip" "$default_bundle_root" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+bundle_root = sys.argv[2]
+with zipfile.ZipFile(zip_path) as archive:
+    names = set(archive.namelist())
+    summary_name = f'{bundle_root}/summary.txt'
+    status_name = f'{bundle_root}/git-status-short.txt'
+    touched_name = f'{bundle_root}/touched-files.json'
+    failure_name = f'{bundle_root}/failure-log.txt'
+    ignored_name = f'{bundle_root}/ignored.log'
+    assert summary_name in names
+    assert status_name in names
+    assert touched_name in names
+    assert failure_name in names
+    assert ignored_name not in names
+    assert not any(name.startswith(f'{bundle_root}/ci-log-dump/') for name in names)
+    assert not any(name.startswith(f'{bundle_root}/post-codex/') for name in names)
+    assert not any(name.startswith(f'{bundle_root}/repo-zip/') for name in names)
+PY
+  then
+    test_pass "evidence-bundle default archive contains only core sections"
+  else
+    test_fail "evidence-bundle default archive contains only core sections"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label review --post-codex --include-repo-zip
+  ) > "$post_output_log"; then
+    :
+  else
+    test_fail "evidence-bundle helper records optional artifact sections"
+    status=1
+  fi
+
+  post_bundle_dir="$(sed -n 's/^INFO: bundle dir: //p' "$post_output_log" | tail -n 1)"
+  post_bundle_zip="$(sed -n 's/^INFO: bundle zip: //p' "$post_output_log" | tail -n 1)"
+  post_summary_file="$post_bundle_dir/summary.txt"
+  post_bundle_root="$(basename "$post_bundle_dir")"
+
+  if grep -Eq '^Included sections: .*post-codex-packet.*repo-zip' "$post_summary_file" && grep -Eq '^Post-codex packet zip: ' "$post_summary_file" && grep -Eq '^Repo snapshot zip: ' "$post_summary_file"; then
+    test_pass "evidence-bundle summary records optional packet paths"
+  else
+    test_fail "evidence-bundle summary records optional packet paths"
+    status=1
+  fi
+
+  if [ -f "$post_bundle_zip" ] && grep -q '^INFO: post-codex packet zip: ' "$post_output_log" && grep -q '^INFO: repo-zip zip path: ' "$post_output_log"; then
+    test_pass "evidence-bundle optional artifact run reports packet zip paths"
+  else
+    test_fail "evidence-bundle optional artifact run reports packet zip paths"
+    status=1
+  fi
+
+  if python3 - "$post_bundle_zip" "$post_bundle_root" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+bundle_root = sys.argv[2]
+with zipfile.ZipFile(zip_path) as archive:
+    names = set(archive.namelist())
+    assert any(name.startswith(f'{bundle_root}/post-codex/') for name in names)
+    assert any(name.startswith(f'{bundle_root}/repo-zip/') for name in names)
+    assert f'{bundle_root}/summary.txt' in names
+PY
+  then
+    test_pass "evidence-bundle archive contains optional packet directories"
+  else
+    test_fail "evidence-bundle archive contains optional packet directories"
+    status=1
+  fi
+
+  (
+    cd "$smoke_test_dir" || exit 1
+    git remote set-url origin git@github.com:example/evidence-bundle-fixture.git
+  ) || return 1
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_VIEW_HEAD_REF='feature/evidence-bundle' GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure"}]' GH_STUB_RUN_VIEW_LOG='ci log line one
+ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label pr --pr 123
+  ) > "$pr_output_log"; then
+    :
+  else
+    test_fail "evidence-bundle optional ci log dump run succeeds"
+    status=1
+  fi
+
+  pr_bundle_dir="$(sed -n 's/^INFO: bundle dir: //p' "$pr_output_log" | tail -n 1)"
+  pr_bundle_zip="$(sed -n 's/^INFO: bundle zip: //p' "$pr_output_log" | tail -n 1)"
+  pr_summary_file="$pr_bundle_dir/summary.txt"
+  pr_bundle_root="$(basename "$pr_bundle_dir")"
+
+  if grep -Eq '^PR number: 123$' "$pr_summary_file" && grep -Eq '^Included sections: .*ci-log-dump' "$pr_summary_file" && grep -Eq '^CI log dump dir: ' "$pr_summary_file"; then
+    test_pass "evidence-bundle PR mode records ci-log-dump metadata"
+  else
+    test_fail "evidence-bundle PR mode records ci-log-dump metadata"
+    status=1
+  fi
+
+  if grep -q '^INFO: ci log dump saved log path: ' "$pr_output_log" && grep -q '^Saved log path: ' "$pr_bundle_dir/ci-log-dump/output.txt"; then
+    test_pass "evidence-bundle PR mode saves CI log output"
+  else
+    test_fail "evidence-bundle PR mode saves CI log output"
+    status=1
+  fi
+
+  if python3 - "$pr_bundle_zip" "$pr_bundle_root" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+bundle_root = sys.argv[2]
+with zipfile.ZipFile(zip_path) as archive:
+    names = set(archive.namelist())
+    assert f'{bundle_root}/summary.txt' in names
+    assert f'{bundle_root}/ci-log-dump/output.txt' in names
+    assert any(name.startswith(f'{bundle_root}/ci-log-dump/') and name.endswith('.log') for name in names)
+PY
+  then
+    test_pass "evidence-bundle archive includes CI log dump artifacts"
+  else
+    test_fail "evidence-bundle archive includes CI log dump artifacts"
+    status=1
+  fi
+
+  return "$status"
+}
+
+
 smoke_check_github_settings_contract() {
   local status=0
   local github_settings_json="$smoke_test_base/github-settings-check-$$.json"
@@ -1797,7 +2044,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 16 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 17 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -1828,7 +2075,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/docs/repo-zip.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/repo-zip" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/repo-zip" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
+  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/docs/repo-zip.md" ] && [ -f "$install_target/repo-automation/docs/evidence-bundle.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/repo-zip" ] && [ -f "$install_target/repo-automation/bin/evidence-bundle" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/repo-zip" ] && [ -x "$install_target/repo-automation/bin/evidence-bundle" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"
@@ -1848,6 +2095,7 @@ smoke_check_installer_apply_contract() {
     [ -f repo-automation/tests/contracts/status-packet.sh ] || return 1
     [ -f repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
     [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
+    [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
     [ -f repo-automation/tests/contracts/installer.sh ] || return 1
     [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
@@ -1864,6 +2112,7 @@ smoke_check_installer_apply_contract() {
     [ -x repo-automation/tests/contracts/status-packet.sh ] || return 1
     [ -x repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
     [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
+    [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
     [ -x repo-automation/tests/contracts/installer.sh ] || return 1
     [ -x repo-automation/tests/contracts/starter-template.sh ] || return 1
