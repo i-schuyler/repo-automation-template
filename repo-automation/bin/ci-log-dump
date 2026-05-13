@@ -113,8 +113,11 @@ ci_log_dump_pick_head_branch() {
 ci_log_dump_pick_run_id_for_branch() {
   local branch_name="$1"
   local event_name="$2"
-  gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName \
-    | python3 -c 'import json,sys; items=json.load(sys.stdin); print(next((str(i.get("databaseId","")) for i in items if i.get("conclusion")=="failure"), items[0].get("databaseId","") if items else ""))'
+  gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName     | python3 -c 'import json,sys; items=json.load(sys.stdin); print(next((str(i.get("databaseId","")) for i in items if i.get("conclusion")=="failure"), items[0].get("databaseId","") if items else ""))'
+}
+
+ci_log_dump_pick_latest_failed_run() {
+  gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName     | python3 -c 'import json,sys; items=json.load(sys.stdin); failed=[item for item in items if item.get("conclusion")=="failure"]; print(max(failed, key=lambda item: item.get("createdAt","")).get("databaseId","") if failed else "")'
 }
 
 ci_log_dump_tail_excerpt() {
@@ -236,6 +239,15 @@ ci_log_dump_main() {
 
   if [ -n "$ci_log_dump_run_id" ]; then
     run_id="$ci_log_dump_run_id"
+  elif [ "$ci_log_dump_latest_failed" -eq 1 ]; then
+    run_id="$(ci_log_dump_pick_latest_failed_run)" || {
+      ci_log_dump_stop "no failed run found for repository $ci_log_dump_repo"
+      return 1
+    }
+    [ -n "$run_id" ] || {
+      ci_log_dump_stop "no failed run found for repository $ci_log_dump_repo"
+      return 1
+    }
   elif [ -n "$ci_log_dump_pr" ]; then
     target_repo="$(ci_log_dump_pick_head_branch "$ci_log_dump_pr" 2>/dev/null || true)"
     [ -n "$target_repo" ] || {

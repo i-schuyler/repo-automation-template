@@ -5,10 +5,12 @@
 ## What It Does
 
 - resolves the target repo from `--repo=OWNER/REPO` or the current repo's `origin` remote
-- finds a failed run by `--run-id`, by PR head branch, or by the current branch
+- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by PR head branch, or by the current branch
 - defaults to failed-only log output
 - writes the log to the configured output directory
 - prints a human summary or machine JSON
+
+`--latest-failed` selects the most recent failed workflow run for the target repo regardless of branch.
 
 ## Usage
 

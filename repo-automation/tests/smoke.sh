@@ -59,6 +59,19 @@ case "$cmd $sub" in
   'run list')
     printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     ;;
+  'run view')
+    if [ -n "${GH_STUB_RUN_VIEW_CALLED_FILE:-}" ]; then
+      : > "$GH_STUB_RUN_VIEW_CALLED_FILE"
+    fi
+    case " $* " in
+      *' --log-failed '*)
+        printf '%s\n' "${GH_STUB_RUN_VIEW_FAILED_LOG:-}"
+        ;;
+      *)
+        printf '%s\n' "${GH_STUB_RUN_VIEW_LOG:-}"
+        ;;
+    esac
+    ;;
   'api repos/'*)
     endpoint="$sub"
     case "$endpoint" in
@@ -699,6 +712,62 @@ smoke_check_run_tests_contract() {
 }
 
 
+
+smoke_check_failure_log_contract() {
+  local status=0
+  local temp_root="$smoke_test_base/failure-log-root"
+  local log_root="$temp_root/repo-automation-template"
+  local latest_human="$smoke_test_base/failure-log-latest-$$.txt"
+  local kind_json="$smoke_test_base/failure-log-kind-$$.json"
+
+  mkdir -p "$log_root" || return 1
+  cat > "$log_root/run-tests-20260512-110000.log" <<'EOF'
+INFO: run-tests old
+FAIL: old run-tests failure
+EOF
+  cat > "$log_root/run-tests-20260512-120000.log" <<'EOF'
+INFO: run-tests latest
+FAIL: latest run-tests failure
+detail one
+detail two
+EOF
+  cat > "$log_root/repo-doctor-20260512-130000.log" <<'EOF'
+INFO: repo-doctor latest
+FAIL: latest repo-doctor failure
+detail one
+detail two
+detail three
+EOF
+  touch -t 202605121100.00 "$log_root/run-tests-20260512-110000.log" || return 1
+  touch -t 202605121200.00 "$log_root/run-tests-20260512-120000.log" || return 1
+  touch -t 202605121300.00 "$log_root/repo-doctor-20260512-130000.log" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" repo-automation/bin/failure-log --latest > "$latest_human"
+  ) && grep -Eq "^Latest failure log: .*/repo-doctor-20260512-130000\.log$" "$latest_human" && grep -Eq '^FAIL: latest repo-doctor failure$' "$latest_human"; then
+    test_pass "failure-log latest human output selects newest matching log"
+  else
+    test_fail "failure-log latest human output selects newest matching log"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" repo-automation/bin/failure-log --kind=run-tests --lines=2 --machine-json > "$kind_json"
+  ) && python -m json.tool "$kind_json" >/dev/null &&     smoke_json_assert "$kind_json" 'data.get("script") == "failure-log" and data.get("kind") == "run-tests" and data.get("lines") == 2 and data.get("log_file", "").endswith("run-tests-20260512-120000.log") and len(data.get("excerpt", [])) == 2 and "FAIL: latest run-tests failure" in data.get("excerpt", [])'; then
+    test_pass "failure-log kind filter, line limits, and machine-json work"
+  else
+    test_fail "failure-log kind filter, line limits, and machine-json work"
+    status=1
+  fi
+
+  rm -f "$latest_human" "$kind_json" >/dev/null 2>&1 || true
+  rm -f "$log_root"/run-tests-20260512-110000.log "$log_root"/run-tests-20260512-120000.log "$log_root"/repo-doctor-20260512-130000.log >/dev/null 2>&1 || true
+  rmdir "$log_root" "$temp_root" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_touched_files_and_ci_contract() {
   local status=0
   local touched_worktree_json="$smoke_test_base/touched-files-worktree-$$.json"
@@ -806,6 +875,73 @@ range touch
   return "$status"
 }
 
+
+smoke_check_ci_log_dump_contract() {
+  local status=0
+  local gh_stub_dir="$smoke_test_base/gh-stub-ci-log-dump"
+  local ci_log_out_dir="$smoke_test_base/ci-log-dump-out"
+  local ci_log_json="$smoke_test_base/ci-log-dump-$$.json"
+  local ci_log_human="$smoke_test_base/ci-log-dump-$$.txt"
+
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  mkdir -p "$ci_log_out_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[
+      {"databaseId":111,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"push","headBranch":"branch/old","status":"completed","workflowName":"ci"},
+      {"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"schedule","headBranch":"branch/new","status":"completed","workflowName":"ci"},
+      {"databaseId":333,"conclusion":"success","createdAt":"2026-05-12T14:00:00Z","event":"push","headBranch":"branch/other","status":"completed","workflowName":"ci"}
+    ]' GH_STUB_RUN_VIEW_FAILED_LOG='line one
+line two
+line three
+FAIL: ci run failed
+tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" > "$ci_log_human"
+  ) && grep -Eq '^Run id: 222$' "$ci_log_human" && grep -Eq "^Saved log path: $ci_log_out_dir/actions_run_222_[0-9]{8}-[0-9]{6}\.log$" "$ci_log_human" && grep -Eq '^tail one$' "$ci_log_human" && grep -Eq '^tail two$' "$ci_log_human" && [ -n "$(find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -print -quit)" ]; then
+    test_pass "ci-log-dump latest-failed selects the newest failed run and saves the log"
+  else
+    test_fail "ci-log-dump latest-failed selects the newest failed run and saves the log"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[
+      {"databaseId":111,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"push","headBranch":"branch/old","status":"completed","workflowName":"ci"},
+      {"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"schedule","headBranch":"branch/new","status":"completed","workflowName":"ci"}
+    ]' GH_STUB_RUN_VIEW_FAILED_LOG='line one
+line two
+line three
+FAIL: ci run failed
+tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_json"
+  ) && python -m json.tool "$ci_log_json" >/dev/null &&     smoke_json_assert "$ci_log_json" 'data.get("script") == "ci-log-dump" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("run_id") == "222" and "actions_run_222_" in data.get("log_path", "") and data.get("log_path", "").endswith(".log") and data.get("file_size_bytes", 0) > 0 and data.get("tail_excerpt", []) == ["tail one", "tail two"]'; then
+    test_pass "ci-log-dump machine-json reports the saved path and tail excerpt"
+  else
+    test_fail "ci-log-dump machine-json reports the saved path and tail excerpt"
+    status=1
+  fi
+
+  local ci_log_empty_marker="$smoke_test_base/ci-log-dump-run-view-called-$$.marker"
+  local ci_log_empty_status=0
+  (
+    cd "$smoke_test_dir" || exit 1
+    GH_STUB_RUN_LIST_JSON='[]' GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_empty_marker" PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" > "$ci_log_human" 2>&1
+  ) || ci_log_empty_status=$?
+  if [ "$ci_log_empty_status" -ne 0 ] && grep -Eq '^STOP: no failed run found for repository i-schuyler/repo-automation-template$' "$ci_log_human" && [ ! -e "$ci_log_empty_marker" ]; then
+    test_pass "ci-log-dump latest-failed stops when no failed runs exist"
+  else
+    test_fail "ci-log-dump latest-failed stops when no failed runs exist"
+    status=1
+  fi
+
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" >/dev/null 2>&1 || true
+  find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
+  rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_repo_doctor_contract() {
   local status=0
   local doctor_default_out="$smoke_test_base/repo-doctor-quick-default-$$.txt"
@@ -889,6 +1025,65 @@ smoke_check_repo_doctor_contract() {
   fi
 
   rm -f "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+
+smoke_check_status_packet_contract() {
+  local status=0
+  local temp_root="$smoke_test_base/status-packet-root"
+  local log_root="$temp_root/repo-automation-template"
+  local status_human="$smoke_test_base/status-packet-human-$$.txt"
+  local status_json="$smoke_test_base/status-packet-json-$$.json"
+  local gh_stub_dir="$smoke_test_base/gh-stub-status-packet"
+
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  mkdir -p "$log_root" || return 1
+  cat > "$log_root/run-tests-20260512-140000.log" <<'EOF'
+INFO: run-tests recent
+EOF
+  cat > "$log_root/repo-doctor-20260512-150000.log" <<'EOF'
+INFO: repo-doctor recent
+EOF
+  touch -t 202605121400.00 "$log_root/run-tests-20260512-140000.log" || return 1
+  touch -t 202605121500.00 "$log_root/repo-doctor-20260512-150000.log" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '
+status packet smoke
+' >> README.md || return 1
+    printf 'scratch
+' > status-packet-scratch.txt || return 1
+    TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet > "$status_human"
+  ) && grep -Eq '^Branch: main$' "$status_human" && grep -Eq '^Git status --short:$' "$status_human" && grep -Eq '^ M README.md$' "$status_human" && grep -Eq '^\?\? status-packet-scratch\.txt$' "$status_human" && grep -Eq '^Tracked changed files:$' "$status_human" && grep -Eq '^- README.md$' "$status_human" && grep -Eq '^Untracked files:$' "$status_human" && grep -Eq '^- status-packet-scratch\.txt$' "$status_human" && grep -Eq '^Recent logs:$' "$status_human" && grep -Eq "^- run-tests: $log_root/run-tests-20260512-140000.log$" "$status_human" && grep -Eq "^- repo-doctor: $log_root/repo-doctor-20260512-150000.log$" "$status_human"; then
+    test_pass "status-packet human output reports compact repo state"
+  else
+    test_fail "status-packet human output reports compact repo state"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --machine-json > "$status_json"
+  ) && python -m json.tool "$status_json" >/dev/null &&     smoke_json_assert "$status_json" 'data.get("script") == "status-packet" and data.get("machine_json") is True and data.get("branch") == "main" and "README.md" in data.get("changed_tracked_files", []) and "status-packet-scratch.txt" in data.get("untracked_files", []) and data.get("recent_logs", {}).get("run_tests", "").endswith("run-tests-20260512-140000.log") and data.get("recent_logs", {}).get("repo_doctor", "").endswith("repo-doctor-20260512-150000.log") and data.get("overall_status") == "pass"'; then
+    test_pass "status-packet machine-json reports compact repo state"
+  else
+    test_fail "status-packet machine-json reports compact repo state"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git checkout -- README.md >/dev/null 2>&1 || return 1
+    rm -f status-packet-scratch.txt >/dev/null 2>&1 || return 1
+  ); then
+    :
+  fi
+
+  rm -f "$status_human" "$status_json" >/dev/null 2>&1 || true
+  rm -f "$log_root"/run-tests-20260512-140000.log "$log_root"/repo-doctor-20260512-150000.log >/dev/null 2>&1 || true
+  rmdir "$log_root" "$temp_root" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1589,9 +1784,12 @@ smoke_main() {
   smoke_run_named_check "smoke:add-doc-pr-blocked-file" smoke_check_add_doc_pr_blocked_file || status=1
   smoke_run_named_check "smoke:report-upstream-preview" smoke_check_report_upstream_preview || status=1
   smoke_run_named_check "smoke:report-upstream-secret-scan" smoke_check_report_upstream_secret_scan || status=1
+  smoke_run_named_check "smoke:failure-log-contract" smoke_check_failure_log_contract || status=1
   smoke_run_named_check "smoke:run-tests-contract" smoke_check_run_tests_contract || status=1
   smoke_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
+  smoke_run_named_check "smoke:ci-log-dump-contract" smoke_check_ci_log_dump_contract || status=1
   smoke_run_named_check "smoke:repo-doctor-contract" smoke_check_repo_doctor_contract || status=1
+  smoke_run_named_check "smoke:status-packet-contract" smoke_check_status_packet_contract || status=1
   smoke_run_named_check "smoke:github-settings-check" smoke_check_github_settings_contract || status=1
   smoke_run_named_check "smoke:repo-doctor-artifact-guard" smoke_check_repo_doctor_artifact_guard || status=1
   smoke_run_named_check "smoke:automation-freshness-contract" smoke_check_automation_freshness_contract || status=1
