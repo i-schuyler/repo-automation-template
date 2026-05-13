@@ -29,14 +29,14 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/prepare-release` help, check, dry-run, apply, machine-JSON, and managed version placement updates in a temporary repo
 - lightweight docs CI via `repo-automation/tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks
 - JSON parseability checks for branch cleanup and preflight
-- version consistency guard via `repo-automation/bin/prepare-release --check`
+- version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection in `repo-automation/tests/version-consistency.sh`
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
 `repo-automation/bin/add-doc-pr` smoke coverage does not create real PRs.
 `repo-automation/bin/repo-automation-report-upstream` smoke coverage does not create real issues.
 `repo-automation/bin/repo-doctor` smoke coverage is local/no-auth and does not create GitHub objects. It also checks the repo-root artifact guard against accidental root-level temp/cache files in temporary repositories.
-`repo-automation/bin/repo-automation-install` smoke coverage only uses temporary local target repos and does not touch real downstream repos.
+`repo-automation/bin/repo-automation-install` smoke coverage only uses temporary local target repos and does not touch real downstream repos. It also verifies downstream `AGENTS.md` guidance is copied into the target repo root.
 `repo-automation/bin/run-tests` smoke coverage does not create or modify GitHub objects.
 
 Installer smoke coverage also checks that temporary downstream installs can load and validate config, keep scripts executable, normalize unsupported `EXPECTED_REMOTE_URL` values to empty, and run `repo-automation/bin/repo-doctor --quick --no-run-tests` without needing GitHub auth.

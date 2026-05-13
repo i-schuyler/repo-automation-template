@@ -23,7 +23,7 @@ Each managed file entry records:
 - `owner`
 - `kind`
 
-That is enough for a quick human edit and for the freshness helper to compare the manifest with the working tree, including source-repo files that exist on disk but were not added to the manifest.
+That is enough for a quick human edit and for the freshness helper to compare the manifest with the working tree, including source-repo files that exist on disk but were not added to the manifest. The version-consistency check also compares `repo-automation/manifest.json` against `repo-automation/bin/repo-automation-install` managed-file coverage so manifest/install drift fails fast instead of surfacing in a downstream install.
 
 ## Freshness Check
 

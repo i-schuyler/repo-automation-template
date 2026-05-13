@@ -231,6 +231,18 @@ Do not store secrets, credentials, or private keys in this file.
 EOF
 }
 
+repo_install_write_agents_md() {
+  local source_path="$1"
+  local target_path="$2"
+
+  if [ ! -f "$source_path" ]; then
+    repo_install_stop "missing source AGENTS.md: $source_path"
+    return 1
+  fi
+
+  cp "$source_path" "$target_path" || return 1
+}
+
 repo_install_main() {
   local mode_flag=""
   local target_root=""
@@ -318,6 +330,7 @@ repo_install_main() {
   )
   local -a optional_test_files=(
     "repo-automation/tests/lib/test-common.sh"
+    "repo-automation/tests/docs-check.sh"
     "repo-automation/tests/smoke.sh"
     "repo-automation/tests/version-consistency.sh"
     "repo-automation/bin/run-tests"
@@ -332,6 +345,7 @@ repo_install_main() {
   local -a generated_files=(
     ".repo-automation.conf"
     "repo-automation/docs/README.md"
+    "AGENTS.md"
   )
   local -a files_to_process=()
 
@@ -702,6 +716,18 @@ repo_install_main() {
     if [ "$command_status" -eq 0 ] && [ ! -f "$target_root/$local_overrides_doc" ]; then
       repo_install_write_local_overrides_stub "$target_root/$local_overrides_doc" || {
         repo_install_stop "failed to create local overrides doc"
+        command_status=1
+      }
+    fi
+    if [ "$command_status" -eq 0 ]; then
+      repo_install_make_parent "$target_root/AGENTS.md" || {
+        repo_install_stop "failed to prepare AGENTS.md path"
+        command_status=1
+      }
+    fi
+    if [ "$command_status" -eq 0 ]; then
+      repo_install_write_agents_md "$source_root/AGENTS.md" "$target_root/AGENTS.md" || {
+        repo_install_stop "failed to write AGENTS.md"
         command_status=1
       }
     fi
