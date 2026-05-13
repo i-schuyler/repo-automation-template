@@ -21,7 +21,7 @@ If mode is not explicitly passed:
 By default, the helper manages:
 
 - shared scripts in `repo-automation/bin/` and `repo-automation/lib/`
-- default downstream helpers `repo-automation/bin/failure-log`, `repo-automation/bin/status-packet`, `repo-automation/bin/post-codex-packet`, `repo-automation/bin/repo-zip`, and `repo-automation/bin/evidence-bundle`
+- default downstream helpers `repo-automation/bin/failure-log`, `repo-automation/bin/status-packet`, `repo-automation/bin/post-codex-packet`, `repo-automation/bin/repo-zip`, `repo-automation/bin/evidence-bundle`, and `repo-automation/bin/pr-create`
 - repo-automation docs in `repo-automation/docs/`
 - generated downstream `.repo-automation.conf`
 - generated downstream `repo-automation/docs/README.md`
@@ -29,7 +29,7 @@ By default, the helper manages:
 
 Optional installation:
 
-- `--include-tests` adds `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/lib/smoke-common.sh`, `repo-automation/tests/contracts/`, `repo-automation/tests/docs-check.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests`
+- `--include-tests` adds `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/lib/smoke-common.sh`, `repo-automation/tests/contracts/`, `repo-automation/tests/docs-check.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests` (including the mixed-change `repo-automation/tests/contracts/pr-create.sh` contract)
 - `--include-ci` adds `.github/workflows/ci.yml` (with warning because downstream CI usually needs adaptation)
 - `--starter-template` adds `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/automation-bug.yml`, and `.github/ISSUE_TEMPLATE/automation-feature.yml` without broadening workflow permissions or installing app/product CI
 

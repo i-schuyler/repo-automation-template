@@ -45,6 +45,7 @@ This file records public repo decisions for `repo-automation-template`.
 | Add-doc-pr docs-only boundary | `repo-automation/bin/add-doc-pr` must enforce docs-only changed-file boundaries by default |
 | Add-doc-pr merge boundary | `repo-automation/bin/add-doc-pr` must not merge PRs |
 | Add-doc-pr PR-create flag | `repo-automation/bin/add-doc-pr` must not create PRs unless explicit `--create-pr` is supplied |
+| Mixed-change PR helper | `repo-automation/bin/pr-create` handles mixed code/docs/test PR creation; `repo-automation/bin/add-doc-pr` stays docs-only |
 | Report-upstream default mode | `repo-automation/bin/repo-automation-report-upstream` defaults to preview/plan-only behavior |
 | Report-upstream preview gate | `repo-automation/bin/repo-automation-report-upstream` must preview issue body before submit |
 | Report-upstream browser boundary | `repo-automation/bin/repo-automation-report-upstream` must never require opening a browser |

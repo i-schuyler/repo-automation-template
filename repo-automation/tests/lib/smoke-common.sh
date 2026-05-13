@@ -19,6 +19,7 @@ smoke_expected_origin_url="git@github.com:i-schuyler/repo-automation-template.gi
 
 smoke_contract_names=(
   "smoke:add-doc-pr-contract"
+  "smoke:pr-create-contract"
   "smoke:report-upstream-contract"
   "smoke:failure-log-contract"
   "smoke:run-tests-contract"
@@ -40,6 +41,7 @@ smoke_contract_names=(
 
 smoke_contract_scripts=(
   "repo-automation/tests/contracts/add-doc-pr.sh"
+  "repo-automation/tests/contracts/pr-create.sh"
   "repo-automation/tests/contracts/report-upstream.sh"
   "repo-automation/tests/contracts/failure-log.sh"
   "repo-automation/tests/contracts/run-tests.sh"
@@ -122,7 +124,74 @@ case "$cmd $sub" in
     printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
     ;;
   'pr view')
-    printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
+    case " $* " in
+      *' --json number '*|*' --jq .number '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_NUMBER:-123}"
+        ;;
+      *' --json title '*|*' --jq .title '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_TITLE:-demo title}"
+        ;;
+      *' --json url '*|*' --jq .url '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_URL:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
+        ;;
+      *' --json state '*|*' --jq .state '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_STATE:-OPEN}"
+        ;;
+      *' --json isDraft '*|*' --jq .isDraft '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_IS_DRAFT:-false}"
+        ;;
+      *' --json mergeable '*|*' --jq .mergeable '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_MERGEABLE:-MERGEABLE}"
+        ;;
+      *' --json headRefName '*|*' --jq .headRefName '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
+        ;;
+      *)
+        printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
+        ;;
+    esac
+    ;;
+  'pr create')
+    body_file=""
+    title=""
+    base=""
+    head=""
+    prev=""
+    for arg in "$@"; do
+      if [ -n "$prev" ]; then
+        case "$prev" in
+          --title)
+            title="$arg"
+            ;;
+          --body-file)
+            body_file="$arg"
+            ;;
+          --base)
+            base="$arg"
+            ;;
+          --head)
+            head="$arg"
+            ;;
+        esac
+        prev=""
+        continue
+      fi
+      case "$arg" in
+        --title|--body-file|--base|--head)
+          prev="$arg"
+          ;;
+      esac
+    done
+    if [ -n "${GH_STUB_PR_CREATE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr create title=$title base=$base head=$head body_file=$body_file" >> "$GH_STUB_PR_CREATE_LOG_FILE"
+    fi
+    if [ -n "$body_file" ] && [ -f "$body_file" ] && [ -n "${GH_STUB_PR_CREATE_BODY_COPY_FILE:-}" ]; then
+      cat "$body_file" > "$GH_STUB_PR_CREATE_BODY_COPY_FILE"
+    fi
+    if [ -n "$body_file" ] && [ -f "$body_file" ] && [ -n "${GH_STUB_PR_CREATE_BODY_CONTENT_FILE:-}" ]; then
+      cat "$body_file" > "$GH_STUB_PR_CREATE_BODY_CONTENT_FILE"
+    fi
+    printf '%s\n' "${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
     ;;
   'pr list')
     printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
@@ -186,6 +255,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
   cp "$smoke_repo_root/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/pr-finish" || return 1
   cp "$smoke_repo_root/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/add-doc-pr" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/pr-create" || return 1
   cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
@@ -210,7 +280,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/contracts/" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -567,6 +637,114 @@ smoke_check_add_doc_pr_blocked_file() {
   fi
 
   rm -f "$add_doc_pr_block_json" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+smoke_pr_create_prepare_branch() {
+  local branch_name="$1"
+  local file_name="$2"
+  local file_body="$3"
+
+  cd "$smoke_test_dir" || return 1
+  git checkout main >/dev/null 2>&1 || return 1
+  git branch -D "$branch_name" >/dev/null 2>&1 || true
+  git switch -c "$branch_name" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$file_body" > "$file_name" || return 1
+  git add "$file_name" || return 1
+  git commit -m "test: $branch_name" >/dev/null 2>&1 || return 1
+}
+
+smoke_check_pr_create_body_file() {
+  local status=0
+  local branch_name="feature/pr-create-body-file"
+  local helper_json="$smoke_test_base/pr-create-body-file.json"
+  local helper_log="$smoke_test_base/pr-create-body-file.log"
+  local helper_body="$smoke_test_base/pr-create-body-file-body.md"
+  local helper_body_copy="$smoke_test_base/pr-create-body-file-body-copy.md"
+  local gh_stub_dir="$smoke_test_base/gh-pr-create-stub"
+  local body_text="Mixed PR body from file"
+
+  smoke_pr_create_prepare_branch "$branch_name" repo-automation/tests/pr-create-body-file.txt "body file fixture" || return 1
+  printf '%s\n' "$body_text" > "$helper_body" || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_CREATE_LOG_FILE="$helper_log" \
+    GH_STUB_PR_CREATE_BODY_COPY_FILE="$helper_body_copy" \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/321' \
+    GH_STUB_PR_VIEW_NUMBER=321 \
+    repo-automation/bin/pr-create --json --branch "$branch_name" --base main --title "Mixed change body file" --body-file "$helper_body" > "$helper_json"
+  ) && python -m json.tool "$helper_json" >/dev/null && \
+    smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "321" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/321" and data.get("branch") == "feature/pr-create-body-file" and data.get("base_branch") == "main"'; then
+    if grep -Fq 'gh pr create title=Mixed change body file base=main head=feature/pr-create-body-file body_file=' "$helper_log" && cmp -s "$helper_body" "$helper_body_copy"; then
+      test_pass "pr-create body-file PR creation succeeds"
+    else
+      test_fail "pr-create body-file PR creation succeeds"
+      status=1
+    fi
+  else
+    test_fail "pr-create body-file PR creation succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    git branch -D "$branch_name" >/dev/null 2>&1 || return 1
+  ); then
+    :
+  fi
+
+  rm -f "$helper_json" "$helper_log" "$helper_body" "$helper_body_copy" >/dev/null 2>&1 || true
+  rm -rf "$gh_stub_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+smoke_check_pr_create_body_text() {
+  local status=0
+  local branch_name="feature/pr-create-body-text"
+  local helper_json="$smoke_test_base/pr-create-body-text.json"
+  local helper_log="$smoke_test_base/pr-create-body-text.log"
+  local helper_body_copy="$smoke_test_base/pr-create-body-text-body-copy.md"
+  local gh_stub_dir="$smoke_test_base/gh-pr-create-stub-text"
+  local body_text='Mixed PR body from inline text'
+
+  smoke_pr_create_prepare_branch "$branch_name" repo-automation/tests/pr-create-body-text.txt "body text fixture" || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_CREATE_LOG_FILE="$helper_log" \
+    GH_STUB_PR_CREATE_BODY_COPY_FILE="$helper_body_copy" \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/322' \
+    GH_STUB_PR_VIEW_NUMBER=322 \
+    repo-automation/bin/pr-create --json --branch "$branch_name" --base main --title "Mixed change body text" --body "$body_text" > "$helper_json"
+  ) && python -m json.tool "$helper_json" >/dev/null && \
+    smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "322" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/322" and data.get("branch") == "feature/pr-create-body-text" and data.get("base_branch") == "main"'; then
+    if grep -Fq 'gh pr create title=Mixed change body text base=main head=feature/pr-create-body-text body_file=' "$helper_log" && printf '%s\n' "$body_text" | cmp -s - "$helper_body_copy"; then
+      test_pass "pr-create body-text PR creation succeeds"
+    else
+      test_fail "pr-create body-text PR creation succeeds"
+      status=1
+    fi
+  else
+    test_fail "pr-create body-text PR creation succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    git branch -D "$branch_name" >/dev/null 2>&1 || return 1
+  ); then
+    :
+  fi
+
+  rm -f "$helper_json" "$helper_log" "$helper_body_copy" >/dev/null 2>&1 || true
+  rm -rf "$gh_stub_dir" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -2046,7 +2224,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 18 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 19 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"

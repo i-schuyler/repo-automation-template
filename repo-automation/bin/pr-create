@@ -1,0 +1,305 @@
+#!/usr/bin/env bash
+# repo-automation/bin/pr-create
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+pr_create_json=0
+pr_create_stop_reason=""
+
+pr_create_usage() {
+  printf 'Usage: repo-automation/bin/pr-create [--help] [--dry-run] [--json] [--branch BRANCH] [--base BRANCH] [--title TITLE] [--body-file FILE] [--body TEXT]\n'
+}
+
+pr_create_info() {
+  printf 'INFO: %s\n' "$*" >&2
+}
+
+pr_create_stop() {
+  pr_create_stop_reason="$*"
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+pr_create_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+pr_create_print_json() {
+  local mode="$1"
+  local branch="$2"
+  local base_branch="$3"
+  local title="$4"
+  local pr_number="$5"
+  local pr_url="$6"
+  local action_taken="$7"
+  local stop_reason="$8"
+
+  printf '{'
+  printf '"mode":"%s",' "$(pr_create_json_escape "$mode")"
+  printf '"branch":"%s",' "$(pr_create_json_escape "$branch")"
+  printf '"base_branch":"%s",' "$(pr_create_json_escape "$base_branch")"
+  printf '"title":"%s",' "$(pr_create_json_escape "$title")"
+  printf '"pr_number":"%s",' "$(pr_create_json_escape "$pr_number")"
+  printf '"pr_url":"%s",' "$(pr_create_json_escape "$pr_url")"
+  printf '"action_taken":"%s",' "$(pr_create_json_escape "$action_taken")"
+  printf '"stop_reason":"%s"' "$(pr_create_json_escape "$stop_reason")"
+  printf '}\n'
+}
+
+pr_create_main() {
+  local mode="create"
+  local json=0
+  local dry_run=0
+  local branch_arg=""
+  local base_branch=""
+  local title=""
+  local body_file=""
+  local body_text=""
+  local repo_root=""
+  local current_branch=""
+  local default_branch=""
+  local remote_name=""
+  local expected_remote_url=""
+  local remote_url=""
+  local head_branch=""
+  local pr_number=""
+  local pr_url=""
+  local action_taken="none"
+  local command_status=0
+  local arg=""
+  local pr_output=""
+  local body_temp_file=""
+  local worktree_status=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        pr_create_usage
+        return 0
+        ;;
+      --dry-run)
+        dry_run=1
+        mode="dry-run"
+        ;;
+      --json)
+        json=1
+        pr_create_json=1
+        ;;
+      --branch)
+        shift
+        branch_arg="${1:-}"
+        ;;
+      --base)
+        shift
+        base_branch="${1:-}"
+        ;;
+      --title)
+        shift
+        title="${1:-}"
+        ;;
+      --body-file)
+        shift
+        body_file="${1:-}"
+        ;;
+      --body)
+        shift
+        body_text="${1:-}"
+        ;;
+      *)
+        pr_create_stop "unknown argument: $arg"
+        command_status=1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_require_command git || {
+      pr_create_stop "git is required"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
+    repo_auto_require_command gh || {
+      pr_create_stop "gh is required for pr-create"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_root=$(repo_auto_repo_root) || {
+      pr_create_stop "failed to determine repo root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$repo_root" || {
+      pr_create_stop "failed to enter repo root: $repo_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      pr_create_stop "failed to load .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      pr_create_stop "invalid .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    default_branch="${DEFAULT_BRANCH:-main}"
+    remote_name="${REMOTE_NAME:-origin}"
+    expected_remote_url="${EXPECTED_REMOTE_URL:-}"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -n "$base_branch" ]; then
+      repo_auto_validate_branch_name "$base_branch" || {
+        pr_create_stop "invalid --base value: $base_branch"
+        command_status=1
+      }
+    else
+      base_branch="$default_branch"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -n "$branch_arg" ]; then
+      repo_auto_validate_branch_name "$branch_arg" || {
+        pr_create_stop "invalid --branch value: $branch_arg"
+        command_status=1
+      }
+      head_branch="$branch_arg"
+    else
+      current_branch=$(git branch --show-current) || current_branch=""
+      if [ -z "$current_branch" ]; then
+        pr_create_stop "current branch is required unless --branch is supplied"
+        command_status=1
+      else
+        head_branch="$current_branch"
+      fi
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$head_branch" = "$base_branch" ]; then
+    pr_create_stop "head branch must not equal base branch: $base_branch"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    remote_url=$(git remote get-url "$remote_name" 2>/dev/null) || {
+      pr_create_stop "failed to read remote URL for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
+    pr_create_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ -z "$title" ]; then
+      pr_create_stop "--title is required"
+      command_status=1
+    fi
+    if [ -z "$body_file" ] && [ -z "$body_text" ]; then
+      pr_create_stop "either --body-file or --body is required"
+      command_status=1
+    fi
+    if [ -n "$body_file" ] && [ -n "$body_text" ]; then
+      pr_create_stop "use either --body-file or --body, not both"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$body_text" ]; then
+    body_temp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/pr-create-body.XXXXXX")" || {
+      pr_create_stop "failed to create temporary body file"
+      command_status=1
+    }
+    if [ "$command_status" -eq 0 ]; then
+      printf '%s\n' "$body_text" > "$body_temp_file" || {
+        pr_create_stop "failed to write temporary body file"
+        command_status=1
+      }
+      body_file="$body_temp_file"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ ! -f "$body_file" ]; then
+    pr_create_stop "body file does not exist: $body_file"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
+    worktree_status=$(git status --porcelain)
+    if [ -n "$worktree_status" ]; then
+      pr_create_stop "worktree must be clean to create a PR"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 1 ]; then
+    pr_create_info "dry-run: would create PR on branch $head_branch against $base_branch"
+    action_taken="dry-run"
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
+    pr_output=$(gh pr create --title "$title" --body-file "$body_file" --base "$base_branch" --head "$head_branch" 2>&1) || {
+      pr_create_stop "gh pr create failed: $pr_output"
+      command_status=1
+    }
+
+    if [ "$command_status" -eq 0 ]; then
+      pr_url=$(printf '%s\n' "$pr_output" | tail -n 1)
+      pr_number=$(gh pr view "$head_branch" --json number --jq '.number' 2>/dev/null) || pr_number=""
+      action_taken="created-pr"
+    fi
+  fi
+
+  if [ -n "$body_temp_file" ] && [ -f "$body_temp_file" ]; then
+    rm -f "$body_temp_file"
+  fi
+
+  if [ "$json" -eq 1 ]; then
+    pr_create_print_json "$mode" "$head_branch" "$base_branch" "$title" "$pr_number" "$pr_url" "$action_taken" "$pr_create_stop_reason"
+  elif [ "$command_status" -eq 0 ]; then
+    if [ "$dry_run" -eq 1 ]; then
+      pr_create_info "dry-run complete; no PR created"
+    else
+      pr_create_info "PR created: #$pr_number $pr_url"
+    fi
+  fi
+
+  return "$command_status"
+}
+
+pr_create_main "$@"
+pr_create_status=$?
+return "$pr_create_status" 2>/dev/null || exit "$pr_create_status"
+# repo-automation/bin/pr-create EOF

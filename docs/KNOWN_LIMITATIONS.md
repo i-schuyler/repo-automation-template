@@ -47,6 +47,7 @@ The repo currently supports:
 - Codex slice preflight checks
 - PR finishing through GitHub CLI
 - docs-only PR helper flow
+- mixed-change PR helper flow
 - upstream bug/feature reporting
 - repo doctor diagnostics
 - downstream install/update helper
