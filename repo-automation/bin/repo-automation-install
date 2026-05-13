@@ -330,8 +330,23 @@ repo_install_main() {
   )
   local -a optional_test_files=(
     "repo-automation/tests/lib/test-common.sh"
+    "repo-automation/tests/lib/smoke-common.sh"
     "repo-automation/tests/docs-check.sh"
     "repo-automation/tests/smoke.sh"
+    "repo-automation/tests/contracts/add-doc-pr.sh"
+    "repo-automation/tests/contracts/report-upstream.sh"
+    "repo-automation/tests/contracts/failure-log.sh"
+    "repo-automation/tests/contracts/run-tests.sh"
+    "repo-automation/tests/contracts/touched-files.sh"
+    "repo-automation/tests/contracts/ci-log-dump.sh"
+    "repo-automation/tests/contracts/repo-doctor.sh"
+    "repo-automation/tests/contracts/status-packet.sh"
+    "repo-automation/tests/contracts/github-settings-check.sh"
+    "repo-automation/tests/contracts/installer.sh"
+    "repo-automation/tests/contracts/starter-template.sh"
+    "repo-automation/tests/contracts/branch-cleanup-preflight.sh"
+    "repo-automation/tests/contracts/prepare-release.sh"
+    "repo-automation/tests/contracts/automation-freshness.sh"
     "repo-automation/tests/version-consistency.sh"
     "repo-automation/bin/run-tests"
   )

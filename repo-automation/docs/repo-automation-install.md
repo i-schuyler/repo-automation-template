@@ -29,7 +29,7 @@ By default, the helper manages:
 
 Optional installation:
 
-- `--include-tests` adds `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/docs-check.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests`
+- `--include-tests` adds `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/lib/smoke-common.sh`, `repo-automation/tests/contracts/`, `repo-automation/tests/docs-check.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests`
 - `--include-ci` adds `.github/workflows/ci.yml` (with warning because downstream CI usually needs adaptation)
 - `--starter-template` adds `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/automation-bug.yml`, and `.github/ISSUE_TEMPLATE/automation-feature.yml` without broadening workflow permissions or installing app/product CI
 

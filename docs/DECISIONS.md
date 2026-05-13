@@ -20,7 +20,7 @@ This file records public repo decisions for `repo-automation-template`.
 | Version drift | version drift across root, docs, scripts, release metadata, and downstream examples is a tracked drift risk |
 | Repo-local config entry point | `.repo-automation.conf` is the repo-local config entry point for future automation scripts |
 | Shared Bash library source | repo-local scripts must source `repo-automation/lib/common.sh` instead of duplicating shared helper logic |
-| Smoke test harness boundary | smoke tests must use `repo-automation/tests/lib/test-common.sh` for named subchecks and registered temp-dir cleanup before any future split |
+| Smoke test harness boundary | smoke tests must use `repo-automation/tests/lib/test-common.sh` and `repo-automation/tests/lib/smoke-common.sh` for named subchecks, registered temp-dir cleanup, and shared contract setup |
 | Smoke scenario ownership | `test_run_named_check` owns smoke scenario execution |
 | Smoke timeout boundary | `repo-automation/tests/smoke.sh` must not shadow system `timeout` |
 | Smoke cleanup ownership | smoke cleanup is centralized through `repo-automation/tests/lib/test-common.sh` |
