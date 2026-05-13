@@ -109,6 +109,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/evidence-bundle",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/docs/post-codex-packet.md",
       "owner": "repo-automation-template",
       "kind": "doc"
@@ -119,12 +124,22 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/evidence-bundle.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/tests/contracts/post-codex-packet.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },
     {
       "path": "repo-automation/tests/contracts/repo-zip.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/evidence-bundle.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },
