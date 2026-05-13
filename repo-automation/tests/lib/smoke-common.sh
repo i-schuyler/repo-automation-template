@@ -51,6 +51,29 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/automation-freshness.sh"
 )
 
+smoke_run_all_contracts() {
+  local status=0
+  local i=0
+
+  for i in "${!smoke_contract_scripts[@]}"; do
+    test_run_named_check "${smoke_contract_names[$i]}" "${smoke_contract_scripts[$i]}" || status=1
+  done
+
+  return "$status"
+}
+
+smoke_run() {
+  trap 'test_cleanup' EXIT INT TERM
+
+  cd "$smoke_repo_root" || return 1
+
+  if [ "$smoke_timeout_seconds" -gt 0 ] && ! test_have_timeout; then
+    test_warn_timeout_once
+  fi
+
+  smoke_run_all_contracts
+}
+
 smoke_json_assert() {
   local json_file="$1"
   local check_code="$2"
