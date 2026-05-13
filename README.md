@@ -34,7 +34,10 @@ The repo automation entry points live under `repo-automation/`:
 - `repo-automation/bin/status-packet`
 - `repo-automation/bin/starter-template-ready`
 - `repo-automation/lib/common.sh`
+- `repo-automation/tests/lib/test-common.sh`
+- `repo-automation/tests/lib/smoke-common.sh`
 - `repo-automation/tests/docs-check.sh`
+- `repo-automation/tests/contracts/`
 - `repo-automation/tests/smoke.sh`
 - `repo-automation/tests/version-consistency.sh`
 

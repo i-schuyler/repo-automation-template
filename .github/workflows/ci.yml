@@ -35,10 +35,12 @@ jobs:
           bash -n repo-automation/bin/repo-doctor
           bash -n repo-automation/bin/repo-automation-install
           bash -n repo-automation/bin/run-tests
+          bash -n repo-automation/tests/lib/*.sh
           bash -n repo-automation/tests/docs-check.sh
+          bash -n repo-automation/tests/contracts/*.sh
           bash -n repo-automation/tests/smoke.sh
           bash -n repo-automation/tests/version-consistency.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck -e SC2317 repo-automation/bin/branch-cleanup repo-automation/bin/codex-slice-preflight repo-automation/bin/pr-finish repo-automation/bin/add-doc-pr repo-automation/bin/repo-automation-report-upstream repo-automation/bin/repo-doctor repo-automation/bin/repo-automation-install repo-automation/bin/run-tests repo-automation/tests/docs-check.sh repo-automation/tests/smoke.sh repo-automation/tests/version-consistency.sh
+            shellcheck -e SC2317 repo-automation/bin/branch-cleanup repo-automation/bin/codex-slice-preflight repo-automation/bin/pr-finish repo-automation/bin/add-doc-pr repo-automation/bin/repo-automation-report-upstream repo-automation/bin/repo-doctor repo-automation/bin/repo-automation-install repo-automation/bin/run-tests repo-automation/tests/lib/*.sh repo-automation/tests/docs-check.sh repo-automation/tests/contracts/*.sh repo-automation/tests/smoke.sh repo-automation/tests/version-consistency.sh
           fi
           repo-automation/bin/run-tests
