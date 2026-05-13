@@ -13,6 +13,7 @@ smoke_main() {
   trap 'test_cleanup' EXIT INT TERM
 
   smoke_setup_temp_repo || return 1
+
   smoke_run_named_check "smoke:pr-finish-watch-exit" smoke_check_pr_finish_watch_exit || status=1
 
   return "$status"
