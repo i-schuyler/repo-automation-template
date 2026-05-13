@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# repo-automation/bin/repo-zip
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+repo_zip_output_base=""
+repo_zip_label=""
+repo_zip_repo_root=""
+repo_zip_repo_name=""
+repo_zip_repo_name_slug=""
+repo_zip_timestamp=""
+repo_zip_branch=""
+repo_zip_head=""
+repo_zip_label_slug=""
+repo_zip_packet_dir=""
+repo_zip_zip_path=""
+repo_zip_summary_file=""
+repo_zip_files_file=""
+repo_zip_selection_file=""
+repo_zip_file_count=0
+repo_zip_zip_size=""
+repo_zip_zip_mtime=""
+repo_zip_finished=0
+
+repo_zip_usage() {
+  printf 'Usage: repo-automation/bin/repo-zip [--out-dir PATH] [--label NAME] [--help]\n'
+}
+
+repo_zip_info() {
+  printf 'INFO: %s\n' "$*"
+}
+
+repo_zip_slug() {
+  local value="${1:-}"
+
+  printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
+}
+
+repo_zip_is_excluded_path() {
+  case "${1:-}" in
+    .git|.git/*|*/.git|*/.git/*)
+      return 0
+      ;;
+    repo-automation-output/*|*/repo-automation-output/*)
+      return 0
+      ;;
+    repo-zip/*|*/repo-zip/*|repo-zip-*.zip|*/repo-zip-*.zip)
+      return 0
+      ;;
+    post-codex/*|*/post-codex/*|post-codex-*.zip|*/post-codex-*.zip)
+      return 0
+      ;;
+    ci-log-dump/*|*/ci-log-dump/*|actions_run_*.log|*/actions_run_*.log)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+repo_zip_count_lines() {
+  local path="$1"
+
+  if [ ! -f "$path" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  awk 'END { print NR + 0 }' "$path"
+}
+
+repo_zip_select_files() {
+  local path=""
+
+  : > "$repo_zip_selection_file" || return 1
+
+  while IFS= read -r -d '' path; do
+    if repo_zip_is_excluded_path "$path"; then
+      continue
+    fi
+    printf '%s\n' "$path" >> "$repo_zip_selection_file" || return 1
+  done < <(git ls-files -co --exclude-standard -z)
+
+  repo_zip_file_count="$(repo_zip_count_lines "$repo_zip_selection_file")"
+}
+
+repo_zip_init_paths() {
+  local label_suffix=""
+  local packet_prefix=""
+
+  repo_zip_repo_root="$(repo_auto_repo_root)" || return 1
+  repo_zip_repo_name="$(basename "$repo_zip_repo_root")"
+  repo_zip_repo_name_slug="$(repo_zip_slug "$repo_zip_repo_name")"
+  if [ -z "$repo_zip_repo_name_slug" ]; then
+    repo_zip_repo_name_slug="repo"
+  fi
+
+  repo_zip_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  if [ -n "$repo_zip_label" ]; then
+    repo_zip_label_slug="$(repo_zip_slug "$repo_zip_label")"
+    if [ -n "$repo_zip_label_slug" ]; then
+      label_suffix="-${repo_zip_label_slug}"
+    fi
+  fi
+
+  repo_zip_output_base="${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}"
+  repo_zip_output_base="${repo_zip_output_base%/}/repo-zip"
+  mkdir -p "$repo_zip_output_base" || return 1
+
+  packet_prefix="repo-zip-${repo_zip_repo_name_slug}-${repo_zip_timestamp}${label_suffix}"
+  repo_zip_packet_dir="$(mktemp -d "$repo_zip_output_base/${packet_prefix}.XXXXXX")" || return 1
+  repo_zip_zip_path="$repo_zip_packet_dir/${packet_prefix}.zip"
+  repo_zip_summary_file="$repo_zip_packet_dir/summary.txt"
+  repo_zip_files_file="$repo_zip_packet_dir/files.txt"
+}
+
+repo_zip_copy_list_file() {
+  cp -- "$repo_zip_selection_file" "$repo_zip_files_file" || return 1
+}
+
+repo_zip_create_zip() {
+  python3 - "$repo_zip_repo_root" "$repo_zip_repo_name_slug" "$repo_zip_files_file" "$repo_zip_zip_path" <<'PY' || return 1
+from pathlib import Path
+import sys
+import zipfile
+
+repo_root = Path(sys.argv[1])
+repo_root_name = sys.argv[2]
+files_file = Path(sys.argv[3])
+zip_path = Path(sys.argv[4])
+entries = [line.strip() for line in files_file.read_text(encoding='utf-8').splitlines() if line.strip()]
+
+with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as archive:
+    for relative_path in entries:
+        source_path = repo_root / relative_path
+        archive.write(source_path, Path(repo_root_name, relative_path).as_posix())
+PY
+}
+
+repo_zip_stat_value() {
+  local path="$1"
+  local field="$2"
+
+  case "$field" in
+    size)
+      stat -c '%s' "$path" 2>/dev/null || printf '0'
+      ;;
+    mtime)
+      stat -c '%y' "$path" 2>/dev/null || printf ''
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
+repo_zip_write_summary() {
+  repo_zip_zip_size="$(repo_zip_stat_value "$repo_zip_zip_path" size)"
+  repo_zip_zip_mtime="$(repo_zip_stat_value "$repo_zip_zip_path" mtime)"
+
+  cat > "$repo_zip_summary_file" <<EOF2
+Repo path: $repo_zip_repo_root
+Repo name: $repo_zip_repo_name
+Branch: $repo_zip_branch
+HEAD: $repo_zip_head
+Timestamp: $repo_zip_timestamp
+Zip path: $repo_zip_zip_path
+File count: $repo_zip_file_count
+Zip size: $repo_zip_zip_size bytes
+Zip modified time: $repo_zip_zip_mtime
+Output base: $repo_zip_output_base
+Label: ${repo_zip_label:-}
+EOF2
+}
+
+repo_zip_cleanup() {
+  rm -f "$repo_zip_selection_file" >/dev/null 2>&1 || true
+
+  if [ "$repo_zip_finished" -eq 0 ] && [ -n "$repo_zip_packet_dir" ] && [ -d "$repo_zip_packet_dir" ]; then
+    rm -rf "$repo_zip_packet_dir" >/dev/null 2>&1 || true
+  fi
+}
+
+repo_zip_main() {
+  local arg=""
+
+  trap 'repo_zip_cleanup' EXIT INT TERM
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        repo_zip_usage
+        return 0
+        ;;
+      --out-dir)
+        shift
+        repo_zip_output_base="${1:-}"
+        ;;
+      --label)
+        shift
+        repo_zip_label="${1:-}"
+        ;;
+      *)
+        repo_zip_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -n "$repo_zip_output_base" ]; then
+    REPO_AUTOMATION_OUTPUT_DIR="$repo_zip_output_base"
+  fi
+
+  repo_auto_require_command git || return 1
+  repo_auto_require_command python3 || return 1
+
+  mkdir -p "${TMPDIR:-$HOME/.cache}" || return 1
+  repo_zip_selection_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-zip-files.XXXXXX")" || return 1
+  repo_zip_init_paths || return 1
+  cd "$repo_zip_repo_root" || return 1
+  repo_zip_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$repo_zip_branch" ]; then
+    repo_zip_branch="HEAD"
+  fi
+  repo_zip_head="$(git rev-parse HEAD 2>/dev/null || true)"
+  repo_zip_select_files || return 1
+
+  repo_zip_copy_list_file || return 1
+  repo_zip_create_zip || return 1
+  repo_zip_write_summary || return 1
+
+  repo_zip_info "repo path: $repo_zip_repo_root"
+  repo_zip_info "branch: $repo_zip_branch"
+  repo_zip_info "HEAD: $repo_zip_head"
+  repo_zip_info "packet dir: $repo_zip_packet_dir"
+  repo_zip_info "zip path: $repo_zip_zip_path"
+  repo_zip_info "file count: $repo_zip_file_count"
+  repo_zip_info "zip size: $repo_zip_zip_size bytes"
+  repo_zip_info "zip modified time: $repo_zip_zip_mtime"
+
+  repo_zip_finished=1
+  return 0
+}
+
+repo_zip_main "$@"
+# repo-automation/bin/repo-zip EOF
