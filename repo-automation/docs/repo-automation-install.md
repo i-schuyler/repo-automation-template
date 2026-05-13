@@ -25,10 +25,11 @@ By default, the helper manages:
 - repo-automation docs in `repo-automation/docs/`
 - generated downstream `.repo-automation.conf`
 - generated downstream `repo-automation/docs/README.md`
+- downstream `AGENTS.md` copied from the source repo root so patch-edit guidance stays aligned
 
 Optional installation:
 
-- `--include-tests` adds `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests`
+- `--include-tests` adds `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/docs-check.sh`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests`
 - `--include-ci` adds `.github/workflows/ci.yml` (with warning because downstream CI usually needs adaptation)
 - `--starter-template` adds `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/automation-bug.yml`, and `.github/ISSUE_TEMPLATE/automation-feature.yml` without broadening workflow permissions or installing app/product CI
 
@@ -66,7 +67,7 @@ Starter-template smoke workflow for a temp target repo:
     cd /path/to/downstream && repo-automation/bin/starter-template-ready --check-current
     cd /path/to/downstream && repo-automation/bin/repo-doctor --quick --no-run-tests
 
-The smoke path stays read-only outside the fixture repo and is intended to prove the conservative starter-template profile end to end without broadening workflow permissions or requiring GitHub auth.
+The smoke path stays read-only outside the fixture repo and is intended to prove the conservative starter-template profile end to end without broadening workflow permissions or requiring GitHub auth. The source repo also keeps `repo-automation/manifest.json` aligned with this installer coverage through `repo-automation/tests/version-consistency.sh`. Downstream installs also receive an `AGENTS.md` at the repo root with compact patch-editing guidance.
 
 ## JSON Contract
 

@@ -527,7 +527,7 @@ run_tests_changed_needs_docs() {
 
 run_tests_changed_needs_version() {
   case "$1" in
-    VERSION|README.md|CHANGELOG.md|docs/DECISIONS.md|docs/VERSIONING.md|examples/downstream/.repo-automation.conf.example|repo-automation/tests/version-consistency.sh|repo-automation/bin/prepare-release)
+    VERSION|README.md|CHANGELOG.md|docs/DECISIONS.md|docs/VERSIONING.md|examples/downstream/.repo-automation.conf.example|repo-automation/manifest.json|repo-automation/bin/repo-automation-install|repo-automation/tests/version-consistency.sh|repo-automation/bin/prepare-release)
       return 0
       ;;
   esac

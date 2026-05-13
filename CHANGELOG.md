@@ -12,6 +12,8 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 - Moved smoke scenario execution into the shared harness and removed global timeout shadowing.
 - Added bounded smoke harness cleanup, named subchecks, and timeout-safe child cleanup.
 - Added lightweight docs CI for markdown links, docs index coverage, stale phrasing, and public-entry navigation.
+- Added a manifest-vs-installer drift check to keep `repo-automation/manifest.json` aligned with `repo-automation/bin/repo-automation-install` coverage.
+- Added downstream `AGENTS.md` install guidance and a compact patch-editing note for repo-local edits.
 
 - Added docs-only bootstrap canon.
 - Added issue-form plan and downstream feedback canon.
