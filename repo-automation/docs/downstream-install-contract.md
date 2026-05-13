@@ -12,7 +12,7 @@ Default installer-managed paths:
 - `.repo-automation.conf`
 - generated `repo-automation/docs/README.md`
 - optional `repo-automation/tests/lib/test-common.sh`, `repo-automation/tests/lib/smoke-common.sh`, `repo-automation/tests/contracts/`, `repo-automation/tests/smoke.sh`, `repo-automation/tests/version-consistency.sh`, and `repo-automation/bin/run-tests` when `--include-tests` is used
-- installed `repo-automation/bin/failure-log` and `repo-automation/bin/status-packet` as part of the default downstream install contract
+- installed `repo-automation/bin/failure-log`, `repo-automation/bin/status-packet`, and `repo-automation/bin/post-codex-packet` as part of the default downstream install contract
 - optional `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/automation-bug.yml`, and `.github/ISSUE_TEMPLATE/automation-feature.yml` when `--starter-template` is used
 - optional `.github/workflows/ci.yml` when `--include-ci` is used
 

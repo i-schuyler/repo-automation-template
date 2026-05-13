@@ -26,6 +26,7 @@ smoke_contract_names=(
   "smoke:ci-log-dump-contract"
   "smoke:repo-doctor-contract"
   "smoke:status-packet-contract"
+  "smoke:post-codex-packet-contract"
   "smoke:github-settings-check"
   "smoke:installer-contract"
   "smoke:starter-template-contract"
@@ -43,6 +44,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/ci-log-dump.sh"
   "repo-automation/tests/contracts/repo-doctor.sh"
   "repo-automation/tests/contracts/status-packet.sh"
+  "repo-automation/tests/contracts/post-codex-packet.sh"
   "repo-automation/tests/contracts/github-settings-check.sh"
   "repo-automation/tests/contracts/installer.sh"
   "repo-automation/tests/contracts/starter-template.sh"
@@ -185,6 +187,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/ci-watch" || return 1
   cp "$smoke_repo_root/repo-automation/bin/ci-log-dump" "$smoke_test_dir/repo-automation/bin/ci-log-dump" || return 1
   cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
@@ -196,7 +199,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/contracts/" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -1189,6 +1192,102 @@ status packet smoke
   return "$status"
 }
 
+smoke_check_post_codex_packet_contract() {
+  local status=0
+  local output_root=""
+  local output_log=""
+  local packet_dir=""
+  local packet_zip=""
+  local summary_file=""
+  local skipped_file=""
+  local index_file=""
+
+  smoke_setup_temp_repo || return 1
+  output_root="$smoke_test_base/post-codex-output"
+  output_log="$smoke_test_base/post-codex-output.log"
+
+  cd "$smoke_test_dir" || return 1
+  printf '\npacket helper staged line\n' >> docs/testing.md || return 1
+  git add docs/testing.md || return 1
+  printf '\npacket helper unstaged line\n' >> README.md || return 1
+  mkdir -p packet-safe-nested || return 1
+  printf 'nested safe packet content\n' > packet-safe-nested/deep.txt || return 1
+  printf 'sensitive env packet content\n' > .env || return 1
+  mkdir -p secrets || return 1
+  printf 'token packet content\n' > secrets/token.txt || return 1
+  printf 'credential packet content\n' > credentials-note.txt || return 1
+  python3 - <<'PY' > packet-oversized.bin
+import sys
+sys.stdout.write('x' * 262145)
+PY
+
+  if REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/post-codex-packet --label review --keep-dir --max-bytes 262144 > "$output_log"; then
+    :
+  else
+    test_fail "post-codex-packet helper runs successfully"
+    status=1
+  fi
+
+  packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$output_log" | tail -n 1)"
+  packet_zip="$(sed -n 's/^INFO: packet zip: //p' "$output_log" | tail -n 1)"
+  summary_file="$packet_dir/summary.txt"
+  skipped_file="$packet_dir/untracked/skipped.txt"
+  index_file="$output_root/post-codex/index.tsv"
+
+  if [ -d "$packet_dir" ] && [ -f "$packet_zip" ] && [ -f "$summary_file" ] && [ -f "$index_file" ]; then
+    test_pass "post-codex-packet helper creates packet artifacts"
+  else
+    test_fail "post-codex-packet helper creates packet artifacts"
+    status=1
+  fi
+
+  if grep -Eq '^Branch: main$' "$summary_file" && grep -Eq '^HEAD: [0-9a-f]{40}$' "$summary_file" && grep -Eq '^Tracked unstaged files: 1$' "$summary_file" && grep -Eq '^Staged files: 1$' "$summary_file" && grep -Eq '^Untracked files: 5$' "$summary_file" && grep -Eq '^Copied untracked files: 1$' "$summary_file" && grep -Eq '^Skipped untracked files: 4$' "$summary_file" && grep -Eq '^Max untracked copy bytes: 262144$' "$summary_file"; then
+    test_pass "post-codex-packet summary reports packet metadata"
+  else
+    test_fail "post-codex-packet summary reports packet metadata"
+    status=1
+  fi
+
+  if grep -Eq '^README.md$' "$packet_dir/tracked-unstaged/name-list.txt" && grep -Eq '^docs/testing.md$' "$packet_dir/staged/name-list.txt" && grep -Eq '^packet-safe-nested/deep.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^\.env\t' "$skipped_file" && grep -Eq '^secrets/token.txt\t' "$skipped_file" && grep -Eq '^credentials-note.txt\t' "$skipped_file" && grep -Eq '^packet-oversized.bin\t' "$skipped_file" && [ -f "$packet_dir/untracked/copied/packet-safe-nested/deep.txt" ]; then
+    test_pass "post-codex-packet packet contents include copied and skipped untracked files"
+  else
+    test_fail "post-codex-packet packet contents include copied and skipped untracked files"
+    status=1
+  fi
+
+  if python3 - "$packet_zip" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(zip_path) as archive:
+    names = set(archive.namelist())
+assert 'summary.txt' in names
+assert 'tracked-unstaged/name-list.txt' in names
+assert 'staged/name-list.txt' in names
+assert 'untracked/copied/packet-safe-nested/deep.txt' in names
+assert 'untracked/skipped.txt' in names
+assert 'untracked/copied/.env' not in names
+PY
+  then
+    test_pass "post-codex-packet zip archive contains packet files"
+  else
+    test_fail "post-codex-packet zip archive contains packet files"
+    status=1
+  fi
+
+  if grep -Eq '^review$' "$index_file" && grep -Eq '^post-codex-' "$index_file"; then
+    test_pass "post-codex-packet index records the packet"
+  else
+    test_fail "post-codex-packet index records the packet"
+    status=1
+  fi
+
+  return "$status"
+}
+
+
 smoke_check_github_settings_contract() {
   local status=0
   local github_settings_json="$smoke_test_base/github-settings-check-$$.json"
@@ -1587,7 +1686,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 14 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 15 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -1618,7 +1717,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
+  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"
@@ -1636,6 +1735,7 @@ smoke_check_installer_apply_contract() {
     [ -f repo-automation/tests/contracts/ci-log-dump.sh ] || return 1
     [ -f repo-automation/tests/contracts/repo-doctor.sh ] || return 1
     [ -f repo-automation/tests/contracts/status-packet.sh ] || return 1
+    [ -f repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
     [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
     [ -f repo-automation/tests/contracts/installer.sh ] || return 1
     [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
@@ -1650,6 +1750,7 @@ smoke_check_installer_apply_contract() {
     [ -x repo-automation/tests/contracts/ci-log-dump.sh ] || return 1
     [ -x repo-automation/tests/contracts/repo-doctor.sh ] || return 1
     [ -x repo-automation/tests/contracts/status-packet.sh ] || return 1
+    [ -x repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
     [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
     [ -x repo-automation/tests/contracts/installer.sh ] || return 1
     [ -x repo-automation/tests/contracts/starter-template.sh ] || return 1
