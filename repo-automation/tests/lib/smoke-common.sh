@@ -379,6 +379,7 @@ EOF
 - [Codex Slice Preflight](../repo-automation/docs/codex-slice-preflight.md)
 - [PR Finish](../repo-automation/docs/pr-finish.md)
 - [Add Doc PR](../repo-automation/docs/add-doc-pr.md)
+- [PR Create](../repo-automation/docs/pr-create.md)
 - [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
 - [Repo Doctor](../repo-automation/docs/repo-doctor.md)
 - [GitHub Settings Check](../repo-automation/docs/github-settings-check.md)

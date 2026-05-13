@@ -98,6 +98,7 @@ pr_create_main() {
         ;;
       --json)
         json=1
+        # shellcheck disable=SC2034 # shared JSON flag is observed by the JSON printer path
         pr_create_json=1
         ;;
       --branch)
