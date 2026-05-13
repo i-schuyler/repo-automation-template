@@ -335,10 +335,13 @@ printf 'PASS: subset smoke stub
 '
 EOF
   chmod +x "$subset_dir/repo-automation/tests/smoke.sh" || return 1
-  git config user.name "repo-automation-test" || return 1
-  git config user.email "repo-automation-test@example.com" || return 1
-  git add repo-automation/tests/smoke.sh >/dev/null 2>&1 || return 1
-  git commit -m "Stub smoke check" >/dev/null 2>&1 || return 1
+  (
+    cd "$subset_dir" || return 1
+    git config user.name "repo-automation-test" || return 1
+    git config user.email "repo-automation-test@example.com" || return 1
+    git add repo-automation/tests/smoke.sh >/dev/null 2>&1 || return 1
+    git commit -m "Stub smoke check" >/dev/null 2>&1 || return 1
+  ) || return 1
 
   printf '%s
 ' "$subset_dir"
