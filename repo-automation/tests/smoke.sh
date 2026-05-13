@@ -100,6 +100,7 @@ smoke_setup_temp_repo() {
   export smoke_repo_root smoke_test_base smoke_test_dir smoke_remote_dir smoke_expected_origin_url smoke_timeout_seconds
 
   mkdir -p "$smoke_test_dir/repo-automation/bin" "$smoke_test_dir/repo-automation/lib" "$smoke_test_dir/repo-automation/tests/lib" "$smoke_test_dir/repo-automation/tests" || return 1
+  cp "$smoke_repo_root/AGENTS.md" "$smoke_test_dir/AGENTS.md" || return 1
   cp "$smoke_repo_root/repo-automation/lib/common.sh" "$smoke_test_dir/repo-automation/lib/common.sh" || return 1
   cp "$smoke_repo_root/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/branch-cleanup" || return 1
   cp "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
