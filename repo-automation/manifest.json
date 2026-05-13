@@ -99,6 +99,21 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/post-codex-packet",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/docs/post-codex-packet.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/tests/contracts/post-codex-packet.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
       "path": "repo-automation/bin/run-tests",
       "owner": "repo-automation-template",
       "kind": "script"

@@ -22,6 +22,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/ci-watch` read-only polling, timeout handling, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-log-dump` read-only failed-run discovery, durable log capture, tail excerpts, and machine JSON
 - smoke coverage for `repo-automation/bin/status-packet` human default output, machine JSON, and compact repo state reporting
+- smoke coverage for `repo-automation/bin/post-codex-packet` packet assembly, tracked and staged diff capture, safe untracked file copying, skip rules, and zip output
 - smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
 - smoke coverage for `repo-automation/bin/starter-template-ready` human default output, `--machine-json`, `--source-root=/path/to/checkout`, and `--check-current`
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, starter-template profile template installation, and downstream install contract auditing in temporary repos, including the `repo-automation/tests/lib/test-common.sh` and `repo-automation/tests/lib/smoke-common.sh` harness dependencies plus `repo-automation/tests/contracts/` under `--include-tests`
@@ -59,7 +60,7 @@ ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs Shel
 ## Output modes
 
 The shared output-mode contract is documented in [output-modes.md](output-modes.md). `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor` now implement compact summaries by default, temp log-file detail capture, `--explain`, `--quiet`, and `--json-level fail|warn|all`.
-`repo-automation/bin/failure-log`, `repo-automation/bin/touched-files`, `repo-automation/bin/ci-status`, `repo-automation/bin/ci-watch`, and `repo-automation/bin/status-packet` are the lightweight read-only helpers for when you need a log excerpt, a touched-file list, a GitHub CI snapshot, or a repo state packet instead of a fresh diagnostic run.
+`repo-automation/bin/failure-log`, `repo-automation/bin/touched-files`, `repo-automation/bin/ci-status`, `repo-automation/bin/ci-watch`, and `repo-automation/bin/status-packet` are the lightweight read-only helpers for when you need a log excerpt, a touched-file list, a GitHub CI snapshot, or a repo state packet instead of a fresh diagnostic run. `repo-automation/bin/post-codex-packet` is the uploadable packet helper when you need a zip bundle of tracked diffs, staged diffs, and safe untracked files for review.
 
 `repo-automation/tests/docs-check.sh` is the standalone docs drift gate. It is also included in `repo-automation/bin/run-tests`, so local audit runs and GitHub Actions both catch broken markdown links, missing `docs/INDEX.md` coverage, stale public phrasing, missing public navigation links, and basic Markdown formatting regressions.
 The formatting pass checks for trailing whitespace, missing terminal newlines in Markdown files, balanced fenced code blocks, and blank-line separation around headings.

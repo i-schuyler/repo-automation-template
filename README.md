@@ -32,6 +32,7 @@ The repo automation entry points live under `repo-automation/`:
 - `repo-automation/bin/ci-watch`
 - `repo-automation/bin/ci-log-dump`
 - `repo-automation/bin/status-packet`
+- `repo-automation/bin/post-codex-packet`
 - `repo-automation/bin/starter-template-ready`
 - `repo-automation/lib/common.sh`
 - `repo-automation/tests/lib/test-common.sh`

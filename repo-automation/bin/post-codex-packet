@@ -1,0 +1,317 @@
+#!/usr/bin/env bash
+# repo-automation/bin/post-codex-packet
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+post_codex_packet_output_base=""
+post_codex_packet_label=""
+post_codex_packet_keep_dir=0
+post_codex_packet_max_bytes=262144
+post_codex_packet_repo_root=""
+post_codex_packet_packet_dir=""
+post_codex_packet_zip_path=""
+post_codex_packet_index_file=""
+post_codex_packet_timestamp=""
+post_codex_packet_branch=""
+post_codex_packet_head=""
+post_codex_packet_label_slug=""
+post_codex_packet_tracked_count=0
+post_codex_packet_staged_count=0
+post_codex_packet_untracked_count=0
+post_codex_packet_copied_count=0
+post_codex_packet_skipped_count=0
+
+post_codex_packet_usage() {
+  printf 'Usage: repo-automation/bin/post-codex-packet [--out-dir PATH] [--label NAME] [--keep-dir] [--max-bytes N] [--help]\n'
+}
+
+post_codex_packet_info() {
+  printf 'INFO: %s\n' "$*"
+}
+
+post_codex_packet_warn() {
+  printf 'WARN: %s\n' "$*" >&2
+}
+
+post_codex_packet_stop() {
+  printf 'STOP: %s\n' "$*" >&2
+  return 1
+}
+
+post_codex_packet_count_lines() {
+  local path="$1"
+
+  if [ ! -f "$path" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  awk 'END { print NR + 0 }' "$path"
+}
+
+post_codex_packet_slug() {
+  local value="${1:-}"
+
+  printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
+}
+
+post_codex_packet_write_index() {
+  local label_value="${post_codex_packet_label_slug:-}"
+
+  if [ ! -f "$post_codex_packet_index_file" ]; then
+    cat > "$post_codex_packet_index_file" <<'EOF'
+timestamp	branch	head	packet_dir	zip_path	label	tracked_unstaged	staged	untracked	copied	skipped
+EOF
+  fi
+
+  printf '%s	%s	%s	%s	%s	%s	%s	%s	%s	%s	%s\n' \
+    "$post_codex_packet_timestamp" \
+    "$post_codex_packet_branch" \
+    "$post_codex_packet_head" \
+    "$post_codex_packet_packet_dir" \
+    "$post_codex_packet_zip_path" \
+    "$label_value" \
+    "$post_codex_packet_tracked_count" \
+    "$post_codex_packet_staged_count" \
+    "$post_codex_packet_untracked_count" \
+    "$post_codex_packet_copied_count" \
+    "$post_codex_packet_skipped_count" >> "$post_codex_packet_index_file"
+}
+
+post_codex_packet_init_paths() {
+  local label_suffix=""
+  local packet_prefix=""
+
+  post_codex_packet_repo_root="$(repo_auto_repo_root)" || return 1
+  post_codex_packet_output_base="${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}"
+  post_codex_packet_output_base="${post_codex_packet_output_base%/}/post-codex"
+  mkdir -p "$post_codex_packet_output_base" || return 1
+
+  post_codex_packet_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  if [ -n "$post_codex_packet_label" ]; then
+    post_codex_packet_label_slug="$(post_codex_packet_slug "$post_codex_packet_label")"
+    label_suffix="-${post_codex_packet_label_slug}"
+  fi
+
+  packet_prefix="post-codex-${post_codex_packet_timestamp}${label_suffix}"
+  post_codex_packet_packet_dir="$(mktemp -d "$post_codex_packet_output_base/${packet_prefix}.XXXXXX")" || return 1
+  post_codex_packet_zip_path="${post_codex_packet_packet_dir}.zip"
+  post_codex_packet_index_file="$post_codex_packet_output_base/index.tsv"
+}
+
+post_codex_packet_is_sensitive_untracked() {
+  local path="$1"
+  local lowered_path=""
+
+  case "$path" in
+    .env|*/.env|.env.*|*/.env.*|*.pem|*.key|id_rsa|*/id_rsa|id_ed25519|*/id_ed25519|*.p12|*.pfx)
+      return 0
+      ;;
+  esac
+
+  lowered_path="$(printf '%s' "$path" | tr '[:upper:]' '[:lower:]')"
+  case "$lowered_path" in
+    *token*|*secret*|*credential*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+post_codex_packet_untracked_skip_reason() {
+  local path="$1"
+  local size="0"
+
+  if post_codex_packet_is_sensitive_untracked "$path"; then
+    printf 'sensitive path matches packet skip rules\n'
+    return 0
+  fi
+
+  if [ -f "$path" ]; then
+    size="$(stat -c '%s' "$path" 2>/dev/null || printf '0')"
+    if [ "$size" -gt "$post_codex_packet_max_bytes" ]; then
+      printf 'oversized file (%s bytes > %s byte limit)\n' "$size" "$post_codex_packet_max_bytes"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+post_codex_packet_write_summary() {
+  local summary_file="$post_codex_packet_packet_dir/summary.txt"
+
+  cat > "$summary_file" <<EOF
+Branch: $post_codex_packet_branch
+HEAD: $post_codex_packet_head
+Timestamp: $post_codex_packet_timestamp
+Repo path: $post_codex_packet_repo_root
+Packet path: $post_codex_packet_packet_dir
+Zip path: $post_codex_packet_zip_path
+Output base: $post_codex_packet_output_base
+Label: ${post_codex_packet_label:-}
+Tracked unstaged files: $post_codex_packet_tracked_count
+Staged files: $post_codex_packet_staged_count
+Untracked files: $post_codex_packet_untracked_count
+Copied untracked files: $post_codex_packet_copied_count
+Skipped untracked files: $post_codex_packet_skipped_count
+Max untracked copy bytes: $post_codex_packet_max_bytes
+EOF
+}
+
+post_codex_packet_write_diffs() {
+  local status_file="$post_codex_packet_packet_dir/git-status-short.txt"
+  local tracked_dir="$post_codex_packet_packet_dir/tracked-unstaged"
+  local staged_dir="$post_codex_packet_packet_dir/staged"
+
+  mkdir -p "$tracked_dir" "$staged_dir" || return 1
+
+  git status --short --untracked-files=normal > "$status_file" || return 1
+
+  git diff --name-only --diff-filter=ACDMR > "$tracked_dir/name-list.txt" || return 1
+  git diff --stat > "$tracked_dir/stat.txt" || return 1
+  git diff --patch --binary > "$tracked_dir/patch.diff" || return 1
+
+  git diff --cached --name-only --diff-filter=ACDMR > "$staged_dir/name-list.txt" || return 1
+  git diff --cached --stat > "$staged_dir/stat.txt" || return 1
+  git diff --cached --patch --binary > "$staged_dir/patch.diff" || return 1
+
+  post_codex_packet_tracked_count="$(post_codex_packet_count_lines "$tracked_dir/name-list.txt")"
+  post_codex_packet_staged_count="$(post_codex_packet_count_lines "$staged_dir/name-list.txt")"
+}
+
+post_codex_packet_copy_untracked_file() {
+  local source_path="$1"
+  local destination_path="$2"
+  local parent_dir
+
+  parent_dir="$(dirname "$destination_path")"
+  mkdir -p "$parent_dir" || return 1
+  cp -- "$source_path" "$destination_path" || return 1
+}
+
+post_codex_packet_write_untracked() {
+  local list_file="$post_codex_packet_packet_dir/untracked/non-ignored.txt"
+  local skipped_file="$post_codex_packet_packet_dir/untracked/skipped.txt"
+  local copied_root="$post_codex_packet_packet_dir/untracked/copied"
+  local path=""
+  local skip_reason=""
+  local source_path=""
+
+  mkdir -p "$post_codex_packet_packet_dir/untracked" "$copied_root" || return 1
+  : > "$list_file" || return 1
+  : > "$skipped_file" || return 1
+
+  while IFS= read -r -d '' path; do
+    printf '%s\n' "$path" >> "$list_file" || return 1
+    if skip_reason="$(post_codex_packet_untracked_skip_reason "$path")"; then
+      printf '%s\t%s\n' "$path" "$skip_reason" >> "$skipped_file" || return 1
+      post_codex_packet_skipped_count=$((post_codex_packet_skipped_count + 1))
+      continue
+    fi
+
+    source_path="$copied_root/$path"
+    post_codex_packet_copy_untracked_file "$path" "$source_path" || return 1
+    post_codex_packet_copied_count=$((post_codex_packet_copied_count + 1))
+  done < <(git ls-files --others --exclude-standard -z)
+
+  post_codex_packet_untracked_count="$(post_codex_packet_count_lines "$list_file")"
+}
+
+post_codex_packet_create_zip() {
+  python3 - "$post_codex_packet_packet_dir" "$post_codex_packet_zip_path" <<'PY' || return 1
+from pathlib import Path
+import sys
+import zipfile
+
+packet_dir = Path(sys.argv[1])
+zip_path = Path(sys.argv[2])
+with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as archive:
+    for path in sorted(packet_dir.rglob('*')):
+        if path.is_file():
+            archive.write(path, path.relative_to(packet_dir).as_posix())
+PY
+}
+
+post_codex_packet_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        post_codex_packet_usage
+        return 0
+        ;;
+      --out-dir)
+        shift
+        post_codex_packet_output_base="${1:-}"
+        ;;
+      --label)
+        shift
+        post_codex_packet_label="${1:-}"
+        ;;
+      --keep-dir)
+        post_codex_packet_keep_dir=1
+        ;;
+      --max-bytes)
+        shift
+        post_codex_packet_max_bytes="${1:-}"
+        ;;
+      *)
+        post_codex_packet_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -n "$post_codex_packet_output_base" ]; then
+    post_codex_packet_output_base="${post_codex_packet_output_base%/}"
+    REPO_AUTOMATION_OUTPUT_DIR="$post_codex_packet_output_base"
+  fi
+
+  if ! repo_auto_is_positive_integer "$post_codex_packet_max_bytes"; then
+    post_codex_packet_stop "--max-bytes must be a positive integer"
+    return 1
+  fi
+
+  repo_auto_require_command git || return 1
+  repo_auto_require_command python3 || return 1
+
+  post_codex_packet_init_paths || return 1
+  cd "$post_codex_packet_repo_root" || return 1
+  post_codex_packet_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$post_codex_packet_branch" ]; then
+    post_codex_packet_branch="HEAD"
+  fi
+  post_codex_packet_head="$(git rev-parse HEAD 2>/dev/null || true)"
+
+  post_codex_packet_write_diffs || return 1
+  post_codex_packet_write_untracked || return 1
+  post_codex_packet_write_summary || return 1
+  post_codex_packet_create_zip || return 1
+  post_codex_packet_write_index || return 1
+
+  post_codex_packet_info "packet dir: $post_codex_packet_packet_dir"
+  post_codex_packet_info "packet zip: $post_codex_packet_zip_path"
+  post_codex_packet_info "tracked unstaged files: $post_codex_packet_tracked_count"
+  post_codex_packet_info "staged files: $post_codex_packet_staged_count"
+  post_codex_packet_info "untracked files: $post_codex_packet_untracked_count"
+  post_codex_packet_info "copied untracked files: $post_codex_packet_copied_count"
+  post_codex_packet_info "skipped untracked files: $post_codex_packet_skipped_count"
+
+  if [ "$post_codex_packet_keep_dir" -eq 0 ]; then
+    rm -rf "$post_codex_packet_packet_dir"
+  fi
+
+  return 0
+}
+
+post_codex_packet_main "$@"
+# repo-automation/bin/post-codex-packet EOF
