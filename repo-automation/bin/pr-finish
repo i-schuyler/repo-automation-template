@@ -115,6 +115,33 @@ pr_finish_checks_collect() {
   return "$rc"
 }
 
+pr_finish_wait_for_checks_registration() {
+  local pr_number="$1"
+  local checks_json_var="$2"
+  local checks_status_var="$3"
+  local checks_summary_var="$4"
+  local attempts="${5:-3}"
+  local attempt=1
+  local checks_json=""
+  local checks_status=""
+  local checks_summary=""
+
+  while [ "$attempt" -le "$attempts" ]; do
+    pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    if [ "$checks_status" != "missing" ]; then
+      break
+    fi
+    if [ "$attempt" -lt "$attempts" ]; then
+      sleep 1 >/dev/null 2>&1 || true
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  printf -v "$checks_json_var" '%s' "$checks_json"
+  printf -v "$checks_status_var" '%s' "$checks_status"
+  printf -v "$checks_summary_var" '%s' "$checks_summary"
+}
+
 pr_finish_diagnose_on_fail() {
   local pr_number="$1"
   local diagnosis_json=""
@@ -474,7 +501,11 @@ pr_finish_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    if [ "$do_watch" -eq 1 ]; then
+      pr_finish_wait_for_checks_registration "$pr_number" checks_json checks_status checks_summary 3
+    else
+      pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    fi
   fi
 
   if [ "$command_status" -eq 0 ]; then
@@ -509,7 +540,7 @@ pr_finish_main() {
 
     if [ "$do_watch" -eq 1 ] && [ "$checks_status" != "green" ]; then
       pr_finish_warn "watch completed with checks status: $checks_status"
-      if [ "$diagnose_on_fail" -eq 1 ]; then
+      if [ "$diagnose_on_fail" -eq 1 ] && [ "$checks_status" = "blocked" ]; then
         pr_finish_diagnose_on_fail "$pr_number" || true
       fi
       command_status=1

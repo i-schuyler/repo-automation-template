@@ -9,6 +9,7 @@ Default behavior is plan/status-only. It does not merge unless `--merge` is expl
 `--pr=current` resolves the PR associated with the current branch.
 
 `--watch` waits on required checks but does not merge by itself.
+If checks are briefly missing right after PR creation or reuse, `--watch` retries a few times before failing.
 `--watch --diagnose-on-fail` also runs `repo-automation/bin/ci-log-dump --pr ...` when the final checks status is blocked/red and prints a short diagnosis path/excerpt.
 
 `--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green.

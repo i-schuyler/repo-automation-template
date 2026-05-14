@@ -121,7 +121,18 @@ case "$cmd $sub" in
     exit 0
     ;;
   'pr checks')
-    printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
+    if [ -n "${GH_STUB_PR_CHECKS_SEQUENCE_FILE:-}" ] && [ -f "$GH_STUB_PR_CHECKS_SEQUENCE_FILE" ]; then
+      first_line="$(sed -n '1p' "$GH_STUB_PR_CHECKS_SEQUENCE_FILE" 2>/dev/null || true)"
+      rest_lines="$(sed -n '2,$p' "$GH_STUB_PR_CHECKS_SEQUENCE_FILE" 2>/dev/null || true)"
+      if [ -n "$first_line" ]; then
+        printf '%s\n' "$first_line"
+        printf '%s\n' "$rest_lines" > "$GH_STUB_PR_CHECKS_SEQUENCE_FILE"
+      else
+        printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
+      fi
+    else
+      printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
+    fi
     ;;
   'pr view')
     if [ -n "${GH_STUB_PR_VIEW_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_PR_VIEW_FAIL_ONCE_FILE}" ]; then
@@ -2548,6 +2559,7 @@ smoke_check_pr_finish_watch_exit() {
   local green_stderr="$smoke_test_dir/pr-finish-watch-green.log"
   local diagnose_stderr="$smoke_test_dir/pr-finish-watch-diagnose.log"
   local diagnose_fail_stderr="$smoke_test_dir/pr-finish-watch-diagnose-fail.log"
+  local missing_stderr="$smoke_test_dir/pr-finish-watch-missing.log"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local local_bash_path=""
 
@@ -2623,6 +2635,28 @@ tail two' \
     test_pass "pr-finish watch reports diagnosis failures without hiding blocked checks"
   else
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '%s\n%s\n' \
+      '[]' \
+      '[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' > "$smoke_test_base/pr-checks-sequence.json"
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_CHECKS_SEQUENCE_FILE="$smoke_test_base/pr-checks-sequence.json" \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr 123 >/dev/null 2> "$missing_stderr"
+  ); then
+    test_pass "pr-finish watch retries missing checks before failing"
+  else
+    test_fail "pr-finish watch retries missing checks before failing"
+    status=1
+  fi
+
+  if grep -q 'watch completed with checks status: green' "$missing_stderr" && ! grep -q 'diagnosis ' "$missing_stderr"; then
+    :
+  else
+    test_fail "pr-finish watch retries missing checks without diagnosis"
     status=1
   fi
 
