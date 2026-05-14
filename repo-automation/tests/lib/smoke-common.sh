@@ -151,6 +151,18 @@ case "$cmd $sub" in
         ;;
     esac
     ;;
+  'pr merge')
+    if [ -n "${GH_STUB_PR_MERGE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr merge $*" >> "$GH_STUB_PR_MERGE_LOG_FILE"
+    fi
+    if [ -n "${GH_STUB_PR_MERGE_STDERR_FILE:-}" ]; then
+      printf '%s\n' "gh pr merge $*" >> "$GH_STUB_PR_MERGE_STDERR_FILE"
+    fi
+    if [ "${GH_STUB_PR_MERGE_EXIT:-0}" -ne 0 ] 2>/dev/null; then
+      printf '%s\n' "${GH_STUB_PR_MERGE_ERROR:-merge failed}" >&2
+      exit "${GH_STUB_PR_MERGE_EXIT}"
+    fi
+    ;;
   'pr create')
     body_file=""
     title=""
@@ -194,7 +206,14 @@ case "$cmd $sub" in
     printf '%s\n' "${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
     ;;
   'pr list')
-    printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
+    case " $* " in
+      *' --jq '*)
+        printf '%s\n' "${GH_STUB_PR_LIST_NUMBER:-}"
+        ;;
+      *)
+        printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
+        ;;
+    esac
     ;;
   'run list')
     printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"

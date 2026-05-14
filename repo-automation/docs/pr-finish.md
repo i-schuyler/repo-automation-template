@@ -4,9 +4,15 @@
 
 Default behavior is plan/status-only. It does not merge unless `--merge` is explicitly passed.
 
+`--pr=latest` selects the latest open PR in the current repo.
+
+`--pr=current` resolves the PR associated with the current branch.
+
 `--watch` waits on required checks but does not merge by itself.
 
 `--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green.
+
+`--sync-main` switches to `main` and runs `git pull --ff-only` after a successful merge.
 
 Merge is blocked when any of the following are true:
 
@@ -43,5 +49,8 @@ Usage examples:
     repo-automation/bin/pr-finish --status
     repo-automation/bin/pr-finish --watch
     repo-automation/bin/pr-finish --watch --merge --squash
+    repo-automation/bin/pr-finish --watch --pr=latest
+    repo-automation/bin/pr-finish --status --pr=current
     repo-automation/bin/pr-finish --merge --pr=123 --delete-branch
+    repo-automation/bin/pr-finish --merge --pr=current --sync-main
     repo-automation/bin/pr-finish --json --status

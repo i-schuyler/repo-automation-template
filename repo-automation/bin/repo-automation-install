@@ -352,6 +352,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/status-packet.sh"
     "repo-automation/tests/contracts/post-codex-packet.sh"
     "repo-automation/tests/contracts/pr-finish-watch.sh"
+    "repo-automation/tests/contracts/pr-finish-extensions.sh"
     "repo-automation/tests/contracts/repo-zip.sh"
     "repo-automation/tests/contracts/evidence-bundle.sh"
     "repo-automation/tests/contracts/github-settings-check.sh"
