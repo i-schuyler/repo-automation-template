@@ -124,6 +124,11 @@ case "$cmd $sub" in
     printf '%s\n' "${GH_STUB_PR_CHECKS_JSON:-[]}"
     ;;
   'pr view')
+    if [ -n "${GH_STUB_PR_VIEW_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_PR_VIEW_FAIL_ONCE_FILE}" ]; then
+      : > "$GH_STUB_PR_VIEW_FAIL_ONCE_FILE"
+      printf '%s\n' "${GH_STUB_PR_VIEW_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
+      exit 1
+    fi
     case " $* " in
       *' --json number '*|*' --jq .number '*)
         printf '%s\n' "${GH_STUB_PR_VIEW_NUMBER:-123}"
@@ -216,9 +221,19 @@ case "$cmd $sub" in
     esac
     ;;
   'run list')
+    if [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
+      : > "$GH_STUB_RUN_LIST_FAIL_ONCE_FILE"
+      printf '%s\n' "${GH_STUB_RUN_LIST_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
+      exit 1
+    fi
     printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     ;;
   'run view')
+    if [ -n "${GH_STUB_RUN_VIEW_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_VIEW_FAIL_ONCE_FILE}" ]; then
+      : > "$GH_STUB_RUN_VIEW_FAIL_ONCE_FILE"
+      printf '%s\n' "${GH_STUB_RUN_VIEW_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
+      exit 1
+    fi
     if [ -n "${GH_STUB_RUN_VIEW_CALLED_FILE:-}" ]; then
       : > "$GH_STUB_RUN_VIEW_CALLED_FILE"
     fi
@@ -1238,6 +1253,38 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     test_pass "ci-log-dump machine-json reports the saved path and tail excerpt"
   else
     test_fail "ci-log-dump machine-json reports the saved path and tail excerpt"
+    status=1
+  fi
+
+  local ci_log_retry_run_list_marker="$smoke_test_base/ci-log-dump-run-list-retry-$$.marker"
+  local ci_log_retry_run_view_marker="$smoke_test_base/ci-log-dump-run-view-retry-$$.marker"
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_FAIL_ONCE_FILE="$ci_log_retry_run_list_marker" GH_STUB_RUN_VIEW_FAIL_ONCE_FILE="$ci_log_retry_run_view_marker" GH_STUB_RUN_LIST_JSON='[
+      {"databaseId":111,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"push","headBranch":"branch/old","status":"completed","workflowName":"ci"},
+      {"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"schedule","headBranch":"branch/new","status":"completed","workflowName":"ci"}
+    ]' GH_STUB_RUN_VIEW_FAILED_LOG='line one
+line two
+tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" > "$ci_log_human"
+  ) && [ -e "$ci_log_retry_run_list_marker" ] && [ -e "$ci_log_retry_run_view_marker" ] && grep -Eq '^Run id: 222$' "$ci_log_human" && grep -Eq '^tail one$' "$ci_log_human" && grep -Eq '^tail two$' "$ci_log_human"; then
+    test_pass "ci-log-dump retries transient gh failures before dumping the log"
+  else
+    test_fail "ci-log-dump retries transient gh failures before dumping the log"
+    status=1
+  fi
+
+  local ci_log_invalid_json_stderr="$smoke_test_base/ci-log-dump-invalid-json-$$.txt"
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='not-json' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" > "$ci_log_human" 2> "$ci_log_invalid_json_stderr"
+  ); then
+    test_fail "ci-log-dump stops cleanly on invalid gh JSON"
+    status=1
+  elif grep -Eq '^STOP: BLOCKER: GitHub API failure while listing latest failed runs for repository i-schuyler/repo-automation-template after 3 attempts: not-json$' "$ci_log_invalid_json_stderr" && ! grep -Eq 'JSONDecodeError|Traceback' "$ci_log_invalid_json_stderr"; then
+    test_pass "ci-log-dump stops cleanly on invalid gh JSON"
+  else
+    test_fail "ci-log-dump stops cleanly on invalid gh JSON"
     status=1
   fi
 

@@ -106,18 +106,108 @@ ci_log_dump_require_gh() {
   fi
 }
 
+ci_log_dump_gh_excerpt() {
+  local stderr_file="$1"
+  local stdout_file="$2"
+
+  if [ -s "$stderr_file" ]; then
+    sed -n '1,3p' "$stderr_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/[[:space:]]*$//'
+    return 0
+  fi
+
+  if [ -s "$stdout_file" ]; then
+    sed -n '1,3p' "$stdout_file" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/[[:space:]]*$//'
+    return 0
+  fi
+
+  printf 'no output'
+}
+
+ci_log_dump_gh_retryable_failure() {
+  local stderr_file="$1"
+  local stdout_file="$2"
+
+  case "$(tr '\n' ' ' <"$stderr_file")" in
+    *'TLS handshake timeout'*|*'timeout'*|*'timed out'*|*'connection reset'*|*'connection refused'*|*'temporary failure'*|*'Service Unavailable'*|*'Bad Gateway'*|*'Gateway Timeout'*|*'rate limit'*|*'EOF'*)
+      return 0
+      ;;
+  esac
+
+  if [ ! -s "$stdout_file" ] && [ ! -s "$stderr_file" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+ci_log_dump_gh_output() {
+  local operation="$1"
+  local expect_json="$2"
+  shift 2
+  local attempt=1
+  local attempts=3
+  local gh_stdout
+  local gh_stderr
+
+  gh_stdout="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  gh_stderr="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+
+  while [ "$attempt" -le "$attempts" ]; do
+    : >"$gh_stdout"
+    : >"$gh_stderr"
+    if "$@" >"$gh_stdout" 2>"$gh_stderr"; then
+      if [ "$expect_json" -eq 1 ]; then
+        if [ -s "$gh_stdout" ] && python3 - "$gh_stdout" >/dev/null 2>&1 <<'PY'; then
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+json.loads(path.read_text(encoding='utf-8'))
+PY
+          cat "$gh_stdout"
+          rm -f "$gh_stdout" "$gh_stderr" >/dev/null 2>&1 || true
+          return 0
+        fi
+      elif [ -s "$gh_stdout" ]; then
+        cat "$gh_stdout"
+        rm -f "$gh_stdout" "$gh_stderr" >/dev/null 2>&1 || true
+        return 0
+      fi
+      if [ "$attempt" -lt "$attempts" ]; then
+        attempt=$((attempt + 1))
+        continue
+      fi
+    elif [ "$attempt" -lt "$attempts" ] && ci_log_dump_gh_retryable_failure "$gh_stderr" "$gh_stdout"; then
+      attempt=$((attempt + 1))
+      continue
+    fi
+    break
+  done
+
+  ci_log_dump_stop "BLOCKER: GitHub API failure while $operation after $attempts attempts: $(ci_log_dump_gh_excerpt "$gh_stderr" "$gh_stdout")"
+  rm -f "$gh_stdout" "$gh_stderr" >/dev/null 2>&1 || true
+  return 1
+}
+
 ci_log_dump_pick_head_branch() {
-  gh pr view "$1" --repo "$ci_log_dump_repo" --json headRefName --jq '.headRefName'
+  ci_log_dump_gh_output "resolving head branch for PR #$1" 0 gh pr view "$1" --repo "$ci_log_dump_repo" --json headRefName --jq '.headRefName'
 }
 
 ci_log_dump_pick_run_id_for_branch() {
   local branch_name="$1"
   local event_name="$2"
-  gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName     | python3 -c 'import json,sys; items=json.load(sys.stdin); print(next((str(i.get("databaseId","")) for i in items if i.get("conclusion")=="failure"), items[0].get("databaseId","") if items else ""))'
+  local gh_output
+
+  gh_output="$(ci_log_dump_gh_output "listing failed runs for branch $branch_name ($event_name)" 1 gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName)" || return 1
+  printf '%s' "$gh_output" | python3 -c 'import json,sys; items=json.load(sys.stdin); print(next((str(i.get("databaseId","")) for i in items if i.get("conclusion")=="failure"), items[0].get("databaseId","") if items else ""))'
 }
 
 ci_log_dump_pick_latest_failed_run() {
-  gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName     | python3 -c 'import json,sys; items=json.load(sys.stdin); failed=[item for item in items if item.get("conclusion")=="failure"]; print(max(failed, key=lambda item: item.get("createdAt","")).get("databaseId","") if failed else "")'
+  local gh_output
+
+  gh_output="$(ci_log_dump_gh_output "listing latest failed runs for repository $ci_log_dump_repo" 1 gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName)" || return 1
+  printf '%s' "$gh_output" | python3 -c 'import json,sys; items=json.load(sys.stdin); failed=[item for item in items if item.get("conclusion")=="failure"]; print(max(failed, key=lambda item: item.get("createdAt","")).get("databaseId","") if failed else "")'
 }
 
 ci_log_dump_tail_excerpt() {
@@ -272,17 +362,15 @@ ci_log_dump_main() {
 
   gh_log_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   if [ "$ci_log_dump_failed_only" -eq 1 ]; then
-    gh run view "$run_id" --repo "$ci_log_dump_repo" --log-failed >"$gh_log_file" || {
+    if ! ci_log_dump_gh_output "fetching failed log for run $run_id" 0 gh run view "$run_id" --repo "$ci_log_dump_repo" --log-failed >"$gh_log_file"; then
       rm -f "$gh_log_file" >/dev/null 2>&1 || true
-      ci_log_dump_stop "failed to fetch failed log for run $run_id"
       return 1
-    }
+    fi
   else
-    gh run view "$run_id" --repo "$ci_log_dump_repo" --log >"$gh_log_file" || {
+    if ! ci_log_dump_gh_output "fetching log for run $run_id" 0 gh run view "$run_id" --repo "$ci_log_dump_repo" --log >"$gh_log_file"; then
       rm -f "$gh_log_file" >/dev/null 2>&1 || true
-      ci_log_dump_stop "failed to fetch log for run $run_id"
       return 1
-    }
+    fi
   fi
 
   mkdir -p "$ci_log_dump_out_dir" >/dev/null 2>&1 || {
