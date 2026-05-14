@@ -564,7 +564,7 @@ repo_install_main() {
 
   if [ "$command_status" -eq 0 ]; then
     for line in "${files_to_process[@]}"; do
-      source_file="$line"
+      source_file="$source_root/$line"
       target_file="$target_root/$line"
       if [ ! -f "$source_file" ]; then
         blocked_files+=("$line:missing-in-source")
@@ -661,7 +661,7 @@ repo_install_main() {
 
   if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$dry_run" = false ]; then
     for line in "${files_to_process[@]}"; do
-      source_file="$line"
+      source_file="$source_root/$line"
       target_file="$target_root/$line"
       if [ ! -f "$source_file" ]; then
         continue
