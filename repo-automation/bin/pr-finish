@@ -15,7 +15,7 @@ pr_finish_json=0
 pr_finish_stop_reason=""
 
 pr_finish_usage() {
-  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr NUMBER|latest|current] [--json] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--help]\n'
+  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr NUMBER|latest|current] [--json] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
 }
 
 pr_finish_info() {
@@ -116,6 +116,38 @@ pr_finish_checks_collect() {
   return "$rc"
 }
 
+pr_finish_diagnose_on_fail() {
+  local pr_number="$1"
+  local diagnosis_json=""
+  local diagnosis_status=0
+  local diagnosis_log_path=""
+  local diagnosis_excerpt=""
+  local diagnosis_reason=""
+
+  diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --tail=2 --machine-json 2>&1)" || diagnosis_status=$?
+
+  if [ "$diagnosis_status" -eq 0 ]; then
+    diagnosis_log_path="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("log_path",""))' "$diagnosis_json" 2>/dev/null || printf '')"
+    diagnosis_excerpt="$(python3 -c 'import json,sys; data=json.loads(sys.argv[1]); print(" | ".join(data.get("tail_excerpt", [])[:2]))' "$diagnosis_json" 2>/dev/null || printf '')"
+    if [ -n "$diagnosis_log_path" ]; then
+      pr_finish_info "diagnosis log path: $diagnosis_log_path"
+    fi
+    if [ -n "$diagnosis_excerpt" ]; then
+      pr_finish_info "diagnosis excerpt: $diagnosis_excerpt"
+    fi
+    return 0
+  fi
+
+  if [ "${diagnosis_json#\{}" != "$diagnosis_json" ]; then
+    diagnosis_reason="$(python3 -c 'import json,sys; data=json.loads(sys.argv[1]); print(data.get("stop_reason","") or data.get("overall_status","fail"))' "$diagnosis_json" 2>/dev/null || printf 'unknown diagnosis failure')"
+  else
+    diagnosis_reason="$(printf '%s' "$diagnosis_json" | sed -n '1p')"
+  fi
+  diagnosis_reason="${diagnosis_reason:-ci-log-dump failed}"
+  pr_finish_warn "diagnosis failed for PR #$pr_number: $diagnosis_reason"
+  return 1
+}
+
 pr_finish_print_human_status() {
   local mode="$1"
   local current_branch="$2"
@@ -196,6 +228,7 @@ pr_finish_main() {
   local pr_selector=""
   local delete_branch=0
   local sync_main=0
+  local diagnose_on_fail=0
   local merge_mode_override=""
   local merge_mode=""
   local command_status=0
@@ -274,6 +307,9 @@ pr_finish_main() {
         ;;
       --sync-main)
         sync_main=1
+        ;;
+      --diagnose-on-fail)
+        diagnose_on_fail=1
         ;;
       *)
         pr_finish_stop "unknown argument: $arg"
@@ -474,6 +510,9 @@ pr_finish_main() {
 
     if [ "$do_watch" -eq 1 ] && [ "$checks_status" != "green" ]; then
       pr_finish_warn "watch completed with checks status: $checks_status"
+      if [ "$diagnose_on_fail" -eq 1 ]; then
+        pr_finish_diagnose_on_fail "$pr_number" || true
+      fi
       command_status=1
     fi
 

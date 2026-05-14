@@ -9,6 +9,7 @@ Default behavior is plan/status-only. It does not merge unless `--merge` is expl
 `--pr=current` resolves the PR associated with the current branch.
 
 `--watch` waits on required checks but does not merge by itself.
+`--watch --diagnose-on-fail` also runs `repo-automation/bin/ci-log-dump --pr ...` when the final checks status is blocked/red and prints a short diagnosis path/excerpt.
 
 `--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green.
 
@@ -48,6 +49,7 @@ Usage examples:
 
     repo-automation/bin/pr-finish --status
     repo-automation/bin/pr-finish --watch
+    repo-automation/bin/pr-finish --watch --diagnose-on-fail
     repo-automation/bin/pr-finish --watch --merge --squash
     repo-automation/bin/pr-finish --watch --pr=latest
     repo-automation/bin/pr-finish --status --pr=current
