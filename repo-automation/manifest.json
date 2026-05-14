@@ -104,6 +104,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/shellcheck-ci-parity",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/status-packet",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -280,6 +285,11 @@
     },
     {
       "path": "repo-automation/docs/ci-log-dump.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/shellcheck-ci-parity.md",
       "owner": "repo-automation-template",
       "kind": "doc"
     },
