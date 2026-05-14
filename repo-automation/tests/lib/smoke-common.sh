@@ -237,6 +237,9 @@ case "$cmd $sub" in
     if [ -n "${GH_STUB_RUN_VIEW_CALLED_FILE:-}" ]; then
       : > "$GH_STUB_RUN_VIEW_CALLED_FILE"
     fi
+    if [ "${GH_STUB_RUN_VIEW_EMPTY:-0}" -eq 1 ] 2>/dev/null; then
+      exit 0
+    fi
     case " $* " in
       *' --log-failed '*)
         printf '%s\n' "${GH_STUB_RUN_VIEW_FAILED_LOG:-}"
@@ -2543,6 +2546,8 @@ smoke_check_pr_finish_watch_exit() {
   local status=0
   local blocked_stderr="$smoke_test_dir/pr-finish-watch-blocked.log"
   local green_stderr="$smoke_test_dir/pr-finish-watch-green.log"
+  local diagnose_stderr="$smoke_test_dir/pr-finish-watch-diagnose.log"
+  local diagnose_fail_stderr="$smoke_test_dir/pr-finish-watch-diagnose-fail.log"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local local_bash_path=""
 
@@ -2578,6 +2583,46 @@ smoke_check_pr_finish_watch_exit() {
     test_pass "pr-finish watch exits zero when checks are green"
   else
     test_fail "pr-finish watch exits zero when checks are green"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_RUN_VIEW_FAILED_LOG='ci log line one
+ci log line two
+tail one
+tail two' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr 123 >/dev/null 2> "$diagnose_stderr"
+  ); then
+    test_fail "pr-finish watch diagnoses blocked checks"
+    status=1
+  elif grep -q 'watch completed with checks status: blocked' "$diagnose_stderr" &&
+    grep -q 'diagnosis log path: ' "$diagnose_stderr" &&
+    grep -q 'diagnosis excerpt: tail one | tail two' "$diagnose_stderr"; then
+    test_pass "pr-finish watch diagnoses blocked checks"
+  else
+    test_fail "pr-finish watch diagnoses blocked checks"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_RUN_VIEW_EMPTY=1 \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr 123 >/dev/null 2> "$diagnose_fail_stderr"
+  ); then
+    test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
+    status=1
+  elif grep -q 'watch completed with checks status: blocked' "$diagnose_fail_stderr" &&
+    grep -q 'diagnosis failed for PR #123:' "$diagnose_fail_stderr"; then
+    test_pass "pr-finish watch reports diagnosis failures without hiding blocked checks"
+  else
+    test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
     status=1
   fi
 
