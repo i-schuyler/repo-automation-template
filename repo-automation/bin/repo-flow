@@ -15,7 +15,7 @@ repo_flow_json=0
 repo_flow_stop_reason=""
 
 repo_flow_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--json] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--diagnose-on-fail] [--json] [--help]\n'
 }
 
 repo_flow_info() {
@@ -90,6 +90,8 @@ repo_flow_main() {
   local mode="apply"
   local json=0
   local dry_run=0
+  local watch=0
+  local diagnose_on_fail=0
   local repo_root=""
   local current_branch=""
   local default_branch=""
@@ -127,6 +129,12 @@ repo_flow_main() {
       --dry-run|--plan)
         dry_run=1
         mode="plan"
+        ;;
+      --watch)
+        watch=1
+        ;;
+      --diagnose-on-fail)
+        diagnose_on_fail=1
         ;;
       --json)
         json=1
@@ -362,6 +370,26 @@ EOF
         if [ -n "$pr_create_stderr" ] && [ -f "$pr_create_stderr" ]; then
           rm -f "$pr_create_stderr"
         fi
+      fi
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 0 ] && [ "$watch" -eq 1 ]; then
+    if [ "$diagnose_on_fail" -eq 1 ]; then
+      if "$script_dir/pr-finish" --watch --diagnose-on-fail --pr=current >/dev/null; then
+        action_taken="watched-pr"
+      else
+        repo_flow_stop "pr-finish watch failed for PR #$pr_number"
+        command_status=1
+        final_status="blocked"
+      fi
+    else
+      if "$script_dir/pr-finish" --watch --pr=current >/dev/null; then
+        action_taken="watched-pr"
+      else
+        repo_flow_stop "pr-finish watch failed for PR #$pr_number"
+        command_status=1
+        final_status="blocked"
       fi
     fi
   fi

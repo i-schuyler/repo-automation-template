@@ -115,6 +115,37 @@ pr_finish_checks_collect() {
   return "$rc"
 }
 
+pr_finish_wait_for_checks_registration() {
+  local pr_number="$1"
+  local attempts="${2:-3}"
+  local attempt=1
+  local collected_checks_json=""
+  local collected_checks_status=""
+  local collected_checks_summary=""
+  local observed_missing=0
+
+  while [ "$attempt" -le "$attempts" ]; do
+    pr_finish_checks_collect \
+      "$pr_number" \
+      collected_checks_json \
+      collected_checks_status \
+      collected_checks_summary || true
+    if [ "$collected_checks_status" != "missing" ]; then
+      break
+    fi
+    observed_missing=1
+    if [ "$attempt" -lt "$attempts" ]; then
+      sleep 1 >/dev/null 2>&1 || true
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  pr_finish_wait_checks_json="$collected_checks_json"
+  pr_finish_wait_checks_status="$collected_checks_status"
+  pr_finish_wait_checks_summary="$collected_checks_summary"
+  pr_finish_wait_checks_waited="$observed_missing"
+}
+
 pr_finish_diagnose_on_fail() {
   local pr_number="$1"
   local diagnosis_json=""
@@ -247,12 +278,14 @@ pr_finish_main() {
   local checks_status=""
   local checks_summary=""
   local checks_json="[]"
+  local checks_waited=0
   local can_merge="false"
   local action_taken="none"
   local worktree_status=""
   local merge_flag=""
   local arg
   local merge_output=""
+  local watch_output_file=""
   local -a block_reasons=()
 
   while [ "$#" -gt 0 ]; do
@@ -467,14 +500,35 @@ pr_finish_main() {
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$do_watch" -eq 1 ]; then
-    if ! gh pr checks "$pr_number" --required --watch >&2; then
+    watch_output_file="$(mktemp "${TMPDIR:-$HOME/.cache}/pr-finish-watch.XXXXXX.log")" || {
+      pr_finish_stop "failed to create temporary watch output file"
+      command_status=1
+    }
+    if [ "$command_status" -eq 0 ] && ! gh pr checks "$pr_number" --required --watch > "$watch_output_file" 2>&1; then
       pr_finish_warn "gh pr checks --watch returned non-zero; re-checking status"
+    fi
+    if [ "$command_status" -eq 0 ] && grep -qx '\[\]' "$watch_output_file" 2>/dev/null; then
+      checks_waited=1
+    fi
+    if [ -n "$watch_output_file" ] && [ -f "$watch_output_file" ]; then
+      cat "$watch_output_file" >&2
+      rm -f "$watch_output_file"
     fi
     action_taken="watched"
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    if [ "$do_watch" -eq 1 ]; then
+      pr_finish_wait_for_checks_registration "$pr_number" 3
+      checks_json="$pr_finish_wait_checks_json"
+      checks_status="$pr_finish_wait_checks_status"
+      checks_summary="$pr_finish_wait_checks_summary"
+      if [ "${pr_finish_wait_checks_waited:-0}" -eq 1 ]; then
+        checks_waited=1
+      fi
+    else
+      pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    fi
   fi
 
   if [ "$command_status" -eq 0 ]; then
@@ -509,10 +563,12 @@ pr_finish_main() {
 
     if [ "$do_watch" -eq 1 ] && [ "$checks_status" != "green" ]; then
       pr_finish_warn "watch completed with checks status: $checks_status"
-      if [ "$diagnose_on_fail" -eq 1 ]; then
+      if [ "$diagnose_on_fail" -eq 1 ] && [ "$checks_status" = "blocked" ]; then
         pr_finish_diagnose_on_fail "$pr_number" || true
       fi
       command_status=1
+    elif [ "$do_watch" -eq 1 ] && [ "$checks_status" = "green" ] && [ "$checks_waited" -eq 1 ]; then
+      pr_finish_info "watch completed with checks status: green"
     fi
 
     worktree_status=$(git status --porcelain)
