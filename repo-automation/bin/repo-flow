@@ -238,6 +238,7 @@ repo_flow_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
+    # shellcheck disable=SC2086 # Intentional split of two numeric ahead/behind fields.
     set -- $branch_ahead_behind
     behind_count="${1:-0}"
     ahead_count="${2:-0}"
