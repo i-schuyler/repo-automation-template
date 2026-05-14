@@ -59,8 +59,7 @@ pr_finish_resolve_latest_pr_number() {
 }
 
 pr_finish_resolve_current_pr_number() {
-  local current_branch="$1"
-  gh pr view "$current_branch" --json number --jq '.number' 2>/dev/null
+  gh pr view --json number --jq '.number' 2>/dev/null
 }
 
 pr_finish_checks_summary() {
