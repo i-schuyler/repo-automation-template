@@ -151,6 +151,18 @@ case "$cmd $sub" in
         ;;
     esac
     ;;
+  'pr merge')
+    if [ -n "${GH_STUB_PR_MERGE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr merge $*" >> "$GH_STUB_PR_MERGE_LOG_FILE"
+    fi
+    if [ -n "${GH_STUB_PR_MERGE_STDERR_FILE:-}" ]; then
+      printf '%s\n' "gh pr merge $*" >> "$GH_STUB_PR_MERGE_STDERR_FILE"
+    fi
+    if [ "${GH_STUB_PR_MERGE_EXIT:-0}" -ne 0 ] 2>/dev/null; then
+      printf '%s\n' "${GH_STUB_PR_MERGE_ERROR:-merge failed}" >&2
+      exit "${GH_STUB_PR_MERGE_EXIT}"
+    fi
+    ;;
   'pr create')
     body_file=""
     title=""
@@ -194,7 +206,14 @@ case "$cmd $sub" in
     printf '%s\n' "${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
     ;;
   'pr list')
-    printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
+    case " $* " in
+      *' --jq '*)
+        printf '%s\n' "${GH_STUB_PR_LIST_NUMBER:-}"
+        ;;
+      *)
+        printf '%s\n' "${GH_STUB_PR_LIST_JSON:-[]}"
+        ;;
+    esac
     ;;
   'run list')
     printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
@@ -2225,7 +2244,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 19 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 20 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
