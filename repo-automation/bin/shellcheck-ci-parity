@@ -11,7 +11,7 @@ if ! command -v shellcheck >/dev/null 2>&1; then
   exit 1
 fi
 
-cd "$repo_root"
+cd "$repo_root" || exit 1
 
 shellcheck -e SC2317 \
   repo-automation/bin/branch-cleanup \
