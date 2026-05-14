@@ -44,6 +44,7 @@ This is a public, practical seed for the workflow audit checklist product. It is
 - keep `repo-automation/bin/branch-cleanup` on plan-only unless `--apply` is explicit
 - use `repo-automation/bin/pr-finish` only for explicit status, watch, and merge flows
 - keep `repo-automation/bin/add-doc-pr` on docs-only boundaries
+- use `repo-automation/bin/pr-create` for mixed code/docs/test PRs
 - prefer timeout-guarded diagnostics such as `repo-automation/bin/run-tests --audit --timeout=120` and `repo-automation/bin/repo-doctor --full --timeout=120` for final audits
 - keep smoke failures bounded with named subchecks, scenario functions, and registered temp-dir cleanup
 - preview upstream issues before submission with `repo-automation/bin/repo-automation-report-upstream`

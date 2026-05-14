@@ -635,6 +635,7 @@ repo_doctor_check_docs_index() {
     "repo-automation/docs/codex-slice-preflight.md" \
     "repo-automation/docs/pr-finish.md" \
     "repo-automation/docs/add-doc-pr.md" \
+    "repo-automation/docs/pr-create.md" \
     "repo-automation/docs/repo-automation-report-upstream.md" \
     "repo-automation/docs/repo-doctor.md" \
     "repo-automation/docs/github-settings-check.md" \

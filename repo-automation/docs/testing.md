@@ -12,6 +12,7 @@ CI runs the same core checks:
 - smoke tests for branch cleanup and codex slice preflight
 - smoke coverage for `repo-automation/bin/pr-finish` help and safe no-auth/no-gh failure behavior
 - smoke coverage for `repo-automation/bin/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
+- smoke coverage for `repo-automation/bin/pr-create` mixed-change PR creation behavior with stubbed GitHub calls
 - smoke coverage for `repo-automation/bin/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
 - smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, the repo-root artifact guard, `--explain`, JSON levels, log files, and missing-config safe failure behavior
@@ -37,6 +38,7 @@ CI runs the same core checks:
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
 `repo-automation/bin/add-doc-pr` smoke coverage does not create real PRs.
+`repo-automation/bin/pr-create` smoke coverage does not create real PRs.
 `repo-automation/bin/repo-automation-report-upstream` smoke coverage does not create real issues.
 `repo-automation/bin/repo-doctor` smoke coverage is local/no-auth and does not create GitHub objects. It also checks the repo-root artifact guard against accidental root-level temp/cache files in temporary repositories.
 `repo-automation/bin/repo-automation-install` smoke coverage only uses temporary local target repos and does not touch real downstream repos. It also verifies downstream `AGENTS.md` guidance is copied into the target repo root.

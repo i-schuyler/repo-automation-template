@@ -19,6 +19,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/pr-create",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/automation-freshness",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -159,6 +164,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/pr-create.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/branch-cleanup.md",
       "owner": "repo-automation-template",
       "kind": "doc"
@@ -290,6 +300,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/add-doc-pr.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/pr-create.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },
