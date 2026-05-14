@@ -121,6 +121,7 @@ smoke_prepare_repo_flow_branch() {
   local branch_name="$1"
 
   (
+    # shellcheck disable=SC2154 # smoke_test_dir is provided by the smoke harness.
     cd "$smoke_test_dir" || return 1
     git checkout -b "$branch_name" >/dev/null || return 1
     printf '%s\n' "repo-flow branch $branch_name" >> README.md || return 1
@@ -132,6 +133,7 @@ smoke_prepare_repo_flow_branch() {
 smoke_prepare_repo_flow_remote() {
   (
     cd "$smoke_test_dir" || return 1
+    # shellcheck disable=SC2154 # smoke_remote_dir is provided by the smoke harness.
     git remote add localorigin "$smoke_remote_dir" >/dev/null 2>&1 || git remote set-url localorigin "$smoke_remote_dir" || return 1
     python3 - "$smoke_test_dir/.repo-automation.conf" <<'PY' || return 1
 from pathlib import Path
@@ -158,6 +160,7 @@ smoke_check_repo_flow_dry_run_json() {
 
   smoke_setup_temp_repo || return 1
   smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   json_file="$smoke_test_base/repo-flow-dry-run.json"
   stderr_file="$smoke_test_base/repo-flow-dry-run.stderr"
