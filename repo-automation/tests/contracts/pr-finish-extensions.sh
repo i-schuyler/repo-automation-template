@@ -31,6 +31,7 @@ EOF
 
 smoke_check_pr_finish_watch_latest() {
   local status=0
+  # shellcheck disable=SC2154 # smoke_test_dir is provided by the smoke harness.
   local gh_stub_dir="$smoke_test_dir/gh-stub"
   local git_stub_dir="$smoke_test_dir/git-stub"
   local stderr_file="$smoke_test_dir/pr-finish-watch-latest.stderr"
