@@ -53,6 +53,7 @@ This project uses Keep-a-Changelog-style sections without requiring an external 
 
 ### Changed
 
+- Standardized the public repo automation command surface on strict `--flag=<value>` value-flag syntax, with actionable errors for stale, missing, empty, and unknown flags plus CI-backed help/docs/test coverage.
 - Documented public-alpha known limitations and refreshed docs navigation before release-readiness.
 - Clarified that CI/Termux are the supported validation path while arbitrary container rehydration remains best-effort.
 
