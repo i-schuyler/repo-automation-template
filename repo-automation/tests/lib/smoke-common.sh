@@ -1075,12 +1075,39 @@ smoke_check_report_upstream_secret_scan() {
 
 smoke_check_run_tests_contract() {
   local status=0
+  local run_tests_help="$smoke_test_base/run-tests-help-$$.txt"
   local run_tests_default_out="$smoke_test_base/run-tests-default-$$.txt"
   local run_tests_explain_out="$smoke_test_base/run-tests-explain-$$.txt"
   local run_tests_json="$smoke_test_base/run-tests-warn-$$.json"
   local run_tests_log_file="$smoke_test_base/run-tests-log-$$.log"
   local run_tests_no_log_file="$smoke_test_base/run-tests-no-log-$$.log"
   local run_tests_no_log_out="$smoke_test_base/run-tests-no-log-$$.txt"
+  local run_tests_timeout_format_stderr="$smoke_test_base/run-tests-timeout-format-$$.stderr"
+  local run_tests_timeout_missing_stderr="$smoke_test_base/run-tests-timeout-missing-$$.stderr"
+  local run_tests_timeout_empty_stderr="$smoke_test_base/run-tests-timeout-empty-$$.stderr"
+  local run_tests_log_file_format_stderr="$smoke_test_base/run-tests-log-file-format-$$.stderr"
+  local run_tests_log_file_missing_stderr="$smoke_test_base/run-tests-log-file-missing-$$.stderr"
+  local run_tests_log_file_empty_stderr="$smoke_test_base/run-tests-log-file-empty-$$.stderr"
+  local run_tests_json_level_format_stderr="$smoke_test_base/run-tests-json-level-format-$$.stderr"
+  local run_tests_json_level_missing_stderr="$smoke_test_base/run-tests-json-level-missing-$$.stderr"
+  local run_tests_json_level_empty_stderr="$smoke_test_base/run-tests-json-level-empty-$$.stderr"
+  local run_tests_unknown_stderr="$smoke_test_base/run-tests-unknown-$$.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --help > "$run_tests_help"
+  ) && \
+    grep -Fq -- '--timeout=<seconds>' "$run_tests_help" && \
+    grep -Fq -- '--log-file=<path>' "$run_tests_help" && \
+    grep -Fq -- '--json-level=fail|warn|all' "$run_tests_help" && \
+    ! grep -Fq -- '--timeout SECONDS' "$run_tests_help" && \
+    ! grep -Fq -- '--log-file FILE' "$run_tests_help" && \
+    ! grep -Fq -- '--json-level fail|warn|all' "$run_tests_help"; then
+    test_pass "run-tests help shows strict value syntax"
+  else
+    test_fail "run-tests help shows strict value syntax"
+    status=1
+  fi
 
   if (
     cd "$smoke_repo_root" || return 1
@@ -1130,6 +1157,136 @@ smoke_check_run_tests_contract() {
     test_pass "run-tests no-log does not create a log"
   else
     test_fail "run-tests no-log does not create a log"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --timeout 200 >/dev/null 2> "$run_tests_timeout_format_stderr"
+  ); then
+    test_fail "run-tests rejects --timeout <seconds>"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_timeout_format_stderr" "flag format not accepted" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "run-tests rejects --timeout <seconds>"
+  else
+    test_fail "run-tests rejects --timeout <seconds>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --timeout >/dev/null 2> "$run_tests_timeout_missing_stderr"
+  ); then
+    test_fail "run-tests rejects missing --timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_timeout_missing_stderr" "missing flag value" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "run-tests rejects missing --timeout value"
+  else
+    test_fail "run-tests rejects missing --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --timeout= >/dev/null 2> "$run_tests_timeout_empty_stderr"
+  ); then
+    test_fail "run-tests rejects empty --timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_timeout_empty_stderr" "empty flag value" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "run-tests rejects empty --timeout value"
+  else
+    test_fail "run-tests rejects empty --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --log-file "$run_tests_log_file" >/dev/null 2> "$run_tests_log_file_format_stderr"
+  ); then
+    test_fail "run-tests rejects --log-file <path>"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_log_file_format_stderr" "flag format not accepted" "--log-file" "use --log-file=<path>"; then
+    test_pass "run-tests rejects --log-file <path>"
+  else
+    test_fail "run-tests rejects --log-file <path>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --log-file >/dev/null 2> "$run_tests_log_file_missing_stderr"
+  ); then
+    test_fail "run-tests rejects missing --log-file value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_log_file_missing_stderr" "missing flag value" "--log-file" "use --log-file=<path>"; then
+    test_pass "run-tests rejects missing --log-file value"
+  else
+    test_fail "run-tests rejects missing --log-file value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --log-file= >/dev/null 2> "$run_tests_log_file_empty_stderr"
+  ); then
+    test_fail "run-tests rejects empty --log-file value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_log_file_empty_stderr" "empty flag value" "--log-file" "use --log-file=<path>"; then
+    test_pass "run-tests rejects empty --log-file value"
+  else
+    test_fail "run-tests rejects empty --log-file value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --json-level warn >/dev/null 2> "$run_tests_json_level_format_stderr"
+  ); then
+    test_fail "run-tests rejects --json-level <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_json_level_format_stderr" "flag format not accepted" "--json-level" "use --json-level=<fail|warn|all>"; then
+    test_pass "run-tests rejects --json-level <value>"
+  else
+    test_fail "run-tests rejects --json-level <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --json-level >/dev/null 2> "$run_tests_json_level_missing_stderr"
+  ); then
+    test_fail "run-tests rejects missing --json-level value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_json_level_missing_stderr" "missing flag value" "--json-level" "use --json-level=<fail|warn|all>"; then
+    test_pass "run-tests rejects missing --json-level value"
+  else
+    test_fail "run-tests rejects missing --json-level value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --json-level= >/dev/null 2> "$run_tests_json_level_empty_stderr"
+  ); then
+    test_fail "run-tests rejects empty --json-level value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_json_level_empty_stderr" "empty flag value" "--json-level" "use --json-level=<fail|warn|all>"; then
+    test_pass "run-tests rejects empty --json-level value"
+  else
+    test_fail "run-tests rejects empty --json-level value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --whatever >/dev/null 2> "$run_tests_unknown_stderr"
+  ); then
+    test_fail "run-tests rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/run-tests --help"; then
+    test_pass "run-tests rejects unknown flags"
+  else
+    test_fail "run-tests rejects unknown flags"
     status=1
   fi
 
@@ -1223,7 +1380,7 @@ smoke_check_run_tests_contract() {
     status=1
   fi
 
-  rm -f "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1857,6 +2014,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
 
 smoke_check_repo_doctor_contract() {
   local status=0
+  local doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
   local doctor_default_out="$smoke_test_base/repo-doctor-quick-default-$$.txt"
   local doctor_explain_out="$smoke_test_base/repo-doctor-quick-explain-$$.txt"
   local doctor_json_warn="$smoke_test_base/repo-doctor-quick-warn-$$.json"
@@ -1865,10 +2023,41 @@ smoke_check_repo_doctor_contract() {
   local doctor_no_log_out="$smoke_test_base/repo-doctor-no-log-$$.txt"
   local doctor_json="$smoke_test_base/repo-doctor-quick-$$.json"
   local doctor_config_out="$smoke_test_base/repo-doctor-config-$$.txt"
+  local doctor_timeout_format_stderr="$smoke_test_base/repo-doctor-timeout-format-$$.stderr"
+  local doctor_timeout_missing_stderr="$smoke_test_base/repo-doctor-timeout-missing-$$.stderr"
+  local doctor_timeout_empty_stderr="$smoke_test_base/repo-doctor-timeout-empty-$$.stderr"
+  local doctor_log_file_format_stderr="$smoke_test_base/repo-doctor-log-file-format-$$.stderr"
+  local doctor_log_file_missing_stderr="$smoke_test_base/repo-doctor-log-file-missing-$$.stderr"
+  local doctor_log_file_empty_stderr="$smoke_test_base/repo-doctor-log-file-empty-$$.stderr"
+  local doctor_json_level_format_stderr="$smoke_test_base/repo-doctor-json-level-format-$$.stderr"
+  local doctor_json_level_missing_stderr="$smoke_test_base/repo-doctor-json-level-missing-$$.stderr"
+  local doctor_json_level_empty_stderr="$smoke_test_base/repo-doctor-json-level-empty-$$.stderr"
+  local doctor_check_format_stderr="$smoke_test_base/repo-doctor-check-format-$$.stderr"
+  local doctor_check_missing_stderr="$smoke_test_base/repo-doctor-check-missing-$$.stderr"
+  local doctor_check_empty_stderr="$smoke_test_base/repo-doctor-check-empty-$$.stderr"
+  local doctor_unknown_stderr="$smoke_test_base/repo-doctor-unknown-$$.stderr"
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --quick --timeout 200 > "$doctor_default_out"
+    repo-automation/bin/repo-doctor --help > "$doctor_help"
+  ) && \
+    grep -Fq -- '--timeout=<seconds>' "$doctor_help" && \
+    grep -Fq -- '--log-file=<path>' "$doctor_help" && \
+    grep -Fq -- '--json-level=fail|warn|all' "$doctor_help" && \
+    grep -Fq -- '--check=<name>' "$doctor_help" && \
+    ! grep -Fq -- '--timeout SECONDS' "$doctor_help" && \
+    ! grep -Fq -- '--log-file FILE' "$doctor_help" && \
+    ! grep -Fq -- '--json-level fail|warn|all' "$doctor_help" && \
+    ! grep -Fq -- '--check NAME' "$doctor_help"; then
+    test_pass "repo-doctor help shows strict value syntax"
+  else
+    test_fail "repo-doctor help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --quick --timeout=200 > "$doctor_default_out"
   ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- run-tests$' "$doctor_default_out" && grep -Eq '^Next: repo-automation/bin/repo-doctor --explain$' "$doctor_default_out"; then
     test_pass "repo-doctor quick default output is compact"
   else
@@ -1937,7 +2126,176 @@ smoke_check_repo_doctor_contract() {
     status=1
   fi
 
-  rm -f "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" >/dev/null 2>&1 || true
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --timeout 200 >/dev/null 2> "$doctor_timeout_format_stderr"
+  ); then
+    test_fail "repo-doctor rejects --timeout <seconds>"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_timeout_format_stderr" "flag format not accepted" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "repo-doctor rejects --timeout <seconds>"
+  else
+    test_fail "repo-doctor rejects --timeout <seconds>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --timeout >/dev/null 2> "$doctor_timeout_missing_stderr"
+  ); then
+    test_fail "repo-doctor rejects missing --timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_timeout_missing_stderr" "missing flag value" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "repo-doctor rejects missing --timeout value"
+  else
+    test_fail "repo-doctor rejects missing --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --timeout= >/dev/null 2> "$doctor_timeout_empty_stderr"
+  ); then
+    test_fail "repo-doctor rejects empty --timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_timeout_empty_stderr" "empty flag value" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "repo-doctor rejects empty --timeout value"
+  else
+    test_fail "repo-doctor rejects empty --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --log-file "$doctor_log_file" >/dev/null 2> "$doctor_log_file_format_stderr"
+  ); then
+    test_fail "repo-doctor rejects --log-file <path>"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_log_file_format_stderr" "flag format not accepted" "--log-file" "use --log-file=<path>"; then
+    test_pass "repo-doctor rejects --log-file <path>"
+  else
+    test_fail "repo-doctor rejects --log-file <path>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --log-file >/dev/null 2> "$doctor_log_file_missing_stderr"
+  ); then
+    test_fail "repo-doctor rejects missing --log-file value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_log_file_missing_stderr" "missing flag value" "--log-file" "use --log-file=<path>"; then
+    test_pass "repo-doctor rejects missing --log-file value"
+  else
+    test_fail "repo-doctor rejects missing --log-file value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --log-file= >/dev/null 2> "$doctor_log_file_empty_stderr"
+  ); then
+    test_fail "repo-doctor rejects empty --log-file value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_log_file_empty_stderr" "empty flag value" "--log-file" "use --log-file=<path>"; then
+    test_pass "repo-doctor rejects empty --log-file value"
+  else
+    test_fail "repo-doctor rejects empty --log-file value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --json-level warn >/dev/null 2> "$doctor_json_level_format_stderr"
+  ); then
+    test_fail "repo-doctor rejects --json-level <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_json_level_format_stderr" "flag format not accepted" "--json-level" "use --json-level=<fail|warn|all>"; then
+    test_pass "repo-doctor rejects --json-level <value>"
+  else
+    test_fail "repo-doctor rejects --json-level <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --json-level >/dev/null 2> "$doctor_json_level_missing_stderr"
+  ); then
+    test_fail "repo-doctor rejects missing --json-level value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_json_level_missing_stderr" "missing flag value" "--json-level" "use --json-level=<fail|warn|all>"; then
+    test_pass "repo-doctor rejects missing --json-level value"
+  else
+    test_fail "repo-doctor rejects missing --json-level value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --json-level= >/dev/null 2> "$doctor_json_level_empty_stderr"
+  ); then
+    test_fail "repo-doctor rejects empty --json-level value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_json_level_empty_stderr" "empty flag value" "--json-level" "use --json-level=<fail|warn|all>"; then
+    test_pass "repo-doctor rejects empty --json-level value"
+  else
+    test_fail "repo-doctor rejects empty --json-level value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --check config >/dev/null 2> "$doctor_check_format_stderr"
+  ); then
+    test_fail "repo-doctor rejects --check <name>"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_check_format_stderr" "flag format not accepted" "--check" "use --check=<name>"; then
+    test_pass "repo-doctor rejects --check <name>"
+  else
+    test_fail "repo-doctor rejects --check <name>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --check >/dev/null 2> "$doctor_check_missing_stderr"
+  ); then
+    test_fail "repo-doctor rejects missing --check value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_check_missing_stderr" "missing flag value" "--check" "use --check=<name>"; then
+    test_pass "repo-doctor rejects missing --check value"
+  else
+    test_fail "repo-doctor rejects missing --check value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --check= >/dev/null 2> "$doctor_check_empty_stderr"
+  ); then
+    test_fail "repo-doctor rejects empty --check value"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_check_empty_stderr" "empty flag value" "--check" "use --check=<name>"; then
+    test_pass "repo-doctor rejects empty --check value"
+  else
+    test_fail "repo-doctor rejects empty --check value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --whatever >/dev/null 2> "$doctor_unknown_stderr"
+  ); then
+    test_fail "repo-doctor rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$doctor_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/repo-doctor --help"; then
+    test_pass "repo-doctor rejects unknown flags"
+  else
+    test_fail "repo-doctor rejects unknown flags"
+    status=1
+  fi
+
+  rm -f "$doctor_help" "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" "$doctor_timeout_format_stderr" "$doctor_timeout_missing_stderr" "$doctor_timeout_empty_stderr" "$doctor_log_file_format_stderr" "$doctor_log_file_missing_stderr" "$doctor_log_file_empty_stderr" "$doctor_json_level_format_stderr" "$doctor_json_level_missing_stderr" "$doctor_json_level_empty_stderr" "$doctor_check_format_stderr" "$doctor_check_missing_stderr" "$doctor_check_empty_stderr" "$doctor_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
