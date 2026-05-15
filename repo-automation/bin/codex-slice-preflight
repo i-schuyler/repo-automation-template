@@ -24,9 +24,7 @@ preflight_flag_error() {
   local flag="$2"
   local fix="$3"
 
-  printf 'fail: %s\n' "$reason" >&2
-  printf 'flag: %s\n' "$flag" >&2
-  printf 'fix: %s\n' "$fix" >&2
+  repo_auto_flag_error "$reason" "$flag" "$fix" || true
   preflight_stop_reason="$reason"
   return 1
 }
@@ -123,6 +121,7 @@ preflight_main() {
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
+    shift
     case "$arg" in
       --branch=)
         branch_flag_seen=1
@@ -139,12 +138,13 @@ preflight_main() {
         ;;
       --branch)
         branch_flag_seen=1
-        shift
         if [ "$#" -eq 0 ]; then
           preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
         elif [ "${1#-}" != "$1" ]; then
+          shift
           preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
         else
+          shift
           preflight_flag_error "flag format not accepted" "--branch" "use --branch=<name>" || command_status=1
         fi
         ;;
@@ -164,10 +164,8 @@ preflight_main() {
         ;;
       *)
         preflight_flag_error "unknown flag" "$arg" "run repo-automation/bin/codex-slice-preflight --help" || command_status=1
-        command_status=1
         ;;
     esac
-    shift
   done
 
   [ "$branch_value_set" -eq 1 ] || {

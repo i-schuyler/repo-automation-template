@@ -106,6 +106,17 @@ PY
   return 1
 }
 
+smoke_assert_flag_error_shape() {
+  local stderr_file="$1"
+  local reason="$2"
+  local flag="$3"
+  local fix="$4"
+
+  grep -Fxq "fail: $reason" "$stderr_file" &&
+    grep -Fxq "flag: $flag" "$stderr_file" &&
+    grep -Fxq "fix: $fix" "$stderr_file"
+}
+
 smoke_write_gh_stub() {
   local gh_stub_dir="$1"
 
@@ -2712,9 +2723,7 @@ smoke_check_preflight_json() {
   ); then
     test_fail "preflight rejects --branch <name>"
     status=1
-  elif grep -Fxq 'fail: flag format not accepted' "$branch_format_stderr" &&
-    grep -Fxq 'flag: --branch' "$branch_format_stderr" &&
-    grep -Fxq 'fix: use --branch=<name>' "$branch_format_stderr"; then
+  elif smoke_assert_flag_error_shape "$branch_format_stderr" "flag format not accepted" "--branch" "use --branch=<name>"; then
     test_pass "preflight rejects --branch <name>"
   else
     test_fail "preflight rejects --branch <name>"
@@ -2727,9 +2736,7 @@ smoke_check_preflight_json() {
   ); then
     test_fail "preflight rejects missing --branch value"
     status=1
-  elif grep -Fxq 'fail: missing flag value' "$branch_missing_stderr" &&
-    grep -Fxq 'flag: --branch' "$branch_missing_stderr" &&
-    grep -Fxq 'fix: use --branch=<name>' "$branch_missing_stderr"; then
+  elif smoke_assert_flag_error_shape "$branch_missing_stderr" "missing flag value" "--branch" "use --branch=<name>"; then
     test_pass "preflight rejects missing --branch value"
   else
     test_fail "preflight rejects missing --branch value"
@@ -2742,9 +2749,7 @@ smoke_check_preflight_json() {
   ); then
     test_fail "preflight rejects empty --branch value"
     status=1
-  elif grep -Fxq 'fail: empty flag value' "$branch_empty_stderr" &&
-    grep -Fxq 'flag: --branch' "$branch_empty_stderr" &&
-    grep -Fxq 'fix: use --branch=<name>' "$branch_empty_stderr"; then
+  elif smoke_assert_flag_error_shape "$branch_empty_stderr" "empty flag value" "--branch" "use --branch=<name>"; then
     test_pass "preflight rejects empty --branch value"
   else
     test_fail "preflight rejects empty --branch value"
@@ -2757,9 +2762,7 @@ smoke_check_preflight_json() {
   ); then
     test_fail "preflight rejects unknown flags"
     status=1
-  elif grep -Fxq 'fail: unknown flag' "$branch_unknown_stderr" &&
-    grep -Fxq 'flag: --whatever' "$branch_unknown_stderr" &&
-    grep -Fxq 'fix: run repo-automation/bin/codex-slice-preflight --help' "$branch_unknown_stderr"; then
+  elif smoke_assert_flag_error_shape "$branch_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/codex-slice-preflight --help"; then
     test_pass "preflight rejects unknown flags"
   else
     test_fail "preflight rejects unknown flags"
