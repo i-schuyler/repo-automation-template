@@ -15,7 +15,17 @@ pr_finish_json=0
 pr_finish_stop_reason=""
 
 pr_finish_usage() {
-  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr NUMBER|latest|current] [--json] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
+  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr=<number|current|latest>] [--json] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
+}
+
+pr_finish_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  repo_auto_flag_error "$reason" "$flag" "$fix" || true
+  pr_finish_stop_reason="$reason"
+  return 1
 }
 
 pr_finish_info() {
@@ -290,6 +300,7 @@ pr_finish_main() {
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
+    shift
     case "$arg" in
       --help)
         pr_finish_usage
@@ -312,8 +323,17 @@ pr_finish_main() {
         do_merge=1
         ;;
       --pr)
-        shift
-        pr_selector="${1:-}"
+        if [ "$#" -eq 0 ]; then
+          pr_finish_flag_error "missing flag value" "--pr" "use --pr=<number|current|latest>" || command_status=1
+        elif [ "${1#-}" != "$1" ]; then
+          pr_finish_flag_error "missing flag value" "--pr" "use --pr=<number|current|latest>" || command_status=1
+        else
+          pr_finish_flag_error "flag format not accepted" "--pr" "use --pr=<number|current|latest>" || command_status=1
+          shift
+        fi
+        ;;
+      --pr=)
+        pr_finish_flag_error "empty flag value" "--pr" "use --pr=<number|current|latest>" || command_status=1
         ;;
       --pr=*)
         pr_selector="${arg#--pr=}"
@@ -344,11 +364,10 @@ pr_finish_main() {
         diagnose_on_fail=1
         ;;
       *)
-        pr_finish_stop "unknown argument: $arg"
+        pr_finish_flag_error "unknown flag" "$arg" "run repo-automation/bin/pr-finish --help" || command_status=1
         command_status=1
         ;;
     esac
-    shift
   done
 
   if [ "$do_merge" -eq 1 ]; then
@@ -450,7 +469,7 @@ pr_finish_main() {
     case "$pr_selector" in
       "")
         if [ "$current_branch" = "$default_branch" ]; then
-          pr_finish_stop "current branch is default branch; use --pr NUMBER"
+          pr_finish_stop "current branch is default branch; use --pr=<number|current|latest>"
           command_status=1
         else
           pr_target="$current_branch"

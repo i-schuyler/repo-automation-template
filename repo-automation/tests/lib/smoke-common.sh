@@ -2584,7 +2584,7 @@ smoke_check_pr_finish_watch_exit() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr 123 >/dev/null 2> "$blocked_stderr"
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 >/dev/null 2> "$blocked_stderr"
   ); then
     test_fail "pr-finish watch exits nonzero when checks are blocked"
     status=1
@@ -2601,7 +2601,7 @@ smoke_check_pr_finish_watch_exit() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr 123 >/dev/null 2> "$green_stderr"
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 >/dev/null 2> "$green_stderr"
   ); then
     test_pass "pr-finish watch exits zero when checks are green"
   else
@@ -2618,7 +2618,7 @@ smoke_check_pr_finish_watch_exit() {
 ci log line two
 tail one
 tail two' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr 123 >/dev/null 2> "$diagnose_stderr"
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_stderr"
   ); then
     test_fail "pr-finish watch diagnoses blocked checks"
     status=1
@@ -2637,7 +2637,7 @@ tail two' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_VIEW_EMPTY=1 \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr 123 >/dev/null 2> "$diagnose_fail_stderr"
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
   ); then
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
     status=1
@@ -2656,7 +2656,7 @@ tail two' \
       '[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' > "$smoke_test_base/pr-checks-sequence.json"
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_SEQUENCE_FILE="$smoke_test_base/pr-checks-sequence.json" \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr 123 >/dev/null 2> "$missing_stderr"
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$missing_stderr"
   ); then
     test_pass "pr-finish watch retries missing checks before failing"
   else

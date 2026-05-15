@@ -126,6 +126,86 @@ smoke_check_pr_finish_status_current() {
   return "$status"
 }
 
+smoke_check_pr_finish_pr_flag_shapes() {
+  local status=0
+  local help_file="$smoke_test_dir/pr-finish-help.txt"
+  local stale_stderr="$smoke_test_dir/pr-finish-pr-stale.stderr"
+  local missing_stderr="$smoke_test_dir/pr-finish-pr-missing.stderr"
+  local empty_stderr="$smoke_test_dir/pr-finish-pr-empty.stderr"
+  local unknown_stderr="$smoke_test_dir/pr-finish-unknown.stderr"
+  local local_bash_path=""
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$smoke_test_base/gh-stub" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-finish --help > "$help_file"
+  ) && grep -Fq -- '--pr=<number|current|latest>' "$help_file" && ! grep -Fq -- '--pr NUMBER' "$help_file"; then
+    test_pass "pr-finish help shows strict pr syntax"
+  else
+    test_fail "pr-finish help shows strict pr syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$smoke_test_base/gh-stub:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --status --pr 123 >/dev/null 2> "$stale_stderr"
+  ); then
+    test_fail "pr-finish rejects --pr <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$stale_stderr" "flag format not accepted" "--pr" "use --pr=<number|current|latest>"; then
+    test_pass "pr-finish rejects --pr <value>"
+  else
+    test_fail "pr-finish rejects --pr <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$smoke_test_base/gh-stub:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --status --pr >/dev/null 2> "$missing_stderr"
+  ); then
+    test_fail "pr-finish rejects missing --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$missing_stderr" "missing flag value" "--pr" "use --pr=<number|current|latest>"; then
+    test_pass "pr-finish rejects missing --pr value"
+  else
+    test_fail "pr-finish rejects missing --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$smoke_test_base/gh-stub:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --status --pr= >/dev/null 2> "$empty_stderr"
+  ); then
+    test_fail "pr-finish rejects empty --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$empty_stderr" "empty flag value" "--pr" "use --pr=<number|current|latest>"; then
+    test_pass "pr-finish rejects empty --pr value"
+  else
+    test_fail "pr-finish rejects empty --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$smoke_test_base/gh-stub:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --status --whatever >/dev/null 2> "$unknown_stderr"
+  ); then
+    test_fail "pr-finish rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/pr-finish --help"; then
+    test_pass "pr-finish rejects unknown flags"
+  else
+    test_fail "pr-finish rejects unknown flags"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_pr_finish_merge_current_sync_main() {
   local status=0
   local gh_stub_dir="$smoke_test_dir/gh-stub"
@@ -212,7 +292,7 @@ smoke_check_pr_finish_merge_failure_skips_sync_main() {
     GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
     GH_STUB_PR_MERGE_EXIT=1 \
     GH_STUB_PR_MERGE_ERROR='merge boom' \
-    "$local_bash_path" repo-automation/bin/pr-finish --merge --pr 777 --sync-main > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=777 --sync-main > /dev/null 2> "$stderr_file"
   ); then
     test_fail "pr-finish merge failure skips sync-main"
     status=1
@@ -239,6 +319,7 @@ smoke_main() {
 
   smoke_run_named_check "smoke:pr-finish-watch-latest" smoke_check_pr_finish_watch_latest || status=1
   smoke_run_named_check "smoke:pr-finish-status-current" smoke_check_pr_finish_status_current || status=1
+  smoke_run_named_check "smoke:pr-finish-pr-flag-shapes" smoke_check_pr_finish_pr_flag_shapes || status=1
   smoke_run_named_check "smoke:pr-finish-merge-current-sync-main" smoke_check_pr_finish_merge_current_sync_main || status=1
   smoke_run_named_check "smoke:pr-finish-merge-failure-skips-sync-main" smoke_check_pr_finish_merge_failure_skips_sync_main || status=1
 
