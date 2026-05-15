@@ -4,6 +4,37 @@
 set -u
 set -o pipefail
 
+print_help() {
+  printf 'Usage: repo-automation/bin/shellcheck-ci-parity [--help]\n'
+  printf '\n'
+  printf 'Run ShellCheck against the CI file set with the CI parity exclusion.\n'
+}
+
+flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  exit 1
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --help)
+      print_help
+      exit 0
+      ;;
+    -*)
+      flag_error "unknown flag" "$arg" "run repo-automation/bin/shellcheck-ci-parity --help"
+      ;;
+    *)
+      flag_error "unknown flag" "$arg" "run repo-automation/bin/shellcheck-ci-parity --help"
+      ;;
+  esac
+done
+
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 
 if ! command -v shellcheck >/dev/null 2>&1; then

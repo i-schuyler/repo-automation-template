@@ -23,7 +23,9 @@ Default human output:
 
 Check an explicit repo:
 
-    repo-automation/bin/github-settings-check --repo=OWNER/REPO
+    repo-automation/bin/github-settings-check --repo=<owner/repo>
+
+The helper accepts `--repo=<owner/repo>` only, not `--repo OWNER/REPO`.
 
 Machine output:
 

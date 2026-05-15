@@ -374,6 +374,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/repo-zip.sh"
     "repo-automation/tests/contracts/evidence-bundle.sh"
     "repo-automation/tests/contracts/github-settings-check.sh"
+    "repo-automation/tests/contracts/shellcheck-ci-parity.sh"
     "repo-automation/tests/contracts/installer.sh"
     "repo-automation/tests/contracts/starter-template.sh"
     "repo-automation/tests/contracts/branch-cleanup-preflight.sh"

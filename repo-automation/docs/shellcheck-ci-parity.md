@@ -4,6 +4,10 @@
 
 Use it locally from the repo root to catch CI-only ShellCheck failures before pushing.
 
+Help:
+
+    repo-automation/bin/shellcheck-ci-parity --help
+
 If ShellCheck is missing on Termux, install it with:
 
 `pkg install shellcheck`
