@@ -1,138 +1,563 @@
 # Repo Automation Output Modes
 
-This document defines the shared output contract for repo automation scripts, starting with the highest-noise commands:
+Status: approved draft canon
+Repo target: `repo-automation-template`
+Intended repo path after approval: `repo-automation/docs/output-modes.md`
+Purpose: define the newest quiet-first output contract for repo automation helpers.
 
-- repo-automation/bin/run-tests
-- repo-automation/bin/repo-doctor
+This document replaces older output-mode language. The newest design is the only design.
 
-The goal is to reduce ChatGPT/Codex token churn while preserving full diagnostic evidence in local logs.
+## Core rule
 
-## Default output posture
+Every repo automation helper should output the least information that is still useful.
 
-Long-running or high-detail commands should default to compact human output:
+Success should be quiet. Failure should be actionable. Diagnostics should be narrow.
 
-- one start line
-- one final result line
-- pass/warn/fail/skipped totals
-- log path when details exist
-- failing and warning check names only when action is needed
-- `--summary` is the default human mode for the implemented commands.
-- `--quiet` suppresses the start line and keeps only final totals plus warning/failure hints.
+Do not make the user hunt for the important line.
 
-Default output should not print every passing check.
+## Status words
 
-## Required output modes
+Canonical human status words are lowercase:
 
-Scripts that implement this contract should support:
+- `pass`
+- `fail`
+- `warn`
+- `skip`
+- `wait`
+- `plan`
+- `clean`
+- `none`
 
-- --summary
-  - compact human summary
-  - default for long-running diagnostics
+Use lowercase because it is consistent, easy to snapshot-test, easy to parse, and visually calm.
 
-- --explain
-  - detailed human output
-  - prints pass/warn/fail detail
+Do not choose status-word capitalization based on assumed token savings.
 
-- --quiet
-  - only final result plus failure/warning hints
+## Output postures
 
-- --log-file=FILE
-  - write full detailed logs to FILE
+Every public helper should fit one of these output postures.
 
-- --no-log
-  - disable detailed log creation when explicitly requested
+| Posture | Purpose | Success output | Failure output |
+| --- | --- | --- | --- |
+| Default human compact | readable phone-friendly output | `pass`, artifact path, or compact result | first actionable failure plus fix |
+| `--quiet` | least UI and agent-token noise | no output | first actionable failure only |
+| JSON mode | machine-readable output | valid JSON only on stdout | valid JSON only on stdout |
 
-- --audit
-  - compact full-audit preset for diagnostic runs
+Do not add `--agents` unless a future need cannot be expressed with `--quiet`, `--json`, or `--machine-json`.
 
-- --timeout=SECONDS
-  - per-check timeout guard for long-running checks
-  - default conservative timeout is 120 seconds in `repo-automation/bin/run-tests` and `repo-automation/bin/repo-doctor`
-  - when the `timeout` command is unavailable, scripts warn once and continue without timeout guards
+For Codex or other agent checks, prefer `--quiet` for minimal human-readable checks. Use JSON only when structured parsing is needed.
 
-- --json
-  - stdout must be valid JSON only
-  - human logs must go to stderr or log files
+## Stream rules
 
-- --json-level=fail|warn|all
-  - fail: include failures only
-  - warn: include failures and warnings
-  - all: include all checks
+- Default human success output goes to stdout.
+- Artifact paths go to stdout.
+- Human warnings and failures go to stderr.
+- JSON modes write valid JSON only to stdout.
+- Non-JSON diagnostics must not mix into JSON stdout.
+- `--help` writes usage to stdout.
 
-## Default log location
+If a script cannot produce valid JSON, it must fail outside JSON mode with a compact human failure instead of printing partial JSON.
 
-When logs are enabled and no file is supplied, use:
+## Default human compact mode
 
-    ${TMPDIR:-$HOME/.cache}/repo-automation-template/<script>-<timestamp>.log
+Default output prints only the final useful result.
 
-Scripts must print the log path in compact human output.
+Successful generic check:
 
-## Recommended human output
+```text
+pass
+```
 
-Example successful run:
+Warning-only run:
 
-    RUNNING repo automation tests...
-    RESULT: pass=42 warn=0 fail=0 skipped=0
-    Log: /path/to/run-tests-2026-05-06T120000.log
+```text
+warn: gh unavailable; skipped GitHub settings readiness
+```
 
-Example warning run:
+Failure:
 
-    RUNNING repo automation tests...
-    RESULT: pass=41 warn=1 fail=0 skipped=0
-    WARN:
-    - repo-doctor: expected remote URL not configured
-    Log: /path/to/run-tests-2026-05-06T120000.log
-    Next: repo-automation/bin/run-tests --explain
+```text
+fail: docs-check: broken link in docs/INDEX.md
+excerpt: repo-automation/docs/command-shape.md not found
+fix: add the doc or update docs/INDEX.md
+```
 
-Example failure run:
+Rules:
 
-    RUNNING repo automation tests...
-    RESULT: pass=38 warn=1 fail=1 skipped=0
-    FAIL:
-    - repo-automation/tests/smoke.sh (smoke:report-upstream-secret-scan - report-upstream secret scan blocks likely secret logs)
-    Log: /path/to/run-tests-2026-05-06T120000.log
-    Next: repo-automation/bin/run-tests --explain
+- Do not print every passing check.
+- Do not print child-script status from umbrella scripts.
+- Do not print decorative headings.
+- Do not print a log path on clean success unless the command's purpose is to create an artifact or log.
 
-For smoke-test failures, the compact summary should point at the named smoke subcheck and the log file when one exists. Timed-out smoke checks should say so explicitly when the named check is available.
+## Quiet mode
 
-## Recommended Codex usage
+`--quiet` is the lowest-noise human-readable mode.
 
-For low-token automation handoff:
+Successful quiet run:
 
-    repo-automation/bin/run-tests --json --json-level=warn
-    repo-automation/bin/repo-doctor --json --quick --json-level=warn
+```text
+```
 
-Codex should report warning/failure summaries and log paths instead of pasting full passing output.
+Failure in quiet mode:
 
-## Scope
+```text
+fail: shellcheck missing
+fix: pkg install shellcheck
+```
 
-This contract should be implemented first for:
+Warning-only quiet run:
 
-- repo-automation/bin/run-tests
-- repo-automation/bin/repo-doctor
+```text
+warn: gh unavailable; skipped GitHub settings readiness
+```
 
-Other scripts may adopt the same contract later when their output becomes noisy enough to justify it.
+Rules:
+
+- Print nothing when all checks pass.
+- Print warning-only output when there are warnings but no failures.
+- Print only the first actionable failure when a failure occurs.
+- Do not print child-script status from umbrella scripts.
+- Do not print log paths unless the log path is required for the smallest next action.
+
+## Explain mode
+
+`--explain` is the detailed human escape hatch.
+
+Use it when a person needs all relevant warnings, failures, summaries, or log paths.
+
+Example:
+
+```text
+fail: 1 blocker, 1 warning
+blocker: docs-check: broken link in docs/INDEX.md
+warning: gh unavailable; skipped GitHub settings readiness
+log: ${TMPDIR:-$HOME/.cache}/repo-automation-template/repo-doctor-2026-05-14T215100.log
+```
+
+Rules:
+
+- `--explain` may include pass/warn/fail counts.
+- `--explain` may include multiple findings.
+- `--explain` still must not dump long raw logs by default.
+- If a long log matters, print the exact log path and the smallest useful excerpt.
+
+## JSON modes
+
+Scripts may expose `--json`, `--machine-json`, or both.
+
+Rules:
+
+- stdout must be valid JSON only.
+- stderr may contain fatal wrapper errors only when JSON cannot be produced.
+- `--json-level=fail` includes failures only.
+- `--json-level=warn` includes failures and warnings.
+- `--json-level=all` includes all reported checks.
+
+Minimal failure JSON shape:
+
+```json
+{"status":"fail","first_failure":{"check":"docs","reason":"broken link in docs/INDEX.md","fix":"add the doc or update docs/INDEX.md"}}
+```
+
+JSON output shape should be documented per helper when that helper has JSON mode.
+
+If JSON shape changes, update docs and tests in the same slice.
+
+## Logs
+
+Detailed logs may still be created, but compact output should not advertise logs on every successful run.
+
+Default log root:
+
+```text
+${TMPDIR:-$HOME/.cache}/repo-automation-template
+```
+
+Print a log path only when:
+
+- a failure or warning requires it;
+- the user requested log output;
+- the command's purpose is to create a log or evidence artifact;
+- `--explain` is used.
+
+Logs must not include secrets.
+
+## Umbrella scripts
+
+Umbrella scripts run multiple checks or child scripts.
+
+Examples:
+
+- `repo-automation/bin/run-tests --audit`
+- `repo-automation/bin/run-tests --changed`
+- `repo-automation/bin/repo-doctor --full`
+- `repo-automation/bin/repo-doctor --quick`
+- `repo-automation/bin/evidence-bundle --post-codex`
+- `repo-automation/bin/evidence-bundle --include-repo-zip`
+- `repo-automation/bin/repo-flow --watch --diagnose-on-fail`
+
+All children pass:
+
+```text
+pass
+```
+
+First child failure:
+
+```text
+fail: run-tests: smoke:pr-create
+excerpt: expected PR body file validation to block missing file
+fix: inspect repo-automation/tests/contracts/pr-create.sh
+```
+
+Rules:
+
+- Do not print one line per passing child.
+- Stop UI output at the first actionable failure.
+- Preserve full child details in logs, JSON, or `--explain` when useful.
+- Keep umbrella success output as compact as any single script.
+
+## Artifact-producing commands
+
+Artifact-producing helpers should print path-only success when the artifact path is the result.
+
+Examples:
+
+- `repo-automation/bin/post-codex-packet`
+- `repo-automation/bin/repo-zip`
+- `repo-automation/bin/evidence-bundle`
+- `repo-automation/bin/ci-log-dump`
+
+Single artifact success:
+
+```text
+/storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/repo-zip/repo-automation-template-review.zip
+```
+
+Multiple artifact success:
+
+```text
+bundle: /storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/evidence-bundle/review.zip
+packet: /storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/post-codex/review.zip
+```
+
+Artifact warning:
+
+```text
+warn: skipped sensitive untracked file
+file: .env
+artifact: /storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/post-codex/review.zip
+```
+
+Artifact failure:
+
+```text
+fail: zip creation failed
+excerpt: permission denied writing output directory
+fix: choose --out-dir=${TMPDIR:-$HOME/.cache}/repo-automation
+```
+
+Rules:
+
+- Print the artifact path, not a paragraph.
+- Print file count, size, checksum, or timestamp only when requested by `--explain`, JSON mode, or the helper's documented purpose.
+- Never include ignored files, secrets, build artifacts, caches, `.git`, dependency folders, or generated binaries unless a helper explicitly documents a safe exception.
+
+## Status and diagnostic commands
+
+Status commands should output only the state that matters.
+
+Clean status:
+
+```text
+clean
+```
+
+Dirty status:
+
+```text
+branch: output-contract-spec
+changed:
+- repo-automation/docs/output-modes.md
+- docs/INDEX.md
+```
+
+No touched files:
+
+```text
+none
+```
+
+Touched files:
+
+```text
+repo-automation/docs/output-modes.md
+docs/INDEX.md
+```
+
+No recent failure log:
+
+```text
+none
+```
+
+Failure log found:
+
+```text
+fail: latest run-tests failure
+excerpt: shellcheck: repo-automation/bin/repo-flow: SC2086
+log: ${TMPDIR:-$HOME/.cache}/repo-automation-template/run-tests-2026-05-14T215100.log
+```
+
+Rules:
+
+- Do not mix unrelated diagnostics into status output.
+- If the command is a diagnostic command, output only the relevant diagnostic data.
+- If no data exists, print `none`, not an explanatory paragraph.
+
+## CI commands
+
+CI green:
+
+```text
+pass
+```
+
+CI red:
+
+```text
+fail: CI validate failed
+run: 123456789
+fix: repo-automation/bin/ci-log-dump --run-id=123456789
+```
+
+CI pending or timeout:
+
+```text
+wait: CI still pending after 600s
+fix: rerun later or inspect GitHub Actions
+```
+
+Network or auth failure:
+
+```text
+fail: GitHub API unavailable
+fix: retry before patching code
+```
+
+Rules:
+
+- Network/auth failure is not CI failure.
+- Do not tell the user to patch code unless CI failure evidence proves a code/doc/test problem.
+- Prefer the smallest next command that retrieves the relevant evidence.
+
+## Planning and dry-run commands
+
+Safe no-op plan:
+
+```text
+plan: no changes
+```
+
+Plan with action:
+
+```text
+plan: create docs PR
+branch: docs/output-contract
+files: 2
+```
+
+Blocked plan:
+
+```text
+fail: blocked non-docs file
+file: repo-automation/bin/run-tests
+fix: use pr-create or narrow changed files
+```
+
+Rules:
+
+- `--dry-run` and `--plan` should not perform writes.
+- Output should show only the planned action, blocked reason, or next fix.
+- Do not print full internal decision trees by default.
+
+## Write/action commands
+
+PR created or reused:
+
+```text
+https://github.com/i-schuyler/repo-automation-template/pull/53
+```
+
+PR merge completed:
+
+```text
+merged: #53
+```
+
+PR merge blocked:
+
+```text
+fail: PR checks not green
+pr: #53
+checks: red
+fix: repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=53
+```
+
+Write blocked by dirty tree:
+
+```text
+fail: dirty worktree
+fix: commit, stash, or revert changes first
+```
+
+Rules:
+
+- Successful creation commands may output only the URL or resulting path.
+- Successful destructive or irreversible commands should print the completed action.
+- Blocked writes must print the blocker and smallest safe fix.
+
+## Argument and flag errors
+
+All helpers should use the same flag-error output shape.
+
+Known value flag passed as `--flag value`:
+
+```text
+fail: flag format not accepted
+flag: --pr
+fix: use --pr=52
+```
+
+Unknown flag:
+
+```text
+fail: unknown flag
+flag: --whatever
+fix: run <script> --help
+```
+
+Missing value:
+
+```text
+fail: missing flag value
+flag: --pr
+fix: use --pr=<number|current|latest>
+```
+
+Empty value:
+
+```text
+fail: empty flag value
+flag: --branch
+fix: use --branch=<name>
+```
+
+Rules:
+
+- `--flag value` is an error, not a warning, alias, fallback, or transition behavior.
+- Prefer helper-specific fixes when a valid value set is known.
+- Use the exact flag spelling in the `flag:` line.
+
+## Help output
+
+Help should remain compact and consistent.
+
+Example:
+
+```text
+Usage: repo-automation/bin/run-tests [--summary] [--audit] [--changed] [--quiet] [--explain] [--json] [--help]
+```
+
+Rules:
+
+- Help may include a compact options list.
+- Help must document only accepted syntax.
+- Help must not document `--flag value` for value flags.
+
+## CI enforcement
+
+Output contracts should be enforced in CI with exact stdout/stderr tests.
+
+Required enforcement areas:
+
+- default success prints only `pass` or the documented compact result;
+- `--quiet` prints nothing on success;
+- `--quiet` prints only first actionable failure on failure;
+- warning-only output prints warning only;
+- JSON modes print valid JSON only to stdout;
+- umbrella scripts do not print child pass/status chatter;
+- artifact-producing commands print path-only success where documented;
+- known bad flag syntax produces the standard flag error;
+- help output does not document stale flag shapes.
+
+Prefer focused contract files under:
+
+```text
+repo-automation/tests/contracts/
+```
+
+## Examples by command type
+
+Generic check scripts:
+
+```text
+repo-automation/bin/run-tests --changed --quiet
+repo-automation/bin/repo-doctor --check=docs --quiet
+repo-automation/tests/docs-check.sh
+```
+
+Expected clean output for default mode:
+
+```text
+pass
+```
+
+Expected clean output for quiet mode:
+
+```text
+```
+
+Artifact scripts:
+
+```text
+repo-automation/bin/post-codex-packet --name=review
+repo-automation/bin/evidence-bundle --pr=current --ci-failed
+repo-automation/bin/repo-zip --name=review
+```
+
+Expected clean output:
+
+```text
+/path/to/artifact.zip
+```
+
+Status scripts:
+
+```text
+repo-automation/bin/status-packet
+repo-automation/bin/touched-files --base=main --head=HEAD
+```
+
+Expected clean output may be:
+
+```text
+clean
+```
+
+or:
+
+```text
+none
+```
 
 ## Non-goals
 
 This contract does not require:
 
-- terminal spinners
-- progress bars
-- curses-style UI
-- background/asynchronous behavior
-- hidden failures
-
-Terminal polish can come later. The priority is lower token usage, clear failures, and preserved evidence.
-
-## Safety requirements
-
-- JSON mode must keep stdout as valid JSON only.
-- Detailed logs must not print secrets.
-- Log files should live under ${TMPDIR:-$HOME/.cache} by default.
-- Failure summaries must identify enough context to act without dumping full logs.
-- Passing details should be available through --explain or log files, not default output.
-
-## Known limitation
-
-Compact output, logs, JSON modes, and timeout guards are designed to make diagnostics easier to share. They do not guarantee perfect cleanup after arbitrary external process termination in every container environment. See `docs/KNOWN_LIMITATIONS.md`.
+- verbose progress output;
+- full local audit output on phone;
+- child pass lines from umbrella scripts;
+- log paths on every successful run;
+- an `--agents` mode;
+- dual human and JSON output in the same stream;
+- accepting alternate value-flag syntax.

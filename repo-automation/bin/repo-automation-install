@@ -309,6 +309,7 @@ repo_install_main() {
     "repo-automation/docs/issue-escalation.md"
     "repo-automation/docs/managed-files.md"
     "repo-automation/docs/output-modes.md"
+    "repo-automation/docs/command-shape.md"
     "repo-automation/docs/pr-finish.md"
     "repo-automation/docs/add-doc-pr.md"
     "repo-automation/docs/pr-create.md"

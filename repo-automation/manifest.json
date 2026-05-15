@@ -239,6 +239,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/command-shape.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/pr-finish.md",
       "owner": "repo-automation-template",
       "kind": "doc"
