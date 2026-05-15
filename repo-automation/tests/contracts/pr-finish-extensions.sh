@@ -138,6 +138,7 @@ smoke_check_pr_finish_pr_flag_shapes() {
   trap 'test_cleanup' EXIT INT TERM
 
   smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154
   smoke_write_gh_stub "$smoke_test_base/gh-stub" || return 1
   local_bash_path="$(command -v bash)" || return 1
 
