@@ -13,7 +13,7 @@ failure_log_lines=20
 failure_log_machine_json=0
 
 failure_log_usage() {
-  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=run-tests|repo-doctor|any] [--lines=N] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=<run-tests|repo-doctor|any>] [--lines=<lines>] [--machine-json] [--help]\n'
 }
 
 failure_log_json_escape() {
@@ -173,11 +173,13 @@ EOF_EXCERPT
 
 failure_log_main() {
   local arg
+  local next_arg
   local root
   local log_file=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
+    next_arg="${2:-}"
     case "$arg" in
       --help)
         failure_log_usage
@@ -188,6 +190,10 @@ failure_log_main() {
         ;;
       --kind=*)
         failure_log_kind="${arg#--kind=}"
+        if [ -z "$failure_log_kind" ]; then
+          repo_auto_flag_error "empty flag value" "--kind" "use --kind=<run-tests|repo-doctor|any>" || return 1
+          return 1
+        fi
         case "$failure_log_kind" in
           run-tests|repo-doctor|any)
             ;;
@@ -197,18 +203,40 @@ failure_log_main() {
             ;;
         esac
         ;;
+      --kind)
+        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
+          repo_auto_flag_error "missing flag value" "--kind" "use --kind=<run-tests|repo-doctor|any>" || return 1
+          [ "$#" -gt 1 ] && shift
+        else
+          repo_auto_flag_error "flag format not accepted" "--kind" "use --kind=<run-tests|repo-doctor|any>" || return 1
+          shift
+        fi
+        ;;
       --lines=*)
         failure_log_lines="${arg#--lines=}"
+        if [ -z "$failure_log_lines" ]; then
+          repo_auto_flag_error "empty flag value" "--lines" "use --lines=<lines>" || return 1
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$failure_log_lines"; then
           failure_log_output_stop "invalid --lines value: $failure_log_lines"
           return 1
+        fi
+        ;;
+      --lines)
+        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
+          repo_auto_flag_error "missing flag value" "--lines" "use --lines=<lines>" || return 1
+          [ "$#" -gt 1 ] && shift
+        else
+          repo_auto_flag_error "flag format not accepted" "--lines" "use --lines=<lines>" || return 1
+          shift
         fi
         ;;
       --machine-json)
         failure_log_machine_json=1
         ;;
       *)
-        failure_log_output_stop "unknown argument: $arg"
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/failure-log --help" || return 1
         return 1
         ;;
     esac
