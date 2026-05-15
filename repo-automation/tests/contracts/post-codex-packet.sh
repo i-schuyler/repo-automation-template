@@ -12,18 +12,38 @@ smoke_main() {
   local status=0
   local output_root=""
   local output_log=""
+  local help_file=""
   local packet_dir=""
   local packet_zip=""
   local summary_file=""
   local copied_file=""
   local skipped_file=""
   local index_file=""
+  local label_format_stderr=""
+  local label_missing_stderr=""
+  local label_empty_stderr=""
+  local unknown_stderr=""
 
   trap 'test_cleanup' EXIT INT TERM
 
   smoke_setup_temp_repo || return 1
   output_root="$smoke_test_base/post-codex-output"
   output_log="$smoke_test_base/post-codex-output.log"
+  help_file="$smoke_test_base/post-codex-help.txt"
+  label_format_stderr="$smoke_test_base/post-codex-label-format.stderr"
+  label_missing_stderr="$smoke_test_base/post-codex-label-missing.stderr"
+  label_empty_stderr="$smoke_test_base/post-codex-label-empty.stderr"
+  unknown_stderr="$smoke_test_base/post-codex-unknown.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --help > "$help_file"
+  ) && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<name>' "$help_file" && grep -Fq -- '--max-bytes=<bytes>' "$help_file" && ! grep -Fq -- '--out-dir PATH' "$help_file" && ! grep -Fq -- '--label NAME' "$help_file" && ! grep -Fq -- '--max-bytes N' "$help_file"; then
+    test_pass "post-codex-packet help shows strict value syntax"
+  else
+    test_fail "post-codex-packet help shows strict value syntax"
+    status=1
+  fi
 
   cd "$smoke_test_dir" || return 1
   printf '\npacket helper staged line\n' >> docs/testing.md || return 1
@@ -46,7 +66,49 @@ import sys
 sys.stdout.write('x' * 262145)
 PY
 
-  if REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/post-codex-packet --label review --keep-dir --max-bytes 262144 > "$output_log"; then
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --label review >/dev/null 2> "$label_format_stderr"
+  ); then
+    test_fail "post-codex-packet rejects --label <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_format_stderr" "flag format not accepted" "--label" "use --label=<name>"; then
+    test_pass "post-codex-packet rejects --label <value>"
+  else
+    test_fail "post-codex-packet rejects --label <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --label >/dev/null 2> "$label_missing_stderr"
+  ); then
+    test_fail "post-codex-packet rejects missing --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_missing_stderr" "missing flag value" "--label" "use --label=<name>"; then
+    test_pass "post-codex-packet rejects missing --label value"
+  else
+    test_fail "post-codex-packet rejects missing --label value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --label= >/dev/null 2> "$label_empty_stderr"
+  ); then
+    test_fail "post-codex-packet rejects empty --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_empty_stderr" "empty flag value" "--label" "use --label=<name>"; then
+    test_pass "post-codex-packet rejects empty --label value"
+  else
+    test_fail "post-codex-packet rejects empty --label value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/post-codex-packet --label=review --keep-dir --max-bytes=262144 > "$output_log"
+  ); then
     :
   else
     test_fail "post-codex-packet helper runs successfully"
@@ -107,6 +169,19 @@ PY
     test_pass "post-codex-packet index records the packet"
   else
     test_fail "post-codex-packet index records the packet"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --whatever >/dev/null 2> "$unknown_stderr"
+  ); then
+    test_fail "post-codex-packet rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/post-codex-packet --help"; then
+    test_pass "post-codex-packet rejects unknown flags"
+  else
+    test_fail "post-codex-packet rejects unknown flags"
     status=1
   fi
 
