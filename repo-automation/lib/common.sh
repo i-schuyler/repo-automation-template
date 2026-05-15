@@ -14,6 +14,17 @@ repo_auto_stop() {
   return 1
 }
 
+repo_auto_flag_error() {
+  local reason="${1:-}"
+  local flag="${2:-}"
+  local fix="${3:-}"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  return 1
+}
+
 repo_auto_require_command() {
   local command_name="${1:-}"
 
