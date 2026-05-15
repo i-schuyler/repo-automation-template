@@ -13,7 +13,17 @@ ci_status_machine_json=0
 ci_status_summary_json=""
 
 ci_status_usage() {
-  printf 'Usage: repo-automation/bin/ci-status [--pr=NUMBER | --branch=NAME] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--machine-json] [--help]\n'
+}
+
+ci_status_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
 }
 
 ci_status_json_escape() {
@@ -281,23 +291,51 @@ ci_status_main() {
         ;;
       --pr=*)
         ci_status_pr="${arg#--pr=}"
+        if [ -z "$ci_status_pr" ]; then
+          ci_status_flag_error "empty flag value" "--pr" "use --pr=<number>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_status_pr"; then
           repo_auto_stop "invalid --pr value: $ci_status_pr"
           return 1
         fi
         ;;
+      --pr)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_status_flag_error "flag format not accepted" "--pr" "use --pr=<number>"
+        else
+          ci_status_flag_error "missing flag value" "--pr" "use --pr=<number>"
+        fi
+        return 1
+        ;;
       --branch=*)
         ci_status_branch="${arg#--branch=}"
+        if [ -z "$ci_status_branch" ]; then
+          ci_status_flag_error "empty flag value" "--branch" "use --branch=<name>"
+          return 1
+        fi
         if ! repo_auto_validate_branch_name "$ci_status_branch"; then
           repo_auto_stop "invalid --branch value: $ci_status_branch"
           return 1
         fi
         ;;
+      --branch)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_status_flag_error "flag format not accepted" "--branch" "use --branch=<name>"
+        else
+          ci_status_flag_error "missing flag value" "--branch" "use --branch=<name>"
+        fi
+        return 1
+        ;;
       --machine-json)
         ci_status_machine_json=1
         ;;
       *)
-        repo_auto_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          ci_status_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-status --help"
+        else
+          repo_auto_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

@@ -15,7 +15,17 @@ ci_watch_machine_json=0
 ci_watch_summary_json=""
 
 ci_watch_usage() {
-  printf 'Usage: repo-automation/bin/ci-watch [--pr=NUMBER | --branch=NAME] [--poll-seconds=SECONDS] [--timeout=SECONDS] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-watch [--pr=<number> | --branch=<name>] [--poll-seconds=<seconds>] [--timeout=<seconds>] [--machine-json] [--help]\n'
+}
+
+ci_watch_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
 }
 
 ci_watch_json_escape() {
@@ -100,37 +110,89 @@ ci_watch_main() {
         ;;
       --pr=*)
         ci_watch_pr="${arg#--pr=}"
+        if [ -z "$ci_watch_pr" ]; then
+          ci_watch_flag_error "empty flag value" "--pr" "use --pr=<number>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_watch_pr"; then
           repo_auto_stop "invalid --pr value: $ci_watch_pr"
           return 1
         fi
         ;;
+      --pr)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_watch_flag_error "flag format not accepted" "--pr" "use --pr=<number>"
+        else
+          ci_watch_flag_error "missing flag value" "--pr" "use --pr=<number>"
+        fi
+        return 1
+        ;;
       --branch=*)
         ci_watch_branch="${arg#--branch=}"
+        if [ -z "$ci_watch_branch" ]; then
+          ci_watch_flag_error "empty flag value" "--branch" "use --branch=<name>"
+          return 1
+        fi
         if ! repo_auto_validate_branch_name "$ci_watch_branch"; then
           repo_auto_stop "invalid --branch value: $ci_watch_branch"
           return 1
         fi
         ;;
+      --branch)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_watch_flag_error "flag format not accepted" "--branch" "use --branch=<name>"
+        else
+          ci_watch_flag_error "missing flag value" "--branch" "use --branch=<name>"
+        fi
+        return 1
+        ;;
       --poll-seconds=*)
         ci_watch_poll_seconds="${arg#--poll-seconds=}"
+        if [ -z "$ci_watch_poll_seconds" ]; then
+          ci_watch_flag_error "empty flag value" "--poll-seconds" "use --poll-seconds=<seconds>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_watch_poll_seconds"; then
           repo_auto_stop "invalid --poll-seconds value: $ci_watch_poll_seconds"
           return 1
         fi
         ;;
+      --poll-seconds)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_watch_flag_error "flag format not accepted" "--poll-seconds" "use --poll-seconds=<seconds>"
+        else
+          ci_watch_flag_error "missing flag value" "--poll-seconds" "use --poll-seconds=<seconds>"
+        fi
+        return 1
+        ;;
       --timeout=*)
         ci_watch_timeout_seconds="${arg#--timeout=}"
+        if [ -z "$ci_watch_timeout_seconds" ]; then
+          ci_watch_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_watch_timeout_seconds"; then
           repo_auto_stop "invalid --timeout value: $ci_watch_timeout_seconds"
           return 1
         fi
         ;;
+      --timeout)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_watch_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>"
+        else
+          ci_watch_flag_error "missing flag value" "--timeout" "use --timeout=<seconds>"
+        fi
+        return 1
+        ;;
       --machine-json)
         ci_watch_machine_json=1
         ;;
       *)
-        repo_auto_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          ci_watch_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-watch --help"
+        else
+          repo_auto_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac
