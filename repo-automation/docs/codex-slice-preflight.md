@@ -2,7 +2,7 @@
 
 `repo-automation/bin/codex-slice-preflight` runs a repeatable slice setup flow before edits begin.
 
-The script requires `--branch <name>`. It validates branch safety and rejects the default branch.
+The script requires `--branch=<name>`. It validates branch safety and rejects the default branch.
 
 Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
 

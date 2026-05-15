@@ -2666,14 +2666,19 @@ tail two' \
 smoke_check_preflight_json() {
   local status=0
   local preflight_json="$smoke_test_dir/preflight.json"
+  local preflight_help="$smoke_test_dir/preflight-help.txt"
   local finish_stderr="$smoke_test_dir/pr-finish-stderr.log"
+  local branch_format_stderr="$smoke_test_dir/preflight-branch-format.stderr"
+  local branch_missing_stderr="$smoke_test_dir/preflight-branch-missing.stderr"
+  local branch_empty_stderr="$smoke_test_dir/preflight-branch-empty.stderr"
+  local branch_unknown_stderr="$smoke_test_dir/preflight-branch-unknown.stderr"
   local local_bash_path=""
   local shim_dir=""
 
   if (
     cd "$smoke_test_dir" || return 1
     git checkout main >/dev/null || return 1
-    repo-automation/bin/codex-slice-preflight --check-only --branch feature/preflight-smoke >/dev/null
+    repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke >/dev/null
   ); then
     test_pass "preflight check-only succeeds"
   else
@@ -2683,11 +2688,81 @@ smoke_check_preflight_json() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --json --check-only --branch feature/preflight-smoke > "$preflight_json"
+    repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_json"
   ) && python -m json.tool "$preflight_json" >/dev/null; then
     test_pass "preflight json is parseable"
   else
     test_fail "preflight json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/codex-slice-preflight --help > "$preflight_help"
+  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
+    test_pass "preflight help shows strict branch syntax"
+  else
+    test_fail "preflight help shows strict branch syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/codex-slice-preflight --branch feature/preflight-smoke >/dev/null 2> "$branch_format_stderr"
+  ); then
+    test_fail "preflight rejects --branch <name>"
+    status=1
+  elif grep -Fxq 'fail: flag format not accepted' "$branch_format_stderr" &&
+    grep -Fxq 'flag: --branch' "$branch_format_stderr" &&
+    grep -Fxq 'fix: use --branch=<name>' "$branch_format_stderr"; then
+    test_pass "preflight rejects --branch <name>"
+  else
+    test_fail "preflight rejects --branch <name>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/codex-slice-preflight --branch >/dev/null 2> "$branch_missing_stderr"
+  ); then
+    test_fail "preflight rejects missing --branch value"
+    status=1
+  elif grep -Fxq 'fail: missing flag value' "$branch_missing_stderr" &&
+    grep -Fxq 'flag: --branch' "$branch_missing_stderr" &&
+    grep -Fxq 'fix: use --branch=<name>' "$branch_missing_stderr"; then
+    test_pass "preflight rejects missing --branch value"
+  else
+    test_fail "preflight rejects missing --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/codex-slice-preflight --branch= >/dev/null 2> "$branch_empty_stderr"
+  ); then
+    test_fail "preflight rejects empty --branch value"
+    status=1
+  elif grep -Fxq 'fail: empty flag value' "$branch_empty_stderr" &&
+    grep -Fxq 'flag: --branch' "$branch_empty_stderr" &&
+    grep -Fxq 'fix: use --branch=<name>' "$branch_empty_stderr"; then
+    test_pass "preflight rejects empty --branch value"
+  else
+    test_fail "preflight rejects empty --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/codex-slice-preflight --whatever >/dev/null 2> "$branch_unknown_stderr"
+  ); then
+    test_fail "preflight rejects unknown flags"
+    status=1
+  elif grep -Fxq 'fail: unknown flag' "$branch_unknown_stderr" &&
+    grep -Fxq 'flag: --whatever' "$branch_unknown_stderr" &&
+    grep -Fxq 'fix: run repo-automation/bin/codex-slice-preflight --help' "$branch_unknown_stderr"; then
+    test_pass "preflight rejects unknown flags"
+  else
+    test_fail "preflight rejects unknown flags"
     status=1
   fi
 

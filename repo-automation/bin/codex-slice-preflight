@@ -16,7 +16,19 @@ preflight_stop_reason=""
 preflight_mode="run"
 
 preflight_usage() {
-  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch BRANCH [--check-only] [--delete-safe-stale] [--json] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--check-only] [--delete-safe-stale] [--json] [--help]\n'
+}
+
+preflight_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  preflight_stop_reason="$reason"
+  return 1
 }
 
 preflight_info() {
@@ -88,6 +100,8 @@ preflight_validate_branch_request() {
 
 preflight_main() {
   local requested_branch=""
+  local branch_flag_seen=0
+  local branch_value_set=0
   local check_only=0
   local delete_safe_stale=0
   local command_status=0
@@ -110,9 +124,29 @@ preflight_main() {
   while [ "$#" -gt 0 ]; do
     arg="$1"
     case "$arg" in
+      --branch=)
+        branch_flag_seen=1
+        preflight_flag_error "empty flag value" "--branch" "use --branch=<name>" || command_status=1
+        ;;
+      --branch=*)
+        branch_flag_seen=1
+        requested_branch="${arg#--branch=}"
+        if [ -n "$requested_branch" ]; then
+          branch_value_set=1
+        else
+          preflight_flag_error "empty flag value" "--branch" "use --branch=<name>" || command_status=1
+        fi
+        ;;
       --branch)
+        branch_flag_seen=1
         shift
-        requested_branch="${1:-}"
+        if [ "$#" -eq 0 ]; then
+          preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
+        elif [ "${1#-}" != "$1" ]; then
+          preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
+        else
+          preflight_flag_error "flag format not accepted" "--branch" "use --branch=<name>" || command_status=1
+        fi
         ;;
       --check-only)
         check_only=1
@@ -129,15 +163,19 @@ preflight_main() {
         return 0
         ;;
       *)
-        preflight_stop "unknown argument: $arg"
+        preflight_flag_error "unknown flag" "$arg" "run repo-automation/bin/codex-slice-preflight --help" || command_status=1
         command_status=1
         ;;
     esac
     shift
   done
 
-  [ -n "$requested_branch" ] || {
-    preflight_stop "--branch is required"
+  [ "$branch_value_set" -eq 1 ] || {
+    if [ "$command_status" -eq 0 ] && [ "$branch_flag_seen" -eq 0 ]; then
+      preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
+    elif [ "$command_status" -eq 0 ] && [ "$branch_flag_seen" -eq 1 ] && [ -z "$requested_branch" ]; then
+      preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
+    fi
     command_status=1
   }
 
@@ -238,7 +276,7 @@ preflight_main() {
     divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null) || divergence="unknown"
     [ "$preflight_json" -eq 1 ] || {
       preflight_info "check-only complete"
-      preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch $requested_branch"
+      preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch=$requested_branch"
     }
   fi
 
