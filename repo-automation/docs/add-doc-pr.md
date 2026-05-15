@@ -6,6 +6,8 @@ Default behavior is plan-only. It does not commit, push, or create a PR unless `
 
 `--dry-run` performs validation and shows what would happen without creating commits, pushes, or PRs.
 
+Value flags use `--flag=<value>` syntax. Space-separated values are rejected.
+
 ## Docs-Only Boundary
 
 Default allowed paths:
@@ -21,7 +23,7 @@ Default allowed paths:
 
 By default, changes under `repo-automation/bin/`, `repo-automation/tests/`, `.github/workflows/`, `VERSION`, `LICENSE`, and `.repo-automation.conf` are blocked.
 
-Use `--allow FILE_OR_DIR` to add one or more additional allowed paths for a single run.
+Use `--allow=<FILE_OR_DIR>` to add one or more additional allowed paths for a single run.
 
 If any changed file is outside the allowed set, the helper stops and reports blocked paths.
 
