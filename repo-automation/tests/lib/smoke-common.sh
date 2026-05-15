@@ -2194,6 +2194,10 @@ smoke_check_repo_zip_contract() {
   local status=0
   local output_root=""
   local output_log=""
+  local label_format_stderr=""
+  local label_missing_stderr=""
+  local label_empty_stderr=""
+  local unknown_flag_stderr=""
   local zip_path=""
   local packet_dir=""
   local summary_file=""
@@ -2227,7 +2231,7 @@ smoke_check_repo_zip_contract() {
 
   if (
     cd nested/subdir || exit 1
-    REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/repo-zip --label review
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/repo-zip --label=review
   ) > "$output_log"; then
     :
   else
@@ -2293,6 +2297,63 @@ PY
     status=1
   fi
 
+  label_format_stderr="$smoke_test_base/repo-zip-label-format.stderr"
+  label_missing_stderr="$smoke_test_base/repo-zip-label-missing.stderr"
+  label_empty_stderr="$smoke_test_base/repo-zip-label-empty.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/repo-zip --label review >/dev/null 2> "$label_format_stderr"
+  ); then
+    test_fail "repo-zip rejects --label <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_format_stderr" "flag format not accepted" "--label" "use --label=<name>"; then
+    test_pass "repo-zip rejects --label <value>"
+  else
+    test_fail "repo-zip rejects --label <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/repo-zip --label >/dev/null 2> "$label_missing_stderr"
+  ); then
+    test_fail "repo-zip rejects missing --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_missing_stderr" "missing flag value" "--label" "use --label=<name>"; then
+    test_pass "repo-zip rejects missing --label value"
+  else
+    test_fail "repo-zip rejects missing --label value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/repo-zip --label= >/dev/null 2> "$label_empty_stderr"
+  ); then
+    test_fail "repo-zip rejects empty --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_empty_stderr" "empty flag value" "--label" "use --label=<name>"; then
+    test_pass "repo-zip rejects empty --label value"
+  else
+    test_fail "repo-zip rejects empty --label value"
+    status=1
+  fi
+
+  unknown_flag_stderr="$smoke_test_base/repo-zip-unknown.stderr"
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/repo-zip --whatever >/dev/null 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "repo-zip rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_flag_stderr" "unknown flag" "--whatever" "run repo-automation/bin/repo-zip --help"; then
+    test_pass "repo-zip rejects unknown flags"
+  else
+    test_fail "repo-zip rejects unknown flags"
+    status=1
+  fi
+
   return "$status"
 }
 
@@ -2304,6 +2365,16 @@ smoke_check_evidence_bundle_contract() {
   local gh_stub_dir=""
   local nested_dir=""
   local default_output_log=""
+  local label_format_stderr=""
+  local label_missing_stderr=""
+  local label_empty_stderr=""
+  local pr_format_stderr=""
+  local pr_missing_stderr=""
+  local pr_empty_stderr=""
+  local lines_format_stderr=""
+  local lines_missing_stderr=""
+  local lines_empty_stderr=""
+  local unknown_flag_stderr=""
   local default_bundle_dir=""
   local default_bundle_zip=""
   local default_summary_file=""
@@ -2348,7 +2419,7 @@ smoke_check_evidence_bundle_contract() {
 
   if (
     cd nested/subdir || exit 1
-    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label review
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label=review
   ) > "$default_output_log"; then
     :
   else
@@ -2431,7 +2502,7 @@ PY
 
   if (
     cd nested/subdir || exit 1
-    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label review --post-codex --include-repo-zip
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label=review --post-codex --include-repo-zip
   ) > "$post_output_log"; then
     :
   else
@@ -2478,6 +2549,147 @@ PY
     status=1
   fi
 
+  label_format_stderr="$smoke_test_base/evidence-bundle-label-format.stderr"
+  label_missing_stderr="$smoke_test_base/evidence-bundle-label-missing.stderr"
+  label_empty_stderr="$smoke_test_base/evidence-bundle-label-empty.stderr"
+  pr_format_stderr="$smoke_test_base/evidence-bundle-pr-format.stderr"
+  pr_missing_stderr="$smoke_test_base/evidence-bundle-pr-missing.stderr"
+  pr_empty_stderr="$smoke_test_base/evidence-bundle-pr-empty.stderr"
+  lines_format_stderr="$smoke_test_base/evidence-bundle-lines-format.stderr"
+  lines_missing_stderr="$smoke_test_base/evidence-bundle-lines-missing.stderr"
+  lines_empty_stderr="$smoke_test_base/evidence-bundle-lines-empty.stderr"
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label review >/dev/null 2> "$label_format_stderr"
+  ); then
+    test_fail "evidence-bundle rejects --label <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_format_stderr" "flag format not accepted" "--label" "use --label=<name>"; then
+    test_pass "evidence-bundle rejects --label <value>"
+  else
+    test_fail "evidence-bundle rejects --label <value>"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label >/dev/null 2> "$label_missing_stderr"
+  ); then
+    test_fail "evidence-bundle rejects missing --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_missing_stderr" "missing flag value" "--label" "use --label=<name>"; then
+    test_pass "evidence-bundle rejects missing --label value"
+  else
+    test_fail "evidence-bundle rejects missing --label value"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label= >/dev/null 2> "$label_empty_stderr"
+  ); then
+    test_fail "evidence-bundle rejects empty --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_empty_stderr" "empty flag value" "--label" "use --label=<name>"; then
+    test_pass "evidence-bundle rejects empty --label value"
+  else
+    test_fail "evidence-bundle rejects empty --label value"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --pr 123 >/dev/null 2> "$pr_format_stderr"
+  ); then
+    test_fail "evidence-bundle rejects --pr <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$pr_format_stderr" "flag format not accepted" "--pr" "use --pr=<number>"; then
+    test_pass "evidence-bundle rejects --pr <value>"
+  else
+    test_fail "evidence-bundle rejects --pr <value>"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --pr >/dev/null 2> "$pr_missing_stderr"
+  ); then
+    test_fail "evidence-bundle rejects missing --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$pr_missing_stderr" "missing flag value" "--pr" "use --pr=<number>"; then
+    test_pass "evidence-bundle rejects missing --pr value"
+  else
+    test_fail "evidence-bundle rejects missing --pr value"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --pr= >/dev/null 2> "$pr_empty_stderr"
+  ); then
+    test_fail "evidence-bundle rejects empty --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$pr_empty_stderr" "empty flag value" "--pr" "use --pr=<number>"; then
+    test_pass "evidence-bundle rejects empty --pr value"
+  else
+    test_fail "evidence-bundle rejects empty --pr value"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --lines 1 >/dev/null 2> "$lines_format_stderr"
+  ); then
+    test_fail "evidence-bundle rejects --lines <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$lines_format_stderr" "flag format not accepted" "--lines" "use --lines=<lines>"; then
+    test_pass "evidence-bundle rejects --lines <value>"
+  else
+    test_fail "evidence-bundle rejects --lines <value>"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --lines >/dev/null 2> "$lines_missing_stderr"
+  ); then
+    test_fail "evidence-bundle rejects missing --lines value"
+    status=1
+  elif smoke_assert_flag_error_shape "$lines_missing_stderr" "missing flag value" "--lines" "use --lines=<lines>"; then
+    test_pass "evidence-bundle rejects missing --lines value"
+  else
+    test_fail "evidence-bundle rejects missing --lines value"
+    status=1
+  fi
+
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --lines= >/dev/null 2> "$lines_empty_stderr"
+  ); then
+    test_fail "evidence-bundle rejects empty --lines value"
+    status=1
+  elif smoke_assert_flag_error_shape "$lines_empty_stderr" "empty flag value" "--lines" "use --lines=<lines>"; then
+    test_pass "evidence-bundle rejects empty --lines value"
+  else
+    test_fail "evidence-bundle rejects empty --lines value"
+    status=1
+  fi
+
+  unknown_flag_stderr="$smoke_test_base/evidence-bundle-unknown.stderr"
+  if (
+    cd nested/subdir || exit 1
+    TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --whatever >/dev/null 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "evidence-bundle rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_flag_stderr" "unknown flag" "--whatever" "run repo-automation/bin/evidence-bundle --help"; then
+    test_pass "evidence-bundle rejects unknown flags"
+  else
+    test_fail "evidence-bundle rejects unknown flags"
+    status=1
+  fi
+
   (
     cd "$smoke_test_dir" || exit 1
     git remote set-url origin git@github.com:example/evidence-bundle-fixture.git
@@ -2486,7 +2698,7 @@ PY
   if (
     cd nested/subdir || exit 1
     TMPDIR="$failure_log_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_VIEW_HEAD_REF='feature/evidence-bundle' GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure"}]' GH_STUB_RUN_VIEW_LOG='ci log line one
-ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label pr --pr 123
+ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation/bin/evidence-bundle --label=pr --pr=123
   ) > "$pr_output_log"; then
     :
   else
@@ -2699,6 +2911,10 @@ smoke_check_automation_freshness_contract() {
   local status=0
   local freshness_default_out="$smoke_test_base/automation-freshness-default-$$.txt"
   local freshness_json="$smoke_test_base/automation-freshness-$$.json"
+  local source_format_stderr="$smoke_test_base/automation-freshness-source-format.stderr"
+  local source_missing_stderr="$smoke_test_base/automation-freshness-source-missing.stderr"
+  local source_empty_stderr="$smoke_test_base/automation-freshness-source-empty.stderr"
+  local unknown_flag_stderr="$smoke_test_base/automation-freshness-unknown.stderr"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -2718,6 +2934,58 @@ smoke_check_automation_freshness_contract() {
     test_pass "automation-freshness machine-json is parseable"
   else
     test_fail "automation-freshness machine-json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/automation-freshness --source-root "$smoke_test_dir" >/dev/null 2> "$source_format_stderr"
+  ); then
+    test_fail "automation-freshness rejects --source-root <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_format_stderr" "flag format not accepted" "--source-root" "use --source-root=<path>"; then
+    test_pass "automation-freshness rejects --source-root <value>"
+  else
+    test_fail "automation-freshness rejects --source-root <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/automation-freshness --source-root >/dev/null 2> "$source_missing_stderr"
+  ); then
+    test_fail "automation-freshness rejects missing --source-root value"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_missing_stderr" "missing flag value" "--source-root" "use --source-root=<path>"; then
+    test_pass "automation-freshness rejects missing --source-root value"
+  else
+    test_fail "automation-freshness rejects missing --source-root value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/automation-freshness --source-root= >/dev/null 2> "$source_empty_stderr"
+  ); then
+    test_fail "automation-freshness rejects empty --source-root value"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_empty_stderr" "empty flag value" "--source-root" "use --source-root=<path>"; then
+    test_pass "automation-freshness rejects empty --source-root value"
+  else
+    test_fail "automation-freshness rejects empty --source-root value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/automation-freshness --whatever >/dev/null 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "automation-freshness rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_flag_stderr" "unknown flag" "--whatever" "run repo-automation/bin/automation-freshness --help"; then
+    test_pass "automation-freshness rejects unknown flags"
+  else
+    test_fail "automation-freshness rejects unknown flags"
     status=1
   fi
 
@@ -2844,6 +3112,10 @@ smoke_check_starter_template_readiness() {
   local readiness_missing_template="$smoke_test_dir/.github/pull_request_template.md"
   local readiness_missing_backup="$smoke_test_base/pull_request_template.md.bak"
   local readiness_human="$smoke_test_base/starter-template-ready-human-$$.txt"
+  local source_format_stderr="$smoke_test_base/starter-template-ready-source-format.stderr"
+  local source_missing_stderr="$smoke_test_base/starter-template-ready-source-missing.stderr"
+  local source_empty_stderr="$smoke_test_base/starter-template-ready-source-empty.stderr"
+  local unknown_flag_stderr="$smoke_test_base/starter-template-ready-unknown.stderr"
 
   if (
     cd "$smoke_repo_root" || return 1
@@ -2852,6 +3124,58 @@ smoke_check_starter_template_readiness() {
     test_pass "starter-template-ready source-root machine-json passes"
   else
     test_fail "starter-template-ready source-root machine-json passes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/starter-template-ready --source-root "$smoke_test_dir" >/dev/null 2> "$source_format_stderr"
+  ); then
+    test_fail "starter-template-ready rejects --source-root <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_format_stderr" "flag format not accepted" "--source-root" "use --source-root=<path>"; then
+    test_pass "starter-template-ready rejects --source-root <value>"
+  else
+    test_fail "starter-template-ready rejects --source-root <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/starter-template-ready --source-root >/dev/null 2> "$source_missing_stderr"
+  ); then
+    test_fail "starter-template-ready rejects missing --source-root value"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_missing_stderr" "missing flag value" "--source-root" "use --source-root=<path>"; then
+    test_pass "starter-template-ready rejects missing --source-root value"
+  else
+    test_fail "starter-template-ready rejects missing --source-root value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/starter-template-ready --source-root= >/dev/null 2> "$source_empty_stderr"
+  ); then
+    test_fail "starter-template-ready rejects empty --source-root value"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_empty_stderr" "empty flag value" "--source-root" "use --source-root=<path>"; then
+    test_pass "starter-template-ready rejects empty --source-root value"
+  else
+    test_fail "starter-template-ready rejects empty --source-root value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/starter-template-ready --whatever >/dev/null 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "starter-template-ready rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_flag_stderr" "unknown flag" "--whatever" "run repo-automation/bin/starter-template-ready --help"; then
+    test_pass "starter-template-ready rejects unknown flags"
+  else
+    test_fail "starter-template-ready rejects unknown flags"
     status=1
   fi
 
@@ -3115,6 +3439,7 @@ smoke_check_installer_apply_contract() {
 smoke_check_branch_cleanup_json() {
   local status=0
   local branch_json="$smoke_test_dir/branch-cleanup.json"
+  local unknown_flag_stderr="$smoke_test_base/branch-cleanup-unknown.stderr"
   local start_branch=""
 
   if (
@@ -3160,6 +3485,19 @@ smoke_check_branch_cleanup_json() {
     test_pass "current branch skipped with current-branch reason"
   else
     test_fail "current branch skipped with current-branch reason"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/branch-cleanup --whatever >/dev/null 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "branch-cleanup rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_flag_stderr" "unknown flag" "--whatever" "run repo-automation/bin/branch-cleanup --help"; then
+    test_pass "branch-cleanup rejects unknown flags"
+  else
+    test_fail "branch-cleanup rejects unknown flags"
     status=1
   fi
 

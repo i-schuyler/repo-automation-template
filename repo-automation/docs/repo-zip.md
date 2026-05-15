@@ -14,8 +14,8 @@
 
 ## Options
 
-- `--out-dir PATH` overrides the output base
-- `--label NAME` adds a human-readable suffix to the packet and zip name
+- `--out-dir=<path>` overrides the output base
+- `--label=<name>` adds a human-readable suffix to the packet and zip name
 
 ## Output
 
@@ -33,4 +33,4 @@ Human output reports:
 ## Example
 
     repo-automation/bin/repo-zip
-    repo-automation/bin/repo-zip --out-dir /tmp/repo-automation-output --label review
+    repo-automation/bin/repo-zip --out-dir=/tmp/repo-automation-output --label=review

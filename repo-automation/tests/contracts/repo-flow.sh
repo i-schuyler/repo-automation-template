@@ -156,6 +156,7 @@ smoke_check_repo_flow_dry_run_json() {
   local gh_stub_dir=""
   local json_file=""
   local stderr_file=""
+  local unknown_flag_stderr=""
   local local_bash_path=""
 
   smoke_setup_temp_repo || return 1
@@ -164,6 +165,7 @@ smoke_check_repo_flow_dry_run_json() {
   gh_stub_dir="$smoke_test_base/gh-stub"
   json_file="$smoke_test_base/repo-flow-dry-run.json"
   stderr_file="$smoke_test_base/repo-flow-dry-run.stderr"
+  unknown_flag_stderr="$smoke_test_base/repo-flow-unknown.stderr"
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-plan" || return 1
   local_bash_path="$(command -v bash)" || return 1
@@ -189,6 +191,22 @@ smoke_check_repo_flow_dry_run_json() {
     fi
   else
     test_fail "repo-flow dry-run/json reports a non-mutating create plan"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    REMOTE_NAME=localorigin \
+    EXPECTED_REMOTE_URL="" \
+    "$local_bash_path" repo-automation/bin/repo-flow --whatever >/dev/null 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "repo-flow rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_flag_stderr" "unknown flag" "--whatever" "run repo-automation/bin/repo-flow --help"; then
+    test_pass "repo-flow rejects unknown flags"
+  else
+    test_fail "repo-flow rejects unknown flags"
     status=1
   fi
 

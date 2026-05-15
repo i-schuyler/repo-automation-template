@@ -15,7 +15,7 @@ automation_freshness_machine_json=0
 automation_freshness_source_root=""
 
 automation_freshness_usage() {
-  printf 'Usage: repo-automation/bin/automation-freshness [--machine-json] [--source-root=PATH] [--help]\n'
+  printf 'Usage: repo-automation/bin/automation-freshness [--machine-json] [--source-root=<path>] [--help]\n'
 }
 
 automation_freshness_stop() {
@@ -41,20 +41,24 @@ automation_freshness_main() {
       --source-root=*)
         automation_freshness_source_root="${arg#--source-root=}"
         if [ -z "$automation_freshness_source_root" ]; then
-          automation_freshness_stop "--source-root requires a value"
+          repo_auto_flag_error "empty flag value" "--source-root" "use --source-root=<path>"
           return 1
         fi
         ;;
       --source-root)
-        shift
-        if [ "$#" -eq 0 ]; then
-          automation_freshness_stop "--source-root requires a value"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--source-root" "use --source-root=<path>"
+        else
+          repo_auto_flag_error "missing flag value" "--source-root" "use --source-root=<path>"
         fi
-        automation_freshness_source_root="$1"
+        return 1
         ;;
       *)
-        automation_freshness_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/automation-freshness --help"
+        else
+          automation_freshness_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

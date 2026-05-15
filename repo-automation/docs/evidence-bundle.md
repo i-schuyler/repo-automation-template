@@ -19,12 +19,12 @@
 
 ## Options
 
-- `--out-dir PATH` overrides the output base
-- `--label NAME` adds a human-readable suffix to the bundle name
-- `--pr NUMBER` enables CI log capture for a specific PR
+- `--out-dir=<path>` overrides the output base
+- `--label=<name>` adds a human-readable suffix to the bundle name
+- `--pr=<number>` enables CI log capture for a specific PR
 - `--post-codex` includes a post-Codex packet in the bundle
 - `--include-repo-zip` includes a repository snapshot zip in the bundle
-- `--lines N` sets the failure-log excerpt length
+- `--lines=<lines>` sets the failure-log excerpt length
 
 ## Output
 
@@ -44,5 +44,5 @@ Human output reports:
 ## Example
 
     repo-automation/bin/evidence-bundle
-    repo-automation/bin/evidence-bundle --label review --post-codex --include-repo-zip
-    repo-automation/bin/evidence-bundle --pr 123 --label ci
+    repo-automation/bin/evidence-bundle --label=review --post-codex --include-repo-zip
+    repo-automation/bin/evidence-bundle --pr=123 --label=ci

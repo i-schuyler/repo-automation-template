@@ -16,7 +16,7 @@ starter_template_ready_source_root=""
 starter_template_ready_check_current=0
 
 starter_template_ready_usage() {
-  printf 'Usage: repo-automation/bin/starter-template-ready [--help] [--machine-json] [--source-root=PATH] [--check-current]\n'
+  printf 'Usage: repo-automation/bin/starter-template-ready [--help] [--machine-json] [--source-root=<path>] [--check-current]\n'
 }
 
 starter_template_ready_stop() {
@@ -43,24 +43,28 @@ starter_template_ready_main() {
       --source-root=*)
         starter_template_ready_source_root="${arg#--source-root=}"
         if [ -z "$starter_template_ready_source_root" ]; then
-          starter_template_ready_stop "--source-root requires a value"
+          repo_auto_flag_error "empty flag value" "--source-root" "use --source-root=<path>"
           return 1
         fi
         ;;
       --source-root)
-        shift
-        if [ "$#" -eq 0 ]; then
-          starter_template_ready_stop "--source-root requires a value"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--source-root" "use --source-root=<path>"
+        else
+          repo_auto_flag_error "missing flag value" "--source-root" "use --source-root=<path>"
         fi
-        starter_template_ready_source_root="$1"
+        return 1
         ;;
       --check-current)
         starter_template_ready_check_current=1
         starter_template_ready_source_root=""
         ;;
       *)
-        starter_template_ready_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/starter-template-ready --help"
+        else
+          starter_template_ready_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

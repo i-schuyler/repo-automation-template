@@ -141,7 +141,11 @@ repo_flow_main() {
         repo_flow_json=1
         ;;
       *)
-        repo_flow_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-flow --help" || command_status=1
+        else
+          repo_flow_stop "unknown argument: $arg"
+        fi
         command_status=1
         ;;
     esac

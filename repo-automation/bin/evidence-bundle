@@ -39,7 +39,7 @@ evidence_bundle_included_sections=()
 evidence_bundle_skipped_sections=()
 
 evidence_bundle_usage() {
-  printf 'Usage: repo-automation/bin/evidence-bundle [--out-dir PATH] [--label NAME] [--pr NUMBER] [--post-codex] [--include-repo-zip] [--lines N] [--help]\n'
+  printf 'Usage: repo-automation/bin/evidence-bundle [--out-dir=<path>] [--label=<name>] [--pr=<number>] [--post-codex] [--include-repo-zip] [--lines=<lines>] [--help]\n'
 }
 
 evidence_bundle_info() {
@@ -256,7 +256,7 @@ evidence_bundle_capture_repo_zip() {
   repo_zip_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-repo-zip.XXXXXX")" || return 1
   if (
     cd "$evidence_bundle_repo_root" || exit 1
-    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/repo-zip --label "$evidence_bundle_label"
+    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/repo-zip --label="$evidence_bundle_label"
   ) > "$repo_zip_tmp_file" 2>&1; then
     packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$repo_zip_tmp_file" | tail -n 1)"
     evidence_bundle_repo_zip_zip="$(sed -n 's/^INFO: zip path: //p' "$repo_zip_tmp_file" | tail -n 1)"
@@ -356,29 +356,69 @@ evidence_bundle_main() {
         evidence_bundle_usage
         return 0
         ;;
+      --out-dir=*)
+        evidence_bundle_output_base="${arg#--out-dir=}"
+        if [ -z "$evidence_bundle_output_base" ]; then
+          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        ;;
       --out-dir)
-        shift
-        evidence_bundle_output_base="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--out-dir" "use --out-dir=<path>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --label=*)
+        evidence_bundle_label="${arg#--label=}"
+        if [ -z "$evidence_bundle_label" ]; then
+          repo_auto_flag_error "empty flag value" "--label" "use --label=<name>" || return 1
+        fi
         ;;
       --label)
-        shift
-        evidence_bundle_label="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--label" "use --label=<name>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--label" "use --label=<name>" || return 1
+        fi
+        return 1
         ;;
-      --pr)
-        shift
-        evidence_bundle_pr="${1:-}"
+      --pr=*)
+        evidence_bundle_pr="${arg#--pr=}"
+        if [ -z "$evidence_bundle_pr" ]; then
+          repo_auto_flag_error "empty flag value" "--pr" "use --pr=<number>" || return 1
+        fi
         if ! repo_auto_is_positive_integer "$evidence_bundle_pr"; then
           evidence_bundle_stop "invalid --pr value: $evidence_bundle_pr"
           return 1
         fi
         ;;
-      --lines)
-        shift
-        evidence_bundle_lines="${1:-}"
+      --pr)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--pr" "use --pr=<number>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--pr" "use --pr=<number>" || return 1
+        fi
+        return 1
+        ;;
+      --lines=*)
+        evidence_bundle_lines="${arg#--lines=}"
+        if [ -z "$evidence_bundle_lines" ]; then
+          repo_auto_flag_error "empty flag value" "--lines" "use --lines=<lines>" || return 1
+        fi
         if ! repo_auto_is_positive_integer "$evidence_bundle_lines"; then
           evidence_bundle_stop "invalid --lines value: $evidence_bundle_lines"
           return 1
         fi
+        ;;
+      --lines)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--lines" "use --lines=<lines>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--lines" "use --lines=<lines>" || return 1
+        fi
+        return 1
         ;;
       --post-codex)
         evidence_bundle_post_codex=1
@@ -387,7 +427,11 @@ evidence_bundle_main() {
         evidence_bundle_include_repo_zip=1
         ;;
       *)
-        evidence_bundle_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/evidence-bundle --help" || return 1
+        else
+          evidence_bundle_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac
