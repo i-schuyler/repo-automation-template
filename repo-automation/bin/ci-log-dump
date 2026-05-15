@@ -20,6 +20,16 @@ ci_log_dump_usage() {
   printf 'Usage: repo-automation/bin/ci-log-dump [--repo=OWNER/REPO] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--machine-json] [--help]\n'
 }
 
+ci_log_dump_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
+}
+
 ci_log_dump_json_escape() {
   local input="$1"
   input=${input//\\/\\\\}
@@ -268,29 +278,81 @@ ci_log_dump_main() {
       --repo=*)
         ci_log_dump_repo="${arg#--repo=}"
         ;;
+      --repo)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_log_dump_flag_error "flag format not accepted" "--repo" "use --repo=<owner/name>"
+        else
+          ci_log_dump_flag_error "missing flag value" "--repo" "use --repo=<owner/name>"
+        fi
+        return 1
+        ;;
       --pr=*)
         ci_log_dump_pr="${arg#--pr=}"
+        if [ -z "$ci_log_dump_pr" ]; then
+          ci_log_dump_flag_error "empty flag value" "--pr" "use --pr=<number>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_log_dump_pr"; then
           ci_log_dump_stop "invalid --pr value: $ci_log_dump_pr"
           return 1
         fi
         ;;
+      --pr)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_log_dump_flag_error "flag format not accepted" "--pr" "use --pr=<number>"
+        else
+          ci_log_dump_flag_error "missing flag value" "--pr" "use --pr=<number>"
+        fi
+        return 1
+        ;;
       --run-id=*)
         ci_log_dump_run_id="${arg#--run-id=}"
+        if [ -z "$ci_log_dump_run_id" ]; then
+          ci_log_dump_flag_error "empty flag value" "--run-id" "use --run-id=<id>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_log_dump_run_id"; then
           ci_log_dump_stop "invalid --run-id value: $ci_log_dump_run_id"
           return 1
         fi
         ;;
+      --run-id)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_log_dump_flag_error "flag format not accepted" "--run-id" "use --run-id=<id>"
+        else
+          ci_log_dump_flag_error "missing flag value" "--run-id" "use --run-id=<id>"
+        fi
+        return 1
+        ;;
       --out-dir=*)
         ci_log_dump_out_dir="${arg#--out-dir=}"
         ;;
+      --out-dir)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_log_dump_flag_error "flag format not accepted" "--out-dir" "use --out-dir=<path>"
+        else
+          ci_log_dump_flag_error "missing flag value" "--out-dir" "use --out-dir=<path>"
+        fi
+        return 1
+        ;;
       --tail=*)
         ci_log_dump_tail_lines="${arg#--tail=}"
+        if [ -z "$ci_log_dump_tail_lines" ]; then
+          ci_log_dump_flag_error "empty flag value" "--tail" "use --tail=<lines>"
+          return 1
+        fi
         if ! repo_auto_is_positive_integer "$ci_log_dump_tail_lines"; then
           ci_log_dump_stop "invalid --tail value: $ci_log_dump_tail_lines"
           return 1
         fi
+        ;;
+      --tail)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          ci_log_dump_flag_error "flag format not accepted" "--tail" "use --tail=<lines>"
+        else
+          ci_log_dump_flag_error "missing flag value" "--tail" "use --tail=<lines>"
+        fi
+        return 1
         ;;
       --failed-only)
         ci_log_dump_failed_only=1
@@ -302,7 +364,11 @@ ci_log_dump_main() {
         ci_log_dump_machine_json=1
         ;;
       *)
-        ci_log_dump_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          ci_log_dump_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-log-dump --help"
+        else
+          ci_log_dump_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

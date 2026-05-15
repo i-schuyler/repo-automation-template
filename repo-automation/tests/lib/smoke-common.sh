@@ -1398,9 +1398,85 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_out_dir="$smoke_test_base/ci-log-dump-out"
   local ci_log_json="$smoke_test_base/ci-log-dump-$$.json"
   local ci_log_human="$smoke_test_base/ci-log-dump-$$.txt"
+  local ci_log_help="$smoke_test_base/ci-log-dump-help-$$.txt"
+  local ci_log_pr_format_stderr="$smoke_test_base/ci-log-dump-pr-format-$$.stderr"
+  local ci_log_pr_missing_stderr="$smoke_test_base/ci-log-dump-pr-missing-$$.stderr"
+  local ci_log_pr_empty_stderr="$smoke_test_base/ci-log-dump-pr-empty-$$.stderr"
+  local ci_log_unknown_stderr="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$ci_log_out_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --help > "$ci_log_help"
+  ) && \
+    grep -Fq -- '--repo=OWNER/REPO' "$ci_log_help" && \
+    grep -Fq -- '--pr=NUMBER' "$ci_log_help" && \
+    grep -Fq -- '--run-id=ID' "$ci_log_help" && \
+    grep -Fq -- '--out-dir=PATH' "$ci_log_help" && \
+    grep -Fq -- '--tail=LINES' "$ci_log_help" && \
+    ! grep -Fq -- '--pr NUMBER' "$ci_log_help" && \
+    ! grep -Fq -- '--run-id ID' "$ci_log_help" && \
+    ! grep -Fq -- '--out-dir PATH' "$ci_log_help" && \
+    ! grep -Fq -- '--tail LINES' "$ci_log_help"; then
+    test_pass "ci-log-dump help shows strict value syntax"
+  else
+    test_fail "ci-log-dump help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[]' repo-automation/bin/ci-log-dump --pr 123 >/dev/null 2> "$ci_log_pr_format_stderr"
+  ); then
+    test_fail "ci-log-dump rejects --pr <number>"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_pr_format_stderr" "flag format not accepted" "--pr" "use --pr=<number>"; then
+    test_pass "ci-log-dump rejects --pr <number>"
+  else
+    test_fail "ci-log-dump rejects --pr <number>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --pr >/dev/null 2> "$ci_log_pr_missing_stderr"
+  ); then
+    test_fail "ci-log-dump rejects missing --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_pr_missing_stderr" "missing flag value" "--pr" "use --pr=<number>"; then
+    test_pass "ci-log-dump rejects missing --pr value"
+  else
+    test_fail "ci-log-dump rejects missing --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --pr= >/dev/null 2> "$ci_log_pr_empty_stderr"
+  ); then
+    test_fail "ci-log-dump rejects empty --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_pr_empty_stderr" "empty flag value" "--pr" "use --pr=<number>"; then
+    test_pass "ci-log-dump rejects empty --pr value"
+  else
+    test_fail "ci-log-dump rejects empty --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --whatever >/dev/null 2> "$ci_log_unknown_stderr"
+  ); then
+    test_fail "ci-log-dump rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/ci-log-dump --help"; then
+    test_pass "ci-log-dump rejects unknown flags"
+  else
+    test_fail "ci-log-dump rejects unknown flags"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -1484,7 +1560,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
-  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" >/dev/null 2>&1 || true
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_unknown_stderr" >/dev/null 2>&1 || true
   find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
   rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
   return "$status"
