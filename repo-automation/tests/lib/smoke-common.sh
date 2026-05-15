@@ -1949,6 +1949,7 @@ smoke_check_status_packet_contract() {
   local status_human="$smoke_test_base/status-packet-human-$$.txt"
   local status_json="$smoke_test_base/status-packet-json-$$.json"
   local gh_stub_dir="$smoke_test_base/gh-stub-status-packet"
+  local status_unknown_stderr="$smoke_test_base/status-packet-unknown-$$.txt"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$log_root" || return 1
@@ -1988,13 +1989,26 @@ status packet smoke
 
   if (
     cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --whatever >/dev/null 2> "$status_unknown_stderr"
+  ); then
+    test_fail "status-packet rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$status_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/status-packet --help"; then
+    test_pass "status-packet rejects unknown flags"
+  else
+    test_fail "status-packet rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     git checkout -- README.md >/dev/null 2>&1 || return 1
     rm -f status-packet-scratch.txt >/dev/null 2>&1 || return 1
   ); then
     :
   fi
 
-  rm -f "$status_human" "$status_json" >/dev/null 2>&1 || true
+  rm -f "$status_human" "$status_json" "$status_unknown_stderr" >/dev/null 2>&1 || true
   rm -f "$log_root"/run-tests-20260512-140000.log "$log_root"/repo-doctor-20260512-150000.log >/dev/null 2>&1 || true
   rmdir "$log_root" "$temp_root" >/dev/null 2>&1 || true
   return "$status"

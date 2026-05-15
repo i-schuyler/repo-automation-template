@@ -354,7 +354,7 @@ status_packet_main() {
         status_packet_machine_json=1
         ;;
       *)
-        repo_auto_stop "unknown argument: $arg"
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/status-packet --help" || return 1
         return 1
         ;;
     esac
