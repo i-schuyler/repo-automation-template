@@ -17,12 +17,24 @@ prepare_release_machine_json=0
 prepare_release_help=0
 
 prepare_release_usage() {
-  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=SEMVER] [--dry-run] [--apply] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=<semver>] [--dry-run] [--apply] [--machine-json] [--help]\n'
 }
 
 prepare_release_stop() {
   printf 'STOP: %s\n' "$*" >&2
   return 1
+}
+
+prepare_release_value_flag_error() {
+  local flag="$1"
+  local fix="$2"
+  local next="${3:-}"
+
+  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+  else
+    repo_auto_flag_error "missing flag value" "$flag" "$fix"
+  fi
 }
 
 prepare_release_validate_version() {
@@ -64,19 +76,22 @@ prepare_release_main() {
         ;;
       --version=*)
         prepare_release_version="${arg#--version=}"
+        if [ -z "$prepare_release_version" ]; then
+          repo_auto_flag_error "empty flag value" "--version" "use --version=<semver>" || return 1
+          return 1
+        fi
         have_version=1
         ;;
       --version)
-        shift
-        if [ "$#" -eq 0 ]; then
-          prepare_release_stop "--version requires a value"
-          return 1
-        fi
-        prepare_release_version="$1"
-        have_version=1
+        prepare_release_value_flag_error "--version" "use --version=<semver>" "${2:-}" || return 1
+        return 1
         ;;
       *)
-        prepare_release_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/prepare-release --help" || return 1
+        else
+          prepare_release_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

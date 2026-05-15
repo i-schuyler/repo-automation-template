@@ -15,7 +15,7 @@ report_upstream_json=0
 report_upstream_stop_reason=""
 
 report_upstream_usage() {
-  printf 'Usage: repo-automation/bin/repo-automation-report-upstream [--help] [--plan] [--dry-run] [--json] [--type bug|feature] [--title TITLE] [--command TEXT] [--expected TEXT] [--actual TEXT] [--use-case TEXT] [--proposed TEXT] [--why-upstream TEXT] [--logs-file FILE] [--body-file FILE] [--preview-file FILE] [--submit] [--yes] [--label LABEL] [--repo OWNER/REPO]\n'
+  printf 'Usage: repo-automation/bin/repo-automation-report-upstream [--help] [--plan] [--dry-run] [--json] [--type=<bug|feature>] [--title=<text>] [--command=<text>] [--expected=<text>] [--actual=<text>] [--use-case=<text>] [--proposed=<text>] [--why-upstream=<text>] [--logs-file=<path>] [--body-file=<path>] [--preview-file=<path>] [--submit] [--yes] [--label=<name>] [--repo=<owner/repo>]\n'
 }
 
 report_upstream_info() {
@@ -30,6 +30,18 @@ report_upstream_stop() {
   report_upstream_stop_reason="$*"
   printf 'STOP: %s\n' "$*" >&2
   return 1
+}
+
+report_upstream_value_flag_error() {
+  local flag="$1"
+  local fix="$2"
+  local next="${3:-}"
+
+  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+  else
+    repo_auto_flag_error "missing flag value" "$flag" "$fix"
+  fi
 }
 
 report_upstream_json_escape() {
@@ -181,49 +193,137 @@ report_upstream_main() {
       --json)
         report_upstream_json=1
         ;;
+      --type=*)
+        report_type="${arg#--type=}"
+        if [ -z "$report_type" ]; then
+          repo_auto_flag_error "empty flag value" "--type" "use --type=<bug|feature>" || return 1
+          command_status=1
+          break
+        fi
+        ;;
       --type)
-        shift
-        report_type="${1:-}"
+        report_upstream_value_flag_error "--type" "use --type=<bug|feature>" "${2:-}" || return 1
+        return 1
+        ;;
+      --title=*)
+        title="${arg#--title=}"
+        if [ -z "$title" ]; then
+          repo_auto_flag_error "empty flag value" "--title" "use --title=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --title)
-        shift
-        title="${1:-}"
+        report_upstream_value_flag_error "--title" "use --title=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --command=*)
+        command_text="${arg#--command=}"
+        if [ -z "$command_text" ]; then
+          repo_auto_flag_error "empty flag value" "--command" "use --command=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --command)
-        shift
-        command_text="${1:-}"
+        report_upstream_value_flag_error "--command" "use --command=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --expected=*)
+        expected_text="${arg#--expected=}"
+        if [ -z "$expected_text" ]; then
+          repo_auto_flag_error "empty flag value" "--expected" "use --expected=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --expected)
-        shift
-        expected_text="${1:-}"
+        report_upstream_value_flag_error "--expected" "use --expected=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --actual=*)
+        actual_text="${arg#--actual=}"
+        if [ -z "$actual_text" ]; then
+          repo_auto_flag_error "empty flag value" "--actual" "use --actual=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --actual)
-        shift
-        actual_text="${1:-}"
+        report_upstream_value_flag_error "--actual" "use --actual=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --use-case=*)
+        use_case_text="${arg#--use-case=}"
+        if [ -z "$use_case_text" ]; then
+          repo_auto_flag_error "empty flag value" "--use-case" "use --use-case=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --use-case)
-        shift
-        use_case_text="${1:-}"
+        report_upstream_value_flag_error "--use-case" "use --use-case=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --proposed=*)
+        proposed_text="${arg#--proposed=}"
+        if [ -z "$proposed_text" ]; then
+          repo_auto_flag_error "empty flag value" "--proposed" "use --proposed=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --proposed)
-        shift
-        proposed_text="${1:-}"
+        report_upstream_value_flag_error "--proposed" "use --proposed=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --why-upstream=*)
+        why_upstream_text="${arg#--why-upstream=}"
+        if [ -z "$why_upstream_text" ]; then
+          repo_auto_flag_error "empty flag value" "--why-upstream" "use --why-upstream=<text>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --why-upstream)
-        shift
-        why_upstream_text="${1:-}"
+        report_upstream_value_flag_error "--why-upstream" "use --why-upstream=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      --logs-file=*)
+        logs_file="${arg#--logs-file=}"
+        if [ -z "$logs_file" ]; then
+          repo_auto_flag_error "empty flag value" "--logs-file" "use --logs-file=<path>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --logs-file)
-        shift
-        logs_file="${1:-}"
+        report_upstream_value_flag_error "--logs-file" "use --logs-file=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      --body-file=*)
+        body_file="${arg#--body-file=}"
+        if [ -z "$body_file" ]; then
+          repo_auto_flag_error "empty flag value" "--body-file" "use --body-file=<path>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --body-file)
-        shift
-        body_file="${1:-}"
+        report_upstream_value_flag_error "--body-file" "use --body-file=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      --preview-file=*)
+        preview_file="${arg#--preview-file=}"
+        if [ -z "$preview_file" ]; then
+          repo_auto_flag_error "empty flag value" "--preview-file" "use --preview-file=<path>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --preview-file)
-        shift
-        preview_file="${1:-}"
+        report_upstream_value_flag_error "--preview-file" "use --preview-file=<path>" "${2:-}" || return 1
+        return 1
         ;;
       --submit)
         submit=1
@@ -231,16 +331,37 @@ report_upstream_main() {
       --yes)
         assume_yes=1
         ;;
+      --label=*)
+        label_value="${arg#--label=}"
+        if [ -z "$label_value" ]; then
+          repo_auto_flag_error "empty flag value" "--label" "use --label=<name>" || return 1
+          command_status=1
+          break
+        fi
+        labels+=("$label_value")
+        ;;
       --label)
-        shift
-        labels+=("${1:-}")
+        report_upstream_value_flag_error "--label" "use --label=<name>" "${2:-}" || return 1
+        return 1
+        ;;
+      --repo=*)
+        repo_override="${arg#--repo=}"
+        if [ -z "$repo_override" ]; then
+          repo_auto_flag_error "empty flag value" "--repo" "use --repo=<owner/repo>" || return 1
+          command_status=1
+          break
+        fi
         ;;
       --repo)
-        shift
-        repo_override="${1:-}"
+        report_upstream_value_flag_error "--repo" "use --repo=<owner/repo>" "${2:-}" || return 1
+        return 1
         ;;
       *)
-        report_upstream_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-automation-report-upstream --help" || return 1
+        else
+          report_upstream_stop "unknown argument: $arg"
+        fi
         command_status=1
         ;;
     esac

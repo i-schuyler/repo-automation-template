@@ -6,7 +6,7 @@ Default behavior is preview/plan-only. No issue is created unless `--submit` is 
 
 ## Core behavior
 
-- `--type bug` and `--type feature` are supported.
+- `--type=bug` and `--type=feature` are supported.
 - A title is required.
 - A local issue-body preview is always generated before submission.
 - Preview defaults to `${TMPDIR:-$HOME/.cache}/repo-automation-template/report-upstream-preview.md` unless `--preview-file` is provided.
