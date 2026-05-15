@@ -16,7 +16,7 @@ touched_files_working_tree_tracked_files=()
 touched_files_untracked_files=()
 
 touched_files_usage() {
-  printf 'Usage: repo-automation/bin/touched-files [--base=REF] [--head=REF] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/touched-files [--base=<ref>] [--head=<ref>] [--machine-json] [--help]\n'
 }
 
 touched_files_json_escape() {
@@ -169,32 +169,59 @@ touched_files_print_json() {
 
 touched_files_main() {
   local arg
+  local next_arg
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
+    next_arg="${2:-}"
     case "$arg" in
       --help)
         touched_files_usage
         return 0
         ;;
+      --base=)
+        repo_auto_flag_error "empty flag value" "--base" "use --base=<ref>" || return 1
+        ;;
       --base=*)
         touched_files_base="${arg#--base=}"
         if [ -z "$touched_files_base" ]; then
-          repo_auto_stop "missing value for --base"
+          repo_auto_flag_error "empty flag value" "--base" "use --base=<ref>" || return 1
           return 1
         fi
         ;;
       --head=*)
         touched_files_head="${arg#--head=}"
         if [ -z "$touched_files_head" ]; then
-          repo_auto_stop "missing value for --head"
+          repo_auto_flag_error "empty flag value" "--head" "use --head=<ref>" || return 1
           return 1
+        fi
+        ;;
+      --base)
+        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
+          repo_auto_flag_error "missing flag value" "--base" "use --base=<ref>" || return 1
+          [ "$#" -gt 1 ] && shift
+        else
+          repo_auto_flag_error "flag format not accepted" "--base" "use --base=<ref>" || return 1
+          shift
+        fi
+        ;;
+      --head)
+        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
+          repo_auto_flag_error "missing flag value" "--head" "use --head=<ref>" || return 1
+          [ "$#" -gt 1 ] && shift
+        else
+          repo_auto_flag_error "flag format not accepted" "--head" "use --head=<ref>" || return 1
+          shift
         fi
         ;;
       --machine-json)
         touched_files_machine_json=1
         ;;
       *)
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/touched-files --help"
+          return 1
+        fi
         repo_auto_stop "unknown argument: $arg"
         return 1
         ;;
