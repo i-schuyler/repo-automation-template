@@ -15,7 +15,7 @@ repo_install_json=0
 repo_install_stop_reason=""
 
 repo_install_usage() {
-  printf 'Usage: repo-automation/bin/repo-automation-install --target PATH|--target=PATH [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version REF|--installed-version=REF] [--installed-at YYYY-MM-DD|--installed-at=YYYY-MM-DD] [--local-overrides-doc PATH|--local-overrides-doc=PATH] [--source-root PATH|--source-root=PATH]\n'
+  printf 'Usage: repo-automation/bin/repo-automation-install --target=<path> [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version=<ref>] [--installed-at=<YYYY-MM-DD>] [--local-overrides-doc=<path>] [--source-root=<path>]\n'
 }
 
 repo_install_info() {
@@ -30,6 +30,18 @@ repo_install_stop() {
   repo_install_stop_reason="$*"
   printf 'STOP: %s\n' "$*" >&2
   return 1
+}
+
+repo_install_value_flag_error() {
+  local flag="$1"
+  local fix="$2"
+  local next="${3:-}"
+
+  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+  else
+    repo_auto_flag_error "missing flag value" "$flag" "$fix"
+  fi
 }
 
 repo_install_json_escape() {
@@ -391,12 +403,16 @@ repo_install_main() {
         repo_install_usage
         return 0
         ;;
-      --target)
-        shift
-        target_root="${1:-}"
-        ;;
       --target=*)
         target_root="${arg#--target=}"
+        if [ -z "$target_root" ]; then
+          repo_auto_flag_error "empty flag value" "--target" "use --target=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --target)
+        repo_install_value_flag_error "--target" "use --target=<path>" "${2:-}" || return 1
+        return 1
         ;;
       --install)
         mode_flag="install"
@@ -428,36 +444,56 @@ repo_install_main() {
       --no-overwrite)
         overwrite=false
         ;;
-      --installed-version)
-        shift
-        installed_version_arg="${1:-}"
-        ;;
       --installed-version=*)
         installed_version_arg="${arg#--installed-version=}"
+        if [ -z "$installed_version_arg" ]; then
+          repo_auto_flag_error "empty flag value" "--installed-version" "use --installed-version=<ref>" || return 1
+          return 1
+        fi
         ;;
-      --installed-at)
-        shift
-        installed_at_arg="${1:-}"
+      --installed-version)
+        repo_install_value_flag_error "--installed-version" "use --installed-version=<ref>" "${2:-}" || return 1
+        return 1
         ;;
       --installed-at=*)
         installed_at_arg="${arg#--installed-at=}"
+        if [ -z "$installed_at_arg" ]; then
+          repo_auto_flag_error "empty flag value" "--installed-at" "use --installed-at=<YYYY-MM-DD>" || return 1
+          return 1
+        fi
         ;;
-      --local-overrides-doc)
-        shift
-        local_overrides_doc_arg="${1:-}"
+      --installed-at)
+        repo_install_value_flag_error "--installed-at" "use --installed-at=<YYYY-MM-DD>" "${2:-}" || return 1
+        return 1
         ;;
       --local-overrides-doc=*)
         local_overrides_doc_arg="${arg#--local-overrides-doc=}"
+        if [ -z "$local_overrides_doc_arg" ]; then
+          repo_auto_flag_error "empty flag value" "--local-overrides-doc" "use --local-overrides-doc=<path>" || return 1
+          return 1
+        fi
         ;;
-      --source-root)
-        shift
-        source_root="${1:-}"
+      --local-overrides-doc)
+        repo_install_value_flag_error "--local-overrides-doc" "use --local-overrides-doc=<path>" "${2:-}" || return 1
+        return 1
         ;;
       --source-root=*)
         source_root="${arg#--source-root=}"
+        if [ -z "$source_root" ]; then
+          repo_auto_flag_error "empty flag value" "--source-root" "use --source-root=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --source-root)
+        repo_install_value_flag_error "--source-root" "use --source-root=<path>" "${2:-}" || return 1
+        return 1
         ;;
       *)
-        repo_install_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-automation-install --help" || return 1
+        else
+          repo_install_stop "unknown argument: $arg"
+        fi
         command_status=1
         ;;
     esac

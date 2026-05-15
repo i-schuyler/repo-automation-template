@@ -565,6 +565,8 @@ smoke_check_add_doc_pr_docs_only() {
   local add_doc_pr_failure_details=""
   local repo_doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
   local ci_log_dump_help="$smoke_test_base/ci-log-dump-help-$$.txt"
+  local report_upstream_help="$smoke_test_base/report-upstream-help-$$.txt"
+  local install_help="$smoke_test_base/repo-install-help-$$.txt"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -612,8 +614,14 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-report-upstream --help >/dev/null
-  ); then
+    repo-automation/bin/repo-automation-report-upstream --help > "$report_upstream_help"
+  ) && grep -Fq -- '--type=<bug|feature>' "$report_upstream_help" && \
+    grep -Fq -- '--title=<text>' "$report_upstream_help" && \
+    grep -Fq -- '--command=<text>' "$report_upstream_help" && \
+    grep -Fq -- '--logs-file=<path>' "$report_upstream_help" && \
+    ! grep -Fq -- '--type bug|feature' "$report_upstream_help" && \
+    ! grep -Fq -- '--title TITLE' "$report_upstream_help" && \
+    ! grep -Fq -- '--logs-file FILE' "$report_upstream_help"; then
     test_pass "report-upstream help succeeds"
   else
     test_fail "report-upstream help succeeds"
@@ -632,8 +640,13 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --help >/dev/null
-  ); then
+    repo-automation/bin/repo-automation-install --help > "$install_help"
+  ) && grep -Fq -- '--target=<path>' "$install_help" && \
+    grep -Fq -- '--installed-version=<ref>' "$install_help" && \
+    grep -Fq -- '--source-root=<path>' "$install_help" && \
+    ! grep -Fq -- '--target PATH' "$install_help" && \
+    ! grep -Fq -- '--installed-version REF' "$install_help" && \
+    ! grep -Fq -- '--source-root PATH' "$install_help"; then
     test_pass "repo-automation-install help succeeds"
   else
     test_fail "repo-automation-install help succeeds"
@@ -974,18 +987,22 @@ smoke_check_report_upstream_preview() {
   local report_feature_json="$smoke_test_base/report-upstream-feature-$$.json"
   local report_preview_bug="$smoke_test_base/report-upstream-bug-preview-$$.md"
   local report_preview_feature="$smoke_test_base/report-upstream-feature-preview-$$.md"
+  local report_type_format_stderr="$smoke_test_base/report-upstream-type-format-$$.stderr"
+  local report_type_missing_stderr="$smoke_test_base/report-upstream-type-missing-$$.stderr"
+  local report_type_empty_stderr="$smoke_test_base/report-upstream-type-empty-$$.stderr"
+  local report_unknown_stderr="$smoke_test_base/report-upstream-unknown-$$.stderr"
 
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-report-upstream \
-      --type bug \
-      --title "Bug smoke" \
-      --command "repo-automation/bin/example --flag" \
-      --expected "works" \
-      --actual "fails" \
+      --type=bug \
+      --title="Bug smoke" \
+      --command="repo-automation/bin/example --flag" \
+      --expected=works \
+      --actual=fails \
       --dry-run \
       --json \
-      --preview-file "$report_preview_bug" > "$report_bug_json"
+      --preview-file="$report_preview_bug" > "$report_bug_json"
   ) && python -m json.tool "$report_bug_json" >/dev/null && [ -f "$report_preview_bug" ]; then
     test_pass "report-upstream bug dry-run/json preview succeeds"
   else
@@ -996,14 +1013,14 @@ smoke_check_report_upstream_preview() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-report-upstream \
-      --type feature \
-      --title "Feature smoke" \
-      --use-case "repeat docs churn" \
-      --proposed "better helper" \
-      --why-upstream "shared contract" \
+      --type=feature \
+      --title="Feature smoke" \
+      --use-case="repeat docs churn" \
+      --proposed="better helper" \
+      --why-upstream="shared contract" \
       --dry-run \
       --json \
-      --preview-file "$report_preview_feature" > "$report_feature_json"
+      --preview-file="$report_preview_feature" > "$report_feature_json"
   ) && python -m json.tool "$report_feature_json" >/dev/null && [ -f "$report_preview_feature" ]; then
     test_pass "report-upstream feature dry-run/json preview succeeds"
   else
@@ -1013,7 +1030,59 @@ smoke_check_report_upstream_preview() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-report-upstream --type bug --dry-run >/dev/null 2>&1
+    repo-automation/bin/repo-automation-report-upstream --type bug >/dev/null 2> "$report_type_format_stderr"
+  ); then
+    test_fail "report-upstream rejects --type <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$report_type_format_stderr" "flag format not accepted" "--type" "use --type=<bug|feature>"; then
+    test_pass "report-upstream rejects --type <value>"
+  else
+    test_fail "report-upstream rejects --type <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream --type >/dev/null 2> "$report_type_missing_stderr"
+  ); then
+    test_fail "report-upstream rejects missing --type value"
+    status=1
+  elif smoke_assert_flag_error_shape "$report_type_missing_stderr" "missing flag value" "--type" "use --type=<bug|feature>"; then
+    test_pass "report-upstream rejects missing --type value"
+  else
+    test_fail "report-upstream rejects missing --type value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream --type= >/dev/null 2> "$report_type_empty_stderr"
+  ); then
+    test_fail "report-upstream rejects empty --type value"
+    status=1
+  elif smoke_assert_flag_error_shape "$report_type_empty_stderr" "empty flag value" "--type" "use --type=<bug|feature>"; then
+    test_pass "report-upstream rejects empty --type value"
+  else
+    test_fail "report-upstream rejects empty --type value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream --whatever >/dev/null 2> "$report_unknown_stderr"
+  ); then
+    test_fail "report-upstream rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$report_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/repo-automation-report-upstream --help"; then
+    test_pass "report-upstream rejects unknown flags"
+  else
+    test_fail "report-upstream rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream --type=bug --dry-run >/dev/null 2>&1
   ); then
     test_fail "report-upstream missing title fails safely"
     status=1
@@ -1023,7 +1092,7 @@ smoke_check_report_upstream_preview() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-report-upstream --type wrong --title "Invalid type" --dry-run >/dev/null 2>&1
+    repo-automation/bin/repo-automation-report-upstream --type=wrong --title="Invalid type" --dry-run >/dev/null 2>&1
   ); then
     test_fail "report-upstream invalid type fails safely"
     status=1
@@ -1031,7 +1100,7 @@ smoke_check_report_upstream_preview() {
     test_pass "report-upstream invalid type fails safely"
   fi
 
-  rm -f "$report_bug_json" "$report_feature_json" "$report_preview_bug" "$report_preview_feature" >/dev/null 2>&1 || true
+  rm -f "$report_bug_json" "$report_feature_json" "$report_preview_bug" "$report_preview_feature" "$report_type_format_stderr" "$report_type_missing_stderr" "$report_type_empty_stderr" "$report_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1043,9 +1112,9 @@ smoke_check_report_upstream_secret_scan() {
     cd "$smoke_test_dir" || return 1
     printf 'token=supersecret\n' > logs-secret.txt || return 1
     repo-automation/bin/repo-automation-report-upstream \
-      --type bug \
-      --title "Secret scan smoke" \
-      --logs-file logs-secret.txt \
+      --type=bug \
+      --title="Secret scan smoke" \
+      --logs-file=logs-secret.txt \
       --dry-run \
       --json > "$report_secret_json"
     return 1
@@ -3198,14 +3267,72 @@ smoke_check_prepare_release_contract() {
   local prepare_release_apply_json="$smoke_test_base/prepare-release-apply-$$.json"
   local pre_dry_run_status="$smoke_test_base/prepare-release-pre-dry-run-status-$$.txt"
   local post_dry_run_status="$smoke_test_base/prepare-release-post-dry-run-status-$$.txt"
+  local prepare_release_version_format_stderr="$smoke_test_base/prepare-release-version-format-$$.stderr"
+  local prepare_release_version_missing_stderr="$smoke_test_base/prepare-release-version-missing-$$.stderr"
+  local prepare_release_version_empty_stderr="$smoke_test_base/prepare-release-version-empty-$$.stderr"
+  local prepare_release_unknown_stderr="$smoke_test_base/prepare-release-unknown-$$.stderr"
 
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/prepare-release --help > "$prepare_release_help_out"
-  ) && grep -q '^Usage: repo-automation/bin/prepare-release ' "$prepare_release_help_out"; then
+  ) && grep -q '^Usage: repo-automation/bin/prepare-release ' "$prepare_release_help_out" && \
+    grep -Fq -- '--version=<semver>' "$prepare_release_help_out" && \
+    ! grep -Fq -- '--version SEMVER' "$prepare_release_help_out"; then
     test_pass "prepare-release help succeeds"
   else
     test_fail "prepare-release help succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --version 0.2.0 >/dev/null 2> "$prepare_release_version_format_stderr"
+  ); then
+    test_fail "prepare-release rejects --version <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$prepare_release_version_format_stderr" "flag format not accepted" "--version" "use --version=<semver>"; then
+    test_pass "prepare-release rejects --version <value>"
+  else
+    test_fail "prepare-release rejects --version <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --version >/dev/null 2> "$prepare_release_version_missing_stderr"
+  ); then
+    test_fail "prepare-release rejects missing --version value"
+    status=1
+  elif smoke_assert_flag_error_shape "$prepare_release_version_missing_stderr" "missing flag value" "--version" "use --version=<semver>"; then
+    test_pass "prepare-release rejects missing --version value"
+  else
+    test_fail "prepare-release rejects missing --version value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --version= >/dev/null 2> "$prepare_release_version_empty_stderr"
+  ); then
+    test_fail "prepare-release rejects empty --version value"
+    status=1
+  elif smoke_assert_flag_error_shape "$prepare_release_version_empty_stderr" "empty flag value" "--version" "use --version=<semver>"; then
+    test_pass "prepare-release rejects empty --version value"
+  else
+    test_fail "prepare-release rejects empty --version value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --whatever >/dev/null 2> "$prepare_release_unknown_stderr"
+  ); then
+    test_fail "prepare-release rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$prepare_release_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/prepare-release --help"; then
+    test_pass "prepare-release rejects unknown flags"
+  else
+    test_fail "prepare-release rejects unknown flags"
     status=1
   fi
 
@@ -3261,7 +3388,7 @@ smoke_check_prepare_release_contract() {
     status=1
   fi
 
-  rm -f "$prepare_release_help_out" "$prepare_release_check_json" "$prepare_release_dry_run_json" "$prepare_release_apply_json" "$pre_dry_run_status" "$post_dry_run_status" >/dev/null 2>&1 || true
+  rm -f "$prepare_release_help_out" "$prepare_release_check_json" "$prepare_release_dry_run_json" "$prepare_release_apply_json" "$pre_dry_run_status" "$post_dry_run_status" "$prepare_release_version_format_stderr" "$prepare_release_version_missing_stderr" "$prepare_release_version_empty_stderr" "$prepare_release_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -3407,7 +3534,7 @@ smoke_check_installer_starter_template_profile() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --target "$starter_target" --starter-template --json > "$starter_plan_json"
+    repo-automation/bin/repo-automation-install --target="$starter_target" --starter-template --json > "$starter_plan_json"
   ) && python -m json.tool "$starter_plan_json" >/dev/null && \
     smoke_json_assert "$starter_plan_json" 'data.get("mode") == "install" and data.get("profile") == "starter-template" and ".github/pull_request_template.md" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-bug.yml" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-feature.yml" in data.get("files_to_add", []) and ".github/workflows/ci.yml" not in data.get("files_to_add", []) and data.get("target_remote_status") in ("missing", "unsupported", "present")'; then
     test_pass "repo-automation-install starter-template plan/json includes template files"
@@ -3418,7 +3545,7 @@ smoke_check_installer_starter_template_profile() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --target "$starter_target" --starter-template --apply >/dev/null
+    repo-automation/bin/repo-automation-install --target="$starter_target" --starter-template --apply >/dev/null
   ) && [ -f "$starter_target/.repo-automation.conf" ] && [ -f "$starter_target/.github/pull_request_template.md" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-bug.yml" ] && [ -f "$starter_target/.github/ISSUE_TEMPLATE/automation-feature.yml" ] && [ ! -f "$starter_target/.github/workflows/ci.yml" ] && grep -qx 'CHECK_PROFILE_DEFAULT="starter-template"' "$starter_target/.repo-automation.conf"; then
     test_pass "repo-automation-install starter-template apply creates templates without CI"
   else
@@ -3591,6 +3718,10 @@ smoke_check_installer_apply_contract() {
   local install_remote_head_before
   local install_remote_head_after
   local install_doctor_json="$smoke_test_base/repo-doctor-install-$$.json"
+  local install_target_format_stderr="$smoke_test_base/repo-install-target-format-$$.stderr"
+  local install_target_missing_stderr="$smoke_test_base/repo-install-target-missing-$$.stderr"
+  local install_target_empty_stderr="$smoke_test_base/repo-install-target-empty-$$.stderr"
+  local install_unknown_stderr="$smoke_test_base/repo-install-unknown-$$.stderr"
 
   mkdir -p "$install_target" || return 1
   (
@@ -3615,7 +3746,7 @@ smoke_check_installer_apply_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --target "$install_target" --json --include-tests > "$install_plan_json"
+    repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
     if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 21 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
@@ -3628,6 +3759,58 @@ smoke_check_installer_apply_contract() {
     status=1
   fi
 
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target "$install_target" >/dev/null 2> "$install_target_format_stderr"
+  ); then
+    test_fail "repo-automation-install rejects --target <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$install_target_format_stderr" "flag format not accepted" "--target" "use --target=<path>"; then
+    test_pass "repo-automation-install rejects --target <value>"
+  else
+    test_fail "repo-automation-install rejects --target <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target >/dev/null 2> "$install_target_missing_stderr"
+  ); then
+    test_fail "repo-automation-install rejects missing --target value"
+    status=1
+  elif smoke_assert_flag_error_shape "$install_target_missing_stderr" "missing flag value" "--target" "use --target=<path>"; then
+    test_pass "repo-automation-install rejects missing --target value"
+  else
+    test_fail "repo-automation-install rejects missing --target value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target= >/dev/null 2> "$install_target_empty_stderr"
+  ); then
+    test_fail "repo-automation-install rejects empty --target value"
+    status=1
+  elif smoke_assert_flag_error_shape "$install_target_empty_stderr" "empty flag value" "--target" "use --target=<path>"; then
+    test_pass "repo-automation-install rejects empty --target value"
+  else
+    test_fail "repo-automation-install rejects empty --target value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --whatever >/dev/null 2> "$install_unknown_stderr"
+  ); then
+    test_fail "repo-automation-install rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$install_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/repo-automation-install --help"; then
+    test_pass "repo-automation-install rejects unknown flags"
+  else
+    test_fail "repo-automation-install rejects unknown flags"
+    status=1
+  fi
+
   if grep -Fq "$install_target_remote" "$install_plan_json"; then
     test_fail "repo-automation-install JSON does not leak raw target origin"
     status=1
@@ -3637,7 +3820,7 @@ smoke_check_installer_apply_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --target "$install_target" --apply --dry-run >/dev/null
+    repo-automation/bin/repo-automation-install --target="$install_target" --apply --dry-run >/dev/null
   ) && [ ! -f "$install_target/.repo-automation.conf" ]; then
     test_pass "repo-automation-install dry-run does not write files"
   else
@@ -3647,7 +3830,7 @@ smoke_check_installer_apply_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --target "$install_target" --apply --include-tests >/dev/null
+    repo-automation/bin/repo-automation-install --target="$install_target" --apply --include-tests >/dev/null
   ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/docs/repo-zip.md" ] && [ -f "$install_target/repo-automation/docs/evidence-bundle.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/repo-zip" ] && [ -f "$install_target/repo-automation/bin/evidence-bundle" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/repo-zip" ] && [ -x "$install_target/repo-automation/bin/evidence-bundle" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
     test_pass "repo-automation-install apply creates managed files"
   else
@@ -3765,7 +3948,7 @@ smoke_check_installer_apply_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-automation-install --target "$install_target" --json > "$install_plan_json"
+    repo-automation/bin/repo-automation-install --target="$install_target" --json > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null && \
     smoke_json_assert "$install_plan_json" 'data.get("mode") == "update"'; then
     test_pass "repo-automation-install second plan infers update mode"
@@ -3791,6 +3974,7 @@ smoke_check_installer_apply_contract() {
 
   rm -f "$install_plan_json" >/dev/null 2>&1 || true
   rm -f "$install_doctor_json" >/dev/null 2>&1 || true
+  rm -f "$install_target_format_stderr" "$install_target_missing_stderr" "$install_target_empty_stderr" "$install_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

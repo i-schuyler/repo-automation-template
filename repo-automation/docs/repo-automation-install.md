@@ -5,7 +5,7 @@
 ## Behavior
 
 - defaults to plan-only preview
-- requires `--target PATH`
+- requires `--target=<path>`
 - requires explicit `--apply` before writing files
 - never commits, pushes, creates PRs, merges, or deletes branches in the target repo
 - supports JSON output with valid JSON on stdout and human logs on stderr
