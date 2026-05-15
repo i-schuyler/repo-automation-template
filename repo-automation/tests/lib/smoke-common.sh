@@ -1288,6 +1288,7 @@ smoke_check_touched_files_and_ci_contract() {
   local status=0
   local touched_worktree_json="$smoke_test_base/touched-files-worktree-$$.json"
   local touched_range_json="$smoke_test_base/touched-files-range-$$.json"
+  local touched_help="$smoke_test_base/touched-files-help-$$.txt"
   local ci_status_help="$smoke_test_base/ci-status-help-$$.txt"
   local ci_watch_help="$smoke_test_base/ci-watch-help-$$.txt"
   local ci_status_pr_json="$smoke_test_base/ci-status-pr-$$.json"
@@ -1304,8 +1305,26 @@ smoke_check_touched_files_and_ci_contract() {
   local ci_watch_unknown_stderr="$smoke_test_base/ci-watch-unknown-$$.txt"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local touched_range_repo=""
+  local touched_base_format_stderr="$smoke_test_base/touched-files-base-format-$$.txt"
+  local touched_base_missing_stderr="$smoke_test_base/touched-files-base-missing-$$.txt"
+  local touched_base_empty_stderr="$smoke_test_base/touched-files-base-empty-$$.txt"
+  local touched_base_unknown_stderr="$smoke_test_base/touched-files-base-unknown-$$.txt"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --help > "$touched_help"
+  ) && \
+    grep -Fq -- '--base=<ref>' "$touched_help" && \
+    grep -Fq -- '--head=<ref>' "$touched_help" && \
+    ! grep -Fq -- '--base REF' "$touched_help" && \
+    ! grep -Fq -- '--head REF' "$touched_help"; then
+    test_pass "touched-files help shows strict value syntax"
+  else
+    test_fail "touched-files help shows strict value syntax"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -1378,6 +1397,58 @@ range touch
     test_pass "touched-files commit-range output is parseable"
   else
     test_fail "touched-files commit-range output is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --base main >/dev/null 2> "$touched_base_format_stderr"
+  ); then
+    test_fail "touched-files rejects --base <ref>"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_base_format_stderr" "flag format not accepted" "--base" "use --base=<ref>"; then
+    test_pass "touched-files rejects --base <ref>"
+  else
+    test_fail "touched-files rejects --base <ref>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --base >/dev/null 2> "$touched_base_missing_stderr"
+  ); then
+    test_fail "touched-files rejects missing --base value"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_base_missing_stderr" "missing flag value" "--base" "use --base=<ref>"; then
+    test_pass "touched-files rejects missing --base value"
+  else
+    test_fail "touched-files rejects missing --base value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --base= >/dev/null 2> "$touched_base_empty_stderr"
+  ); then
+    test_fail "touched-files rejects empty --base value"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_base_empty_stderr" "empty flag value" "--base" "use --base=<ref>"; then
+    test_pass "touched-files rejects empty --base value"
+  else
+    test_fail "touched-files rejects empty --base value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --whatever >/dev/null 2> "$touched_base_unknown_stderr"
+  ); then
+    test_fail "touched-files rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_base_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/touched-files --help"; then
+    test_pass "touched-files rejects unknown flags"
+  else
+    test_fail "touched-files rejects unknown flags"
     status=1
   fi
 
