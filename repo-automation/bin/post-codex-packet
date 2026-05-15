@@ -26,7 +26,7 @@ post_codex_packet_copied_count=0
 post_codex_packet_skipped_count=0
 
 post_codex_packet_usage() {
-  printf 'Usage: repo-automation/bin/post-codex-packet [--out-dir PATH] [--label NAME] [--keep-dir] [--max-bytes N] [--help]\n'
+  printf 'Usage: repo-automation/bin/post-codex-packet [--out-dir=<path>] [--label=<name>] [--keep-dir] [--max-bytes=<bytes>] [--help]\n'
 }
 
 post_codex_packet_info() {
@@ -248,23 +248,57 @@ post_codex_packet_main() {
         post_codex_packet_usage
         return 0
         ;;
+      --out-dir=*)
+        post_codex_packet_output_base="${arg#--out-dir=}"
+        if [ -z "$post_codex_packet_output_base" ]; then
+          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        ;;
       --out-dir)
-        shift
-        post_codex_packet_output_base="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--out-dir" "use --out-dir=<path>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --label=*)
+        post_codex_packet_label="${arg#--label=}"
+        if [ -z "$post_codex_packet_label" ]; then
+          repo_auto_flag_error "empty flag value" "--label" "use --label=<name>" || return 1
+        fi
         ;;
       --label)
-        shift
-        post_codex_packet_label="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--label" "use --label=<name>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--label" "use --label=<name>" || return 1
+        fi
+        return 1
         ;;
       --keep-dir)
         post_codex_packet_keep_dir=1
         ;;
+      --max-bytes=*)
+        post_codex_packet_max_bytes="${arg#--max-bytes=}"
+        if [ -z "$post_codex_packet_max_bytes" ]; then
+          repo_auto_flag_error "empty flag value" "--max-bytes" "use --max-bytes=<bytes>" || return 1
+        fi
+        ;;
       --max-bytes)
-        shift
-        post_codex_packet_max_bytes="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--max-bytes" "use --max-bytes=<bytes>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--max-bytes" "use --max-bytes=<bytes>" || return 1
+        fi
+        return 1
         ;;
       *)
-        post_codex_packet_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/post-codex-packet --help" || return 1
+        else
+          post_codex_packet_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

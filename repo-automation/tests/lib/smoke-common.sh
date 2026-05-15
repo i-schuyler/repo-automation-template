@@ -2018,15 +2018,36 @@ smoke_check_post_codex_packet_contract() {
   local status=0
   local output_root=""
   local output_log=""
+  local help_file=""
   local packet_dir=""
   local packet_zip=""
   local summary_file=""
+  local copied_file=""
   local skipped_file=""
   local index_file=""
+  local label_format_stderr=""
+  local label_missing_stderr=""
+  local label_empty_stderr=""
+  local unknown_stderr=""
 
   smoke_setup_temp_repo || return 1
   output_root="$smoke_test_base/post-codex-output"
   output_log="$smoke_test_base/post-codex-output.log"
+  help_file="$smoke_test_base/post-codex-help.txt"
+  label_format_stderr="$smoke_test_base/post-codex-label-format.stderr"
+  label_missing_stderr="$smoke_test_base/post-codex-label-missing.stderr"
+  label_empty_stderr="$smoke_test_base/post-codex-label-empty.stderr"
+  unknown_stderr="$smoke_test_base/post-codex-unknown.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --help > "$help_file"
+  ) && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<name>' "$help_file" && grep -Fq -- '--max-bytes=<bytes>' "$help_file" && ! grep -Fq -- '--out-dir PATH' "$help_file" && ! grep -Fq -- '--label NAME' "$help_file" && ! grep -Fq -- '--max-bytes N' "$help_file"; then
+    test_pass "post-codex-packet help shows strict value syntax"
+  else
+    test_fail "post-codex-packet help shows strict value syntax"
+    status=1
+  fi
 
   cd "$smoke_test_dir" || return 1
   printf '\npacket helper staged line\n' >> docs/testing.md || return 1
@@ -2034,8 +2055,14 @@ smoke_check_post_codex_packet_contract() {
   printf '\npacket helper unstaged line\n' >> README.md || return 1
   mkdir -p packet-safe-nested || return 1
   printf 'nested safe packet content\n' > packet-safe-nested/deep.txt || return 1
+  mkdir -p config || return 1
+  printf 'nested sensitive env packet content\n' > config/.env || return 1
+  printf 'nested sensitive env local packet content\n' > config/.env.local || return 1
   printf 'sensitive env packet content\n' > .env || return 1
   mkdir -p secrets || return 1
+  mkdir -p keys || return 1
+  printf 'nested ssh private key packet content\n' > keys/id_rsa || return 1
+  printf 'nested ssh private key packet content\n' > keys/id_ed25519 || return 1
   printf 'token packet content\n' > secrets/token.txt || return 1
   printf 'credential packet content\n' > credentials-note.txt || return 1
   python3 - <<'PY' > packet-oversized.bin
@@ -2043,7 +2070,46 @@ import sys
 sys.stdout.write('x' * 262145)
 PY
 
-  if REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/post-codex-packet --label review --keep-dir --max-bytes 262144 > "$output_log"; then
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --label review >/dev/null 2> "$label_format_stderr"
+  ); then
+    test_fail "post-codex-packet rejects --label <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_format_stderr" "flag format not accepted" "--label" "use --label=<name>"; then
+    test_pass "post-codex-packet rejects --label <value>"
+  else
+    test_fail "post-codex-packet rejects --label <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --label >/dev/null 2> "$label_missing_stderr"
+  ); then
+    test_fail "post-codex-packet rejects missing --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_missing_stderr" "missing flag value" "--label" "use --label=<name>"; then
+    test_pass "post-codex-packet rejects missing --label value"
+  else
+    test_fail "post-codex-packet rejects missing --label value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --label= >/dev/null 2> "$label_empty_stderr"
+  ); then
+    test_fail "post-codex-packet rejects empty --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_empty_stderr" "empty flag value" "--label" "use --label=<name>"; then
+    test_pass "post-codex-packet rejects empty --label value"
+  else
+    test_fail "post-codex-packet rejects empty --label value"
+    status=1
+  fi
+
+  if REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/post-codex-packet --label=review --keep-dir --max-bytes=262144 > "$output_log"; then
     :
   else
     test_fail "post-codex-packet helper runs successfully"
@@ -2053,6 +2119,7 @@ PY
   packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$output_log" | tail -n 1)"
   packet_zip="$(sed -n 's/^INFO: packet zip: //p' "$output_log" | tail -n 1)"
   summary_file="$packet_dir/summary.txt"
+  copied_file="$packet_dir/untracked/copied/packet-safe-nested/deep.txt"
   skipped_file="$packet_dir/untracked/skipped.txt"
   index_file="$output_root/post-codex/index.tsv"
 
@@ -2063,14 +2130,14 @@ PY
     status=1
   fi
 
-  if grep -Eq '^Branch: main$' "$summary_file" && grep -Eq '^HEAD: [0-9a-f]{40}$' "$summary_file" && grep -Eq '^Tracked unstaged files: 1$' "$summary_file" && grep -Eq '^Staged files: 1$' "$summary_file" && grep -Eq '^Untracked files: 5$' "$summary_file" && grep -Eq '^Copied untracked files: 1$' "$summary_file" && grep -Eq '^Skipped untracked files: 4$' "$summary_file" && grep -Eq '^Max untracked copy bytes: 262144$' "$summary_file"; then
+  if grep -Eq '^Branch: main$' "$summary_file" && grep -Eq '^HEAD: [0-9a-f]{40}$' "$summary_file" && grep -Eq '^Repo path: ' "$summary_file" && grep -Eq '^Packet path: ' "$summary_file" && grep -Eq '^Zip path: ' "$summary_file" && grep -Eq '^Tracked unstaged files: 1$' "$summary_file" && grep -Eq '^Staged files: 1$' "$summary_file" && grep -Eq '^Untracked files: 9$' "$summary_file" && grep -Eq '^Copied untracked files: 1$' "$summary_file" && grep -Eq '^Skipped untracked files: 8$' "$summary_file" && grep -Eq '^Max untracked copy bytes: 262144$' "$summary_file"; then
     test_pass "post-codex-packet summary reports packet metadata"
   else
     test_fail "post-codex-packet summary reports packet metadata"
     status=1
   fi
 
-  if grep -Eq '^README.md$' "$packet_dir/tracked-unstaged/name-list.txt" && grep -Eq '^docs/testing.md$' "$packet_dir/staged/name-list.txt" && grep -Eq '^packet-safe-nested/deep.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^\.env\t' "$skipped_file" && grep -Eq '^secrets/token.txt\t' "$skipped_file" && grep -Eq '^credentials-note.txt\t' "$skipped_file" && grep -Eq '^packet-oversized.bin\t' "$skipped_file" && [ -f "$packet_dir/untracked/copied/packet-safe-nested/deep.txt" ]; then
+  if grep -Eq '^README.md$' "$packet_dir/tracked-unstaged/name-list.txt" && grep -Eq '^docs/testing.md$' "$packet_dir/staged/name-list.txt" && grep -Eq '^packet-safe-nested/deep.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^\.env[[:space:]]' "$skipped_file" && grep -Eq '^config/\.env[[:space:]]' "$skipped_file" && grep -Eq '^config/\.env\.local[[:space:]]' "$skipped_file" && grep -Eq '^keys/id_rsa[[:space:]]' "$skipped_file" && grep -Eq '^keys/id_ed25519[[:space:]]' "$skipped_file" && grep -Eq '^secrets/token.txt[[:space:]]' "$skipped_file" && grep -Eq '^credentials-note.txt[[:space:]]' "$skipped_file" && grep -Eq '^packet-oversized.bin[[:space:]]' "$skipped_file" && [ -f "$copied_file" ]; then
     test_pass "post-codex-packet packet contents include copied and skipped untracked files"
   else
     test_fail "post-codex-packet packet contents include copied and skipped untracked files"
@@ -2099,10 +2166,23 @@ PY
     status=1
   fi
 
-  if grep -Eq '^review$' "$index_file" && grep -Eq '^post-codex-' "$index_file"; then
+  if grep -Fq "$packet_dir" "$index_file" && awk -F "\t" 'NR > 1 && $6 == "review" { found = 1 } END { exit(found ? 0 : 1) }' "$index_file"; then
     test_pass "post-codex-packet index records the packet"
   else
     test_fail "post-codex-packet index records the packet"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/post-codex-packet --whatever >/dev/null 2> "$unknown_stderr"
+  ); then
+    test_fail "post-codex-packet rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/post-codex-packet --help"; then
+    test_pass "post-codex-packet rejects unknown flags"
+  else
+    test_fail "post-codex-packet rejects unknown flags"
     status=1
   fi
 
