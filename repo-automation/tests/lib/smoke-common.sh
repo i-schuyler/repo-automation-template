@@ -557,6 +557,11 @@ smoke_check_add_doc_pr_docs_only() {
   local status=0
   local add_doc_pr_json="$smoke_test_base/add-doc-pr-plan-$$.json"
   local add_doc_pr_stderr="$smoke_test_base/add-doc-pr-plan-$$.stderr"
+  local add_doc_pr_help="$smoke_test_base/add-doc-pr-help-$$.txt"
+  local add_doc_pr_branch_format_stderr="$smoke_test_base/add-doc-pr-branch-format-$$.stderr"
+  local add_doc_pr_branch_missing_stderr="$smoke_test_base/add-doc-pr-branch-missing-$$.stderr"
+  local add_doc_pr_branch_empty_stderr="$smoke_test_base/add-doc-pr-branch-empty-$$.stderr"
+  local add_doc_pr_unknown_stderr="$smoke_test_base/add-doc-pr-unknown-$$.stderr"
   local add_doc_pr_failure_details=""
   local repo_doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
   local ci_log_dump_help="$smoke_test_base/ci-log-dump-help-$$.txt"
@@ -583,11 +588,25 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/add-doc-pr --help >/dev/null
-  ); then
-    test_pass "add-doc-pr help succeeds"
+    repo-automation/bin/add-doc-pr --help > "$add_doc_pr_help"
+  ) && \
+    grep -Fq -- '--branch=<name>' "$add_doc_pr_help" && \
+    grep -Fq -- '--title=<text>' "$add_doc_pr_help" && \
+    grep -Fq -- '--body-file=<path>' "$add_doc_pr_help" && \
+    grep -Fq -- '--body=<text>' "$add_doc_pr_help" && \
+    grep -Fq -- '--commit-message=<text>' "$add_doc_pr_help" && \
+    grep -Fq -- '--allow=<path-prefix>' "$add_doc_pr_help" && \
+    grep -Fq -- '--base=<branch>' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--branch BRANCH' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--title TITLE' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--body-file FILE' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--body TEXT' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--commit-message MESSAGE' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--allow FILE_OR_DIR' "$add_doc_pr_help" && \
+    ! grep -Fq -- '--base BRANCH' "$add_doc_pr_help"; then
+    test_pass "add-doc-pr help shows strict value syntax"
   else
-    test_fail "add-doc-pr help succeeds"
+    test_fail "add-doc-pr help shows strict value syntax"
     status=1
   fi
 
@@ -635,9 +654,19 @@ smoke_check_add_doc_pr_docs_only() {
     cd "$smoke_test_dir" || return 1
     mkdir -p docs || return 1
     printf 'docs only change\n' > docs/plan-doc.md || return 1
-    repo-automation/bin/add-doc-pr --plan --json > "$add_doc_pr_json" 2> "$add_doc_pr_stderr"
+    repo-automation/bin/add-doc-pr \
+      --plan \
+      --json \
+      --branch=docs/my-doc-update \
+      --title=Docs \
+      --body-file="$smoke_test_base/add-doc-pr-body.md" \
+      --body=inline \
+      --commit-message=docs:update \
+      --allow=templates/ \
+      --base=main \
+      > "$add_doc_pr_json" 2> "$add_doc_pr_stderr"
   ) && python -m json.tool "$add_doc_pr_json" >/dev/null; then
-    if smoke_json_assert "$add_doc_pr_json" '"docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
+    if smoke_json_assert "$add_doc_pr_json" 'data.get("branch") == "docs/my-doc-update" and data.get("base_branch") == "main" and "docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
       test_pass "add-doc-pr docs-only plan/json succeeds"
     else
       if [ -s "$add_doc_pr_json" ]; then
@@ -655,6 +684,58 @@ smoke_check_add_doc_pr_docs_only() {
       add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_stderr"))"
     fi
     test_fail "add-doc-pr docs-only plan/json succeeds${add_doc_pr_failure_details}"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/add-doc-pr --branch docs/my-doc-update >/dev/null 2> "$add_doc_pr_branch_format_stderr"
+  ); then
+    test_fail "add-doc-pr rejects --branch <name>"
+    status=1
+  elif smoke_assert_flag_error_shape "$add_doc_pr_branch_format_stderr" "flag format not accepted" "--branch" "use --branch=<name>"; then
+    test_pass "add-doc-pr rejects --branch <name>"
+  else
+    test_fail "add-doc-pr rejects --branch <name>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/add-doc-pr --branch >/dev/null 2> "$add_doc_pr_branch_missing_stderr"
+  ); then
+    test_fail "add-doc-pr rejects missing --branch value"
+    status=1
+  elif smoke_assert_flag_error_shape "$add_doc_pr_branch_missing_stderr" "missing flag value" "--branch" "use --branch=<name>"; then
+    test_pass "add-doc-pr rejects missing --branch value"
+  else
+    test_fail "add-doc-pr rejects missing --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/add-doc-pr --branch= >/dev/null 2> "$add_doc_pr_branch_empty_stderr"
+  ); then
+    test_fail "add-doc-pr rejects empty --branch value"
+    status=1
+  elif smoke_assert_flag_error_shape "$add_doc_pr_branch_empty_stderr" "empty flag value" "--branch" "use --branch=<name>"; then
+    test_pass "add-doc-pr rejects empty --branch value"
+  else
+    test_fail "add-doc-pr rejects empty --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/add-doc-pr --whatever >/dev/null 2> "$add_doc_pr_unknown_stderr"
+  ); then
+    test_fail "add-doc-pr rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$add_doc_pr_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/add-doc-pr --help"; then
+    test_pass "add-doc-pr rejects unknown flags"
+  else
+    test_fail "add-doc-pr rejects unknown flags"
     status=1
   fi
 

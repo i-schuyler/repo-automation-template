@@ -15,7 +15,7 @@ add_doc_pr_json=0
 add_doc_pr_stop_reason=""
 
 add_doc_pr_usage() {
-  printf 'Usage: repo-automation/bin/add-doc-pr [--help] [--plan] [--dry-run] [--json] [--branch BRANCH] [--title TITLE] [--body-file FILE] [--body TEXT] [--commit-message MESSAGE] [--allow FILE_OR_DIR] [--no-push] [--create-pr] [--base BRANCH]\n'
+  printf 'Usage: repo-automation/bin/add-doc-pr [--help] [--plan] [--dry-run] [--json] [--branch=<name>] [--title=<text>] [--body-file=<path>] [--body=<text>] [--commit-message=<text>] [--allow=<path-prefix>] [--no-push] [--create-pr] [--base=<branch>]\n'
 }
 
 add_doc_pr_info() {
@@ -24,6 +24,17 @@ add_doc_pr_info() {
 
 add_doc_pr_warn() {
   printf 'WARN: %s\n' "$*" >&2
+}
+
+add_doc_pr_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  add_doc_pr_stop_reason="$reason"
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
 }
 
 add_doc_pr_stop() {
@@ -270,29 +281,115 @@ add_doc_pr_main() {
       --json)
         add_doc_pr_json=1
         ;;
+      --branch=*)
+        branch_arg="${arg#--branch=}"
+        if [ -z "$branch_arg" ]; then
+          add_doc_pr_flag_error "empty flag value" "--branch" "use --branch=<name>"
+          command_status=1
+          break
+        fi
+        ;;
       --branch)
-        shift
-        branch_arg="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--branch" "use --branch=<name>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--branch" "use --branch=<name>"
+        fi
+        command_status=1
+        break
+        ;;
+      --title=*)
+        title="${arg#--title=}"
+        if [ -z "$title" ]; then
+          add_doc_pr_flag_error "empty flag value" "--title" "use --title=<text>"
+          command_status=1
+          break
+        fi
         ;;
       --title)
-        shift
-        title="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--title" "use --title=<text>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--title" "use --title=<text>"
+        fi
+        command_status=1
+        break
+        ;;
+      --body-file=*)
+        body_file="${arg#--body-file=}"
+        if [ -z "$body_file" ]; then
+          add_doc_pr_flag_error "empty flag value" "--body-file" "use --body-file=<path>"
+          command_status=1
+          break
+        fi
         ;;
       --body-file)
-        shift
-        body_file="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--body-file" "use --body-file=<path>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--body-file" "use --body-file=<path>"
+        fi
+        command_status=1
+        break
+        ;;
+      --body=*)
+        body_text="${arg#--body=}"
+        if [ -z "$body_text" ]; then
+          add_doc_pr_flag_error "empty flag value" "--body" "use --body=<text>"
+          command_status=1
+          break
+        fi
         ;;
       --body)
-        shift
-        body_text="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--body" "use --body=<text>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--body" "use --body=<text>"
+        fi
+        command_status=1
+        break
+        ;;
+      --commit-message=*)
+        commit_message="${arg#--commit-message=}"
+        if [ -z "$commit_message" ]; then
+          add_doc_pr_flag_error "empty flag value" "--commit-message" "use --commit-message=<text>"
+          command_status=1
+          break
+        fi
         ;;
       --commit-message)
-        shift
-        commit_message="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--commit-message" "use --commit-message=<text>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--commit-message" "use --commit-message=<text>"
+        fi
+        command_status=1
+        break
+        ;;
+      --allow=*)
+        if [ -z "${arg#--allow=}" ]; then
+          add_doc_pr_flag_error "empty flag value" "--allow" "use --allow=<path-prefix>"
+          command_status=1
+          break
+        fi
+        extra_allow_paths+=("${arg#--allow=}")
         ;;
       --allow)
-        shift
-        extra_allow_paths+=("${1:-}")
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--allow" "use --allow=<path-prefix>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--allow" "use --allow=<path-prefix>"
+        fi
+        command_status=1
+        break
+        ;;
+      --base=*)
+        base_branch="${arg#--base=}"
+        if [ -z "$base_branch" ]; then
+          add_doc_pr_flag_error "empty flag value" "--base" "use --base=<branch>"
+          command_status=1
+          break
+        fi
         ;;
       --no-push)
         no_push=1
@@ -301,12 +398,22 @@ add_doc_pr_main() {
         create_pr=1
         ;;
       --base)
-        shift
-        base_branch="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          add_doc_pr_flag_error "flag format not accepted" "--base" "use --base=<branch>"
+        else
+          add_doc_pr_flag_error "missing flag value" "--base" "use --base=<branch>"
+        fi
+        command_status=1
+        break
         ;;
       *)
-        add_doc_pr_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          add_doc_pr_flag_error "unknown flag" "$arg" "run repo-automation/bin/add-doc-pr --help"
+        else
+          add_doc_pr_stop "unknown argument: $arg"
+        fi
         command_status=1
+        break
         ;;
     esac
     shift
