@@ -223,7 +223,7 @@ evidence_bundle_capture_post_codex() {
   post_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-post-codex.XXXXXX")" || return 1
   if (
     cd "$evidence_bundle_repo_root" || exit 1
-    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/post-codex-packet --label "$evidence_bundle_label" --keep-dir
+    REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/post-codex-packet --label="$evidence_bundle_label" --keep-dir
   ) > "$post_tmp_file" 2>&1; then
     packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$post_tmp_file" | tail -n 1)"
     evidence_bundle_post_codex_zip="$(sed -n 's/^INFO: packet zip: //p' "$post_tmp_file" | tail -n 1)"
