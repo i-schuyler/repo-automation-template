@@ -32,6 +32,7 @@ smoke_contract_names=(
   "smoke:repo-zip-contract"
   "smoke:evidence-bundle-contract"
   "smoke:github-settings-check"
+  "smoke:shellcheck-ci-parity"
   "smoke:installer-contract"
   "smoke:starter-template-contract"
   "smoke:branch-cleanup-preflight"
@@ -54,6 +55,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/repo-zip.sh"
   "repo-automation/tests/contracts/evidence-bundle.sh"
   "repo-automation/tests/contracts/github-settings-check.sh"
+  "repo-automation/tests/contracts/shellcheck-ci-parity.sh"
   "repo-automation/tests/contracts/installer.sh"
   "repo-automation/tests/contracts/starter-template.sh"
   "repo-automation/tests/contracts/branch-cleanup-preflight.sh"
@@ -3179,10 +3181,89 @@ PY
 smoke_check_github_settings_contract() {
   local status=0
   local github_settings_json="$smoke_test_base/github-settings-check-$$.json"
+  local github_settings_repo_json="$smoke_test_base/github-settings-check-repo-$$.json"
+  local github_settings_help="$smoke_test_base/github-settings-check-help-$$.txt"
+  local github_settings_repo_format_stderr="$smoke_test_base/github-settings-check-repo-format.stderr"
+  local github_settings_repo_missing_stderr="$smoke_test_base/github-settings-check-repo-missing.stderr"
+  local github_settings_repo_empty_stderr="$smoke_test_base/github-settings-check-repo-empty.stderr"
+  local github_settings_unknown_stderr="$smoke_test_base/github-settings-check-unknown.stderr"
   local github_settings_doctor_json="$smoke_test_base/repo-doctor-github-settings-$$.json"
   local gh_stub_dir="$smoke_test_base/gh-stub-settings"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/github-settings-check --help > "$github_settings_help"
+  ) && grep -Fq -- '--repo=<owner/repo>' "$github_settings_help" && ! grep -Fq -- '--repo OWNER/REPO' "$github_settings_help"; then
+    test_pass "github-settings-check help shows strict repo syntax"
+  else
+    test_fail "github-settings-check help shows strict repo syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --repo=i-schuyler/repo-automation-template --machine-json > "$github_settings_repo_json"
+  ) && python -m json.tool "$github_settings_repo_json" >/dev/null && \
+    smoke_json_assert "$github_settings_repo_json" 'data.get("overall_status") == "pass" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("repo_source") == "flag"'; then
+    test_pass "github-settings-check accepts explicit repo syntax"
+  else
+    test_fail "github-settings-check accepts explicit repo syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/github-settings-check --repo i-schuyler/repo-automation-template >/dev/null 2> "$github_settings_repo_format_stderr"
+  ); then
+    test_fail "github-settings-check rejects --repo <owner/repo>"
+    status=1
+  elif smoke_assert_flag_error_shape "$github_settings_repo_format_stderr" "flag format not accepted" "--repo" "use --repo=<owner/repo>"; then
+    test_pass "github-settings-check rejects --repo <owner/repo>"
+  else
+    test_fail "github-settings-check rejects --repo <owner/repo>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/github-settings-check --repo >/dev/null 2> "$github_settings_repo_missing_stderr"
+  ); then
+    test_fail "github-settings-check rejects missing --repo value"
+    status=1
+  elif smoke_assert_flag_error_shape "$github_settings_repo_missing_stderr" "missing flag value" "--repo" "use --repo=<owner/repo>"; then
+    test_pass "github-settings-check rejects missing --repo value"
+  else
+    test_fail "github-settings-check rejects missing --repo value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/github-settings-check --repo= >/dev/null 2> "$github_settings_repo_empty_stderr"
+  ); then
+    test_fail "github-settings-check rejects empty --repo value"
+    status=1
+  elif smoke_assert_flag_error_shape "$github_settings_repo_empty_stderr" "empty flag value" "--repo" "use --repo=<owner/repo>"; then
+    test_pass "github-settings-check rejects empty --repo value"
+  else
+    test_fail "github-settings-check rejects empty --repo value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/github-settings-check --whatever >/dev/null 2> "$github_settings_unknown_stderr"
+  ); then
+    test_fail "github-settings-check rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$github_settings_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/github-settings-check --help"; then
+    test_pass "github-settings-check rejects unknown flags"
+  else
+    test_fail "github-settings-check rejects unknown flags"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -3207,6 +3288,38 @@ smoke_check_github_settings_contract() {
   fi
 
   rm -f "$github_settings_json" "$github_settings_doctor_json" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+smoke_check_shellcheck_ci_parity_contract() {
+  local status=0
+  local shellcheck_help="$smoke_test_base/shellcheck-ci-parity-help-$$.txt"
+  local shellcheck_unknown_stderr="$smoke_test_base/shellcheck-ci-parity-unknown.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/shellcheck-ci-parity --help > "$shellcheck_help"
+  ) && grep -Fq -- 'Usage: repo-automation/bin/shellcheck-ci-parity [--help]' "$shellcheck_help" && grep -Fq -- 'Run ShellCheck against the CI file set with the CI parity exclusion.' "$shellcheck_help"; then
+    test_pass "shellcheck-ci-parity help works before shellcheck availability"
+  else
+    test_fail "shellcheck-ci-parity help works before shellcheck availability"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/shellcheck-ci-parity --whatever >/dev/null 2> "$shellcheck_unknown_stderr"
+  ); then
+    test_fail "shellcheck-ci-parity rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$shellcheck_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/shellcheck-ci-parity --help"; then
+    test_pass "shellcheck-ci-parity rejects unknown flags"
+  else
+    test_fail "shellcheck-ci-parity rejects unknown flags"
+    status=1
+  fi
+
+  rm -f "$shellcheck_help" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -3748,7 +3861,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 21 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 22 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -3853,6 +3966,7 @@ smoke_check_installer_apply_contract() {
     [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
+    [ -f repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
     [ -f repo-automation/tests/contracts/installer.sh ] || return 1
     [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
     [ -f repo-automation/tests/contracts/branch-cleanup-preflight.sh ] || return 1
@@ -3870,6 +3984,7 @@ smoke_check_installer_apply_contract() {
     [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
+    [ -x repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
     [ -x repo-automation/tests/contracts/installer.sh ] || return 1
     [ -x repo-automation/tests/contracts/starter-template.sh ] || return 1
     [ -x repo-automation/tests/contracts/branch-cleanup-preflight.sh ] || return 1

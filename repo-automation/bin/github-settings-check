@@ -112,15 +112,70 @@ def as_bool(value: object) -> bool | None:
     return None
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        prog="repo-automation/bin/github-settings-check",
-        add_help=True,
+def print_help() -> None:
+    print(
+        """Usage: repo-automation/bin/github-settings-check [--repo=<owner/repo>] [--machine-json] [--quiet] [--help]
+
+Check GitHub repository settings readiness for the current checkout or an explicit repo.
+
+Flags:
+  --repo=<owner/repo>   Check the named repository instead of inferring origin
+  --machine-json        Emit machine-readable JSON output
+  --quiet               Suppress the banner line in human output
+  --help                Show this help text and exit
+""",
+        end="",
     )
-    parser.add_argument("--repo", metavar="OWNER/REPO")
-    parser.add_argument("--machine-json", action="store_true")
-    parser.add_argument("--quiet", action="store_true")
-    args = parser.parse_args()
+
+
+def flag_error(reason: str, flag: str, fix: str) -> int:
+    print(f"fail: {reason}", file=sys.stderr)
+    print(f"flag: {flag}", file=sys.stderr)
+    print(f"fix: {fix}", file=sys.stderr)
+    return 1
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace | int:
+    machine_json = False
+    quiet = False
+    repo = ""
+
+    index = 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--help":
+            print_help()
+            return 0
+        if arg == "--machine-json":
+            machine_json = True
+            index += 1
+            continue
+        if arg == "--quiet":
+            quiet = True
+            index += 1
+            continue
+        if arg == "--repo":
+            next_arg = argv[index + 1] if index + 1 < len(argv) else ""
+            if not next_arg or next_arg.startswith("-"):
+                return flag_error("missing flag value", "--repo", "use --repo=<owner/repo>")
+            return flag_error("flag format not accepted", "--repo", "use --repo=<owner/repo>")
+        if arg.startswith("--repo="):
+            repo = arg.split("=", 1)[1]
+            if repo == "":
+                return flag_error("empty flag value", "--repo", "use --repo=<owner/repo>")
+            index += 1
+            continue
+        if arg.startswith("-"):
+            return flag_error("unknown flag", arg, "run repo-automation/bin/github-settings-check --help")
+        return flag_error("unknown flag", arg, "run repo-automation/bin/github-settings-check --help")
+    return argparse.Namespace(repo=repo, machine_json=machine_json, quiet=quiet)
+
+
+def main() -> int:
+    parsed = parse_args(sys.argv[1:])
+    if isinstance(parsed, int):
+        return parsed
+    args = parsed
 
     repo = ""
     repo_source = "unavailable"
