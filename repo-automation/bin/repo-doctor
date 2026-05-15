@@ -20,7 +20,7 @@ repo_doctor_stop_reason=""
 repo_doctor_checks=()
 
 repo_doctor_usage() {
-  printf 'Usage: repo-automation/bin/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--quick] [--full] [--no-run-tests] [--check=NAME]\n'
+  printf 'Usage: repo-automation/bin/repo-doctor [--help] [--summary] [--audit] [--explain] [--quiet] [--timeout=<seconds>] [--log-file=<path>] [--no-log] [--json] [--json-level=fail|warn|all] [--quick] [--full] [--no-run-tests] [--check=<name>]\n'
   printf 'Named checks: artifact-guard, git, config, scripts, json, tests, version, ci, automation-freshness, starter-template-readiness, github-settings-readiness, docs, issue-templates\n'
 }
 
@@ -550,7 +550,7 @@ repo_doctor_check_run_tests() {
     return 0
   fi
 
-  if RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet --timeout "$repo_doctor_timeout_seconds" >/dev/null; then
+  if RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet --timeout="$repo_doctor_timeout_seconds" >/dev/null; then
     repo_doctor_add_check "run-tests" "pass" "repo-automation/bin/run-tests passed"
     return 0
   fi
@@ -938,7 +938,7 @@ repo_doctor_main() {
       --timeout=*)
         repo_doctor_timeout_seconds="${arg#--timeout=}"
         if [ -z "$repo_doctor_timeout_seconds" ]; then
-          repo_doctor_stop "--timeout requires a value"
+          repo_auto_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>" || return 1
           return 1
         fi
         if ! repo_auto_is_positive_integer "$repo_doctor_timeout_seconds"; then
@@ -947,17 +947,12 @@ repo_doctor_main() {
         fi
         ;;
       --timeout)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_doctor_stop "--timeout requires a value"
-          return 1
-        fi
-        if repo_auto_is_positive_integer "$1"; then
-          repo_doctor_timeout_seconds="$1"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>" || return 1
         else
-          repo_doctor_stop "invalid --timeout value: $1"
-          return 1
+          repo_auto_flag_error "missing flag value" "--timeout" "use --timeout=<seconds>" || return 1
         fi
+        return 1
         ;;
       --json)
         repo_doctor_json=1
@@ -965,7 +960,7 @@ repo_doctor_main() {
       --json-level=*)
         repo_doctor_json_level="${arg#--json-level=}"
         if [ -z "$repo_doctor_json_level" ]; then
-          repo_doctor_stop "--json-level requires a value"
+          repo_auto_flag_error "empty flag value" "--json-level" "use --json-level=<fail|warn|all>" || return 1
           return 1
         fi
         case "$repo_doctor_json_level" in
@@ -978,37 +973,28 @@ repo_doctor_main() {
         esac
         ;;
       --json-level)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_doctor_stop "--json-level requires a value"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--json-level" "use --json-level=<fail|warn|all>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--json-level" "use --json-level=<fail|warn|all>" || return 1
         fi
-        case "$1" in
-          fail|warn|all)
-            repo_doctor_json_level="$1"
-            ;;
-          *)
-            repo_doctor_stop "invalid --json-level value: $1"
-            return 1
-            ;;
-        esac
+        return 1
         ;;
       --log-file=*)
         repo_doctor_log_file="${arg#--log-file=}"
         if [ -z "$repo_doctor_log_file" ]; then
-          repo_doctor_stop "--log-file requires a path"
+          repo_auto_flag_error "empty flag value" "--log-file" "use --log-file=<path>" || return 1
           return 1
         fi
         repo_doctor_log_enabled=1
         ;;
       --log-file)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_doctor_stop "--log-file requires a path"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--log-file" "use --log-file=<path>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--log-file" "use --log-file=<path>" || return 1
         fi
-        repo_doctor_log_file="$1"
-        repo_doctor_log_enabled=1
+        return 1
         ;;
       --no-log)
         repo_doctor_log_enabled=0
@@ -1020,20 +1006,24 @@ repo_doctor_main() {
       --check=*)
         repo_doctor_single_check="${arg#--check=}"
         if [ -z "$repo_doctor_single_check" ]; then
-          repo_doctor_stop "--check requires a name"
+          repo_auto_flag_error "empty flag value" "--check" "use --check=<name>" || return 1
           return 1
         fi
         ;;
       --check)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_doctor_stop "--check requires a name"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--check" "use --check=<name>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--check" "use --check=<name>" || return 1
         fi
-        repo_doctor_single_check="$1"
+        return 1
         ;;
       *)
-        repo_doctor_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-doctor --help" || return 1
+        else
+          repo_doctor_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

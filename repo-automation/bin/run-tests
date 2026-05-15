@@ -22,7 +22,7 @@ run_tests_checks=()
 run_tests_changed_selected_subsets=()
 
 run_tests_usage() {
-  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--smoke] [--docs] [--version] [--changed] [--explain] [--quiet] [--timeout=SECONDS] [--log-file=FILE] [--no-log] [--json] [--json-level=fail|warn|all] [--help]\n'
+  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--smoke] [--docs] [--version] [--changed] [--explain] [--quiet] [--timeout=<seconds>] [--log-file=<path>] [--no-log] [--json] [--json-level=fail|warn|all] [--help]\n'
 }
 
 run_tests_timestamp() {
@@ -625,7 +625,7 @@ run_tests_main() {
       --timeout=*)
         timeout_value="${arg#--timeout=}"
         if [ -z "$timeout_value" ]; then
-          repo_auto_stop "--timeout requires a value"
+          repo_auto_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>" || return 1
           return 1
         fi
         if ! repo_auto_is_positive_integer "$timeout_value"; then
@@ -634,34 +634,28 @@ run_tests_main() {
         fi
         ;;
       --timeout)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_auto_stop "--timeout requires a value"
-          return 1
-        fi
-        if repo_auto_is_positive_integer "$1"; then
-          timeout_value="$1"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>" || return 1
         else
-          repo_auto_stop "invalid --timeout value: $1"
-          return 1
+          repo_auto_flag_error "missing flag value" "--timeout" "use --timeout=<seconds>" || return 1
         fi
+        return 1
         ;;
       --log-file=*)
         run_tests_log_file="${arg#--log-file=}"
         if [ -z "$run_tests_log_file" ]; then
-          repo_auto_stop "--log-file requires a path"
+          repo_auto_flag_error "empty flag value" "--log-file" "use --log-file=<path>" || return 1
           return 1
         fi
         run_tests_log_enabled=1
         ;;
       --log-file)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_auto_stop "--log-file requires a path"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--log-file" "use --log-file=<path>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--log-file" "use --log-file=<path>" || return 1
         fi
-        run_tests_log_file="$1"
-        run_tests_log_enabled=1
+        return 1
         ;;
       --no-log)
         run_tests_log_enabled=0
@@ -673,7 +667,7 @@ run_tests_main() {
       --json-level=*)
         run_tests_json_level="${arg#--json-level=}"
         if [ -z "$run_tests_json_level" ]; then
-          repo_auto_stop "--json-level requires a value"
+          repo_auto_flag_error "empty flag value" "--json-level" "use --json-level=<fail|warn|all>" || return 1
           return 1
         fi
         case "$run_tests_json_level" in
@@ -686,23 +680,19 @@ run_tests_main() {
         esac
         ;;
       --json-level)
-        shift
-        if [ "$#" -eq 0 ]; then
-          repo_auto_stop "--json-level requires a value"
-          return 1
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--json-level" "use --json-level=<fail|warn|all>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--json-level" "use --json-level=<fail|warn|all>" || return 1
         fi
-        case "$1" in
-          fail|warn|all)
-            run_tests_json_level="$1"
-            ;;
-          *)
-            repo_auto_stop "invalid --json-level value: $1"
-            return 1
-            ;;
-        esac
+        return 1
         ;;
       *)
-        repo_auto_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/run-tests --help" || return 1
+        else
+          repo_auto_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac
