@@ -13,7 +13,7 @@ failure_log_lines=20
 failure_log_machine_json=0
 
 failure_log_usage() {
-  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=run-tests|repo-doctor|any] [--lines=N] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=<run-tests|repo-doctor|any>] [--lines=<lines>] [--machine-json] [--help]\n'
 }
 
 failure_log_json_escape() {
