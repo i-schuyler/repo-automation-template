@@ -27,7 +27,7 @@ repo_zip_zip_mtime=""
 repo_zip_finished=0
 
 repo_zip_usage() {
-  printf 'Usage: repo-automation/bin/repo-zip [--out-dir PATH] [--label NAME] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-zip [--out-dir=<path>] [--label=<name>] [--help]\n'
 }
 
 repo_zip_info() {
@@ -197,16 +197,40 @@ repo_zip_main() {
         repo_zip_usage
         return 0
         ;;
+      --out-dir=*)
+        repo_zip_output_base="${arg#--out-dir=}"
+        if [ -z "$repo_zip_output_base" ]; then
+          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        ;;
       --out-dir)
-        shift
-        repo_zip_output_base="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--out-dir" "use --out-dir=<path>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --label=*)
+        repo_zip_label="${arg#--label=}"
+        if [ -z "$repo_zip_label" ]; then
+          repo_auto_flag_error "empty flag value" "--label" "use --label=<name>" || return 1
+        fi
         ;;
       --label)
-        shift
-        repo_zip_label="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--label" "use --label=<name>" || return 1
+        else
+          repo_auto_flag_error "missing flag value" "--label" "use --label=<name>" || return 1
+        fi
+        return 1
         ;;
       *)
-        repo_zip_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-zip --help" || return 1
+        else
+          repo_auto_stop "unknown argument: $arg"
+        fi
         return 1
         ;;
     esac

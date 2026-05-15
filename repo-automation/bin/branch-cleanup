@@ -155,7 +155,11 @@ branch_cleanup_main() {
         return 0
         ;;
       *)
-        branch_cleanup_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/branch-cleanup --help" || command_status=1
+        else
+          branch_cleanup_stop "unknown argument: $arg"
+        fi
         command_status=1
         ;;
     esac
