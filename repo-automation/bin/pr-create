@@ -15,11 +15,22 @@ pr_create_json=0
 pr_create_stop_reason=""
 
 pr_create_usage() {
-  printf 'Usage: repo-automation/bin/pr-create [--help] [--dry-run] [--json] [--branch BRANCH] [--base BRANCH] [--title TITLE] [--body-file FILE] [--body TEXT]\n'
+  printf 'Usage: repo-automation/bin/pr-create [--help] [--dry-run] [--json] [--branch=<name>] [--base=<branch>] [--title=<text>] [--body-file=<path>] [--body=<text>]\n'
 }
 
 pr_create_info() {
   printf 'INFO: %s\n' "$*" >&2
+}
+
+pr_create_flag_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  pr_create_stop_reason="$reason"
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'flag: %s\n' "$flag" >&2
+  printf 'fix: %s\n' "$fix" >&2
 }
 
 pr_create_stop() {
@@ -101,29 +112,99 @@ pr_create_main() {
         # shellcheck disable=SC2034 # shared JSON flag is observed by the JSON printer path
         pr_create_json=1
         ;;
+      --branch=*)
+        branch_arg="${arg#--branch=}"
+        if [ -z "$branch_arg" ]; then
+          pr_create_flag_error "empty flag value" "--branch" "use --branch=<name>"
+          command_status=1
+          break
+        fi
+        ;;
       --branch)
-        shift
-        branch_arg="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          pr_create_flag_error "flag format not accepted" "--branch" "use --branch=<name>"
+        else
+          pr_create_flag_error "missing flag value" "--branch" "use --branch=<name>"
+        fi
+        command_status=1
+        break
+        ;;
+      --base=*)
+        base_branch="${arg#--base=}"
+        if [ -z "$base_branch" ]; then
+          pr_create_flag_error "empty flag value" "--base" "use --base=<branch>"
+          command_status=1
+          break
+        fi
         ;;
       --base)
-        shift
-        base_branch="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          pr_create_flag_error "flag format not accepted" "--base" "use --base=<branch>"
+        else
+          pr_create_flag_error "missing flag value" "--base" "use --base=<branch>"
+        fi
+        command_status=1
+        break
+        ;;
+      --title=*)
+        title="${arg#--title=}"
+        if [ -z "$title" ]; then
+          pr_create_flag_error "empty flag value" "--title" "use --title=<text>"
+          command_status=1
+          break
+        fi
         ;;
       --title)
-        shift
-        title="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          pr_create_flag_error "flag format not accepted" "--title" "use --title=<text>"
+        else
+          pr_create_flag_error "missing flag value" "--title" "use --title=<text>"
+        fi
+        command_status=1
+        break
+        ;;
+      --body-file=*)
+        body_file="${arg#--body-file=}"
+        if [ -z "$body_file" ]; then
+          pr_create_flag_error "empty flag value" "--body-file" "use --body-file=<path>"
+          command_status=1
+          break
+        fi
         ;;
       --body-file)
-        shift
-        body_file="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          pr_create_flag_error "flag format not accepted" "--body-file" "use --body-file=<path>"
+        else
+          pr_create_flag_error "missing flag value" "--body-file" "use --body-file=<path>"
+        fi
+        command_status=1
+        break
+        ;;
+      --body=*)
+        body_text="${arg#--body=}"
+        if [ -z "$body_text" ]; then
+          pr_create_flag_error "empty flag value" "--body" "use --body=<text>"
+          command_status=1
+          break
+        fi
         ;;
       --body)
-        shift
-        body_text="${1:-}"
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          pr_create_flag_error "flag format not accepted" "--body" "use --body=<text>"
+        else
+          pr_create_flag_error "missing flag value" "--body" "use --body=<text>"
+        fi
+        command_status=1
+        break
         ;;
       *)
-        pr_create_stop "unknown argument: $arg"
+        if [ "${arg#--}" != "$arg" ]; then
+          pr_create_flag_error "unknown flag" "$arg" "run repo-automation/bin/pr-create --help"
+        else
+          pr_create_stop "unknown argument: $arg"
+        fi
         command_status=1
+        break
         ;;
     esac
     shift

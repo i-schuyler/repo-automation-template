@@ -804,8 +804,33 @@ smoke_check_pr_create_body_file() {
   local helper_log="$smoke_test_base/pr-create-body-file.log"
   local helper_body="$smoke_test_base/pr-create-body-file-body.md"
   local helper_body_copy="$smoke_test_base/pr-create-body-file-body-copy.md"
+  local helper_help="$smoke_test_base/pr-create-help-$$.txt"
+  local branch_format_stderr="$smoke_test_base/pr-create-branch-format-$$.stderr"
+  local branch_missing_stderr="$smoke_test_base/pr-create-branch-missing-$$.stderr"
+  local branch_empty_stderr="$smoke_test_base/pr-create-branch-empty-$$.stderr"
+  local unknown_stderr="$smoke_test_base/pr-create-unknown-$$.stderr"
   local gh_stub_dir="$smoke_test_base/gh-pr-create-stub"
   local body_text="Mixed PR body from file"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --help > "$helper_help"
+  ) && \
+    grep -Fq -- '--branch=<name>' "$helper_help" && \
+    grep -Fq -- '--base=<branch>' "$helper_help" && \
+    grep -Fq -- '--title=<text>' "$helper_help" && \
+    grep -Fq -- '--body-file=<path>' "$helper_help" && \
+    grep -Fq -- '--body=<text>' "$helper_help" && \
+    ! grep -Fq -- '--branch BRANCH' "$helper_help" && \
+    ! grep -Fq -- '--base BRANCH' "$helper_help" && \
+    ! grep -Fq -- '--title TITLE' "$helper_help" && \
+    ! grep -Fq -- '--body-file FILE' "$helper_help" && \
+    ! grep -Fq -- '--body TEXT' "$helper_help"; then
+    test_pass "pr-create help shows strict value syntax"
+  else
+    test_fail "pr-create help shows strict value syntax"
+    status=1
+  fi
 
   smoke_pr_create_prepare_branch "$branch_name" repo-automation/tests/pr-create-body-file.txt "body file fixture" || return 1
   printf '%s\n' "$body_text" > "$helper_body" || return 1
@@ -818,7 +843,7 @@ smoke_check_pr_create_body_file() {
     GH_STUB_PR_CREATE_BODY_COPY_FILE="$helper_body_copy" \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/321' \
     GH_STUB_PR_VIEW_NUMBER=321 \
-    repo-automation/bin/pr-create --json --branch "$branch_name" --base main --title "Mixed change body file" --body-file "$helper_body" > "$helper_json"
+    repo-automation/bin/pr-create --json --branch="$branch_name" --base=main --title="Mixed change body file" --body-file="$helper_body" > "$helper_json"
   ) && python -m json.tool "$helper_json" >/dev/null && \
     smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "321" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/321" and data.get("branch") == "feature/pr-create-body-file" and data.get("base_branch") == "main"'; then
     if grep -Fq 'gh pr create title=Mixed change body file base=main head=feature/pr-create-body-file body_file=' "$helper_log" && cmp -s "$helper_body" "$helper_body_copy"; then
@@ -834,13 +859,65 @@ smoke_check_pr_create_body_file() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --branch "$branch_name" --title="Mixed change body file" --body-file="$helper_body" >/dev/null 2> "$branch_format_stderr"
+  ); then
+    test_fail "pr-create rejects --branch <name>"
+    status=1
+  elif smoke_assert_flag_error_shape "$branch_format_stderr" "flag format not accepted" "--branch" "use --branch=<name>"; then
+    test_pass "pr-create rejects --branch <name>"
+  else
+    test_fail "pr-create rejects --branch <name>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --branch --title="Mixed change body file" --body-file="$helper_body" >/dev/null 2> "$branch_missing_stderr"
+  ); then
+    test_fail "pr-create rejects missing --branch value"
+    status=1
+  elif smoke_assert_flag_error_shape "$branch_missing_stderr" "missing flag value" "--branch" "use --branch=<name>"; then
+    test_pass "pr-create rejects missing --branch value"
+  else
+    test_fail "pr-create rejects missing --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --branch= --title="Mixed change body file" --body-file="$helper_body" >/dev/null 2> "$branch_empty_stderr"
+  ); then
+    test_fail "pr-create rejects empty --branch value"
+    status=1
+  elif smoke_assert_flag_error_shape "$branch_empty_stderr" "empty flag value" "--branch" "use --branch=<name>"; then
+    test_pass "pr-create rejects empty --branch value"
+  else
+    test_fail "pr-create rejects empty --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --whatever >/dev/null 2> "$unknown_stderr"
+  ); then
+    test_fail "pr-create rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/pr-create --help"; then
+    test_pass "pr-create rejects unknown flags"
+  else
+    test_fail "pr-create rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     git checkout main >/dev/null 2>&1 || return 1
     git branch -D "$branch_name" >/dev/null 2>&1 || return 1
   ); then
     :
   fi
 
-  rm -f "$helper_json" "$helper_log" "$helper_body" "$helper_body_copy" >/dev/null 2>&1 || true
+  rm -f "$helper_json" "$helper_log" "$helper_body" "$helper_body_copy" "$helper_help" "$branch_format_stderr" "$branch_missing_stderr" "$branch_empty_stderr" "$unknown_stderr" >/dev/null 2>&1 || true
   rm -rf "$gh_stub_dir" >/dev/null 2>&1 || true
   return "$status"
 }
@@ -864,7 +941,7 @@ smoke_check_pr_create_body_text() {
     GH_STUB_PR_CREATE_BODY_COPY_FILE="$helper_body_copy" \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/322' \
     GH_STUB_PR_VIEW_NUMBER=322 \
-    repo-automation/bin/pr-create --json --branch "$branch_name" --base main --title "Mixed change body text" --body "$body_text" > "$helper_json"
+    repo-automation/bin/pr-create --json --branch="$branch_name" --base=main --title="Mixed change body text" --body="$body_text" > "$helper_json"
   ) && python -m json.tool "$helper_json" >/dev/null && \
     smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "322" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/322" and data.get("branch") == "feature/pr-create-body-text" and data.get("base_branch") == "main"'; then
     if grep -Fq 'gh pr create title=Mixed change body text base=main head=feature/pr-create-body-text body_file=' "$helper_log" && printf '%s\n' "$body_text" | cmp -s - "$helper_body_copy"; then

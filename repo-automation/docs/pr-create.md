@@ -6,6 +6,8 @@ Default behavior is PR creation through `gh pr create`. It does not merge.
 
 `--dry-run` validates inputs without creating a PR.
 
+Value flags use `--flag=<value>` syntax. Space-separated values are rejected.
+
 The helper expects the current repo automation GitHub workflow conventions already used elsewhere in this repo:
 
 - SSH-style GitHub remotes by default
@@ -14,12 +16,12 @@ The helper expects the current repo automation GitHub workflow conventions alrea
 
 ## Title and Body
 
-`--title` is required.
+`--title=<text>` is required.
 
 Provide the body with either:
 
-- `--body-file FILE`
-- `--body TEXT`
+- `--body-file=<path>`
+- `--body=<text>`
 
 The helper writes `--body` text to a temporary file before calling `gh pr create`.
 
@@ -40,6 +42,6 @@ JSON includes:
 
 Usage examples:
 
-    repo-automation/bin/pr-create --title="Mixed change" --body-file=/path/to/body.md
-    repo-automation/bin/pr-create --title="Mixed change" --body="Short body text"
-    repo-automation/bin/pr-create --dry-run --title="Mixed change" --body="Short body text"
+    repo-automation/bin/pr-create --branch=feature/mixed-change --base=main --title="Mixed change" --body-file=/path/to/body.md
+    repo-automation/bin/pr-create --branch=feature/mixed-change --base=main --title="Mixed change" --body="Short body text"
+    repo-automation/bin/pr-create --dry-run --branch=feature/mixed-change --base=main --title="Mixed change" --body="Short body text"
