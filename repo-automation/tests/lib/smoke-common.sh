@@ -1288,14 +1288,56 @@ smoke_check_touched_files_and_ci_contract() {
   local status=0
   local touched_worktree_json="$smoke_test_base/touched-files-worktree-$$.json"
   local touched_range_json="$smoke_test_base/touched-files-range-$$.json"
+  local ci_status_help="$smoke_test_base/ci-status-help-$$.txt"
+  local ci_watch_help="$smoke_test_base/ci-watch-help-$$.txt"
   local ci_status_pr_json="$smoke_test_base/ci-status-pr-$$.json"
   local ci_status_branch_json="$smoke_test_base/ci-status-branch-$$.json"
   local ci_status_failure_stderr="$smoke_test_base/ci-status-failure-$$.txt"
   local ci_watch_timeout_stderr="$smoke_test_base/ci-watch-timeout-$$.txt"
+  local ci_status_pr_format_stderr="$smoke_test_base/ci-status-pr-format-$$.txt"
+  local ci_status_pr_missing_stderr="$smoke_test_base/ci-status-pr-missing-$$.txt"
+  local ci_status_pr_empty_stderr="$smoke_test_base/ci-status-pr-empty-$$.txt"
+  local ci_status_unknown_stderr="$smoke_test_base/ci-status-unknown-$$.txt"
+  local ci_watch_timeout_format_stderr="$smoke_test_base/ci-watch-timeout-format-$$.txt"
+  local ci_watch_timeout_missing_stderr="$smoke_test_base/ci-watch-timeout-missing-$$.txt"
+  local ci_watch_timeout_empty_stderr="$smoke_test_base/ci-watch-timeout-empty-$$.txt"
+  local ci_watch_unknown_stderr="$smoke_test_base/ci-watch-unknown-$$.txt"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local touched_range_repo=""
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-status --help > "$ci_status_help"
+  ) && \
+    grep -Fq -- '--pr=<number>' "$ci_status_help" && \
+    grep -Fq -- '--branch=<name>' "$ci_status_help" && \
+    ! grep -Fq -- '--pr=NUMBER' "$ci_status_help" && \
+    ! grep -Fq -- '--branch=NAME' "$ci_status_help"; then
+    test_pass "ci-status help shows strict value syntax"
+  else
+    test_fail "ci-status help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-watch --help > "$ci_watch_help"
+  ) && \
+    grep -Fq -- '--pr=<number>' "$ci_watch_help" && \
+    grep -Fq -- '--branch=<name>' "$ci_watch_help" && \
+    grep -Fq -- '--poll-seconds=<seconds>' "$ci_watch_help" && \
+    grep -Fq -- '--timeout=<seconds>' "$ci_watch_help" && \
+    ! grep -Fq -- '--pr=NUMBER' "$ci_watch_help" && \
+    ! grep -Fq -- '--branch=NAME' "$ci_watch_help" && \
+    ! grep -Fq -- '--poll-seconds=SECONDS' "$ci_watch_help" && \
+    ! grep -Fq -- '--timeout=SECONDS' "$ci_watch_help"; then
+    test_pass "ci-watch help shows strict value syntax"
+  else
+    test_fail "ci-watch help shows strict value syntax"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -1363,6 +1405,58 @@ range touch
 
   if (
     cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr 123 --machine-json > /dev/null 2> "$ci_status_pr_format_stderr"
+  ); then
+    test_fail "ci-status rejects --pr <number>"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_status_pr_format_stderr" "flag format not accepted" "--pr" "use --pr=<number>"; then
+    test_pass "ci-status rejects --pr <number>"
+  else
+    test_fail "ci-status rejects --pr <number>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr --machine-json > /dev/null 2> "$ci_status_pr_missing_stderr"
+  ); then
+    test_fail "ci-status rejects missing --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_status_pr_missing_stderr" "missing flag value" "--pr" "use --pr=<number>"; then
+    test_pass "ci-status rejects missing --pr value"
+  else
+    test_fail "ci-status rejects missing --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr= --machine-json > /dev/null 2> "$ci_status_pr_empty_stderr"
+  ); then
+    test_fail "ci-status rejects empty --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_status_pr_empty_stderr" "empty flag value" "--pr" "use --pr=<number>"; then
+    test_pass "ci-status rejects empty --pr value"
+  else
+    test_fail "ci-status rejects empty --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --whatever > /dev/null 2> "$ci_status_unknown_stderr"
+  ); then
+    test_fail "ci-status rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_status_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/ci-status --help"; then
+    test_pass "ci-status rejects unknown flags"
+  else
+    test_fail "ci-status rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/missing > /dev/null 2> "$ci_status_failure_stderr"
   ); then
     test_fail "ci-status missing branch fails cleanly"
@@ -1387,7 +1481,59 @@ range touch
     status=1
   fi
 
-  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_pr_json" "$ci_status_branch_json" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" >/dev/null 2>&1 || true
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds 1 --timeout=1 > /dev/null 2> "$ci_watch_timeout_format_stderr"
+  ); then
+    test_fail "ci-watch rejects --poll-seconds <seconds>"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_watch_timeout_format_stderr" "flag format not accepted" "--poll-seconds" "use --poll-seconds=<seconds>"; then
+    test_pass "ci-watch rejects --poll-seconds <seconds>"
+  else
+    test_fail "ci-watch rejects --poll-seconds <seconds>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --timeout >/dev/null 2> "$ci_watch_timeout_missing_stderr"
+  ); then
+    test_fail "ci-watch rejects missing --timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_watch_timeout_missing_stderr" "missing flag value" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "ci-watch rejects missing --timeout value"
+  else
+    test_fail "ci-watch rejects missing --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --timeout= >/dev/null 2> "$ci_watch_timeout_empty_stderr"
+  ); then
+    test_fail "ci-watch rejects empty --timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_watch_timeout_empty_stderr" "empty flag value" "--timeout" "use --timeout=<seconds>"; then
+    test_pass "ci-watch rejects empty --timeout value"
+  else
+    test_fail "ci-watch rejects empty --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --whatever >/dev/null 2> "$ci_watch_unknown_stderr"
+  ); then
+    test_fail "ci-watch rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_watch_unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/ci-watch --help"; then
+    test_pass "ci-watch rejects unknown flags"
+  else
+    test_fail "ci-watch rejects unknown flags"
+    status=1
+  fi
+
+  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_branch_json" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
