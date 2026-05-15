@@ -16,7 +16,7 @@ touched_files_working_tree_tracked_files=()
 touched_files_untracked_files=()
 
 touched_files_usage() {
-  printf 'Usage: repo-automation/bin/touched-files [--base=REF] [--head=REF] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/touched-files [--base=<ref>] [--head=<ref>] [--machine-json] [--help]\n'
 }
 
 touched_files_json_escape() {
@@ -218,6 +218,10 @@ touched_files_main() {
         touched_files_machine_json=1
         ;;
       *)
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/touched-files --help"
+          return 1
+        fi
         repo_auto_stop "unknown argument: $arg"
         return 1
         ;;
