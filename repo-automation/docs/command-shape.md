@@ -165,7 +165,7 @@ Use these meanings consistently across helpers.
 | `--branch=<name>` | local branch name or branch selector, depending on helper |
 | `--base=<branch>` | PR base branch |
 | `--head=<branch>` | PR head branch |
-| `--repo=<owner/name>` | GitHub repo identifier |
+| `--repo=<owner/repo>` | GitHub repo identifier |
 | `--repo-root=<path>` | local repo root |
 | `--source-root=<path>` | automation source root |
 | `--target-root=<path>` | downstream install target root |

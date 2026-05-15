@@ -17,7 +17,7 @@ ci_log_dump_latest_failed=0
 ci_log_dump_machine_json=0
 
 ci_log_dump_usage() {
-  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=OWNER/REPO] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--machine-json] [--help]\n'
 }
 
 ci_log_dump_flag_error() {
@@ -277,12 +277,16 @@ ci_log_dump_main() {
         ;;
       --repo=*)
         ci_log_dump_repo="${arg#--repo=}"
+        if [ -z "$ci_log_dump_repo" ]; then
+          ci_log_dump_flag_error "empty flag value" "--repo" "use --repo=<owner/repo>"
+          return 1
+        fi
         ;;
       --repo)
         if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
-          ci_log_dump_flag_error "flag format not accepted" "--repo" "use --repo=<owner/name>"
+          ci_log_dump_flag_error "flag format not accepted" "--repo" "use --repo=<owner/repo>"
         else
-          ci_log_dump_flag_error "missing flag value" "--repo" "use --repo=<owner/name>"
+          ci_log_dump_flag_error "missing flag value" "--repo" "use --repo=<owner/repo>"
         fi
         return 1
         ;;
@@ -326,6 +330,10 @@ ci_log_dump_main() {
         ;;
       --out-dir=*)
         ci_log_dump_out_dir="${arg#--out-dir=}"
+        if [ -z "$ci_log_dump_out_dir" ]; then
+          ci_log_dump_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>"
+          return 1
+        fi
         ;;
       --out-dir)
         if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
@@ -378,7 +386,7 @@ ci_log_dump_main() {
   worktree_root="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
   if [ -z "$ci_log_dump_repo" ]; then
     target_repo="$(ci_log_dump_repo_from_remote)" || {
-      ci_log_dump_stop 'unable to infer --repo from origin remote; pass --repo=OWNER/REPO'
+      ci_log_dump_stop 'unable to infer --repo from origin remote; pass --repo=<owner/repo>'
       return 1
     }
     ci_log_dump_repo="$target_repo"
