@@ -345,7 +345,7 @@ EOF
           }
         fi
         if [ "$command_status" -eq 0 ]; then
-          if ! "$script_dir/pr-create" --json --title "$pr_create_title" --body-file "$pr_create_body_file" > "$pr_create_json_file" 2> "$pr_create_stderr"; then
+          if ! "$script_dir/pr-create" --json --title="$pr_create_title" --body-file="$pr_create_body_file" > "$pr_create_json_file" 2> "$pr_create_stderr"; then
             pr_create_output="$(cat "$pr_create_stderr" 2>/dev/null || true)"
             repo_flow_stop "pr-create failed: $pr_create_output"
             command_status=1
