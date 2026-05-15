@@ -1919,6 +1919,8 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_pr_format_stderr="$smoke_test_base/ci-log-dump-pr-format-$$.stderr"
   local ci_log_pr_missing_stderr="$smoke_test_base/ci-log-dump-pr-missing-$$.stderr"
   local ci_log_pr_empty_stderr="$smoke_test_base/ci-log-dump-pr-empty-$$.stderr"
+  local ci_log_repo_empty_stderr="$smoke_test_base/ci-log-dump-repo-empty-$$.stderr"
+  local ci_log_out_dir_empty_stderr="$smoke_test_base/ci-log-dump-out-dir-empty-$$.stderr"
   local ci_log_unknown_stderr="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
@@ -1928,7 +1930,7 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/ci-log-dump --help > "$ci_log_help"
   ) && \
-    grep -Fq -- '--repo=OWNER/REPO' "$ci_log_help" && \
+    grep -Fq -- '--repo=<owner/repo>' "$ci_log_help" && \
     grep -Fq -- '--pr=NUMBER' "$ci_log_help" && \
     grep -Fq -- '--run-id=ID' "$ci_log_help" && \
     grep -Fq -- '--out-dir=PATH' "$ci_log_help" && \
@@ -1979,6 +1981,32 @@ smoke_check_ci_log_dump_contract() {
     test_pass "ci-log-dump rejects empty --pr value"
   else
     test_fail "ci-log-dump rejects empty --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --repo= >/dev/null 2> "$ci_log_repo_empty_stderr"
+  ); then
+    test_fail "ci-log-dump rejects empty --repo value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_repo_empty_stderr" "empty flag value" "--repo" "use --repo=<owner/repo>"; then
+    test_pass "ci-log-dump rejects empty --repo value"
+  else
+    test_fail "ci-log-dump rejects empty --repo value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --out-dir= >/dev/null 2> "$ci_log_out_dir_empty_stderr"
+  ); then
+    test_fail "ci-log-dump rejects empty --out-dir value"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_out_dir_empty_stderr" "empty flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "ci-log-dump rejects empty --out-dir value"
+  else
+    test_fail "ci-log-dump rejects empty --out-dir value"
     status=1
   fi
 
@@ -2077,7 +2105,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
-  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_unknown_stderr" >/dev/null 2>&1 || true
   find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
   rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
   return "$status"
