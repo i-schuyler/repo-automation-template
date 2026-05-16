@@ -259,6 +259,26 @@ run_tests_print_smoke_failure_excerpt() {
   sed -n "${start_line},${end_line}p" "$output_file"
 }
 
+run_tests_first_entry_by_status() {
+  local want_status="$1"
+  local entry name status rest timed_out message
+
+  for entry in "${run_tests_checks[@]}"; do
+    name="${entry%%|*}"
+    rest="${entry#*|}"
+    status="${rest%%|*}"
+    rest="${rest#*|}"
+    timed_out="${rest%%|*}"
+    message="${rest#*|}"
+    if [ "$status" = "$want_status" ]; then
+      printf '%s|%s|%s|%s\n' "$name" "$status" "$timed_out" "$message"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 run_tests_run_smoke() {
   local label="$1"
   shift
@@ -353,17 +373,16 @@ run_tests_print_human() {
   local warn_count="$3"
   local fail_count="$4"
   local skipped_count="$5"
-  local entry name status message timed_out rest
+  local entry name status message timed_out rest first_entry
 
-  if [ "$run_tests_mode" != "quiet" ]; then
-    printf '%s\n' "$run_tests_start_line"
-  fi
-
-  if [ "$run_tests_run_mode" = "changed" ]; then
-    if [ "${#run_tests_changed_selected_subsets[@]}" -eq 0 ]; then
-      printf 'Changed subsets: none\n'
-    else
-      printf 'Changed subsets: %s\n' "${run_tests_changed_selected_subsets[*]}"
+  if [ "$run_tests_mode" = "explain" ]; then
+    printf 'pass=%s warn=%s fail=%s skipped=%s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    if [ "$run_tests_run_mode" = "changed" ]; then
+      if [ "${#run_tests_changed_selected_subsets[@]}" -eq 0 ]; then
+        printf 'Changed subsets: none\n'
+      else
+        printf 'Changed subsets: %s\n' "${run_tests_changed_selected_subsets[*]}"
+      fi
     fi
   fi
 
@@ -379,46 +398,43 @@ run_tests_print_human() {
     done
   fi
 
-  printf 'RESULT: pass=%s warn=%s fail=%s skipped=%s\n' \
-    "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+  if [ "$fail_count" -gt 0 ]; then
+    first_entry="$(run_tests_first_entry_by_status fail)"
+    name="${first_entry%%|*}"
+    rest="${first_entry#*|}"
+    status="${rest%%|*}"
+    rest="${rest#*|}"
+    timed_out="${rest%%|*}"
+    message="${rest#*|}"
+    if [ -n "$message" ] && [ "$message" != "failed" ]; then
+      printf 'fail: %s - %s\n' "$name" "$message"
+    else
+      printf 'fail: %s\n' "$name"
+    fi
+    if [ "$run_tests_mode" != "quiet" ]; then
+      printf 'fix: %s\n' "$run_tests_next_hint"
+    fi
+    return 0
+  fi
 
   if [ "$warn_count" -gt 0 ]; then
-    printf 'WARN:\n'
-    for entry in "${run_tests_checks[@]}"; do
-      name="${entry%%|*}"
-      rest="${entry#*|}"
-      status="${rest%%|*}"
-      if [ "$status" = "warn" ]; then
-        printf -- '- %s\n' "$name"
-      fi
-    done
+    first_entry="$(run_tests_first_entry_by_status warn)"
+    name="${first_entry%%|*}"
+    rest="${first_entry#*|}"
+    status="${rest%%|*}"
+    rest="${rest#*|}"
+    timed_out="${rest%%|*}"
+    message="${rest#*|}"
+    if [ -n "$message" ]; then
+      printf 'warn: %s\n' "$message"
+    else
+      printf 'warn: %s\n' "$name"
+    fi
+    return 0
   fi
 
-  if [ "$fail_count" -gt 0 ]; then
-    printf 'FAIL:\n'
-    for entry in "${run_tests_checks[@]}"; do
-      name="${entry%%|*}"
-      rest="${entry#*|}"
-      status="${rest%%|*}"
-      rest="${rest#*|}"
-      timed_out="${rest%%|*}"
-      message="${rest#*|}"
-      if [ "$status" = "fail" ]; then
-        if [ -n "$message" ] && [ "$message" != "failed" ]; then
-          printf -- '- %s (%s)\n' "$name" "$message"
-        else
-          printf -- '- %s\n' "$name"
-        fi
-      fi
-    done
-  fi
-
-  if [ "$run_tests_mode" != "quiet" ] && [ "$run_tests_log_enabled" -eq 1 ] && [ -n "$run_tests_log_file" ] && [ "$run_tests_json" -eq 0 ]; then
-    printf 'Log: %s\n' "$run_tests_log_file"
-  fi
-
-  if [ "$warn_count" -gt 0 ] || [ "$fail_count" -gt 0 ]; then
-    printf '%s\n' "$run_tests_next_hint"
+  if [ "$run_tests_mode" != "quiet" ]; then
+    printf 'pass\n'
   fi
 }
 

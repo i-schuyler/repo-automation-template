@@ -612,8 +612,8 @@ add_doc_pr_main() {
     }
 
     if [ "$command_status" -eq 0 ]; then
-      repo-automation/bin/run-tests || {
-        add_doc_pr_stop "repo-automation/bin/run-tests failed"
+      repo-automation/tests/docs-check.sh >/dev/null 2>&1 || {
+        add_doc_pr_stop "docs-check validation failed"
         command_status=1
       }
     fi

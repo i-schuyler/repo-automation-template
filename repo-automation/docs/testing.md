@@ -11,11 +11,11 @@ CI runs the same core checks:
 - ShellCheck for scripts and tests
 - smoke tests for branch cleanup and codex slice preflight
 - smoke coverage for `repo-automation/bin/pr-finish` help and safe no-auth/no-gh failure behavior
-- smoke coverage for `repo-automation/bin/add-doc-pr` docs-only plan validation and blocked-file boundary behavior
+- smoke coverage for `repo-automation/bin/add-doc-pr` docs-only plan validation, create-pr docs checks, and blocked-file boundary behavior
 - smoke coverage for `repo-automation/bin/pr-create` mixed-change PR creation behavior with stubbed GitHub calls
 - smoke coverage for `repo-automation/bin/repo-automation-report-upstream` bug/feature previews and secret-scan stop behavior
-- smoke coverage for `repo-automation/bin/run-tests` compact defaults, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
-- smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, the repo-root artifact guard, `--explain`, JSON levels, log files, and missing-config safe failure behavior
+- smoke coverage for `repo-automation/bin/run-tests` compact defaults, quiet success silence, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
+- smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, quiet success silence, the repo-root artifact guard, `--explain`, JSON levels, log files, and missing-config safe failure behavior
 - smoke coverage for `repo-automation/bin/github-settings-check` read-only settings reporting, machine JSON, and repo-doctor integration when GitHub CLI auth and a GitHub remote are available
 - smoke coverage for `repo-automation/bin/managed-file-check` changed-path review and `repo-automation/bin/managed-file-add` manifest/installer updates
 - smoke coverage for `repo-automation/bin/failure-log` latest log excerpts, kind filtering, line limits, and machine JSON
