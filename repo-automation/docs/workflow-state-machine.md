@@ -4,6 +4,7 @@ This doc is the source of truth for PR-loop state routes. [Helper Contracts](hel
 
 | State | Route |
 | --- | --- |
+| repo-flow status-card | read-only observer / state screen |
 | dirty tree | `fail: dirty-worktree` |
 | no branch PR | create-or-reuse-pr path |
 | PR exists | push/watch/diagnose path |
@@ -21,5 +22,7 @@ Rules:
 - API failures do not trigger code patches.
 - No helper silently creates a no-op commit or empty PR.
 - Repair loops stay on the same PR branch unless the user explicitly changes direction.
+- `repo-flow status-card` never mutates repo state.
+- `repo-flow status-card` can recommend create branch, commit changes, dry-run `repo-flow`, `ci-watch --poll-seconds=5`, `pr-finish --merge --delete-branch --sync-main`, or inspect CI failure.
 - `review-pack --target=codex` and `repair-prompt --target=codex` create artifacts only and do not invoke Codex.
 - `repo-flow autopilot --plan-only` is read-only and does not mutate repo state.

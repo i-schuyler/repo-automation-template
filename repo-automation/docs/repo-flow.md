@@ -9,6 +9,22 @@ It verifies the branch is not `main`, checks the worktree, reports ahead/behind 
 `pr-finish` retries briefly if checks are not registered yet right after PR creation or reuse.
 
 `--dry-run` / `--plan` reports the flow without pushing or creating a PR.
+`status-card` is a read-only state screen. It never pushes, creates a PR, watches CI, or mutates the repo.
+`status-card` reports these human keys:
+
+- `branch`
+- `default`
+- `worktree`
+- `tracked_changed`
+- `untracked`
+- `range_vs_default`
+- `ahead_behind`
+- `pr`
+- `checks`
+- `next`
+
+`status-card --json` emits valid JSON only.
+GitHub lookup failures do not make `status-card` fail; local state still prints.
 
 Usage examples:
 
@@ -17,3 +33,5 @@ Usage examples:
     repo-automation/bin/repo-flow --watch
     repo-automation/bin/repo-flow --watch --diagnose-on-fail
     repo-automation/bin/repo-flow --json
+    repo-automation/bin/repo-flow status-card
+    repo-automation/bin/repo-flow status-card --json
