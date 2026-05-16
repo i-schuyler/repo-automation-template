@@ -14,12 +14,9 @@ review_pack_repo_root=""
 review_pack_timestamp=""
 review_pack_label_slug=""
 review_pack_stage_dir=""
-review_pack_bundle_log=""
 review_pack_bundle_zip=""
-review_pack_bundle_dir=""
 review_pack_prompt_dir=""
 review_pack_prompt_file=""
-review_pack_status_file=""
 
 review_pack_usage() {
   printf 'Usage: repo-automation/bin/review-pack --target=<chatgpt|codex> [--out-dir=<path>] [--label=<text>] [--help]\n'
@@ -189,23 +186,17 @@ review_pack_main() {
         cd "$review_pack_repo_root" || exit 1
         REPO_AUTOMATION_OUTPUT_DIR="$review_pack_stage_dir" repo-automation/bin/evidence-bundle --label="${review_pack_label:-review}" --post-codex --include-repo-zip
       ) > "$bundle_log" 2>&1; then
-        review_pack_bundle_dir="$(find "$review_pack_stage_dir/evidence-bundle" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1)"
+        review_pack_bundle_zip="$(grep -E '^/' "$bundle_log" | tail -n 1 | tr -d '\r')"
+        if [ -z "$review_pack_bundle_zip" ] || [ ! -f "$review_pack_bundle_zip" ]; then
+          review_pack_fail "failed to locate review bundle zip" "inspect $bundle_log and rerun review-pack" || return 1
+          return 1
+        fi
         rm -f "$bundle_log" >/dev/null 2>&1 || true
-        if [ -z "$review_pack_bundle_dir" ] || [ ! -d "$review_pack_bundle_dir" ]; then
-          review_pack_fail "failed to locate review bundle directory" "remove stale output and rerun review-pack" || return 1
-          return 1
-        fi
-        review_pack_bundle_zip="$review_pack_bundle_dir.zip"
-        if [ ! -f "$review_pack_bundle_zip" ]; then
-          review_pack_fail "failed to locate review bundle zip" "remove stale output and rerun review-pack" || return 1
-          return 1
-        fi
         printf '%s\n' "$review_pack_bundle_zip"
         return 0
       fi
 
-      review_pack_fail "failed to create review bundle" "run repo-automation/bin/evidence-bundle --help and inspect the evidence output" || return 1
-      rm -f "$bundle_log" >/dev/null 2>&1 || true
+      review_pack_fail "failed to create review bundle" "inspect $bundle_log and rerun review-pack" || return 1
       return 1
       ;;
     codex)

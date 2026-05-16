@@ -125,6 +125,13 @@ smoke_assert_flag_error_shape() {
     grep -Fxq "fix: $fix" "$stderr_file"
 }
 
+smoke_assert_single_path_output() {
+  local output_file="$1"
+
+  [ "$(wc -l < "$output_file" | tr -d '[:space:]')" = "1" ] &&
+    ! grep -Eq '^(INFO|PASS):|^(packet dir|packet zip|bundle dir|bundle zip|zip path|file count):' "$output_file"
+}
+
 smoke_write_gh_stub() {
   local gh_stub_dir="$1"
 
@@ -2837,14 +2844,14 @@ PY
     status=1
   fi
 
-  packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$output_log" | tail -n 1)"
-  packet_zip="$(sed -n 's/^INFO: packet zip: //p' "$output_log" | tail -n 1)"
+  packet_zip="$(grep -E '^/' "$output_log" | tail -n 1 | tr -d '\r')"
+  packet_dir="${packet_zip%.zip}"
   summary_file="$packet_dir/summary.txt"
   copied_file="$packet_dir/untracked/copied/packet-safe-nested/deep.txt"
   skipped_file="$packet_dir/untracked/skipped.txt"
   index_file="$output_root/post-codex/index.tsv"
 
-  if [ -d "$packet_dir" ] && [ -f "$packet_zip" ] && [ -f "$summary_file" ] && [ -f "$index_file" ]; then
+  if smoke_assert_single_path_output "$output_log" && [ -d "$packet_dir" ] && [ -f "$packet_zip" ] && [ -f "$summary_file" ] && [ -f "$index_file" ]; then
     test_pass "post-codex-packet helper creates packet artifacts"
   else
     test_fail "post-codex-packet helper creates packet artifacts"
@@ -2936,6 +2943,8 @@ smoke_check_review_pack_contract() {
   local chatgpt_stderr_file=""
   local chatgpt_bundle_zip=""
   local chatgpt_bundle_dir=""
+  local chatgpt_post_codex_output=""
+  local chatgpt_post_codex_path=""
   local chatgpt_repo_zip_output=""
   local chatgpt_repo_zip_path=""
   local codex_output_file=""
@@ -3123,12 +3132,14 @@ EOF
     status=1
   fi
 
-  chatgpt_bundle_zip="$(sed -n '1p' "$chatgpt_output_file" | tr -d '\r')"
+  chatgpt_bundle_zip="$(grep -E '^/' "$chatgpt_output_file" | tail -n 1 | tr -d '\r')"
   chatgpt_bundle_dir="${chatgpt_bundle_zip%.zip}"
+  chatgpt_post_codex_output="$chatgpt_bundle_dir/post-codex/output.txt"
   chatgpt_repo_zip_output="$chatgpt_bundle_dir/repo-zip/output.txt"
-  chatgpt_repo_zip_path="$(sed -n 's/^INFO: zip path: //p' "$chatgpt_repo_zip_output" | tail -n 1)"
+  chatgpt_post_codex_path="$(grep -E '^/' "$chatgpt_post_codex_output" | tail -n 1 | tr -d '\r')"
+  chatgpt_repo_zip_path="$(grep -E '^/' "$chatgpt_repo_zip_output" | tail -n 1 | tr -d '\r')"
 
-  if [ "$(wc -l < "$chatgpt_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$chatgpt_output_file" && [ -f "$chatgpt_bundle_zip" ] && [ -d "$chatgpt_bundle_dir" ] && [ -f "$chatgpt_bundle_dir/summary.txt" ] && [ -f "$chatgpt_bundle_dir/post-codex/output.txt" ] && [ -f "$chatgpt_repo_zip_output" ] && [ -n "$chatgpt_repo_zip_path" ] && [ -f "$chatgpt_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ]; then
+  if smoke_assert_single_path_output "$chatgpt_output_file" && [ -f "$chatgpt_bundle_zip" ] && [ -d "$chatgpt_bundle_dir" ] && [ -f "$chatgpt_bundle_dir/summary.txt" ] && [ -f "$chatgpt_post_codex_output" ] && [ -n "$chatgpt_post_codex_path" ] && [ -f "$chatgpt_post_codex_path" ] && [ -f "$chatgpt_repo_zip_output" ] && [ -n "$chatgpt_repo_zip_path" ] && [ -f "$chatgpt_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ]; then
     test_pass "review-pack chatgpt target creates a staged review bundle"
   else
     test_fail "review-pack chatgpt target creates a staged review bundle"
@@ -3177,7 +3188,7 @@ PY
 
   codex_prompt_file="$(sed -n '1p' "$codex_output_file" | tr -d '\r')"
 
-  if [ "$(wc -l < "$codex_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$codex_output_file" && [ -f "$codex_prompt_file" ] && [ ! -e "$smoke_test_dir/review-pack" ] && grep -Fq 'Task' "$codex_prompt_file" && grep -Fq 'Goal' "$codex_prompt_file" && grep -Fq 'Scope' "$codex_prompt_file" && grep -Fq 'Evidence excerpt' "$codex_prompt_file" && grep -Fq 'Required behavior' "$codex_prompt_file" && grep -Fq 'Not in scope' "$codex_prompt_file" && grep -Fq 'Checks required' "$codex_prompt_file" && grep -Fq 'Output contract' "$codex_prompt_file"; then
+  if smoke_assert_single_path_output "$codex_output_file" && [ -f "$codex_prompt_file" ] && [ ! -e "$smoke_test_dir/review-pack" ] && grep -Fq 'Task' "$codex_prompt_file" && grep -Fq 'Goal' "$codex_prompt_file" && grep -Fq 'Scope' "$codex_prompt_file" && grep -Fq 'Evidence excerpt' "$codex_prompt_file" && grep -Fq 'Required behavior' "$codex_prompt_file" && grep -Fq 'Not in scope' "$codex_prompt_file" && grep -Fq 'Checks required' "$codex_prompt_file" && ! grep -Fq 'Checks allowed' "$codex_prompt_file" && grep -Fq 'Output contract' "$codex_prompt_file"; then
     test_pass "review-pack codex target creates a local prompt artifact"
   else
     test_fail "review-pack codex target creates a local prompt artifact"
@@ -3605,7 +3616,7 @@ EOF
   fi
 
   evidence_prompt_file="$(sed -n '1p' "$evidence_output_file" | tr -d '\r')"
-  if [ "$(wc -l < "$evidence_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$evidence_output_file" && [ -f "$evidence_prompt_file" ] && grep -Fq 'CI excerpt line one' "$evidence_prompt_file" && grep -Fq 'Restart the job' "$evidence_prompt_file" && ! grep -Fq 'password=secret-value' "$evidence_prompt_file" && ! grep -Fq 'supersecret' "$evidence_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
+  if smoke_assert_single_path_output "$evidence_output_file" && [ -f "$evidence_prompt_file" ] && grep -Fq 'CI excerpt line one' "$evidence_prompt_file" && grep -Fq 'Restart the job' "$evidence_prompt_file" && ! grep -Fq 'password=secret-value' "$evidence_prompt_file" && ! grep -Fq 'supersecret' "$evidence_prompt_file" && ! grep -Fq 'Checks allowed' "$evidence_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
     test_pass "repair-prompt uses provided CI evidence file and redacts secrets"
   else
     test_fail "repair-prompt uses provided CI evidence file and redacts secrets"
@@ -3623,7 +3634,7 @@ EOF
   fi
 
   ci_prompt_file="$(sed -n '1p' "$ci_output_file" | tr -d '\r')"
-  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--machine-json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && [ "$(wc -l < "$ci_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$ci_output_file"; then
+  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--machine-json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && ! grep -Fq 'Checks allowed' "$ci_prompt_file" && smoke_assert_single_path_output "$ci_output_file"; then
     test_pass "repair-prompt gathers CI evidence with ci-log-dump"
   else
     test_fail "repair-prompt gathers CI evidence with ci-log-dump"
@@ -3641,7 +3652,7 @@ EOF
   fi
 
   local_prompt_file="$(sed -n '1p' "$local_output_file" | tr -d '\r')"
-  if [ "$(wc -l < "$local_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$local_output_file" && [ -f "$local_prompt_file" ] && grep -Fq 'Local failure evidence' "$local_prompt_file" && grep -Fq 'local failure line' "$local_prompt_file" && grep -Fq 'Checks required' "$local_prompt_file" && ! grep -Fq 'password=supersecret' "$local_prompt_file" && ! grep -Fq 'supersecret' "$local_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
+  if smoke_assert_single_path_output "$local_output_file" && [ -f "$local_prompt_file" ] && grep -Fq 'Local failure evidence' "$local_prompt_file" && grep -Fq 'local failure line' "$local_prompt_file" && grep -Fq 'Checks required' "$local_prompt_file" && ! grep -Fq 'Checks allowed' "$local_prompt_file" && ! grep -Fq 'password=supersecret' "$local_prompt_file" && ! grep -Fq 'supersecret' "$local_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
     test_pass "repair-prompt local source creates a prompt artifact"
   else
     test_fail "repair-prompt local source creates a prompt artifact"
@@ -3709,13 +3720,13 @@ smoke_check_repo_zip_contract() {
     status=1
   fi
 
-  zip_path="$(sed -n 's/^INFO: zip path: //p' "$output_log" | tail -n 1)"
+  zip_path="$(grep -E '^/' "$output_log" | tail -n 1 | tr -d '\r')"
   packet_dir="$(dirname "$zip_path")"
   summary_file="$packet_dir/summary.txt"
   files_file="$packet_dir/files.txt"
   zip_root="$(basename "$smoke_test_dir")"
 
-  if [ -d "$packet_dir" ] && [ -f "$zip_path" ] && [ -f "$summary_file" ] && [ -f "$files_file" ]; then
+  if smoke_assert_single_path_output "$output_log" && [ -d "$packet_dir" ] && [ -f "$zip_path" ] && [ -f "$summary_file" ] && [ -f "$files_file" ]; then
     test_pass "repo-zip helper creates packet artifacts"
   else
     test_fail "repo-zip helper creates packet artifacts"
@@ -3901,15 +3912,15 @@ smoke_check_evidence_bundle_contract() {
     status=1
   fi
 
-  default_bundle_dir="$(sed -n 's/^INFO: bundle dir: //p' "$default_output_log" | tail -n 1)"
-  default_bundle_zip="$(sed -n 's/^INFO: bundle zip: //p' "$default_output_log" | tail -n 1)"
+  default_bundle_zip="$(grep -E '^/' "$default_output_log" | tail -n 1 | tr -d '\r')"
+  default_bundle_dir="${default_bundle_zip%.zip}"
   default_summary_file="$default_bundle_dir/summary.txt"
   default_status_file="$default_bundle_dir/git-status-short.txt"
   default_touched_file="$default_bundle_dir/touched-files.json"
   default_failure_log_file="$default_bundle_dir/failure-log.txt"
   default_bundle_root="$(basename "$default_bundle_dir")"
 
-  if [ -d "$default_bundle_dir" ] && [ -f "$default_bundle_zip" ] && [ -f "$default_summary_file" ] && [ -f "$default_status_file" ] && [ -f "$default_touched_file" ] && [ -f "$default_failure_log_file" ]; then
+  if smoke_assert_single_path_output "$default_output_log" && [ -d "$default_bundle_dir" ] && [ -f "$default_bundle_zip" ] && [ -f "$default_summary_file" ] && [ -f "$default_status_file" ] && [ -f "$default_touched_file" ] && [ -f "$default_failure_log_file" ]; then
     test_pass "evidence-bundle helper creates bundle artifacts"
   else
     test_fail "evidence-bundle helper creates bundle artifacts"
@@ -3984,19 +3995,19 @@ PY
     status=1
   fi
 
-  post_bundle_dir="$(sed -n 's/^INFO: bundle dir: //p' "$post_output_log" | tail -n 1)"
-  post_bundle_zip="$(sed -n 's/^INFO: bundle zip: //p' "$post_output_log" | tail -n 1)"
+  post_bundle_zip="$(grep -E '^/' "$post_output_log" | tail -n 1 | tr -d '\r')"
+  post_bundle_dir="${post_bundle_zip%.zip}"
   post_summary_file="$post_bundle_dir/summary.txt"
   post_bundle_root="$(basename "$post_bundle_dir")"
 
-  if grep -Eq '^Included sections: .*post-codex-packet.*repo-zip' "$post_summary_file" && grep -Eq '^Post-codex packet zip: ' "$post_summary_file" && grep -Eq '^Repo snapshot zip: ' "$post_summary_file"; then
+  if grep -Eq '^Included sections: .*post-codex-packet.*repo-zip' "$post_summary_file" && grep -Eq '^Post-codex packet zip: ' "$post_summary_file" && grep -Eq '^Repo snapshot zip: ' "$post_summary_file" && smoke_assert_single_path_output "$post_bundle_dir/post-codex/output.txt" && smoke_assert_single_path_output "$post_bundle_dir/repo-zip/output.txt"; then
     test_pass "evidence-bundle summary records optional packet paths"
   else
     test_fail "evidence-bundle summary records optional packet paths"
     status=1
   fi
 
-  if [ -f "$post_bundle_zip" ] && grep -q '^INFO: post-codex packet zip: ' "$post_output_log" && grep -q '^INFO: repo-zip zip path: ' "$post_output_log"; then
+  if smoke_assert_single_path_output "$post_output_log" && [ -f "$post_bundle_zip" ]; then
     test_pass "evidence-bundle optional artifact run reports packet zip paths"
   else
     test_fail "evidence-bundle optional artifact run reports packet zip paths"
@@ -4180,8 +4191,8 @@ ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation
     status=1
   fi
 
-  pr_bundle_dir="$(sed -n 's/^INFO: bundle dir: //p' "$pr_output_log" | tail -n 1)"
-  pr_bundle_zip="$(sed -n 's/^INFO: bundle zip: //p' "$pr_output_log" | tail -n 1)"
+  pr_bundle_zip="$(grep -E '^/' "$pr_output_log" | tail -n 1 | tr -d '\r')"
+  pr_bundle_dir="${pr_bundle_zip%.zip}"
   pr_summary_file="$pr_bundle_dir/summary.txt"
   pr_bundle_root="$(basename "$pr_bundle_dir")"
 
@@ -4192,7 +4203,7 @@ ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation
     status=1
   fi
 
-  if grep -q '^INFO: ci log dump saved log path: ' "$pr_output_log" && grep -q '^Saved log path: ' "$pr_bundle_dir/ci-log-dump/output.txt"; then
+  if smoke_assert_single_path_output "$pr_output_log" && grep -q '^Saved log path: ' "$pr_bundle_dir/ci-log-dump/output.txt"; then
     test_pass "evidence-bundle PR mode saves CI log output"
   else
     test_fail "evidence-bundle PR mode saves CI log output"

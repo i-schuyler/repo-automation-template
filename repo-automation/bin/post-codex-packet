@@ -393,18 +393,11 @@ post_codex_packet_main() {
   post_codex_packet_create_zip || return 1
   post_codex_packet_write_index || return 1
 
-  post_codex_packet_info "packet dir: $post_codex_packet_packet_dir"
-  post_codex_packet_info "packet zip: $post_codex_packet_zip_path"
-  post_codex_packet_info "tracked unstaged files: $post_codex_packet_tracked_count"
-  post_codex_packet_info "staged files: $post_codex_packet_staged_count"
-  post_codex_packet_info "untracked files: $post_codex_packet_untracked_count"
-  post_codex_packet_info "copied untracked files: $post_codex_packet_copied_count"
-  post_codex_packet_info "skipped untracked files: $post_codex_packet_skipped_count"
-
   if [ "$post_codex_packet_keep_dir" -eq 0 ]; then
     rm -rf "$post_codex_packet_packet_dir"
   fi
 
+  printf '%s\n' "$post_codex_packet_zip_path"
   return 0
 }
 

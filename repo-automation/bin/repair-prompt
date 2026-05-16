@@ -251,7 +251,6 @@ PY
 
 repair_prompt_main() {
   local arg=""
-  local output_root=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
