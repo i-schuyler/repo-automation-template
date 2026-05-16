@@ -28,18 +28,7 @@
 
 ## Output
 
-Human output reports:
-
-- bundle dir
-- bundle zip
-- included sections
-- skipped sections
-- summary file
-- status short file
-- touched-files file
-- failure log file
-- CI log dump dir
-- optional packet zip paths
+Success prints the bundle zip path.
 
 ## Example
 

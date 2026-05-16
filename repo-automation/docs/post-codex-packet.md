@@ -25,15 +25,7 @@ Oversized untracked files are skipped when they exceed the default `262144` byte
 
 ## Output
 
-Human output reports:
-
-- packet directory
-- zip path
-- tracked unstaged file count
-- staged file count
-- untracked file count
-- copied untracked file count
-- skipped untracked file count
+Success prints the packet zip path.
 
 ## Options
 
