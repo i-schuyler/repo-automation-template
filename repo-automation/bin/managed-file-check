@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# repo-automation/bin/managed-file-check
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+managed_file_check_changed=0
+
+managed_file_check_usage() {
+  printf 'Usage: repo-automation/bin/managed-file-check [--changed] [--help]\n'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help)
+      managed_file_check_usage
+      exit 0
+      ;;
+    --changed)
+      managed_file_check_changed=1
+      ;;
+    *)
+      if [ "${1#--}" != "$1" ]; then
+        repo_auto_flag_error "unknown flag" "$1" "run repo-automation/bin/managed-file-check --help" || exit 1
+      else
+        repo_auto_stop "unknown argument: $1"
+      fi
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+if [ "$managed_file_check_changed" -eq 0 ]; then
+  managed_file_check_changed=1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  repo_auto_stop "python3 is required"
+  exit 1
+fi
+
+python3 - "$managed_file_check_changed" <<'PY'
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+def stop(message: str) -> int:
+    print(f"STOP: {message}", file=sys.stderr)
+    return 1
+
+
+def run(argv: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(argv, cwd=str(cwd) if cwd else None, text=True, capture_output=True, check=False)
+
+
+def git_root() -> Path:
+    proc = run(["git", "rev-parse", "--show-toplevel"])
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "not inside a git repository")
+    root = proc.stdout.strip()
+    if not root:
+        raise RuntimeError("unable to determine git repo root")
+    return Path(root)
+
+
+def git_changed_paths(root: Path) -> set[str]:
+    paths: set[str] = set()
+    proc = run(["git", "diff", "--name-only", "HEAD"], cwd=root)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "git diff failed")
+    for line in proc.stdout.splitlines():
+        if line.strip():
+            paths.add(line.strip())
+
+    proc = run(["git", "ls-files", "--others", "--exclude-standard"], cwd=root)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "git ls-files failed")
+    for line in proc.stdout.splitlines():
+        if line.strip():
+            paths.add(line.strip())
+    return paths
+
+
+def load_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive guard
+        raise RuntimeError(f"failed to parse {path}: {exc}") from exc
+
+
+def main() -> int:
+    root = git_root()
+    metadata_path = root / "repo-automation" / "helper-metadata.json"
+    manifest_path = root / "repo-automation" / "manifest.json"
+
+    metadata = load_json(metadata_path)
+    manifest = load_json(manifest_path)
+
+    helper_paths = {
+        entry.get("path")
+        for entry in metadata.get("helpers", [])
+        if isinstance(entry, dict) and entry.get("public") is True and isinstance(entry.get("path"), str)
+    }
+    manifest_paths = {
+        entry.get("path")
+        for entry in manifest.get("managed_files", [])
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    }
+
+    changed_paths = sorted(path for path in git_changed_paths(root) if path.startswith("repo-automation/"))
+    if not changed_paths:
+        print("pass")
+        return 0
+
+    for path in changed_paths:
+        if path not in manifest_paths:
+            print("fail: coverage review required", file=sys.stderr)
+            print(f"path: {path}", file=sys.stderr)
+            print("fix: add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install", file=sys.stderr)
+            return 1
+        if path.startswith("repo-automation/bin/") and path not in helper_paths:
+            print("fail: public helper inventory review required", file=sys.stderr)
+            print(f"path: {path}", file=sys.stderr)
+            print("fix: add the helper to repo-automation/helper-metadata.json and update helper docs", file=sys.stderr)
+            return 1
+
+    print("pass")
+    return 0
+
+
+try:
+    raise SystemExit(main())
+except RuntimeError as exc:
+    raise SystemExit(stop(str(exc)))
+PY

@@ -525,6 +525,20 @@ add_doc_pr_main() {
     add_doc_pr_collect_changed_files changed_files
   fi
 
+  if [ "$command_status" -eq 0 ]; then
+    for path in "${changed_files[@]}"; do
+      case "$path" in
+        repo-automation/*)
+          if ! repo-automation/bin/managed-file-check --changed >/dev/null; then
+            add_doc_pr_stop "coverage review required for repo-automation path changes"
+            command_status=1
+          fi
+          break
+          ;;
+      esac
+    done
+  fi
+
   if [ "$command_status" -eq 0 ] && [ "${#changed_files[@]}" -eq 0 ]; then
     add_doc_pr_stop "no docs changes found"
     command_status=1
