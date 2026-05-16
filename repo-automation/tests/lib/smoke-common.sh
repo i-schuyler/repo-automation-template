@@ -4080,7 +4080,7 @@ smoke_check_starter_template_readiness() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --check=starter-template-readiness --no-run-tests > "$readiness_doctor_out"
-  ) && grep -Eq '^RESULT: pass=[0-9]+ warn=0 fail=0 skipped=0$' "$readiness_doctor_out"; then
+  ) && [ "$(cat "$readiness_doctor_out")" = "pass" ]; then
     test_pass "repo-doctor starter-template-readiness check passes"
   else
     test_fail "repo-doctor starter-template-readiness check passes"
