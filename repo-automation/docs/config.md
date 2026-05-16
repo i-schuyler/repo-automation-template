@@ -2,6 +2,8 @@
 
 `.repo-automation.conf` is the repo-local entry point for public-safe automation settings.
 
+This doc is the public loading and behavior guide. The schema contract lives in [Config Schema](config-schema.md).
+
 ## What It Is
 
 The config file records the public, installable shape of the repo automation template:
