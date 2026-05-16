@@ -12,9 +12,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 managed_file_check_changed=0
+managed_file_check_quiet=0
 
 managed_file_check_usage() {
-  printf 'Usage: repo-automation/bin/managed-file-check [--changed] [--help]\n'
+  printf 'Usage: repo-automation/bin/managed-file-check [--changed] [--quiet] [--help]\n'
 }
 
 while [ "$#" -gt 0 ]; do
@@ -25,6 +26,9 @@ while [ "$#" -gt 0 ]; do
       ;;
     --changed)
       managed_file_check_changed=1
+      ;;
+    --quiet)
+      managed_file_check_quiet=1
       ;;
     *)
       if [ "${1#--}" != "$1" ]; then
@@ -47,7 +51,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-python3 - "$managed_file_check_changed" <<'PY'
+python3 - "$managed_file_check_changed" "$managed_file_check_quiet" <<'PY'
 from __future__ import annotations
 
 import json
@@ -101,6 +105,7 @@ def load_json(path: Path) -> object:
 
 
 def main() -> int:
+    quiet = bool(int(sys.argv[2]))
     root = git_root()
     metadata_path = root / "repo-automation" / "helper-metadata.json"
     manifest_path = root / "repo-automation" / "manifest.json"
@@ -121,7 +126,8 @@ def main() -> int:
 
     changed_paths = sorted(path for path in git_changed_paths(root) if path.startswith("repo-automation/"))
     if not changed_paths:
-        print("pass")
+        if not quiet:
+            print("pass")
         return 0
 
     for path in changed_paths:
@@ -136,7 +142,8 @@ def main() -> int:
             print("fix: add the helper to repo-automation/helper-metadata.json and update helper docs", file=sys.stderr)
             return 1
 
-    print("pass")
+    if not quiet:
+        print("pass")
     return 0
 
 

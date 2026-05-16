@@ -19,7 +19,7 @@ Default behavior is safe and read-only.
 - `--no-run-tests` explicitly skips `repo-automation/bin/run-tests`.
 - `--check=NAME` runs one named check (`artifact-guard`, `git`, `config`, `scripts`, `json`, `tests`, `version`, `ci`, `automation-freshness`, `docs`, `issue-templates`, `starter-template-readiness`, `github-settings-readiness`).
 
-Human output uses PASS/WARN/FAIL when details are shown, but default summary output stays compact:
+Human output stays compact by default:
 
 - `pass`: no failures
 - `warn`: warnings only

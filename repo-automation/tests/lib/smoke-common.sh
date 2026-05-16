@@ -570,6 +570,12 @@ smoke_check_add_doc_pr_docs_only() {
   local add_doc_pr_branch_empty_stderr="$smoke_test_base/add-doc-pr-branch-empty-$$.stderr"
   local add_doc_pr_unknown_stderr="$smoke_test_base/add-doc-pr-unknown-$$.stderr"
   local add_doc_pr_repo_automation_stderr="$smoke_test_base/add-doc-pr-repo-automation-$$.stderr"
+  local add_doc_pr_create_json="$smoke_test_base/add-doc-pr-create-$$.json"
+  local add_doc_pr_create_stderr="$smoke_test_base/add-doc-pr-create-$$.stderr"
+  local add_doc_pr_create_body="$smoke_test_base/add-doc-pr-create-body.md"
+  local add_doc_pr_create_repo="$smoke_test_base/add-doc-pr-create-repo"
+  local add_doc_pr_run_tests_marker="$smoke_test_base/add-doc-pr-run-tests-called"
+  local add_doc_pr_docs_check_marker="$smoke_test_base/add-doc-pr-docs-check-called"
   local add_doc_pr_failure_details=""
   local repo_doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
   local ci_log_dump_help="$smoke_test_base/ci-log-dump-help-$$.txt"
@@ -730,6 +736,66 @@ smoke_check_add_doc_pr_docs_only() {
   if (
     cd "$smoke_test_dir" || return 1
     rm -f repo-automation/docs/add-doc-pr-coverage-smoke.md || return 1
+    cp -R "$smoke_test_dir" "$add_doc_pr_create_repo" || return 1
+    (
+      cd "$add_doc_pr_create_repo" || return 1
+      git config user.name "repo-automation-test" || return 1
+      git config user.email "repo-automation-test@example.com" || return 1
+      cat > repo-automation/tests/docs-check.sh <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check output\\n'
+: > "$add_doc_pr_docs_check_marker"
+exit 0
+EOF
+      chmod +x repo-automation/tests/docs-check.sh || return 1
+      cat > repo-automation/bin/run-tests <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+: > "$add_doc_pr_run_tests_marker"
+exit 1
+EOF
+      chmod +x repo-automation/bin/run-tests || return 1
+      git add repo-automation/tests/docs-check.sh repo-automation/bin/run-tests || return 1
+      git commit -m "test: stub docs-check and run-tests" >/dev/null 2>&1 || return 1
+      mkdir -p docs || return 1
+      printf 'docs only change\n' > docs/plan-doc.md || return 1
+      printf 'body text\n' > "$add_doc_pr_create_body" || return 1
+      repo-automation/bin/add-doc-pr \
+        --dry-run \
+        --create-pr \
+        --json \
+        --branch=docs/my-doc-update-create \
+        --title=Docs \
+        --body-file="$add_doc_pr_create_body" \
+        --commit-message=docs:update \
+        --base=main \
+        > "$add_doc_pr_create_json" 2> "$add_doc_pr_create_stderr"
+    )
+  ) && python -m json.tool "$add_doc_pr_create_json" >/dev/null && \
+    smoke_json_assert "$add_doc_pr_create_json" 'data.get("checks_run") is True' && \
+    ! grep -Fq 'docs-check output' "$add_doc_pr_create_stderr" && \
+    [ -f "$add_doc_pr_docs_check_marker" ] && \
+    [ ! -e "$add_doc_pr_run_tests_marker" ]; then
+    test_pass "add-doc-pr dry-run create-pr validates docs-only changes"
+  else
+    if [ -s "$add_doc_pr_create_json" ]; then
+      add_doc_pr_failure_details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (checks_run=" + json.dumps(data.get("checks_run")) + "; action_taken=" + json.dumps(data.get("action_taken")) + "; stop_reason=" + json.dumps(data.get("stop_reason")) + "; changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_create_json")"
+    elif [ -s "$add_doc_pr_create_stderr" ]; then
+      add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_create_stderr"))"
+    fi
+    test_fail "add-doc-pr dry-run create-pr validates docs-only changes"
+    status=1
+  fi
+
+  rm -rf "$add_doc_pr_create_repo" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_docs_check_marker" "$add_doc_pr_run_tests_marker" "$add_doc_pr_create_body" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f repo-automation/docs/add-doc-pr-coverage-smoke.md || return 1
   ); then
     :
   fi
@@ -793,7 +859,7 @@ smoke_check_add_doc_pr_docs_only() {
     :
   fi
 
-  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$repo_doctor_help" "$ci_log_dump_help" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$add_doc_pr_create_json" "$add_doc_pr_create_stderr" "$repo_doctor_help" "$ci_log_dump_help" "$report_upstream_help" "$install_help" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1180,8 +1246,11 @@ smoke_check_run_tests_contract() {
   local status=0
   local run_tests_help="$smoke_test_base/run-tests-help-$$.txt"
   local run_tests_default_out="$smoke_test_base/run-tests-default-$$.txt"
+  local run_tests_quiet_out="$smoke_test_base/run-tests-quiet-$$.txt"
+  local run_tests_quiet_err="$smoke_test_base/run-tests-quiet-$$.stderr"
   local run_tests_explain_out="$smoke_test_base/run-tests-explain-$$.txt"
   local run_tests_json="$smoke_test_base/run-tests-warn-$$.json"
+  local run_tests_json_err="$smoke_test_base/run-tests-warn-$$.stderr"
   local run_tests_log_file="$smoke_test_base/run-tests-log-$$.log"
   local run_tests_no_log_file="$smoke_test_base/run-tests-no-log-$$.log"
   local run_tests_no_log_out="$smoke_test_base/run-tests-no-log-$$.txt"
@@ -1215,10 +1284,20 @@ smoke_check_run_tests_contract() {
   if (
     cd "$smoke_repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --timeout=200 > "$run_tests_default_out"
-  ) && ! grep -Eq '^PASS:' "$run_tests_default_out" && grep -Eq '^RESULT: pass=' "$run_tests_default_out"; then
+  ) && [ "$(cat "$run_tests_default_out")" = "pass" ]; then
     test_pass "run-tests default output is compact"
   else
     test_fail "run-tests default output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet > "$run_tests_quiet_out" 2> "$run_tests_quiet_err"
+  ) && [ ! -s "$run_tests_quiet_out" ] && [ ! -s "$run_tests_quiet_err" ]; then
+    test_pass "run-tests quiet output is silent on success"
+  else
+    test_fail "run-tests quiet output is silent on success"
     status=1
   fi
 
@@ -1234,8 +1313,8 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_repo_root" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn > "$run_tests_json"
-  ) && python -m json.tool "$run_tests_json" >/dev/null && \
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn > "$run_tests_json" 2> "$run_tests_json_err"
+  ) && [ ! -s "$run_tests_json_err" ] && python -m json.tool "$run_tests_json" >/dev/null && \
     smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
     test_pass "run-tests json warn is parseable"
   else
@@ -1397,7 +1476,11 @@ smoke_check_run_tests_contract() {
   local run_tests_subset_smoke_json="$smoke_test_base/run-tests-subset-smoke-$$.json"
   local run_tests_subset_docs_json="$smoke_test_base/run-tests-subset-docs-$$.json"
   local run_tests_subset_version_json="$smoke_test_base/run-tests-subset-version-$$.json"
-  local run_tests_subset_changed_docs_json="$smoke_test_base/run-tests-subset-changed-docs-$$.json"
+  local run_tests_subset_changed_json="$smoke_test_base/run-tests-subset-changed-$$.json"
+  local run_tests_subset_changed_default_out="$smoke_test_base/run-tests-subset-changed-default-$$.txt"
+  local run_tests_subset_changed_default_err="$smoke_test_base/run-tests-subset-changed-default-$$.stderr"
+  local run_tests_subset_changed_quiet_out="$smoke_test_base/run-tests-subset-changed-quiet-$$.txt"
+  local run_tests_subset_changed_quiet_err="$smoke_test_base/run-tests-subset-changed-quiet-$$.stderr"
   local run_tests_subset_changed_smoke_json="$smoke_test_base/run-tests-subset-changed-smoke-$$.json"
   local run_tests_subset_changed_bin_json="$smoke_test_base/run-tests-subset-changed-bin-$$.json"
 
@@ -1438,9 +1521,38 @@ smoke_check_run_tests_contract() {
 
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
-    printf '\nsubset docs change\n' >> repo-automation/docs/testing.md || return 1
-    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_docs_json" || true
-  ) && python -m json.tool "$run_tests_subset_changed_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_docs_json" 'data.get("selected_subsets") in (["docs"], ["docs", "version"]) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+    cat > repo-automation/tests/docs-check.sh <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+exit 0
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    git add repo-automation/tests/docs-check.sh || return 1
+    git commit -m "test: stub passing docs-check" >/dev/null 2>&1 || return 1
+    printf '\nAdditional docs note.\n' >> repo-automation/docs/testing.md || return 1
+    repo-automation/bin/run-tests --changed > "$run_tests_subset_changed_default_out" 2> "$run_tests_subset_changed_default_err"
+  ) && [ "$(cat "$run_tests_subset_changed_default_out")" = "pass" ] && [ ! -s "$run_tests_subset_changed_default_err" ]; then
+    test_pass "run-tests changed subset defaults to compact pass output"
+  else
+    test_fail "run-tests changed subset defaults to compact pass output"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    repo-automation/bin/run-tests --changed --quiet > "$run_tests_subset_changed_quiet_out" 2> "$run_tests_subset_changed_quiet_err"
+  ) && [ ! -s "$run_tests_subset_changed_quiet_out" ] && [ ! -s "$run_tests_subset_changed_quiet_err" ]; then
+    test_pass "run-tests changed subset quiet output is silent"
+  else
+    test_fail "run-tests changed subset quiet output is silent"
+    status=1
+  fi
+
+  if [ -n "$run_tests_subset_repo" ] && (
+    cd "$run_tests_subset_repo" || return 1
+    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_json" || true
+  ) && python -m json.tool "$run_tests_subset_changed_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_json" 'data.get("selected_subsets") == ["docs"] and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
     test_pass "run-tests changed subset follows docs-only changes"
   else
     test_fail "run-tests changed subset follows docs-only changes"
@@ -1483,7 +1595,7 @@ smoke_check_run_tests_contract() {
     status=1
   fi
 
-  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_explain_out" "$run_tests_json" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_docs_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_default_out" "$run_tests_subset_changed_default_err" "$run_tests_subset_changed_quiet_out" "$run_tests_subset_changed_quiet_err" "$run_tests_subset_changed_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -2147,8 +2259,11 @@ smoke_check_repo_doctor_contract() {
   local status=0
   local doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
   local doctor_default_out="$smoke_test_base/repo-doctor-quick-default-$$.txt"
+  local doctor_quiet_out="$smoke_test_base/repo-doctor-quick-quiet-$$.txt"
+  local doctor_quiet_err="$smoke_test_base/repo-doctor-quick-quiet-$$.stderr"
   local doctor_explain_out="$smoke_test_base/repo-doctor-quick-explain-$$.txt"
   local doctor_json_warn="$smoke_test_base/repo-doctor-quick-warn-$$.json"
+  local doctor_json_warn_err="$smoke_test_base/repo-doctor-quick-warn-$$.stderr"
   local doctor_log_file="$smoke_test_base/repo-doctor-log-$$.log"
   local doctor_no_log_file="$smoke_test_base/repo-doctor-no-log-$$.log"
   local doctor_no_log_out="$smoke_test_base/repo-doctor-no-log-$$.txt"
@@ -2188,11 +2303,21 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --quick --timeout=200 > "$doctor_default_out"
-  ) && ! grep -Eq '^PASS:' "$doctor_default_out" && grep -Eq '^RESULT: pass=' "$doctor_default_out" && grep -Eq '^WARN:$' "$doctor_default_out" && grep -Eq '^- run-tests$' "$doctor_default_out" && grep -Eq '^Next: repo-automation/bin/repo-doctor --explain$' "$doctor_default_out"; then
-    test_pass "repo-doctor quick default output is compact"
+    repo-automation/bin/repo-doctor --check=config --timeout=200 > "$doctor_default_out"
+  ) && [ "$(cat "$doctor_default_out")" = "pass" ]; then
+    test_pass "repo-doctor default output is compact"
   else
-    test_fail "repo-doctor quick default output is compact"
+    test_fail "repo-doctor default output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --check=config --quiet --timeout=200 > "$doctor_quiet_out" 2> "$doctor_quiet_err"
+  ) && [ ! -s "$doctor_quiet_out" ] && [ ! -s "$doctor_quiet_err" ]; then
+    test_pass "repo-doctor quiet output is silent on success"
+  else
+    test_fail "repo-doctor quiet output is silent on success"
     status=1
   fi
 
@@ -2208,12 +2333,12 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repo-doctor --json --quick --json-level=warn > "$doctor_json_warn"
-  ) && python -m json.tool "$doctor_json_warn" >/dev/null && \
-    smoke_json_assert "$doctor_json_warn" 'data.get("mode") == "quick" and data.get("json_level") == "warn" and any(check.get("status") == "warn" for check in data.get("checks", []))'; then
-    test_pass "repo-doctor json quick warn is parseable"
+    repo-automation/bin/repo-doctor --json --check=config --json-level=all > "$doctor_json_warn" 2> "$doctor_json_warn_err"
+  ) && [ ! -s "$doctor_json_warn_err" ] && python -m json.tool "$doctor_json_warn" >/dev/null && \
+    smoke_json_assert "$doctor_json_warn" 'data.get("overall_status") == "pass" and data.get("json_level") == "all" and any(check.get("name") == "config-exists" and check.get("status") == "pass" for check in data.get("checks", []))'; then
+    test_pass "repo-doctor json output is parseable"
   else
-    test_fail "repo-doctor json quick warn is parseable"
+    test_fail "repo-doctor json output is parseable"
     status=1
   fi
 
@@ -2426,7 +2551,7 @@ smoke_check_repo_doctor_contract() {
     status=1
   fi
 
-  rm -f "$doctor_help" "$doctor_default_out" "$doctor_explain_out" "$doctor_json_warn" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" "$doctor_timeout_format_stderr" "$doctor_timeout_missing_stderr" "$doctor_timeout_empty_stderr" "$doctor_log_file_format_stderr" "$doctor_log_file_missing_stderr" "$doctor_log_file_empty_stderr" "$doctor_json_level_format_stderr" "$doctor_json_level_missing_stderr" "$doctor_json_level_empty_stderr" "$doctor_check_format_stderr" "$doctor_check_missing_stderr" "$doctor_check_empty_stderr" "$doctor_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$doctor_help" "$doctor_default_out" "$doctor_quiet_out" "$doctor_quiet_err" "$doctor_explain_out" "$doctor_json_warn" "$doctor_json_warn_err" "$doctor_log_file" "$doctor_no_log_file" "$doctor_no_log_out" "$doctor_json" "$doctor_config_out" "$doctor_timeout_format_stderr" "$doctor_timeout_missing_stderr" "$doctor_timeout_empty_stderr" "$doctor_log_file_format_stderr" "$doctor_log_file_missing_stderr" "$doctor_log_file_empty_stderr" "$doctor_json_level_format_stderr" "$doctor_json_level_missing_stderr" "$doctor_json_level_empty_stderr" "$doctor_check_format_stderr" "$doctor_check_missing_stderr" "$doctor_check_empty_stderr" "$doctor_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -3355,6 +3480,8 @@ smoke_check_managed_file_tools_contract() {
   local status=0
   local managed_file_help="$smoke_test_base/managed-file-check-help-$$.txt"
   local managed_file_add_help="$smoke_test_base/managed-file-add-help-$$.txt"
+  local managed_file_clean_out="$smoke_test_base/managed-file-check-clean.out"
+  local managed_file_clean_err="$smoke_test_base/managed-file-check-clean.err"
   local managed_file_fail_stderr="$smoke_test_base/managed-file-check-fail.stderr"
   local managed_file_add_stderr="$smoke_test_base/managed-file-add.stderr"
   local managed_file_new_path="repo-automation/docs/managed-file-tools-smoke.md"
@@ -3364,7 +3491,7 @@ smoke_check_managed_file_tools_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/managed-file-check --help > "$managed_file_help"
-  ) && grep -Fq -- '--changed' "$managed_file_help" && ! grep -Fq -- '--changed CHANGED' "$managed_file_help"; then
+  ) && grep -Fq -- '--changed' "$managed_file_help" && grep -Fq -- '--quiet' "$managed_file_help" && ! grep -Fq -- '--changed CHANGED' "$managed_file_help"; then
     test_pass "managed-file-check help shows strict flag syntax"
   else
     test_fail "managed-file-check help shows strict flag syntax"
@@ -3391,6 +3518,26 @@ smoke_check_managed_file_tools_contract() {
     test_pass "managed-file-add rejects unknown flags"
   else
     test_fail "managed-file-add rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --changed > "$managed_file_clean_out" 2> "$managed_file_clean_err"
+  ) && [ "$(cat "$managed_file_clean_out")" = "pass" ] && [ ! -s "$managed_file_clean_err" ]; then
+    test_pass "managed-file-check prints pass on clean success"
+  else
+    test_fail "managed-file-check prints pass on clean success"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --changed --quiet > "$managed_file_clean_out" 2> "$managed_file_clean_err"
+  ) && [ ! -s "$managed_file_clean_out" ] && [ ! -s "$managed_file_clean_err" ]; then
+    test_pass "managed-file-check quiet output is silent on clean success"
+  else
+    test_fail "managed-file-check quiet output is silent on clean success"
     status=1
   fi
 
@@ -3430,7 +3577,7 @@ smoke_check_managed_file_tools_contract() {
     status=1
   fi
 
-  rm -f "$managed_file_help" "$managed_file_add_help" "$managed_file_fail_stderr" "$managed_file_add_stderr" >/dev/null 2>&1 || true
+  rm -f "$managed_file_help" "$managed_file_add_help" "$managed_file_clean_out" "$managed_file_clean_err" "$managed_file_fail_stderr" "$managed_file_add_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -3933,7 +4080,7 @@ smoke_check_starter_template_readiness() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --check=starter-template-readiness --no-run-tests > "$readiness_doctor_out"
-  ) && grep -Eq '^RESULT: pass=[0-9]+ warn=0 fail=0 skipped=0$' "$readiness_doctor_out"; then
+  ) && [ "$(cat "$readiness_doctor_out")" = "pass" ]; then
     test_pass "repo-doctor starter-template-readiness check passes"
   else
     test_fail "repo-doctor starter-template-readiness check passes"

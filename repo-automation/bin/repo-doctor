@@ -205,6 +205,24 @@ repo_doctor_print_json() {
   printf '}\n'
 }
 
+repo_doctor_first_entry_by_status() {
+  local want_status="$1"
+  local entry name status rest message
+
+  for entry in "${repo_doctor_checks[@]}"; do
+    name="${entry%%|*}"
+    rest="${entry#*|}"
+    status="${rest%%|*}"
+    message="${rest#*|}"
+    if [ "$status" = "$want_status" ]; then
+      printf '%s|%s|%s\n' "$name" "$status" "$message"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 repo_doctor_check_git() {
   local repo_root current_branch dirty_state remote_name remote_url expected_remote
   repo_root="$(repo_auto_repo_root)" || {
@@ -839,12 +857,11 @@ repo_doctor_print_human_summary() {
   local name
   local status
   local message
-
-  if [ "$repo_doctor_output_mode" != "quiet" ]; then
-    printf 'RUNNING repo doctor...\n'
-  fi
+  local rest
+  local first_entry
 
   if [ "$repo_doctor_output_mode" = "explain" ]; then
+    printf 'pass=%s warn=%s fail=%s skipped=%s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
     for entry in "${repo_doctor_checks[@]}"; do
       name="${entry%%|*}"
       rest="${entry#*|}"
@@ -854,39 +871,39 @@ repo_doctor_print_human_summary() {
     done
   fi
 
-  printf 'RESULT: pass=%s warn=%s fail=%s skipped=%s\n' \
-    "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+  if [ "$fail_count" -gt 0 ]; then
+    first_entry="$(repo_doctor_first_entry_by_status fail)"
+    name="${first_entry%%|*}"
+    rest="${first_entry#*|}"
+    status="${rest%%|*}"
+    message="${rest#*|}"
+    if [ -n "$message" ]; then
+      printf 'fail: %s - %s\n' "$name" "$message"
+    else
+      printf 'fail: %s\n' "$name"
+    fi
+    if [ "$repo_doctor_output_mode" != "quiet" ]; then
+      printf 'fix: repo-automation/bin/repo-doctor --explain\n'
+    fi
+    return 0
+  fi
 
   if [ "$warn_count" -gt 0 ]; then
-    printf 'WARN:\n'
-    for entry in "${repo_doctor_checks[@]}"; do
-      name="${entry%%|*}"
-      rest="${entry#*|}"
-      status="${rest%%|*}"
-      if [ "$status" = "warn" ]; then
-        printf -- '- %s\n' "$name"
-      fi
-    done
+    first_entry="$(repo_doctor_first_entry_by_status warn)"
+    name="${first_entry%%|*}"
+    rest="${first_entry#*|}"
+    status="${rest%%|*}"
+    message="${rest#*|}"
+    if [ -n "$message" ]; then
+      printf 'warn: %s\n' "$message"
+    else
+      printf 'warn: %s\n' "$name"
+    fi
+    return 0
   fi
 
-  if [ "$fail_count" -gt 0 ]; then
-    printf 'FAIL:\n'
-    for entry in "${repo_doctor_checks[@]}"; do
-      name="${entry%%|*}"
-      rest="${entry#*|}"
-      status="${rest%%|*}"
-      if [ "$status" = "fail" ]; then
-        printf -- '- %s\n' "$name"
-      fi
-    done
-  fi
-
-  if [ "$repo_doctor_output_mode" != "quiet" ] && [ "$repo_doctor_log_enabled" -eq 1 ] && [ -n "$repo_doctor_log_file" ] && [ "$repo_doctor_json" -eq 0 ]; then
-    printf 'Log: %s\n' "$repo_doctor_log_file"
-  fi
-
-  if [ "$warn_count" -gt 0 ] || [ "$fail_count" -gt 0 ]; then
-    printf 'Next: repo-automation/bin/repo-doctor --explain\n'
+  if [ "$repo_doctor_output_mode" != "quiet" ]; then
+    printf 'pass\n'
   fi
 }
 

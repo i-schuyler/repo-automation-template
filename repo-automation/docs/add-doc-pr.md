@@ -38,7 +38,7 @@ If a docs PR introduces a new `repo-automation/` path that is not already covere
 - `--commit-message`
 - `--title`
 - either `--body-file` or `--body`
-- passing checks (`git diff --check` and `repo-automation/bin/run-tests`)
+- passing checks (`git diff --check` and `repo-automation/tests/docs-check.sh`)
 
 The helper does not merge PRs and does not delete branches.
 
