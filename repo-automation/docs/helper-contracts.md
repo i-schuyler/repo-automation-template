@@ -2,26 +2,35 @@
 
 `repo-automation/helper-metadata.json` is the pinned inventory source for current public helpers.
 
-This doc is the compact human reference for helper routing, check cost, state routing, fixture shape, and stream contracts.
-If it overlaps a deeper contract doc, the deeper doc remains authoritative:
+This doc is the top-level public helper contract matrix.
+It summarizes the public surface and points to the deeper source-of-truth docs:
 
+- script routing: `repo-automation/docs/script-routing.md`
+- CI failure taxonomy: `repo-automation/docs/ci-failure-taxonomy.md`
+- check-cost tiers: `repo-automation/docs/check-cost-tiers.md`
+- workflow state machine: `repo-automation/docs/workflow-state-machine.md`
+- GitHub CLI fixtures: `repo-automation/docs/github-cli-fixtures.md`
+- artifact safety: `repo-automation/docs/artifact-safety.md`
+- config schema: `repo-automation/docs/config-schema.md`
+- exit-code / stream contract: `repo-automation/docs/exit-code-stream-contract.md`
 - command shape: `repo-automation/docs/command-shape.md`
 - output modes: `repo-automation/docs/output-modes.md`
-- config schema: `repo-automation/docs/config.md`
 - managed files: `repo-automation/docs/managed-files.md`
+
+Use the linked doc for route-specific or contract-specific rules.
 
 ## Public helper matrix
 
-| Family | Route | Cost | Notes |
+| Family | Route | Cost tier | Notes |
 | --- | --- | --- | --- |
-| docs PR | `add-doc-pr` | low | docs-only boundary, plan-first, no merge/push by default |
-| inventory | `managed-file-check`, `managed-file-add` | low | targeted review/update for managed paths |
-| readiness | `github-settings-check`, `starter-template-ready`, `automation-freshness` | low/med | read-only inventory/readiness checks |
-| audit | `repo-doctor`, `run-tests`, `shellcheck-ci-parity` | high | umbrella or broad-check helpers |
-| PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | med/high | git and GitHub coordination helpers |
-| artifacts | `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | med | uploadable or log artifact helpers |
-| status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | low/med | compact read-only state helpers |
-| release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | med/high | release, reporting, and install helpers |
+| docs PR | `add-doc-pr` | mutating | docs-only boundary, plan-first, no merge/push by default |
+| inventory | `managed-file-check`, `managed-file-add` | targeted-local / mutating | managed-path review/update helpers |
+| readiness | `github-settings-check`, `starter-template-ready`, `automation-freshness` | instant / network-read | read-only inventory/readiness checks |
+| audit | `repo-doctor`, `run-tests`, `shellcheck-ci-parity` | broad-local / targeted-local | umbrella or broad-check helpers |
+| PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers |
+| artifacts | `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | mutating / CI-owned | uploadable or log artifact helpers |
+| status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers |
+| release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | mutating / network-read | release, reporting, and install helpers |
 
 ## Planned routing/state rows
 
@@ -37,18 +46,21 @@ If it overlaps a deeper contract doc, the deeper doc remains authoritative:
 
 | Status | Meaning | Typical next step |
 | --- | --- | --- |
-| `fail` | blocker | fix the helper or docs first |
-| `warn` | non-blocking drift | rerun with better context or accept the warning |
-| `skip` | not available in this checkout | provide the missing prerequisite or a different repo |
 | `pass` | expected result | no action |
+| `wait` | pending state | wait for checks or CI to settle |
+| `skip` | no-checks / unavailable | do not treat as failure |
+| `fail` | blocker | fix the helper or docs first |
 
 ## Check-cost tiers
 
 | Tier | What it means |
 | --- | --- |
-| `low` | local, cheap, usually phone-safe |
-| `medium` | local plus light git/GitHub reads |
-| `high` | broad, slow, or umbrella-style validation |
+| `instant` | smallest read-only check, usually phone-safe |
+| `targeted-local` | local and scoped to a narrow path or state |
+| `network-read` | GitHub/API read only, no repo mutation |
+| `broad-local` | broader local validation |
+| `CI-owned` | waits on or inspects CI-owned work |
+| `mutating` | writes files, git state, or artifacts |
 
 ## GitHub CLI fixtures
 

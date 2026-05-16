@@ -5,6 +5,8 @@ Repo target: `repo-automation-template`
 Intended repo path after approval: `repo-automation/docs/output-modes.md`
 Purpose: define the newest quiet-first output contract for repo automation helpers.
 
+This doc is the broader output-mode guide. The exit-code and stream contract lives in [Exit-Code / Stream Contract](exit-code-stream-contract.md).
+
 This document replaces older output-mode language. The newest design is the only design.
 
 ## Core rule
