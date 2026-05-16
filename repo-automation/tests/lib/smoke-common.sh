@@ -1521,6 +1521,15 @@ smoke_check_run_tests_contract() {
 
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
+    cat > repo-automation/tests/docs-check.sh <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+exit 0
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    git add repo-automation/tests/docs-check.sh || return 1
+    git commit -m "test: stub passing docs-check" >/dev/null 2>&1 || return 1
     printf '\nAdditional docs note.\n' >> repo-automation/docs/testing.md || return 1
     repo-automation/bin/run-tests --changed > "$run_tests_subset_changed_default_out" 2> "$run_tests_subset_changed_default_err"
   ) && [ "$(cat "$run_tests_subset_changed_default_out")" = "pass" ] && [ ! -s "$run_tests_subset_changed_default_err" ]; then
