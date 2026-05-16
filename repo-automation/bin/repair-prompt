@@ -240,8 +240,7 @@ Not in scope
 Checks required
 - run the narrowest relevant syntax or contract check for the touched helper or docs
 
-Output contract
-- write only the prompt artifact and print its path
+Output: pass or blocker only.
 """
 
 prompt = redact(prompt).rstrip() + "\n"

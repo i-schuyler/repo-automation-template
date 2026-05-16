@@ -3616,7 +3616,7 @@ EOF
   fi
 
   evidence_prompt_file="$(sed -n '1p' "$evidence_output_file" | tr -d '\r')"
-  if smoke_assert_single_path_output "$evidence_output_file" && [ -f "$evidence_prompt_file" ] && grep -Fq 'CI excerpt line one' "$evidence_prompt_file" && grep -Fq 'Restart the job' "$evidence_prompt_file" && ! grep -Fq 'password=secret-value' "$evidence_prompt_file" && ! grep -Fq 'supersecret' "$evidence_prompt_file" && ! grep -Fq 'Checks allowed' "$evidence_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
+  if smoke_assert_single_path_output "$evidence_output_file" && [ -f "$evidence_prompt_file" ] && grep -Fq 'CI excerpt line one' "$evidence_prompt_file" && grep -Fq 'Restart the job' "$evidence_prompt_file" && grep -Fq 'Output: pass or blocker only.' "$evidence_prompt_file" && ! grep -Fq 'password=secret-value' "$evidence_prompt_file" && ! grep -Fq 'supersecret' "$evidence_prompt_file" && ! grep -Fq 'Checks allowed' "$evidence_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
     test_pass "repair-prompt uses provided CI evidence file and redacts secrets"
   else
     test_fail "repair-prompt uses provided CI evidence file and redacts secrets"
@@ -3634,7 +3634,7 @@ EOF
   fi
 
   ci_prompt_file="$(sed -n '1p' "$ci_output_file" | tr -d '\r')"
-  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--machine-json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && ! grep -Fq 'Checks allowed' "$ci_prompt_file" && smoke_assert_single_path_output "$ci_output_file"; then
+  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--machine-json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && grep -Fq 'Output: pass or blocker only.' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && ! grep -Fq 'Checks allowed' "$ci_prompt_file" && smoke_assert_single_path_output "$ci_output_file"; then
     test_pass "repair-prompt gathers CI evidence with ci-log-dump"
   else
     test_fail "repair-prompt gathers CI evidence with ci-log-dump"
@@ -3652,7 +3652,7 @@ EOF
   fi
 
   local_prompt_file="$(sed -n '1p' "$local_output_file" | tr -d '\r')"
-  if smoke_assert_single_path_output "$local_output_file" && [ -f "$local_prompt_file" ] && grep -Fq 'Local failure evidence' "$local_prompt_file" && grep -Fq 'local failure line' "$local_prompt_file" && grep -Fq 'Checks required' "$local_prompt_file" && ! grep -Fq 'Checks allowed' "$local_prompt_file" && ! grep -Fq 'password=supersecret' "$local_prompt_file" && ! grep -Fq 'supersecret' "$local_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
+  if smoke_assert_single_path_output "$local_output_file" && [ -f "$local_prompt_file" ] && grep -Fq 'Local failure evidence' "$local_prompt_file" && grep -Fq 'local failure line' "$local_prompt_file" && grep -Fq 'Checks required' "$local_prompt_file" && grep -Fq 'Output: pass or blocker only.' "$local_prompt_file" && ! grep -Fq 'Checks allowed' "$local_prompt_file" && ! grep -Fq 'password=supersecret' "$local_prompt_file" && ! grep -Fq 'supersecret' "$local_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
     test_pass "repair-prompt local source creates a prompt artifact"
   else
     test_fail "repair-prompt local source creates a prompt artifact"
