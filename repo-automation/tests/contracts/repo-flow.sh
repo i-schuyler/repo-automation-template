@@ -167,6 +167,7 @@ smoke_check_repo_flow_status_card_clean_main() {
   local status_after=""
 
   smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   human_out="$smoke_test_base/repo-flow-status-card-main.txt"
   stderr_file="$smoke_test_base/repo-flow-status-card-main.stderr"
@@ -228,6 +229,7 @@ smoke_check_repo_flow_status_card_feature_no_pr() {
   local status_after=""
 
   smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   human_out="$smoke_test_base/repo-flow-status-card-feature-no-pr.txt"
   stderr_file="$smoke_test_base/repo-flow-status-card-feature-no-pr.stderr"
@@ -293,6 +295,7 @@ smoke_check_repo_flow_status_card_existing_pr() {
   local status_after=""
 
   smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   human_out="$smoke_test_base/repo-flow-status-card-existing-pr.txt"
   json_out="$smoke_test_base/repo-flow-status-card-existing-pr.json"
@@ -369,6 +372,7 @@ smoke_check_repo_flow_status_card_skipped_checks() {
   local status_after=""
 
   smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   human_out="$smoke_test_base/repo-flow-status-card-skipped-checks.txt"
   stderr_file="$smoke_test_base/repo-flow-status-card-skipped-checks.stderr"
@@ -428,6 +432,7 @@ smoke_check_repo_flow_status_card_contract() {
   local gh_stub_dir=""
 
   smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   help_out="$smoke_test_base/repo-flow-status-card-help.txt"
   unknown_stderr="$smoke_test_base/repo-flow-status-card-unknown.stderr"
@@ -581,6 +586,7 @@ smoke_check_repo_flow_create_pr() {
 
   smoke_setup_temp_repo || return 1
   smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   state_file="$smoke_test_base/repo-flow-create-pr.txt"
   create_log_file="$smoke_test_base/repo-flow-create-pr.log"
