@@ -98,7 +98,7 @@ post_codex_packet_is_excluded_untracked_path() {
     build|build/*|*/build|*/build/*|dist|dist/*|*/dist|*/dist/*|out|out/*|*/out|*/out/*|target|target/*|*/target|*/target/*|node_modules|node_modules/*|*/node_modules|*/node_modules/*|.cache|.cache/*|*/.cache|*/.cache/*|cache|cache/*|*/cache|*/cache/*|vendor|vendor/*|*/vendor|*/vendor/*|deps|deps/*|*/deps|*/deps/*)
       return 0
       ;;
-    .env|*/.env|.env.*|*/.env.*|*.pem|*.key|id_rsa|*/id_rsa|id_ed25519|*/id_ed25519|*.p12|*.pfx|*token*|*secret*|*credential*|*credentials*)
+    .env|*/.env|.env.*|*/.env.*|*.pem|*.key|id_rsa|*/id_rsa|id_ed25519|*/id_ed25519|*.p12|*.pfx|*token*|*secret*|*credential*)
       return 0
       ;;
     .*)
