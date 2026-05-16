@@ -1747,6 +1747,10 @@ smoke_check_touched_files_and_ci_contract() {
   local ci_watch_timeout_missing_stderr="$smoke_test_base/ci-watch-timeout-missing-$$.txt"
   local ci_watch_timeout_empty_stderr="$smoke_test_base/ci-watch-timeout-empty-$$.txt"
   local ci_watch_unknown_stderr="$smoke_test_base/ci-watch-unknown-$$.txt"
+  local ci_watch_pass_json="$smoke_test_base/ci-watch-pass-$$.json"
+  local ci_watch_pass_stderr="$smoke_test_base/ci-watch-pass-$$.txt"
+  local ci_watch_fail_json="$smoke_test_base/ci-watch-fail-$$.json"
+  local ci_watch_fail_stderr="$smoke_test_base/ci-watch-fail-$$.txt"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local touched_range_repo=""
   local touched_base_format_stderr="$smoke_test_base/touched-files-base-format-$$.txt"
@@ -1985,6 +1989,31 @@ range touch
 
   if (
     cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
+  ) && python -m json.tool "$ci_watch_pass_json" >/dev/null && \
+    smoke_json_assert "$ci_watch_pass_json" 'data.get("overall_status") == "pass"'; then
+    test_pass "ci-watch pass exits cleanly"
+  else
+    test_fail "ci-watch pass exits cleanly"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_fail_json" 2> "$ci_watch_fail_stderr"
+  ); then
+    test_fail "ci-watch fail exits nonzero"
+    status=1
+  elif python -m json.tool "$ci_watch_fail_json" >/dev/null && \
+    smoke_json_assert "$ci_watch_fail_json" 'data.get("overall_status") == "fail"'; then
+    test_pass "ci-watch fail exits nonzero"
+  else
+    test_fail "ci-watch fail exits nonzero"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 > /dev/null 2> "$ci_watch_timeout_stderr"
   ); then
     test_fail "ci-watch timeout fails cleanly"
@@ -2048,7 +2077,7 @@ range touch
     status=1
   fi
 
-  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_branch_json" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_branch_json" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" "$ci_watch_pass_json" "$ci_watch_pass_stderr" "$ci_watch_fail_json" "$ci_watch_fail_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
