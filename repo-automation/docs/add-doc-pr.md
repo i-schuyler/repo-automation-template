@@ -27,6 +27,8 @@ Use `--allow=<FILE_OR_DIR>` to add one or more additional allowed paths for a si
 
 If any changed file is outside the allowed set, the helper stops and reports blocked paths.
 
+If a docs PR introduces a new `repo-automation/` path that is not already covered by the manifest/install inventory, the helper stops early and asks for coverage review.
+
 ## PR Creation Gate
 
 `--create-pr` requires:

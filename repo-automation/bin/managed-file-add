@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# repo-automation/bin/managed-file-add
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+managed_file_add_path=""
+managed_file_add_kind=""
+
+managed_file_add_usage() {
+  printf 'Usage: repo-automation/bin/managed-file-add [--path=<path>] [--kind=<kind>] [--help]\n'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help)
+      managed_file_add_usage
+      exit 0
+      ;;
+    --path=*)
+      managed_file_add_path="${1#--path=}"
+      if [ -z "$managed_file_add_path" ]; then
+        repo_auto_flag_error "empty flag value" "--path" "use --path=<path>" || exit 1
+      fi
+      ;;
+    --path)
+      if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+        repo_auto_flag_error "flag format not accepted" "--path" "use --path=<path>" || exit 1
+      else
+        repo_auto_flag_error "missing flag value" "--path" "use --path=<path>" || exit 1
+      fi
+      exit 1
+      ;;
+    --kind=*)
+      managed_file_add_kind="${1#--kind=}"
+      if [ -z "$managed_file_add_kind" ]; then
+        repo_auto_flag_error "empty flag value" "--kind" "use --kind=<kind>" || exit 1
+      fi
+      ;;
+    --kind)
+      if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+        repo_auto_flag_error "flag format not accepted" "--kind" "use --kind=<kind>" || exit 1
+      else
+        repo_auto_flag_error "missing flag value" "--kind" "use --kind=<kind>" || exit 1
+      fi
+      exit 1
+      ;;
+    *)
+      if [ "${1#--}" != "$1" ]; then
+        repo_auto_flag_error "unknown flag" "$1" "run repo-automation/bin/managed-file-add --help" || exit 1
+      else
+        repo_auto_stop "unknown argument: $1"
+      fi
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+if [ -z "$managed_file_add_path" ]; then
+  repo_auto_flag_error "missing flag value" "--path" "use --path=<path>" || exit 1
+fi
+
+if [ -z "$managed_file_add_kind" ]; then
+  repo_auto_flag_error "missing flag value" "--kind" "use --kind=<kind>" || exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  repo_auto_stop "python3 is required"
+  exit 1
+fi
+
+python3 - "$managed_file_add_path" "$managed_file_add_kind" <<'PY'
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+def stop(message: str) -> int:
+    print(f"STOP: {message}", file=sys.stderr)
+    return 1
+
+
+def run(argv: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(argv, cwd=str(cwd) if cwd else None, text=True, capture_output=True, check=False)
+
+
+def git_root() -> Path:
+    proc = run(["git", "rev-parse", "--show-toplevel"])
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "not inside a git repository")
+    root = proc.stdout.strip()
+    if not root:
+        raise RuntimeError("unable to determine git repo root")
+    return Path(root)
+
+
+def load_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pragma: no cover - defensive guard
+        raise RuntimeError(f"failed to parse {path}: {exc}") from exc
+
+
+def save_json(path: Path, data: object) -> None:
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def shell_array_insert(text: str, array_name: str, item: str) -> tuple[str, bool]:
+    marker = f"  local -a {array_name}=("
+    start = text.find(marker)
+    if start == -1:
+        raise RuntimeError(f"missing installer array: {array_name}")
+    end = text.find("\n  )", start)
+    if end == -1:
+        raise RuntimeError(f"unterminated installer array: {array_name}")
+    block = text[start:end]
+    quoted = f'"{item}"'
+    if quoted in block:
+        return text, False
+    return text[:end] + f"    {quoted}\n" + text[end:], True
+
+
+def installer_array_for_path(path: str) -> str:
+    if path.startswith("repo-automation/tests/"):
+        return "optional_test_files"
+    if path == ".github/workflows/ci.yml":
+        return "optional_ci_files"
+    return "managed_files"
+
+
+def main() -> int:
+    path = sys.argv[1]
+    kind = sys.argv[2]
+    root = git_root()
+    rel_path = Path(path)
+    if rel_path.is_absolute() or ".." in rel_path.parts or not path:
+        raise RuntimeError(f"invalid managed path: {path}")
+
+    file_path = root / path
+    if not file_path.exists():
+        raise RuntimeError(f"managed path does not exist: {path}")
+
+    manifest_path = root / "repo-automation" / "manifest.json"
+    installer_path = root / "repo-automation" / "bin" / "repo-automation-install"
+    manifest = load_json(manifest_path)
+
+    managed_files = manifest.setdefault("managed_files", [])
+    if not isinstance(managed_files, list):
+        raise RuntimeError("manifest managed_files must be a list")
+
+    for entry in managed_files:
+        if isinstance(entry, dict) and entry.get("path") == path:
+            break
+    else:
+        managed_files.append({
+            "path": path,
+            "owner": "repo-automation-template",
+            "kind": kind,
+        })
+        save_json(manifest_path, manifest)
+
+    installer_text = installer_path.read_text(encoding="utf-8")
+    array_name = installer_array_for_path(path)
+    installer_text, changed = shell_array_insert(installer_text, array_name, path)
+    if changed:
+        installer_path.write_text(installer_text, encoding="utf-8")
+
+    print("pass")
+    return 0
+
+
+try:
+    raise SystemExit(main())
+except RuntimeError as exc:
+    raise SystemExit(stop(str(exc)))
+PY

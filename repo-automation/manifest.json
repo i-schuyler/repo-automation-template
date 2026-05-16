@@ -422,6 +422,31 @@
       "path": "repo-automation/tests/version-consistency.sh",
       "owner": "repo-automation-template",
       "kind": "test"
+    },
+    {
+      "path": "repo-automation/helper-metadata.json",
+      "owner": "repo-automation-template",
+      "kind": "manifest"
+    },
+    {
+      "path": "repo-automation/docs/helper-contracts.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/bin/managed-file-check",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/bin/managed-file-add",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/tests/contracts/managed-file-tools.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
     }
   ]
 }

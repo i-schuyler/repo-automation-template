@@ -32,6 +32,7 @@ smoke_contract_names=(
   "smoke:repo-zip-contract"
   "smoke:evidence-bundle-contract"
   "smoke:github-settings-check"
+  "smoke:managed-file-tools"
   "smoke:shellcheck-ci-parity"
   "smoke:installer-contract"
   "smoke:starter-template-contract"
@@ -55,6 +56,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/repo-zip.sh"
   "repo-automation/tests/contracts/evidence-bundle.sh"
   "repo-automation/tests/contracts/github-settings-check.sh"
+  "repo-automation/tests/contracts/managed-file-tools.sh"
   "repo-automation/tests/contracts/shellcheck-ci-parity.sh"
   "repo-automation/tests/contracts/installer.sh"
   "repo-automation/tests/contracts/starter-template.sh"
@@ -322,6 +324,8 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
   cp "$smoke_repo_root/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/github-settings-check" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/managed-file-check" "$smoke_test_dir/repo-automation/bin/managed-file-check" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/managed-file-add" "$smoke_test_dir/repo-automation/bin/managed-file-add" || return 1
   cp "$smoke_repo_root/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/failure-log" || return 1
   cp "$smoke_repo_root/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/touched-files" || return 1
   cp "$smoke_repo_root/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-status" || return 1
@@ -336,6 +340,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
   cp "$smoke_repo_root/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/bin/run-tests" || return 1
+  cp "$smoke_repo_root/repo-automation/helper-metadata.json" "$smoke_test_dir/repo-automation/helper-metadata.json" || return 1
   cp "$smoke_repo_root/repo-automation/manifest.json" "$smoke_test_dir/repo-automation/manifest.json" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/smoke-common.sh" "$smoke_test_dir/repo-automation/tests/lib/smoke-common.sh" || return 1
@@ -343,7 +348,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/contracts/" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/repo-flow" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/repo-flow" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/managed-file-check" "$smoke_test_dir/repo-automation/bin/managed-file-add" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -564,6 +569,7 @@ smoke_check_add_doc_pr_docs_only() {
   local add_doc_pr_branch_missing_stderr="$smoke_test_base/add-doc-pr-branch-missing-$$.stderr"
   local add_doc_pr_branch_empty_stderr="$smoke_test_base/add-doc-pr-branch-empty-$$.stderr"
   local add_doc_pr_unknown_stderr="$smoke_test_base/add-doc-pr-unknown-$$.stderr"
+  local add_doc_pr_repo_automation_stderr="$smoke_test_base/add-doc-pr-repo-automation-$$.stderr"
   local add_doc_pr_failure_details=""
   local repo_doctor_help="$smoke_test_base/repo-doctor-help-$$.txt"
   local ci_log_dump_help="$smoke_test_base/ci-log-dump-help-$$.txt"
@@ -704,6 +710,32 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    mkdir -p repo-automation/docs || return 1
+    printf 'smoke coverage review\n' > repo-automation/docs/add-doc-pr-coverage-smoke.md || return 1
+    repo-automation/bin/add-doc-pr \
+      --plan \
+      --json \
+      --allow=repo-automation/ \
+      > "$add_doc_pr_json" 2> "$add_doc_pr_repo_automation_stderr"
+  ); then
+    test_fail "add-doc-pr blocks new repo-automation paths without coverage review"
+    status=1
+  elif grep -Fq 'coverage review required for repo-automation path changes' "$add_doc_pr_repo_automation_stderr"; then
+    test_pass "add-doc-pr blocks new repo-automation paths without coverage review"
+  else
+    test_fail "add-doc-pr blocks new repo-automation paths without coverage review"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f repo-automation/docs/add-doc-pr-coverage-smoke.md || return 1
+  ); then
+    :
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/add-doc-pr --branch docs/my-doc-update >/dev/null 2> "$add_doc_pr_branch_format_stderr"
   ); then
     test_fail "add-doc-pr rejects --branch <name>"
@@ -771,25 +803,25 @@ smoke_check_add_doc_pr_blocked_file() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    printf '#!/usr/bin/env bash\n' > repo-automation/bin/blocked-change.sh || return 1
+    printf '0.1.1\n' > VERSION || return 1
     repo-automation/bin/add-doc-pr --plan --json > "$add_doc_pr_block_json"
     return 1
   ); then
-    test_fail "add-doc-pr blocks repo-automation/bin/ changes in plan mode"
+    test_fail "add-doc-pr blocks repo-automation/ boundary changes in plan mode"
     status=1
   else
     if python -m json.tool "$add_doc_pr_block_json" >/dev/null && \
-      smoke_json_assert "$add_doc_pr_block_json" '"repo-automation/bin/blocked-change.sh" in data.get("blocked_files", [])'; then
-      test_pass "add-doc-pr blocks repo-automation/bin/ changes in plan mode"
+      smoke_json_assert "$add_doc_pr_block_json" '"VERSION" in data.get("blocked_files", [])'; then
+      test_pass "add-doc-pr blocks repo-automation/ boundary changes in plan mode"
     else
-      test_fail "add-doc-pr blocks repo-automation/bin/ changes in plan mode"
+      test_fail "add-doc-pr blocks repo-automation/ boundary changes in plan mode"
       status=1
     fi
   fi
 
   if (
     cd "$smoke_test_dir" || return 1
-    rm -f repo-automation/bin/blocked-change.sh || return 1
+    git checkout -- VERSION >/dev/null 2>&1 || return 1
   ); then
     :
   fi
@@ -3319,6 +3351,89 @@ smoke_check_github_settings_contract() {
   return "$status"
 }
 
+smoke_check_managed_file_tools_contract() {
+  local status=0
+  local managed_file_help="$smoke_test_base/managed-file-check-help-$$.txt"
+  local managed_file_add_help="$smoke_test_base/managed-file-add-help-$$.txt"
+  local managed_file_fail_stderr="$smoke_test_base/managed-file-check-fail.stderr"
+  local managed_file_add_stderr="$smoke_test_base/managed-file-add.stderr"
+  local managed_file_new_path="repo-automation/docs/managed-file-tools-smoke.md"
+  local managed_file_manifest_path="$smoke_test_dir/repo-automation/manifest.json"
+  local managed_file_installer_path="$smoke_test_dir/repo-automation/bin/repo-automation-install"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --help > "$managed_file_help"
+  ) && grep -Fq -- '--changed' "$managed_file_help" && ! grep -Fq -- '--changed CHANGED' "$managed_file_help"; then
+    test_pass "managed-file-check help shows strict flag syntax"
+  else
+    test_fail "managed-file-check help shows strict flag syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-add --help > "$managed_file_add_help"
+  ) && grep -Fq -- '--path=<path>' "$managed_file_add_help" && grep -Fq -- '--kind=<kind>' "$managed_file_add_help" && ! grep -Fq -- '--path PATH' "$managed_file_add_help" && ! grep -Fq -- '--kind KIND' "$managed_file_add_help"; then
+    test_pass "managed-file-add help shows strict value syntax"
+  else
+    test_fail "managed-file-add help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-add --whatever >/dev/null 2> "$managed_file_add_stderr"
+  ); then
+    test_fail "managed-file-add rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$managed_file_add_stderr" "unknown flag" "--whatever" "run repo-automation/bin/managed-file-add --help"; then
+    test_pass "managed-file-add rejects unknown flags"
+  else
+    test_fail "managed-file-add rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '# helper smoke\n' > "$managed_file_new_path" || return 1
+    repo-automation/bin/managed-file-check --changed >/dev/null 2> "$managed_file_fail_stderr"
+  ); then
+    test_fail "managed-file-check flags new repo-automation paths for review"
+    status=1
+  elif grep -Fq 'coverage review required' "$managed_file_fail_stderr"; then
+    test_pass "managed-file-check flags new repo-automation paths for review"
+  else
+    test_fail "managed-file-check flags new repo-automation paths for review"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-add --path="$managed_file_new_path" --kind=doc >/dev/null
+  ) && python -m json.tool "$managed_file_manifest_path" >/dev/null && \
+    grep -Fq -- "\"path\": \"$managed_file_new_path\"" "$managed_file_manifest_path" && \
+    grep -Fq -- "\"$managed_file_new_path\"" "$managed_file_installer_path"; then
+    test_pass "managed-file-add updates manifest and installer coverage"
+  else
+    test_fail "managed-file-add updates manifest and installer coverage"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --changed >/dev/null
+  ); then
+    test_pass "managed-file-check passes after managed-file-add"
+  else
+    test_fail "managed-file-check passes after managed-file-add"
+    status=1
+  fi
+
+  rm -f "$managed_file_help" "$managed_file_add_help" "$managed_file_fail_stderr" "$managed_file_add_stderr" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_shellcheck_ci_parity_contract() {
   local status=0
   local shellcheck_help="$smoke_test_base/shellcheck-ci-parity-help-$$.txt"
@@ -3889,7 +4004,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 22 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 23 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -3994,6 +4109,7 @@ smoke_check_installer_apply_contract() {
     [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
+    [ -f repo-automation/tests/contracts/managed-file-tools.sh ] || return 1
     [ -f repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
     [ -f repo-automation/tests/contracts/installer.sh ] || return 1
     [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
@@ -4012,6 +4128,7 @@ smoke_check_installer_apply_contract() {
     [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
+    [ -x repo-automation/tests/contracts/managed-file-tools.sh ] || return 1
     [ -x repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
     [ -x repo-automation/tests/contracts/installer.sh ] || return 1
     [ -x repo-automation/tests/contracts/starter-template.sh ] || return 1
