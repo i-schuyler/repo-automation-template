@@ -1,6 +1,6 @@
 # CI Log Dump
 
-`repo-automation/bin/ci-log-dump` is a read-only helper that saves a failed GitHub Actions log to a durable directory and prints the saved path plus a tail excerpt.
+`repo-automation/bin/ci-log-dump` is a read-only helper that saves a failed GitHub Actions log to a durable directory and prints the saved path plus either a tail excerpt or a compact first-failure diagnosis.
 
 ## What It Does
 
@@ -18,6 +18,7 @@
     repo-automation/bin/ci-log-dump --run-id=123456789
     repo-automation/bin/ci-log-dump --pr=34
     repo-automation/bin/ci-log-dump --repo=OWNER/REPO --latest-failed
+    repo-automation/bin/ci-log-dump --first-failure
     repo-automation/bin/ci-log-dump --machine-json
 
 ## Output Directory
@@ -31,4 +32,6 @@ The saved file name uses the format `actions_run_<run-id>_<timestamp>.log`.
 
 ## Machine Output
 
-`--machine-json` emits a single JSON object with the repo, PR number when present, run id, saved path, file size, and tail excerpt.
+`--first-failure` parses the saved failed log locally and reports the first actionable failure label, excerpt, and next fix hint using the shared CI failure taxonomy.
+
+`--machine-json` emits a single JSON object with the repo, PR number when present, run id, saved path, file size, and tail excerpt. With `--first-failure`, it also includes `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`.

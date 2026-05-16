@@ -15,9 +15,14 @@ ci_log_dump_tail_lines=160
 ci_log_dump_failed_only=1
 ci_log_dump_latest_failed=0
 ci_log_dump_machine_json=0
+ci_log_dump_first_failure=0
+ci_log_dump_first_failure_label=""
+ci_log_dump_first_failure_excerpt=""
+ci_log_dump_first_failure_recommended_fix=""
+ci_log_dump_gh_failure_message=""
 
 ci_log_dump_usage() {
-  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--help]\n'
 }
 
 ci_log_dump_flag_error() {
@@ -57,6 +62,9 @@ ci_log_dump_stop() {
     printf '"file_size_bytes":0,'
     printf '"overall_status":"fail",'
     printf '"stop_reason":"%s",' "$(ci_log_dump_json_escape "$message")"
+    printf '"first_failure_label":"",'
+    printf '"first_failure_excerpt":"",'
+    printf '"recommended_fix":"",'
     printf '"tail_excerpt":[]'
     printf '}\n'
   else
@@ -161,6 +169,7 @@ ci_log_dump_gh_output() {
 
   gh_stdout="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   gh_stderr="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  ci_log_dump_gh_failure_message=""
 
   while [ "$attempt" -le "$attempts" ]; do
     : >"$gh_stdout"
@@ -224,6 +233,76 @@ ci_log_dump_tail_excerpt() {
   tail -n "$ci_log_dump_tail_lines" "$1"
 }
 
+ci_log_dump_first_failure_details() {
+  local log_path="$1"
+  local parsed
+  local label=""
+  local excerpt=""
+  local fix=""
+
+  parsed="$(python3 - "$log_path" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+path = pathlib.Path(sys.argv[1])
+lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+
+def compact(text):
+    return re.sub(r'\s+', ' ', text).strip()
+
+def find(patterns):
+    for index, line in enumerate(lines):
+        for label, pattern, fix in patterns:
+            if pattern.search(line):
+                print(json.dumps({
+                    'label': label,
+                    'excerpt': compact(line),
+                    'fix': fix,
+                }))
+                return True
+    return False
+
+taxonomy = [
+    ('fail: github-access', re.compile(r'(?i)(GitHub API failure|gh auth|TLS handshake timeout|rate limit|connection refused|connection reset|network is unreachable|temporary failure|Service Unavailable|Bad Gateway|Gateway Timeout|could not resolve host|EOF)'), 'check gh auth status and your network, then rerun'),
+    ('fail: shellcheck', re.compile(r'(?i)(\bshellcheck\b|\bSC\d{4}\b)'), 'run shellcheck on the reported file and line'),
+    ('fail: docs-check', re.compile(r'(?i)(\bdocs-check\b|broken link|missing doc|docs/INDEX\.md|documentation)'), 'fix the broken doc or index entry, then rerun docs-check'),
+    ('fail: version-consistency', re.compile(r'(?i)(\bversion-consistency\b|version mismatch|\bVERSION\b|REPO_AUTOMATION_VERSION|INSTALLED_VERSION_OR_REF)'), 'update the versioned files together, then rerun version-consistency'),
+    ('fail: managed-files', re.compile(r'(?i)(\bmanaged-files\b|managed file|managed-file|manifest|installer coverage)'), 'fix the managed-file inventory, then rerun managed-file-check'),
+    ('fail: output-contract', re.compile(r'(?i)(\boutput-contract\b|stdout/stderr|valid JSON|machine-json|JSON contract|stream contract|contract drift)'), 'compare stdout/stderr behavior, then rerun the contract test'),
+    ('fail: run-tests', re.compile(r'(?i)(\brun-tests\b|smoke:|test failed|FAIL: )'), 'inspect the failing test slice, then rerun that test'),
+]
+
+if not find(taxonomy):
+    fallback_patterns = [
+        ('fail: unknown-ci', re.compile(r'(?i)^(FAIL|ERROR|STOP): '), 'capture the failing step and classify it manually'),
+    ]
+    if not find(fallback_patterns):
+        if lines:
+            print(json.dumps({
+                'label': 'fail: unknown-ci',
+                'excerpt': compact(lines[-1]),
+                'fix': 'capture the failing step and classify it manually',
+            }))
+        else:
+            print(json.dumps({
+                'label': 'fail: unknown-ci',
+                'excerpt': '',
+                'fix': 'capture the failing step and classify it manually',
+            }))
+PY
+)"
+
+  label="$(printf '%s' "$parsed" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("label",""))')"
+  excerpt="$(printf '%s' "$parsed" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("excerpt",""))')"
+  fix="$(printf '%s' "$parsed" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("fix",""))')"
+
+  ci_log_dump_first_failure_label="$label"
+  ci_log_dump_first_failure_excerpt="$excerpt"
+  ci_log_dump_first_failure_recommended_fix="$fix"
+}
+
 ci_log_dump_print_json() {
   local log_path="$1"
   local size_bytes="$2"
@@ -255,6 +334,15 @@ EOF_EXCERPT
   printf '"file_size_bytes":%s,' "$size_bytes"
   printf '"overall_status":"pass",'
   printf '"stop_reason":"",'
+  if [ "$ci_log_dump_first_failure" -eq 1 ]; then
+    printf '"first_failure_label":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_first_failure_label")"
+    printf '"first_failure_excerpt":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_first_failure_excerpt")"
+    printf '"recommended_fix":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_first_failure_recommended_fix")"
+  else
+    printf '"first_failure_label":"",'
+    printf '"first_failure_excerpt":"",'
+    printf '"recommended_fix":"",'
+  fi
   printf '"tail_excerpt":[%s]' "$excerpt"
   printf '}\n'
 }
@@ -368,6 +456,13 @@ ci_log_dump_main() {
       --latest-failed)
         ci_log_dump_latest_failed=1
         ;;
+      --first-failure)
+        ci_log_dump_first_failure=1
+        ;;
+      --first-failure=*)
+        ci_log_dump_flag_error "flag format not accepted" "--first-failure" "use --first-failure"
+        return 1
+        ;;
       --machine-json)
         ci_log_dump_machine_json=1
         ;;
@@ -405,7 +500,11 @@ ci_log_dump_main() {
     run_id="$ci_log_dump_run_id"
   elif [ "$ci_log_dump_latest_failed" -eq 1 ]; then
     run_id="$(ci_log_dump_pick_latest_failed_run)" || {
-      ci_log_dump_stop "no failed run found for repository $ci_log_dump_repo"
+      if [ -n "$ci_log_dump_gh_failure_message" ]; then
+        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+      else
+        ci_log_dump_stop "no failed run found for repository $ci_log_dump_repo"
+      fi
       return 1
     }
     [ -n "$run_id" ] || {
@@ -415,11 +514,19 @@ ci_log_dump_main() {
   elif [ -n "$ci_log_dump_pr" ]; then
     target_repo="$(ci_log_dump_pick_head_branch "$ci_log_dump_pr" 2>/dev/null || true)"
     [ -n "$target_repo" ] || {
-      ci_log_dump_stop "unable to resolve head branch for PR #$ci_log_dump_pr"
+      if [ -n "$ci_log_dump_gh_failure_message" ]; then
+        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+      else
+        ci_log_dump_stop "unable to resolve head branch for PR #$ci_log_dump_pr"
+      fi
       return 1
     }
     run_id="$(ci_log_dump_pick_run_id_for_branch "$target_repo" pull_request)" || {
-      ci_log_dump_stop "no failed pull_request run found for PR #$ci_log_dump_pr"
+      if [ -n "$ci_log_dump_gh_failure_message" ]; then
+        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+      else
+        ci_log_dump_stop "no failed pull_request run found for PR #$ci_log_dump_pr"
+      fi
       return 1
     }
   else
@@ -429,7 +536,11 @@ ci_log_dump_main() {
       return 1
     }
     run_id="$(ci_log_dump_pick_run_id_for_branch "$target_repo" push)" || {
-      ci_log_dump_stop 'no failed run found for the current branch'
+      if [ -n "$ci_log_dump_gh_failure_message" ]; then
+        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+      else
+        ci_log_dump_stop 'no failed run found for the current branch'
+      fi
       return 1
     }
   fi
@@ -437,11 +548,17 @@ ci_log_dump_main() {
   gh_log_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   if [ "$ci_log_dump_failed_only" -eq 1 ]; then
     if ! ci_log_dump_gh_output "fetching failed log for run $run_id" 0 gh run view "$run_id" --repo "$ci_log_dump_repo" --log-failed >"$gh_log_file"; then
+      if [ "$ci_log_dump_machine_json" -eq 1 ] && [ -s "$gh_log_file" ]; then
+        cat "$gh_log_file"
+      fi
       rm -f "$gh_log_file" >/dev/null 2>&1 || true
       return 1
     fi
   else
     if ! ci_log_dump_gh_output "fetching log for run $run_id" 0 gh run view "$run_id" --repo "$ci_log_dump_repo" --log >"$gh_log_file"; then
+      if [ "$ci_log_dump_machine_json" -eq 1 ] && [ -s "$gh_log_file" ]; then
+        cat "$gh_log_file"
+      fi
       rm -f "$gh_log_file" >/dev/null 2>&1 || true
       return 1
     fi
@@ -459,6 +576,9 @@ ci_log_dump_main() {
   rm -f "$gh_log_file" >/dev/null 2>&1 || true
 
   if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+    if [ "$ci_log_dump_first_failure" -eq 1 ]; then
+      ci_log_dump_first_failure_details "$log_path"
+    fi
     ci_log_dump_print_json "$log_path" "$size_bytes" "$run_id"
   else
     printf 'Target repo: %s\n' "$ci_log_dump_repo"
@@ -468,8 +588,15 @@ ci_log_dump_main() {
     printf 'Run id: %s\n' "$run_id"
     printf 'Saved log path: %s\n' "$log_path"
     printf 'File size: %s bytes\n' "$size_bytes"
-    printf 'Tail excerpt:\n'
-    ci_log_dump_tail_excerpt "$log_path"
+    if [ "$ci_log_dump_first_failure" -eq 1 ]; then
+      ci_log_dump_first_failure_details "$log_path"
+      printf 'First failure label: %s\n' "$ci_log_dump_first_failure_label"
+      printf 'First failure excerpt: %s\n' "$ci_log_dump_first_failure_excerpt"
+      printf 'Recommended fix: %s\n' "$ci_log_dump_first_failure_recommended_fix"
+    else
+      printf 'Tail excerpt:\n'
+      ci_log_dump_tail_excerpt "$log_path"
+    fi
   fi
 }
 

@@ -255,6 +255,10 @@ case "$cmd $sub" in
     printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     ;;
   'run view')
+    if [ -n "${GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR:-}" ]; then
+      printf '%s\n' "${GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR}" >&2
+      exit 1
+    fi
     if [ -n "${GH_STUB_RUN_VIEW_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_VIEW_FAIL_ONCE_FILE}" ]; then
       : > "$GH_STUB_RUN_VIEW_FAIL_ONCE_FILE"
       printf '%s\n' "${GH_STUB_RUN_VIEW_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
@@ -2094,7 +2098,9 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_pr_empty_stderr="$smoke_test_base/ci-log-dump-pr-empty-$$.stderr"
   local ci_log_repo_empty_stderr="$smoke_test_base/ci-log-dump-repo-empty-$$.stderr"
   local ci_log_out_dir_empty_stderr="$smoke_test_base/ci-log-dump-out-dir-empty-$$.stderr"
+  local ci_log_first_failure_value_stderr="$smoke_test_base/ci-log-dump-first-failure-value-$$.stderr"
   local ci_log_unknown_stderr="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
+  local ci_log_first_failure_human="$smoke_test_base/ci-log-dump-first-failure-$$.txt"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$ci_log_out_dir" || return 1
@@ -2108,6 +2114,7 @@ smoke_check_ci_log_dump_contract() {
     grep -Fq -- '--run-id=ID' "$ci_log_help" && \
     grep -Fq -- '--out-dir=PATH' "$ci_log_help" && \
     grep -Fq -- '--tail=LINES' "$ci_log_help" && \
+    grep -Fq -- '--first-failure' "$ci_log_help" && \
     ! grep -Fq -- '--pr NUMBER' "$ci_log_help" && \
     ! grep -Fq -- '--run-id ID' "$ci_log_help" && \
     ! grep -Fq -- '--out-dir PATH' "$ci_log_help" && \
@@ -2185,6 +2192,19 @@ smoke_check_ci_log_dump_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-log-dump --first-failure=true >/dev/null 2> "$ci_log_first_failure_value_stderr"
+  ); then
+    test_fail "ci-log-dump rejects --first-failure=<value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_first_failure_value_stderr" "flag format not accepted" "--first-failure" "use --first-failure"; then
+    test_pass "ci-log-dump rejects --first-failure=<value>"
+  else
+    test_fail "ci-log-dump rejects --first-failure=<value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/ci-log-dump --whatever >/dev/null 2> "$ci_log_unknown_stderr"
   ); then
     test_fail "ci-log-dump rejects unknown flags"
@@ -2193,6 +2213,34 @@ smoke_check_ci_log_dump_contract() {
     test_pass "ci-log-dump rejects unknown flags"
   else
     test_fail "ci-log-dump rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[
+      {"databaseId":111,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"push","headBranch":"branch/old","status":"completed","workflowName":"ci"}
+    ]' GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
+tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --tail=2 --out-dir="$ci_log_out_dir" > "$ci_log_first_failure_human"
+  ) && grep -Eq '^Run id: 111$' "$ci_log_first_failure_human" && grep -Eq '^Saved log path: '"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Eq '^First failure label: fail: shellcheck$' "$ci_log_first_failure_human" && grep -Eq '^First failure excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.$' "$ci_log_first_failure_human" && grep -Eq '^Recommended fix: run shellcheck on the reported file and line$' "$ci_log_first_failure_human" && ! grep -Eq '^Tail excerpt:$' "$ci_log_first_failure_human"; then
+    test_pass "ci-log-dump first-failure reports compact shellcheck diagnosis"
+  else
+    test_fail "ci-log-dump first-failure reports compact shellcheck diagnosis"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[
+      {"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"schedule","headBranch":"branch/new","status":"completed","workflowName":"ci"}
+    ]' GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
+tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --machine-json --out-dir="$ci_log_out_dir" > "$ci_log_json"
+  ) && python -m json.tool "$ci_log_json" >/dev/null && smoke_json_assert "$ci_log_json" 'data.get("first_failure_label") == "fail: shellcheck" and "SC2086" in data.get("first_failure_excerpt", "") and data.get("recommended_fix") == "run shellcheck on the reported file and line" and data.get("log_path", "").endswith(".log") and data.get("overall_status") == "pass" and data.get("run_id") == "222"'; then
+    test_pass "ci-log-dump first-failure machine-json is parseable"
+  else
+    test_fail "ci-log-dump first-failure machine-json is parseable"
     status=1
   fi
 
@@ -2278,7 +2326,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
-  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" >/dev/null 2>&1 || true
   find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
   rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
   return "$status"
@@ -4547,7 +4595,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
-    GH_STUB_RUN_VIEW_FAILED_LOG='ci log line one
+    GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
 ci log line two
 tail one
 tail two' \
@@ -4556,8 +4604,10 @@ tail two' \
     test_fail "pr-finish watch diagnoses blocked checks"
     status=1
   elif grep -q 'watch completed with checks status: blocked' "$diagnose_stderr" &&
+    grep -q 'diagnosis label: fail: shellcheck' "$diagnose_stderr" &&
     grep -q 'diagnosis log path: ' "$diagnose_stderr" &&
-    grep -q 'diagnosis excerpt: tail one | tail two' "$diagnose_stderr"; then
+    grep -q 'diagnosis excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.' "$diagnose_stderr" &&
+    grep -q 'diagnosis recommended fix: run shellcheck on the reported file and line' "$diagnose_stderr"; then
     test_pass "pr-finish watch diagnoses blocked checks"
   else
     test_fail "pr-finish watch diagnoses blocked checks"
@@ -4569,13 +4619,13 @@ tail two' \
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
-    GH_STUB_RUN_VIEW_EMPTY=1 \
+    GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
   ); then
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
     status=1
   elif grep -q 'watch completed with checks status: blocked' "$diagnose_fail_stderr" &&
-    grep -q 'diagnosis failed for PR #123:' "$diagnose_fail_stderr"; then
+    grep -q 'diagnosis access failure: BLOCKER: GitHub API failure while fetching failed log for run 222 after 3 attempts: net/http: TLS handshake timeout' "$diagnose_fail_stderr"; then
     test_pass "pr-finish watch reports diagnosis failures without hiding blocked checks"
   else
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"

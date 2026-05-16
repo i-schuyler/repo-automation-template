@@ -160,21 +160,23 @@ pr_finish_diagnose_on_fail() {
   local pr_number="$1"
   local diagnosis_json=""
   local diagnosis_status=0
+  local diagnosis_label=""
   local diagnosis_log_path=""
   local diagnosis_excerpt=""
+  local diagnosis_fix=""
   local diagnosis_reason=""
 
-  diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --tail=2 --machine-json 2>&1)" || diagnosis_status=$?
+  diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
 
   if [ "$diagnosis_status" -eq 0 ]; then
+    diagnosis_label="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("first_failure_label",""))' "$diagnosis_json" 2>/dev/null || printf '')"
     diagnosis_log_path="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("log_path",""))' "$diagnosis_json" 2>/dev/null || printf '')"
-    diagnosis_excerpt="$(python3 -c 'import json,sys; data=json.loads(sys.argv[1]); print(" | ".join(data.get("tail_excerpt", [])[:2]))' "$diagnosis_json" 2>/dev/null || printf '')"
-    if [ -n "$diagnosis_log_path" ]; then
-      pr_finish_info "diagnosis log path: $diagnosis_log_path"
-    fi
-    if [ -n "$diagnosis_excerpt" ]; then
-      pr_finish_info "diagnosis excerpt: $diagnosis_excerpt"
-    fi
+    diagnosis_excerpt="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("first_failure_excerpt",""))' "$diagnosis_json" 2>/dev/null || printf '')"
+    diagnosis_fix="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("recommended_fix",""))' "$diagnosis_json" 2>/dev/null || printf '')"
+    [ -n "$diagnosis_label" ] && pr_finish_warn "diagnosis label: $diagnosis_label"
+    [ -n "$diagnosis_log_path" ] && pr_finish_warn "diagnosis log path: $diagnosis_log_path"
+    [ -n "$diagnosis_excerpt" ] && pr_finish_warn "diagnosis excerpt: $diagnosis_excerpt"
+    [ -n "$diagnosis_fix" ] && pr_finish_warn "diagnosis recommended fix: $diagnosis_fix"
     return 0
   fi
 
@@ -184,7 +186,14 @@ pr_finish_diagnose_on_fail() {
     diagnosis_reason="$(printf '%s' "$diagnosis_json" | sed -n '1p')"
   fi
   diagnosis_reason="${diagnosis_reason:-ci-log-dump failed}"
-  pr_finish_warn "diagnosis failed for PR #$pr_number: $diagnosis_reason"
+  case "$diagnosis_reason" in
+    *'GitHub API failure'*|*'gh is required'*|*'auth'*|*'TLS'*|*'timeout'*|*'network'*|*'connection'*|*'rate limit'*)
+      pr_finish_warn "diagnosis access failure: $diagnosis_reason"
+      ;;
+    *)
+      pr_finish_warn "diagnosis failed for PR #$pr_number: $diagnosis_reason"
+      ;;
+  esac
   return 1
 }
 
