@@ -532,6 +532,7 @@ smoke_check_repo_flow_existing_pr() {
 
   smoke_setup_temp_repo || return 1
   smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   state_file="$smoke_test_base/repo-flow-existing-pr.txt"
   create_log_file="$smoke_test_base/repo-flow-existing-pr-create.log"
