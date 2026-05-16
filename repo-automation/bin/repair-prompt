@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+# repo-automation/bin/repair-prompt
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+repair_prompt_source=""
+repair_prompt_target=""
+repair_prompt_output_base=""
+repair_prompt_evidence_file=""
+repair_prompt_pr=""
+repair_prompt_run_id=""
+repair_prompt_repo_root=""
+repair_prompt_timestamp=""
+repair_prompt_prompt_dir=""
+repair_prompt_prompt_file=""
+repair_prompt_gathered_evidence=""
+
+repair_prompt_usage() {
+  printf 'Usage: repo-automation/bin/repair-prompt --source=<ci|local> --target=codex [--evidence-file=<path>] [--pr=<number>] [--run-id=<id>] [--out-dir=<path>] [--help]\n'
+}
+
+repair_prompt_value_flag_error() {
+  local flag="$1"
+  local fix="$2"
+  local next="${3:-}"
+
+  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+  else
+    repo_auto_flag_error "missing flag value" "$flag" "$fix"
+  fi
+}
+
+repair_prompt_slug() {
+  local value="${1:-}"
+
+  printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
+}
+
+repair_prompt_output_root() {
+  local base="${repair_prompt_output_base:-${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}}"
+
+  base="${base%/}/repair-prompt"
+  printf '%s\n' "$base"
+}
+
+repair_prompt_fail() {
+  local reason="$1"
+  local fix="$2"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  return 1
+}
+
+repair_prompt_init_paths() {
+  repair_prompt_repo_root="$(repo_auto_repo_root)" || return 1
+  repair_prompt_output_base="$(repair_prompt_output_root)"
+  mkdir -p "$repair_prompt_output_base" || return 1
+  repair_prompt_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+}
+
+repair_prompt_collect_ci_evidence() {
+  local ci_tmp_file=""
+  local ci_cmd=(repo-automation/bin/ci-log-dump --first-failure --machine-json)
+
+  if [ -n "$repair_prompt_pr" ]; then
+    ci_cmd+=("--pr=$repair_prompt_pr")
+  fi
+  if [ -n "$repair_prompt_run_id" ]; then
+    ci_cmd+=("--run-id=$repair_prompt_run_id")
+  fi
+
+  ci_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repair-prompt-ci.XXXXXX")" || return 1
+  if (
+    cd "$repair_prompt_repo_root" || exit 1
+    "${ci_cmd[@]}"
+  ) > "$ci_tmp_file" 2>&1; then
+    repair_prompt_gathered_evidence="$ci_tmp_file"
+    return 0
+  fi
+
+  rm -f "$ci_tmp_file" >/dev/null 2>&1 || true
+  return 1
+}
+
+repair_prompt_collect_local_evidence() {
+  local local_tmp_file=""
+
+  local_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repair-prompt-local.XXXXXX")" || return 1
+  if (
+    cd "$repair_prompt_repo_root" || exit 1
+    repo-automation/bin/failure-log --latest --kind=any --lines=40
+  ) > "$local_tmp_file" 2>&1; then
+    repair_prompt_gathered_evidence="$local_tmp_file"
+    return 0
+  fi
+
+  rm -f "$local_tmp_file" >/dev/null 2>&1 || true
+  return 1
+}
+
+repair_prompt_collect_evidence() {
+  if [ -n "$repair_prompt_evidence_file" ]; then
+    if [ ! -f "$repair_prompt_evidence_file" ]; then
+      repair_prompt_fail "missing evidence file: $repair_prompt_evidence_file" "pass --evidence-file=<path> to an existing CI or local evidence file" || return 1
+      return 1
+    fi
+    repair_prompt_gathered_evidence="$repair_prompt_evidence_file"
+    return 0
+  fi
+
+  case "$repair_prompt_source" in
+    ci)
+      repair_prompt_collect_ci_evidence || {
+        repair_prompt_fail "required CI evidence is unavailable" "run ci-log-dump --first-failure --machine-json or pass --evidence-file=<path>" || return 1
+        return 1
+      }
+      ;;
+    local)
+      repair_prompt_collect_local_evidence || {
+        repair_prompt_fail "required local failure evidence is unavailable" "run failure-log --latest --kind=any --lines=40 or pass --evidence-file=<path>" || return 1
+        return 1
+      }
+      ;;
+  esac
+}
+
+repair_prompt_write_prompt() {
+  python3 - "$repair_prompt_prompt_file" "$repair_prompt_gathered_evidence" "$repair_prompt_source" "$repair_prompt_pr" "$repair_prompt_run_id" "$repair_prompt_evidence_file" <<'PY' || return 1
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import re
+import sys
+
+prompt_path = Path(sys.argv[1])
+evidence_path = Path(sys.argv[2])
+source = sys.argv[3]
+pr = sys.argv[4]
+run_id = sys.argv[5]
+evidence_file = sys.argv[6]
+
+raw = evidence_path.read_text(encoding="utf-8", errors="replace")
+excerpt = raw.strip()
+evidence_label = "Local failure evidence"
+evidence_selector = "current branch"
+required_behavior = [
+    "Fix the smallest proven cause from the evidence.",
+    "Keep the change scoped to the requested helper and docs slice.",
+    "Do not patch unrelated code.",
+    "Do not include secrets or private config.",
+]
+
+def redact(text: str) -> str:
+    patterns = [
+        (re.compile(r'(?i)(token|secret|password|passwd|api[_-]?key)\s*[:=]\s*[^\s\'"]+'), r'\1=[redacted]'),
+        (re.compile(r'(?i)authorization:\s*bearer\s+\S+'), 'Authorization: Bearer [redacted]'),
+        (re.compile(r'-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----', re.S), '[redacted private key]'),
+    ]
+    for pattern, replacement in patterns:
+        text = pattern.sub(replacement, text)
+    return text
+
+def compact_lines(text: str, limit: int = 40) -> str:
+    lines = text.splitlines()
+    if len(lines) <= limit:
+        return text
+    return "\n".join(lines[:limit])
+
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    data = None
+
+if isinstance(data, dict):
+    evidence_label = str(data.get("first_failure_label") or data.get("stop_reason") or "CI failure evidence")
+    evidence_selector = "CI run"
+    excerpt = str(data.get("first_failure_excerpt") or data.get("stop_reason") or "")
+    if not excerpt:
+        tail = data.get("tail_excerpt")
+        if isinstance(tail, list):
+            excerpt = "\n".join(str(item) for item in tail if item)
+    recommended_fix = str(data.get("recommended_fix") or "")
+    if recommended_fix:
+        required_behavior.append(f"Use the recommended fix direction: {recommended_fix}.")
+else:
+    excerpt = compact_lines(excerpt)
+    if evidence_file:
+        evidence_selector = "provided evidence file"
+    elif source == "local":
+        evidence_selector = "local failure log"
+
+if source == "ci":
+    if pr:
+        evidence_selector = f"PR #{pr}"
+    elif run_id:
+        evidence_selector = f"run {run_id}"
+    elif evidence_file:
+        evidence_selector = "provided evidence file"
+else:
+    if evidence_file:
+        evidence_selector = "provided evidence file"
+    else:
+        evidence_selector = "local failure log"
+
+excerpt = redact(excerpt.strip()) or "none"
+prompt = f"""Task
+Repair the failing repo-automation slice.
+
+Goal
+Fix the smallest proven cause from the evidence and keep the change scoped.
+
+Scope
+repo-automation/ files implicated by the evidence and their related docs/tests.
+
+Evidence source
+{evidence_label}
+
+Evidence selector
+{evidence_selector}
+
+Failure evidence excerpt
+{excerpt}
+
+Required behavior
+{chr(10).join(f'- {item}' for item in required_behavior)}
+
+Not in scope
+- broad or full local checks
+- uploads or PR mutation
+- Codex invocation
+- secrets or private config
+
+Checks required
+- run the narrowest relevant syntax or contract check for the touched helper or docs
+
+Output contract
+- write only the prompt artifact and print its path
+"""
+
+prompt = redact(prompt).rstrip() + "\n"
+prompt_path.write_text(prompt, encoding="utf-8")
+PY
+}
+
+repair_prompt_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        repair_prompt_usage
+        return 0
+        ;;
+      --source=*)
+        repair_prompt_source="${arg#--source=}"
+        if [ -z "$repair_prompt_source" ]; then
+          repo_auto_flag_error "empty flag value" "--source" "use --source=<ci|local>" || return 1
+          return 1
+        fi
+        case "$repair_prompt_source" in
+          ci|local)
+            ;;
+          *)
+            repo_auto_flag_error "unsupported flag value" "--source" "use --source=<ci|local>" || return 1
+            return 1
+            ;;
+        esac
+        ;;
+      --source)
+        repair_prompt_value_flag_error "--source" "use --source=<ci|local>" "${2:-}" || return 1
+        return 1
+        ;;
+      --target=*)
+        repair_prompt_target="${arg#--target=}"
+        if [ -z "$repair_prompt_target" ]; then
+          repo_auto_flag_error "empty flag value" "--target" "use --target=codex" || return 1
+          return 1
+        fi
+        if [ "$repair_prompt_target" != "codex" ]; then
+          repo_auto_flag_error "unsupported flag value" "--target" "use --target=codex" || return 1
+          return 1
+        fi
+        ;;
+      --target)
+        repair_prompt_value_flag_error "--target" "use --target=codex" "${2:-}" || return 1
+        return 1
+        ;;
+      --evidence-file=*)
+        repair_prompt_evidence_file="${arg#--evidence-file=}"
+        if [ -z "$repair_prompt_evidence_file" ]; then
+          repo_auto_flag_error "empty flag value" "--evidence-file" "use --evidence-file=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --evidence-file)
+        repair_prompt_value_flag_error "--evidence-file" "use --evidence-file=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      --pr=*)
+        repair_prompt_pr="${arg#--pr=}"
+        if [ -z "$repair_prompt_pr" ]; then
+          repo_auto_flag_error "empty flag value" "--pr" "use --pr=<number>" || return 1
+          return 1
+        fi
+        ;;
+      --pr)
+        repair_prompt_value_flag_error "--pr" "use --pr=<number>" "${2:-}" || return 1
+        return 1
+        ;;
+      --run-id=*)
+        repair_prompt_run_id="${arg#--run-id=}"
+        if [ -z "$repair_prompt_run_id" ]; then
+          repo_auto_flag_error "empty flag value" "--run-id" "use --run-id=<id>" || return 1
+          return 1
+        fi
+        ;;
+      --run-id)
+        repair_prompt_value_flag_error "--run-id" "use --run-id=<id>" "${2:-}" || return 1
+        return 1
+        ;;
+      --out-dir=*)
+        repair_prompt_output_base="${arg#--out-dir=}"
+        if [ -z "$repair_prompt_output_base" ]; then
+          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --out-dir)
+        repair_prompt_value_flag_error "--out-dir" "use --out-dir=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      *)
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repair-prompt --help" || return 1
+        else
+          repo_auto_stop "unknown argument: $arg"
+        fi
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$repair_prompt_source" ]; then
+    repo_auto_flag_error "missing flag value" "--source" "use --source=<ci|local>" || return 1
+    return 1
+  fi
+  if [ -z "$repair_prompt_target" ]; then
+    repo_auto_flag_error "missing flag value" "--target" "use --target=codex" || return 1
+    return 1
+  fi
+
+  repair_prompt_init_paths || return 1
+  repair_prompt_prompt_dir="$(mktemp -d "$repair_prompt_output_base/repair-prompt-${repair_prompt_source}-${repair_prompt_timestamp}.XXXXXX")" || return 1
+  repair_prompt_prompt_file="$repair_prompt_prompt_dir/repair-prompt.md"
+
+  repair_prompt_collect_evidence || return 1
+  repair_prompt_write_prompt || return 1
+
+  if [ -n "$repair_prompt_gathered_evidence" ] && [ -f "$repair_prompt_gathered_evidence" ] && [ "$repair_prompt_gathered_evidence" != "$repair_prompt_evidence_file" ]; then
+    rm -f "$repair_prompt_gathered_evidence" >/dev/null 2>&1 || true
+  fi
+
+  printf '%s\n' "$repair_prompt_prompt_file"
+}
+
+repair_prompt_main "$@"
+# repo-automation/bin/repair-prompt EOF

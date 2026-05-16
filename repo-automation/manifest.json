@@ -119,6 +119,16 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/repair-prompt",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/bin/review-pack",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/repo-zip",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -140,6 +150,16 @@
     },
     {
       "path": "repo-automation/docs/evidence-bundle.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/repair-prompt.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/review-pack.md",
       "owner": "repo-automation-template",
       "kind": "doc"
     },
@@ -170,6 +190,16 @@
     },
     {
       "path": "repo-automation/tests/contracts/evidence-bundle.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/repair-prompt.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/review-pack.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },

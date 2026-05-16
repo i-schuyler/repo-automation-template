@@ -19,16 +19,7 @@
 
 ## Output
 
-Human output reports:
-
-- repo path
-- branch
-- `HEAD`
-- packet dir
-- zip path
-- file count
-- zip size
-- zip modified time
+Success prints the zip path.
 
 ## Example
 

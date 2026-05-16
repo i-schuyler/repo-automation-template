@@ -115,14 +115,14 @@ PY
     status=1
   fi
 
-  packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$output_log" | tail -n 1)"
-  packet_zip="$(sed -n 's/^INFO: packet zip: //p' "$output_log" | tail -n 1)"
+  packet_zip="$(grep -E '^/' "$output_log" | tail -n 1 | tr -d '\r')"
+  packet_dir="${packet_zip%.zip}"
   summary_file="$packet_dir/summary.txt"
   copied_file="$packet_dir/untracked/copied/packet-safe-nested/deep.txt"
   skipped_file="$packet_dir/untracked/skipped.txt"
   index_file="$output_root/post-codex/index.tsv"
 
-  if [ -d "$packet_dir" ] && [ -f "$packet_zip" ] && [ -f "$summary_file" ] && [ -f "$index_file" ]; then
+  if [ "$(wc -l < "$output_log" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):|^packet dir:|^packet zip:|^tracked unstaged files:|^staged files:|^untracked files:|^copied untracked files:|^skipped untracked files:' "$output_log" && [ -d "$packet_dir" ] && [ -f "$packet_zip" ] && [ -f "$summary_file" ] && [ -f "$index_file" ]; then
     test_pass "post-codex-packet helper creates packet artifacts"
   else
     test_fail "post-codex-packet helper creates packet artifacts"

@@ -2,6 +2,8 @@
 
 This doc is the source of truth for the routing matrix. [Helper Contracts](helper-contracts.md) summarizes the public surface.
 
+PR-first review remains the normal path; use `post-codex-packet`, `repo-zip`, `evidence-bundle`, and `repo-flow status-card` before the fallback review artifact helpers.
+
 | Need | Preferred helper | Phone-safe? | Writes files? | Writes git? | Network? | Broad checks? | Next helper |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | docs-only PR | `add-doc-pr` | yes | yes | yes | no | no | `pr-create` |
@@ -18,10 +20,10 @@ This doc is the source of truth for the routing matrix. [Helper Contracts](helpe
 | repo snapshot | `repo-zip` | yes | yes | no | no | no | `evidence-bundle` |
 | final audit/archive | `evidence-bundle` | no | yes | no | yes | no | `status-packet` |
 | status-card | `repo-flow status-card` | yes | no | no | read-only network | no | contextual: `branch-cleanup`, `repo-flow`, `ci-watch`, `pr-finish`, or `failure-log` |
-| review-pack for ChatGPT | `review-pack` | yes | yes | no | no | no | `repo-flow status-card` |
-| review-pack for Codex | `review-pack` | yes | yes | no | no | no | `repair-prompt` |
+| fallback review-pack for ChatGPT | `review-pack --target=chatgpt` | yes | yes | no | no | no | `repo-flow status-card` |
+| fallback review-pack for Codex | `review-pack --target=codex` | yes | yes | no | no | no | `repair-prompt` |
 | repair-prompt | `repair-prompt` | yes | yes | no | no | no | `add-doc-pr` |
 | guarded submit | `submit` | no | yes | yes | yes | maybe | `pr-finish` |
 | autopilot plan-only | `autopilot plan-only` | yes | no | no | no | no | `status-packet` |
 
-`review-pack --target=codex` and `repair-prompt --target=codex` are artifact-only planned routes; they do not invoke Codex.
+`review-pack --target=codex` and `repair-prompt --target=codex` are artifact-only routes; they do not invoke Codex.

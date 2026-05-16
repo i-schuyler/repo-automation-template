@@ -40,6 +40,16 @@ repo_zip_slug() {
   printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
 }
 
+repo_zip_is_safe_dotfile() {
+  case "${1:-}" in
+    .editorconfig|*/.editorconfig|.gitattributes|*/.gitattributes|.gitignore|*/.gitignore|.markdownlint.json|*/.markdownlint.json|.prettierrc|*/.prettierrc|.prettierrc.*|*/.prettierrc.*|.eslintrc|*/.eslintrc|.eslintrc.*|*/.eslintrc.*|.yamllint|*/.yamllint|.env.example|*/.env.example)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 repo_zip_is_excluded_path() {
   case "${1:-}" in
     .git|.git/*|*/.git|*/.git/*)
@@ -54,7 +64,37 @@ repo_zip_is_excluded_path() {
     post-codex/*|*/post-codex/*|post-codex-*.zip|*/post-codex-*.zip)
       return 0
       ;;
+    review-pack/*|*/review-pack/*|review-pack-*.zip|*/review-pack-*.zip)
+      return 0
+      ;;
+    repair-prompt/*|*/repair-prompt/*|repair-prompt-*.md|*/repair-prompt-*.md)
+      return 0
+      ;;
+    evidence-bundle/*|*/evidence-bundle/*|evidence-bundle-*.zip|*/evidence-bundle-*.zip)
+      return 0
+      ;;
     ci-log-dump/*|*/ci-log-dump/*|actions_run_*.log|*/actions_run_*.log)
+      return 0
+      ;;
+    build|build/*|*/build|*/build/*|dist|dist/*|*/dist|*/dist/*|out|out/*|*/out|*/out/*|target|target/*|*/target|*/target/*|node_modules|node_modules/*|*/node_modules|*/node_modules/*|.cache|.cache/*|*/.cache|*/.cache/*|cache|cache/*|*/cache|*/cache/*|vendor|vendor/*|*/vendor|*/vendor/*|deps|deps/*|*/deps|*/deps/*)
+      return 0
+      ;;
+    .env|*/.env|.env.*|*/.env.*|*.pem|*.key|id_rsa|*/id_rsa|id_ed25519|*/id_ed25519|*.p12|*.pfx|*token*|*secret*|*credential*)
+      return 0
+      ;;
+    .*)
+      if repo_zip_is_safe_dotfile "$1"; then
+        return 1
+      fi
+      return 0
+      ;;
+  esac
+
+  case "${1:-}" in
+    *credentials*)
+      return 0
+      ;;
+    *.bin|*.exe|*.dll|*.so|*.dylib|*.a|*.o|*.obj|*.class|*.jar|*.war)
       return 0
       ;;
   esac
@@ -259,16 +299,8 @@ repo_zip_main() {
   repo_zip_create_zip || return 1
   repo_zip_write_summary || return 1
 
-  repo_zip_info "repo path: $repo_zip_repo_root"
-  repo_zip_info "branch: $repo_zip_branch"
-  repo_zip_info "HEAD: $repo_zip_head"
-  repo_zip_info "packet dir: $repo_zip_packet_dir"
-  repo_zip_info "zip path: $repo_zip_zip_path"
-  repo_zip_info "file count: $repo_zip_file_count"
-  repo_zip_info "zip size: $repo_zip_zip_size bytes"
-  repo_zip_info "zip modified time: $repo_zip_zip_mtime"
-
   repo_zip_finished=1
+  printf '%s\n' "$repo_zip_zip_path"
   return 0
 }
 

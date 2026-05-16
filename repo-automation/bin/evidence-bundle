@@ -31,8 +31,6 @@ evidence_bundle_failure_log_file=""
 evidence_bundle_ci_log_dump_dir=""
 evidence_bundle_post_codex_zip=""
 evidence_bundle_repo_zip_zip=""
-evidence_bundle_zip_size=""
-evidence_bundle_zip_mtime=""
 # shellcheck disable=SC2034 # referenced indirectly via nameref helper functions
 evidence_bundle_included_sections=()
 # shellcheck disable=SC2034 # referenced indirectly via nameref helper functions
@@ -184,7 +182,6 @@ evidence_bundle_capture_failure_log() {
 
 evidence_bundle_capture_ci_log_dump() {
   local ci_tmp_file=""
-  local saved_log_path=""
 
   if [ -z "$evidence_bundle_pr" ]; then
     evidence_bundle_record_section evidence_bundle_skipped_sections "ci-log-dump (no --pr)"
@@ -196,11 +193,7 @@ evidence_bundle_capture_ci_log_dump() {
     cd "$evidence_bundle_repo_root" || exit 1
     repo-automation/bin/ci-log-dump --pr="$evidence_bundle_pr" --out-dir="$evidence_bundle_ci_log_dump_dir"
   ) > "$ci_tmp_file" 2>&1; then
-    saved_log_path="$(sed -n 's/^Saved log path: //p' "$ci_tmp_file" | tail -n 1)"
     mv "$ci_tmp_file" "$evidence_bundle_ci_log_dump_dir/output.txt" || return 1
-    if [ -n "$saved_log_path" ]; then
-      evidence_bundle_info "ci log dump saved log path: $saved_log_path"
-    fi
     evidence_bundle_record_section evidence_bundle_included_sections "ci-log-dump"
     return 0
   fi
@@ -213,7 +206,7 @@ evidence_bundle_capture_ci_log_dump() {
 
 evidence_bundle_capture_post_codex() {
   local post_tmp_file=""
-  local packet_dir=""
+  local packet_zip=""
 
   if [ "$evidence_bundle_post_codex" -eq 0 ]; then
     evidence_bundle_record_section evidence_bundle_skipped_sections "post-codex-packet (not requested)"
@@ -225,15 +218,13 @@ evidence_bundle_capture_post_codex() {
     cd "$evidence_bundle_repo_root" || exit 1
     REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/post-codex-packet --label="$evidence_bundle_label" --keep-dir
   ) > "$post_tmp_file" 2>&1; then
-    packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$post_tmp_file" | tail -n 1)"
-    evidence_bundle_post_codex_zip="$(sed -n 's/^INFO: packet zip: //p' "$post_tmp_file" | tail -n 1)"
+    packet_zip="$(grep -E '^/' "$post_tmp_file" | tail -n 1 | tr -d '\r')"
     mv "$post_tmp_file" "$evidence_bundle_bundle_dir/post-codex/output.txt" || return 1
-    if [ -n "$packet_dir" ]; then
-      evidence_bundle_info "post-codex packet dir: $packet_dir"
+    if [ -z "$packet_zip" ]; then
+      evidence_bundle_stop "post-codex-packet did not print an artifact path"
+      return 1
     fi
-    if [ -n "$evidence_bundle_post_codex_zip" ]; then
-      evidence_bundle_info "post-codex packet zip: $evidence_bundle_post_codex_zip"
-    fi
+    evidence_bundle_post_codex_zip="$packet_zip"
     evidence_bundle_record_section evidence_bundle_included_sections "post-codex-packet"
     return 0
   fi
@@ -246,7 +237,7 @@ evidence_bundle_capture_post_codex() {
 
 evidence_bundle_capture_repo_zip() {
   local repo_zip_tmp_file=""
-  local packet_dir=""
+  local repo_zip_path=""
 
   if [ "$evidence_bundle_include_repo_zip" -eq 0 ]; then
     evidence_bundle_record_section evidence_bundle_skipped_sections "repo-zip (not requested)"
@@ -258,15 +249,13 @@ evidence_bundle_capture_repo_zip() {
     cd "$evidence_bundle_repo_root" || exit 1
     REPO_AUTOMATION_OUTPUT_DIR="$evidence_bundle_bundle_dir" repo-automation/bin/repo-zip --label="$evidence_bundle_label"
   ) > "$repo_zip_tmp_file" 2>&1; then
-    packet_dir="$(sed -n 's/^INFO: packet dir: //p' "$repo_zip_tmp_file" | tail -n 1)"
-    evidence_bundle_repo_zip_zip="$(sed -n 's/^INFO: zip path: //p' "$repo_zip_tmp_file" | tail -n 1)"
+    repo_zip_path="$(grep -E '^/' "$repo_zip_tmp_file" | tail -n 1 | tr -d '\r')"
     mv "$repo_zip_tmp_file" "$evidence_bundle_bundle_dir/repo-zip/output.txt" || return 1
-    if [ -n "$packet_dir" ]; then
-      evidence_bundle_info "repo-zip packet dir: $packet_dir"
+    if [ -z "$repo_zip_path" ]; then
+      evidence_bundle_stop "repo-zip did not print an artifact path"
+      return 1
     fi
-    if [ -n "$evidence_bundle_repo_zip_zip" ]; then
-      evidence_bundle_info "repo-zip zip path: $evidence_bundle_repo_zip_zip"
-    fi
+    evidence_bundle_repo_zip_zip="$repo_zip_path"
     evidence_bundle_record_section evidence_bundle_included_sections "repo-zip"
     return 0
   fi
@@ -462,24 +451,9 @@ evidence_bundle_main() {
   evidence_bundle_capture_repo_zip || return 1
   evidence_bundle_write_summary || return 1
   evidence_bundle_create_zip || return 1
-  evidence_bundle_zip_size="$(evidence_bundle_stat_value "$evidence_bundle_bundle_zip" size)"
-  evidence_bundle_zip_mtime="$(evidence_bundle_stat_value "$evidence_bundle_bundle_zip" mtime)"
   evidence_bundle_write_index || return 1
 
-  evidence_bundle_info "bundle dir: $evidence_bundle_bundle_dir"
-  evidence_bundle_info "bundle zip: $evidence_bundle_bundle_zip"
-  evidence_bundle_info "included sections: $(evidence_bundle_join_sections evidence_bundle_included_sections)"
-  evidence_bundle_info "skipped sections: $(evidence_bundle_join_sections evidence_bundle_skipped_sections)"
-  evidence_bundle_info "bundle size: $evidence_bundle_zip_size bytes"
-  evidence_bundle_info "bundle modified time: $evidence_bundle_zip_mtime"
-  evidence_bundle_info "summary file: $evidence_bundle_summary_file"
-  evidence_bundle_info "status short file: $evidence_bundle_status_short_file"
-  evidence_bundle_info "touched files file: $evidence_bundle_touched_json_file"
-  evidence_bundle_info "failure log file: $evidence_bundle_failure_log_file"
-  evidence_bundle_info "ci log dump dir: $evidence_bundle_ci_log_dump_dir"
-  evidence_bundle_info "post-codex packet zip: ${evidence_bundle_post_codex_zip:-}"
-  evidence_bundle_info "repo snapshot zip: ${evidence_bundle_repo_zip_zip:-}"
-
+  printf '%s\n' "$evidence_bundle_bundle_zip"
   return 0
 }
 

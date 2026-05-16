@@ -59,6 +59,62 @@ post_codex_packet_slug() {
   printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
 }
 
+post_codex_packet_is_safe_dotfile() {
+  case "${1:-}" in
+    .editorconfig|*/.editorconfig|.gitattributes|*/.gitattributes|.gitignore|*/.gitignore|.markdownlint.json|*/.markdownlint.json|.prettierrc|*/.prettierrc|.prettierrc.*|*/.prettierrc.*|.eslintrc|*/.eslintrc|.eslintrc.*|*/.eslintrc.*|.yamllint|*/.yamllint|.env.example|*/.env.example)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+post_codex_packet_is_excluded_untracked_path() {
+  case "${1:-}" in
+    .git|.git/*|*/.git|*/.git/*)
+      return 0
+      ;;
+    repo-automation-output/*|*/repo-automation-output/*)
+      return 0
+      ;;
+    repo-zip/*|*/repo-zip/*|repo-zip-*.zip|*/repo-zip-*.zip)
+      return 0
+      ;;
+    review-pack/*|*/review-pack/*|review-pack-*.zip|*/review-pack-*.zip)
+      return 0
+      ;;
+    repair-prompt/*|*/repair-prompt/*|repair-prompt-*.md|*/repair-prompt-*.md)
+      return 0
+      ;;
+    evidence-bundle/*|*/evidence-bundle/*|evidence-bundle-*.zip|*/evidence-bundle-*.zip)
+      return 0
+      ;;
+    post-codex/*|*/post-codex/*|post-codex-*.zip|*/post-codex-*.zip)
+      return 0
+      ;;
+    ci-log-dump/*|*/ci-log-dump/*|actions_run_*.log|*/actions_run_*.log)
+      return 0
+      ;;
+    build|build/*|*/build|*/build/*|dist|dist/*|*/dist|*/dist/*|out|out/*|*/out|*/out/*|target|target/*|*/target|*/target/*|node_modules|node_modules/*|*/node_modules|*/node_modules/*|.cache|.cache/*|*/.cache|*/.cache/*|cache|cache/*|*/cache|*/cache/*|vendor|vendor/*|*/vendor|*/vendor/*|deps|deps/*|*/deps|*/deps/*)
+      return 0
+      ;;
+    .env|*/.env|.env.*|*/.env.*|*.pem|*.key|id_rsa|*/id_rsa|id_ed25519|*/id_ed25519|*.p12|*.pfx|*token*|*secret*|*credential*)
+      return 0
+      ;;
+    .*)
+      if post_codex_packet_is_safe_dotfile "$1"; then
+        return 1
+      fi
+      return 0
+      ;;
+    *.bin|*.exe|*.dll|*.so|*.dylib|*.a|*.o|*.obj|*.class|*.jar|*.war)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 post_codex_packet_write_index() {
   local label_value="${post_codex_packet_label_slug:-}"
 
@@ -129,6 +185,11 @@ post_codex_packet_untracked_skip_reason() {
 
   if post_codex_packet_is_sensitive_untracked "$path"; then
     printf 'sensitive path matches packet skip rules\n'
+    return 0
+  fi
+
+  if post_codex_packet_is_excluded_untracked_path "$path"; then
+    printf 'artifact safety path matches packet skip rules\n'
     return 0
   fi
 
@@ -332,18 +393,11 @@ post_codex_packet_main() {
   post_codex_packet_create_zip || return 1
   post_codex_packet_write_index || return 1
 
-  post_codex_packet_info "packet dir: $post_codex_packet_packet_dir"
-  post_codex_packet_info "packet zip: $post_codex_packet_zip_path"
-  post_codex_packet_info "tracked unstaged files: $post_codex_packet_tracked_count"
-  post_codex_packet_info "staged files: $post_codex_packet_staged_count"
-  post_codex_packet_info "untracked files: $post_codex_packet_untracked_count"
-  post_codex_packet_info "copied untracked files: $post_codex_packet_copied_count"
-  post_codex_packet_info "skipped untracked files: $post_codex_packet_skipped_count"
-
   if [ "$post_codex_packet_keep_dir" -eq 0 ]; then
     rm -rf "$post_codex_packet_packet_dir"
   fi
 
+  printf '%s\n' "$post_codex_packet_zip_path"
   return 0
 }
 
