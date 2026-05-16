@@ -215,13 +215,21 @@ ci_watch_main() {
     elapsed="$(( $(date +%s) - started_at ))"
 
     case "$status" in
-      pass|fail)
+      pass)
         if [ "$ci_watch_machine_json" -eq 1 ]; then
           ci_watch_print_json "$status" "$elapsed"
         else
           ci_watch_print_human "$status" "$elapsed"
         fi
         return 0
+        ;;
+      fail)
+        if [ "$ci_watch_machine_json" -eq 1 ]; then
+          ci_watch_print_json "$status" "$elapsed"
+        else
+          ci_watch_print_human "$status" "$elapsed"
+        fi
+        return 1
         ;;
       pending)
         if [ "$elapsed" -ge "$ci_watch_timeout_seconds" ]; then
