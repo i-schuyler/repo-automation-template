@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# repo-automation/bin/review-pack
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+review_pack_target=""
+review_pack_output_base=""
+review_pack_label=""
+review_pack_repo_root=""
+review_pack_timestamp=""
+review_pack_label_slug=""
+review_pack_stage_dir=""
+review_pack_bundle_log=""
+review_pack_bundle_zip=""
+review_pack_bundle_dir=""
+review_pack_prompt_dir=""
+review_pack_prompt_file=""
+review_pack_status_file=""
+
+review_pack_usage() {
+  printf 'Usage: repo-automation/bin/review-pack --target=<chatgpt|codex> [--out-dir=<path>] [--label=<text>] [--help]\n'
+}
+
+review_pack_value_flag_error() {
+  local flag="$1"
+  local fix="$2"
+  local next="${3:-}"
+
+  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+  else
+    repo_auto_flag_error "missing flag value" "$flag" "$fix"
+  fi
+}
+
+review_pack_slug() {
+  local value="${1:-}"
+
+  printf '%s' "$value" | tr -cs 'A-Za-z0-9._-' '_'
+}
+
+review_pack_output_root() {
+  local base="${review_pack_output_base:-${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}}"
+
+  base="${base%/}/review-pack"
+  printf '%s\n' "$base"
+}
+
+review_pack_fail() {
+  local reason="$1"
+  local fix="$2"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  return 1
+}
+
+review_pack_init_paths() {
+  review_pack_repo_root="$(repo_auto_repo_root)" || return 1
+  review_pack_output_base="$(review_pack_output_root)"
+  mkdir -p "$review_pack_output_base" || return 1
+  review_pack_timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  if [ -n "$review_pack_label" ]; then
+    review_pack_label_slug="$(review_pack_slug "$review_pack_label")"
+  fi
+}
+
+review_pack_write_codex_prompt() {
+  local status_file="$1"
+  local status_excerpt_file="$review_pack_prompt_dir/status-packet.txt"
+
+  mkdir -p "$review_pack_prompt_dir" || return 1
+  cp -- "$status_file" "$status_excerpt_file" || return 1
+
+  cat > "$review_pack_prompt_file" <<EOF
+Task
+Review the current repo-automation changes.
+
+Goal
+Identify gaps, regressions, or missing safety coverage in the requested slice.
+
+Scope
+Current working tree, helper contracts, docs, and tests related to the artifact layer.
+
+Evidence excerpt
+EOF
+  sed -n '1,40p' "$status_file" | sed 's/^/  /' >> "$review_pack_prompt_file" || return 1
+  cat >> "$review_pack_prompt_file" <<'EOF'
+
+Required behavior
+- Check the requested helper and docs slice only.
+- Keep the review concise and evidence-driven.
+- Do not patch code or invoke Codex.
+
+Not in scope
+- broad or full local checks
+- uploads or PR mutation
+- repository-root artifact output
+
+Checks required
+- use the narrowest relevant helper or contract test for the review
+
+Output contract
+- return concise findings and exact file paths only
+EOF
+}
+
+review_pack_main() {
+  local arg=""
+  local bundle_log=""
+  local prompt_status_file=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        review_pack_usage
+        return 0
+        ;;
+      --target=*)
+        review_pack_target="${arg#--target=}"
+        if [ -z "$review_pack_target" ]; then
+          repo_auto_flag_error "empty flag value" "--target" "use --target=<chatgpt|codex>" || return 1
+          return 1
+        fi
+        case "$review_pack_target" in
+          chatgpt|codex)
+            ;;
+          *)
+            repo_auto_flag_error "unsupported flag value" "--target" "use --target=<chatgpt|codex>" || return 1
+            return 1
+            ;;
+        esac
+        ;;
+      --target)
+        review_pack_value_flag_error "--target" "use --target=<chatgpt|codex>" "${2:-}" || return 1
+        return 1
+        ;;
+      --out-dir=*)
+        review_pack_output_base="${arg#--out-dir=}"
+        if [ -z "$review_pack_output_base" ]; then
+          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --out-dir)
+        review_pack_value_flag_error "--out-dir" "use --out-dir=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      --label=*)
+        review_pack_label="${arg#--label=}"
+        if [ -z "$review_pack_label" ]; then
+          repo_auto_flag_error "empty flag value" "--label" "use --label=<text>" || return 1
+          return 1
+        fi
+        ;;
+      --label)
+        review_pack_value_flag_error "--label" "use --label=<text>" "${2:-}" || return 1
+        return 1
+        ;;
+      *)
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/review-pack --help" || return 1
+        else
+          repo_auto_stop "unknown argument: $arg"
+        fi
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$review_pack_target" ]; then
+    repo_auto_flag_error "missing flag value" "--target" "use --target=<chatgpt|codex>" || return 1
+    return 1
+  fi
+
+  review_pack_init_paths || return 1
+
+  case "$review_pack_target" in
+    chatgpt)
+      review_pack_stage_dir="$(mktemp -d "$review_pack_output_base/review-pack-${review_pack_timestamp}${review_pack_label_slug:+-$review_pack_label_slug}.XXXXXX")" || return 1
+      bundle_log="$(mktemp "${TMPDIR:-$HOME/.cache}/review-pack-bundle.XXXXXX")" || return 1
+      if (
+        cd "$review_pack_repo_root" || exit 1
+        REPO_AUTOMATION_OUTPUT_DIR="$review_pack_stage_dir" repo-automation/bin/evidence-bundle --label="${review_pack_label:-review}" --post-codex --include-repo-zip
+      ) > "$bundle_log" 2>&1; then
+        review_pack_bundle_dir="$(find "$review_pack_stage_dir/evidence-bundle" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -n 1)"
+        rm -f "$bundle_log" >/dev/null 2>&1 || true
+        if [ -z "$review_pack_bundle_dir" ] || [ ! -d "$review_pack_bundle_dir" ]; then
+          review_pack_fail "failed to locate review bundle directory" "remove stale output and rerun review-pack" || return 1
+          return 1
+        fi
+        review_pack_bundle_zip="$review_pack_bundle_dir.zip"
+        if [ ! -f "$review_pack_bundle_zip" ]; then
+          review_pack_fail "failed to locate review bundle zip" "remove stale output and rerun review-pack" || return 1
+          return 1
+        fi
+        printf '%s\n' "$review_pack_bundle_zip"
+        return 0
+      fi
+
+      review_pack_fail "failed to create review bundle" "run repo-automation/bin/evidence-bundle --help and inspect the evidence output" || return 1
+      rm -f "$bundle_log" >/dev/null 2>&1 || true
+      return 1
+      ;;
+    codex)
+      review_pack_prompt_dir="$(mktemp -d "$review_pack_output_base/review-pack-codex-${review_pack_timestamp}${review_pack_label_slug:+-$review_pack_label_slug}.XXXXXX")" || return 1
+      review_pack_prompt_file="$review_pack_prompt_dir/review-pack.md"
+      prompt_status_file="$(mktemp "${TMPDIR:-$HOME/.cache}/review-pack-status.XXXXXX")" || return 1
+      if (
+        cd "$review_pack_repo_root" || exit 1
+        repo-automation/bin/status-packet
+      ) > "$prompt_status_file"; then
+        review_pack_write_codex_prompt "$prompt_status_file" || {
+          rm -f "$prompt_status_file" >/dev/null 2>&1 || true
+          return 1
+        }
+        rm -f "$prompt_status_file" >/dev/null 2>&1 || true
+        printf '%s\n' "$review_pack_prompt_file"
+        return 0
+      fi
+
+      rm -f "$prompt_status_file" >/dev/null 2>&1 || true
+      review_pack_fail "failed to capture review context" "run repo-automation/bin/status-packet in the repo root to inspect the current state" || return 1
+      return 1
+      ;;
+  esac
+}
+
+review_pack_main "$@"
+# repo-automation/bin/review-pack EOF

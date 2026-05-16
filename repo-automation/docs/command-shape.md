@@ -168,8 +168,11 @@ Use these meanings consistently across helpers.
 | `--repo=<owner/repo>` | GitHub repo identifier |
 | `--repo-root=<path>` | local repo root |
 | `--source-root=<path>` | automation source root |
+| `--source=<ci|local>` | repair-prompt evidence source |
 | `--target-root=<path>` | downstream install target root |
+| `--target=<chatgpt|codex>` | review-pack / repair-prompt audience |
 | `--out-dir=<path>` | output directory override |
+| `--evidence-file=<path>` | pre-generated evidence input |
 | `--timeout=<seconds>` | maximum runtime for local check/watch operation |
 | `--run-id=<id>` | GitHub Actions run ID |
 | `--tail=<lines>` | number of log lines to include |

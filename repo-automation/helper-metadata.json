@@ -292,6 +292,48 @@
       "config_keys": []
     },
     {
+      "name": "repair-prompt",
+      "path": "repo-automation/bin/repair-prompt",
+      "doc_path": "repo-automation/docs/repair-prompt.md",
+      "contract_test_path": "repo-automation/tests/contracts/repair-prompt.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": false,
+      "check_cost_tier": "mutating",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": true,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": false,
+      "supports_json": false,
+      "artifact_helper": true,
+      "umbrella_helper": false,
+      "workflow_role": "workflow",
+      "config_keys": []
+    },
+    {
+      "name": "review-pack",
+      "path": "repo-automation/bin/review-pack",
+      "doc_path": "repo-automation/docs/review-pack.md",
+      "contract_test_path": "repo-automation/tests/contracts/review-pack.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": false,
+      "check_cost_tier": "mutating",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": false,
+      "supports_json": false,
+      "artifact_helper": true,
+      "umbrella_helper": true,
+      "workflow_role": "artifact",
+      "config_keys": []
+    },
+    {
       "name": "prepare-release",
       "path": "repo-automation/bin/prepare-release",
       "doc_path": "repo-automation/docs/helper-contracts.md",
@@ -621,20 +663,6 @@
     }
   ],
   "planned_routes": [
-    {
-      "name": "review-pack",
-      "state": "planned",
-      "route": "review bundle",
-      "public": false,
-      "workflow_role": "artifact"
-    },
-    {
-      "name": "repair-prompt",
-      "state": "planned",
-      "route": "repair prompt",
-      "public": false,
-      "workflow_role": "workflow"
-    },
     {
       "name": "submit",
       "state": "planned",

@@ -28,9 +28,11 @@ smoke_contract_names=(
   "smoke:repo-doctor-contract"
   "smoke:status-packet-contract"
   "smoke:post-codex-packet-contract"
+  "smoke:review-pack-contract"
   "smoke:pr-finish-watch-exit"
   "smoke:repo-zip-contract"
   "smoke:evidence-bundle-contract"
+  "smoke:repair-prompt-contract"
   "smoke:github-settings-check"
   "smoke:managed-file-tools"
   "smoke:shellcheck-ci-parity"
@@ -52,9 +54,11 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/repo-doctor.sh"
   "repo-automation/tests/contracts/status-packet.sh"
   "repo-automation/tests/contracts/post-codex-packet.sh"
+  "repo-automation/tests/contracts/review-pack.sh"
   "repo-automation/tests/contracts/pr-finish-watch.sh"
   "repo-automation/tests/contracts/repo-zip.sh"
   "repo-automation/tests/contracts/evidence-bundle.sh"
+  "repo-automation/tests/contracts/repair-prompt.sh"
   "repo-automation/tests/contracts/github-settings-check.sh"
   "repo-automation/tests/contracts/managed-file-tools.sh"
   "repo-automation/tests/contracts/shellcheck-ci-parity.sh"
@@ -305,6 +309,29 @@ EOF
   chmod +x "$gh_stub_dir/gh" || return 1
 }
 
+smoke_write_artifact_safety_fixture() {
+  local root="$1"
+
+  mkdir -p "$root/docs" "$root/build" "$root/node_modules/pkg" "$root/vendor/cache" "$root/.cache" "$root/repo-automation-output/review-pack" || return 1
+
+  cat > "$root/.editorconfig" <<'EOF'
+root = true
+
+[*.md]
+charset = utf-8
+EOF
+  printf '%s\n' '.cache/ignored.cache' >> "$root/.gitignore"
+  cat > "$root/.env" <<'EOF'
+SECRET_TOKEN=fixture-secret
+EOF
+  printf 'ignored cache fixture\n' > "$root/.cache/ignored.cache"
+  printf 'safe untracked doc fixture\n' > "$root/docs/safe-untracked.md"
+  printf 'generated packet artifact fixture\n' > "$root/repo-automation-output/review-pack/output.txt"
+  printf 'build output fixture\n' > "$root/build/output.bin"
+  printf 'nested dependency cache fixture\n' > "$root/node_modules/pkg/cache.txt"
+  printf 'nested vendor cache fixture\n' > "$root/vendor/cache/tool.bin"
+}
+
 smoke_setup_temp_repo() {
   mkdir -p "$TEST_TEMP_ROOT" || return 1
   smoke_test_base="$(mktemp -d "${TEST_TEMP_ROOT}/smoke.XXXXXX")" || return 1
@@ -338,6 +365,8 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" || return 1
   cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
   cp "$smoke_repo_root/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/review-pack" "$smoke_test_dir/repo-automation/bin/review-pack" || return 1
+  cp "$smoke_repo_root/repo-automation/bin/repair-prompt" "$smoke_test_dir/repo-automation/bin/repair-prompt" || return 1
   cp "$smoke_repo_root/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/repo-zip" || return 1
   cp "$smoke_repo_root/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/evidence-bundle" || return 1
   cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
@@ -352,7 +381,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/contracts/" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/repo-flow" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/managed-file-check" "$smoke_test_dir/repo-automation/bin/managed-file-add" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/repo-flow" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/managed-file-check" "$smoke_test_dir/repo-automation/bin/managed-file-add" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/review-pack" "$smoke_test_dir/repo-automation/bin/repair-prompt" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -2760,6 +2789,7 @@ smoke_check_post_codex_packet_contract() {
 import sys
 sys.stdout.write('x' * 262145)
 PY
+  smoke_write_artifact_safety_fixture "$smoke_test_dir" || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -2821,14 +2851,14 @@ PY
     status=1
   fi
 
-  if grep -Eq '^Branch: main$' "$summary_file" && grep -Eq '^HEAD: [0-9a-f]{40}$' "$summary_file" && grep -Eq '^Repo path: ' "$summary_file" && grep -Eq '^Packet path: ' "$summary_file" && grep -Eq '^Zip path: ' "$summary_file" && grep -Eq '^Tracked unstaged files: 1$' "$summary_file" && grep -Eq '^Staged files: 1$' "$summary_file" && grep -Eq '^Untracked files: 9$' "$summary_file" && grep -Eq '^Copied untracked files: 1$' "$summary_file" && grep -Eq '^Skipped untracked files: 8$' "$summary_file" && grep -Eq '^Max untracked copy bytes: 262144$' "$summary_file"; then
+  if grep -Eq '^Branch: main$' "$summary_file" && grep -Eq '^HEAD: [0-9a-f]{40}$' "$summary_file" && grep -Eq '^Repo path: ' "$summary_file" && grep -Eq '^Packet path: ' "$summary_file" && grep -Eq '^Zip path: ' "$summary_file" && grep -Eq '^Tracked unstaged files: [1-9][0-9]*$' "$summary_file" && grep -Eq '^Staged files: [1-9][0-9]*$' "$summary_file" && grep -Eq '^Untracked files: [1-9][0-9]*$' "$summary_file" && grep -Eq '^Copied untracked files: [1-9][0-9]*$' "$summary_file" && grep -Eq '^Skipped untracked files: [1-9][0-9]*$' "$summary_file" && grep -Eq '^Max untracked copy bytes: 262144$' "$summary_file"; then
     test_pass "post-codex-packet summary reports packet metadata"
   else
     test_fail "post-codex-packet summary reports packet metadata"
     status=1
   fi
 
-  if grep -Eq '^README.md$' "$packet_dir/tracked-unstaged/name-list.txt" && grep -Eq '^docs/testing.md$' "$packet_dir/staged/name-list.txt" && grep -Eq '^packet-safe-nested/deep.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^\.env[[:space:]]' "$skipped_file" && grep -Eq '^config/\.env[[:space:]]' "$skipped_file" && grep -Eq '^config/\.env\.local[[:space:]]' "$skipped_file" && grep -Eq '^keys/id_rsa[[:space:]]' "$skipped_file" && grep -Eq '^keys/id_ed25519[[:space:]]' "$skipped_file" && grep -Eq '^secrets/token.txt[[:space:]]' "$skipped_file" && grep -Eq '^credentials-note.txt[[:space:]]' "$skipped_file" && grep -Eq '^packet-oversized.bin[[:space:]]' "$skipped_file" && [ -f "$copied_file" ]; then
+  if grep -Eq '^README.md$' "$packet_dir/tracked-unstaged/name-list.txt" && grep -Eq '^docs/testing.md$' "$packet_dir/staged/name-list.txt" && grep -Eq '^packet-safe-nested/deep.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^\.editorconfig$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^docs/safe-untracked.md$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^repo-automation-output/review-pack/output.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^build/output.bin$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^node_modules/pkg/cache.txt$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^vendor/cache/tool.bin$' "$packet_dir/untracked/non-ignored.txt" && grep -Eq '^\.env[[:space:]]' "$skipped_file" && grep -Eq '^config/\.env[[:space:]]' "$skipped_file" && grep -Eq '^config/\.env\.local[[:space:]]' "$skipped_file" && grep -Eq '^keys/id_rsa[[:space:]]' "$skipped_file" && grep -Eq '^keys/id_ed25519[[:space:]]' "$skipped_file" && grep -Eq '^secrets/token.txt[[:space:]]' "$skipped_file" && grep -Eq '^credentials-note.txt[[:space:]]' "$skipped_file" && grep -Eq '^packet-oversized.bin[[:space:]]' "$skipped_file" && grep -Eq '^build/output.bin[[:space:]]' "$skipped_file" && grep -Eq '^node_modules/pkg/cache.txt[[:space:]]' "$skipped_file" && grep -Eq '^vendor/cache/tool.bin[[:space:]]' "$skipped_file" && grep -Eq '^repo-automation-output/review-pack/output.txt[[:space:]]' "$skipped_file" && [ -f "$packet_dir/untracked/copied/.editorconfig" ] && [ -f "$packet_dir/untracked/copied/docs/safe-untracked.md" ] && [ -f "$copied_file" ]; then
     test_pass "post-codex-packet packet contents include copied and skipped untracked files"
   else
     test_fail "post-codex-packet packet contents include copied and skipped untracked files"
@@ -2847,8 +2877,13 @@ assert 'summary.txt' in names
 assert 'tracked-unstaged/name-list.txt' in names
 assert 'staged/name-list.txt' in names
 assert 'untracked/copied/packet-safe-nested/deep.txt' in names
+assert 'untracked/copied/.editorconfig' in names
+assert 'untracked/copied/docs/safe-untracked.md' in names
 assert 'untracked/skipped.txt' in names
 assert 'untracked/copied/.env' not in names
+assert 'untracked/copied/build/output.bin' not in names
+assert 'untracked/copied/node_modules/pkg/cache.txt' not in names
+assert 'untracked/copied/vendor/cache/tool.bin' not in names
 PY
   then
     test_pass "post-codex-packet zip archive contains packet files"
@@ -2875,6 +2910,749 @@ PY
   else
     test_fail "post-codex-packet rejects unknown flags"
     status=1
+  fi
+
+  return "$status"
+}
+
+
+smoke_check_review_pack_contract() {
+  local status=0
+  local output_root=""
+  local codex_stub_dir=""
+  local codex_called_file=""
+  local help_file=""
+  local target_format_stderr=""
+  local target_missing_stderr=""
+  local target_empty_stderr=""
+  local target_unknown_stderr=""
+  local out_dir_format_stderr=""
+  local out_dir_missing_stderr=""
+  local out_dir_empty_stderr=""
+  local label_format_stderr=""
+  local label_missing_stderr=""
+  local label_empty_stderr=""
+  local chatgpt_output_file=""
+  local chatgpt_stderr_file=""
+  local chatgpt_bundle_zip=""
+  local chatgpt_bundle_dir=""
+  local chatgpt_repo_zip_output=""
+  local chatgpt_repo_zip_path=""
+  local codex_output_file=""
+  local codex_stderr_file=""
+  local codex_prompt_file=""
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_artifact_safety_fixture "$smoke_test_dir" || return 1
+  output_root="$smoke_test_base/review-pack-output"
+  codex_stub_dir="$smoke_test_base/review-pack-codex-stub"
+  codex_called_file="$smoke_test_base/review-pack-codex-called.txt"
+  help_file="$smoke_test_base/review-pack-help.txt"
+  target_format_stderr="$smoke_test_base/review-pack-target-format.stderr"
+  target_missing_stderr="$smoke_test_base/review-pack-target-missing.stderr"
+  target_empty_stderr="$smoke_test_base/review-pack-target-empty.stderr"
+  target_unknown_stderr="$smoke_test_base/review-pack-target-unknown.stderr"
+  out_dir_format_stderr="$smoke_test_base/review-pack-out-dir-format.stderr"
+  out_dir_missing_stderr="$smoke_test_base/review-pack-out-dir-missing.stderr"
+  out_dir_empty_stderr="$smoke_test_base/review-pack-out-dir-empty.stderr"
+  label_format_stderr="$smoke_test_base/review-pack-label-format.stderr"
+  label_missing_stderr="$smoke_test_base/review-pack-label-missing.stderr"
+  label_empty_stderr="$smoke_test_base/review-pack-label-empty.stderr"
+  chatgpt_output_file="$smoke_test_base/review-pack-chatgpt.out"
+  chatgpt_stderr_file="$smoke_test_base/review-pack-chatgpt.err"
+  codex_output_file="$smoke_test_base/review-pack-codex.out"
+  codex_stderr_file="$smoke_test_base/review-pack-codex.err"
+
+  mkdir -p "$codex_stub_dir" || return 1
+  cat > "$codex_stub_dir/codex" <<'EOF'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${SMOKE_CODEX_CALLED_FILE:-/dev/null}"
+printf 'codex invoked unexpectedly\n' >&2
+exit 99
+EOF
+  chmod +x "$codex_stub_dir/codex" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --help > "$help_file"
+  ) && grep -Fq -- '--target=<chatgpt|codex>' "$help_file" && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<text>' "$help_file" && ! grep -Fq -- '--target CHATGPT' "$help_file"; then
+    test_pass "review-pack help shows strict value syntax"
+  else
+    test_fail "review-pack help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --target chatgpt >/dev/null 2> "$target_format_stderr"
+  ); then
+    test_fail "review-pack rejects --target <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_format_stderr" "flag format not accepted" "--target" "use --target=<chatgpt|codex>"; then
+    test_pass "review-pack rejects --target <value>"
+  else
+    test_fail "review-pack rejects --target <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --target >/dev/null 2> "$target_missing_stderr"
+  ); then
+    test_fail "review-pack rejects missing --target value"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_missing_stderr" "missing flag value" "--target" "use --target=<chatgpt|codex>"; then
+    test_pass "review-pack rejects missing --target value"
+  else
+    test_fail "review-pack rejects missing --target value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --target= >/dev/null 2> "$target_empty_stderr"
+  ); then
+    test_fail "review-pack rejects empty --target value"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_empty_stderr" "empty flag value" "--target" "use --target=<chatgpt|codex>"; then
+    test_pass "review-pack rejects empty --target value"
+  else
+    test_fail "review-pack rejects empty --target value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --target=watson >/dev/null 2> "$target_unknown_stderr"
+  ); then
+    test_fail "review-pack rejects unsupported target values"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_unknown_stderr" "unsupported flag value" "--target" "use --target=<chatgpt|codex>"; then
+    test_pass "review-pack rejects unsupported target values"
+  else
+    test_fail "review-pack rejects unsupported target values"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --out-dir review-pack-output --target=chatgpt >/dev/null 2> "$out_dir_format_stderr"
+  ); then
+    test_fail "review-pack rejects --out-dir <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_format_stderr" "flag format not accepted" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "review-pack rejects --out-dir <value>"
+  else
+    test_fail "review-pack rejects --out-dir <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --out-dir --target=chatgpt >/dev/null 2> "$out_dir_missing_stderr"
+  ); then
+    test_fail "review-pack rejects missing --out-dir value"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_missing_stderr" "missing flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "review-pack rejects missing --out-dir value"
+  else
+    test_fail "review-pack rejects missing --out-dir value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --out-dir= --target=chatgpt >/dev/null 2> "$out_dir_empty_stderr"
+  ); then
+    test_fail "review-pack rejects empty --out-dir value"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_empty_stderr" "empty flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "review-pack rejects empty --out-dir value"
+  else
+    test_fail "review-pack rejects empty --out-dir value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --label review --target=chatgpt >/dev/null 2> "$label_format_stderr"
+  ); then
+    test_fail "review-pack rejects --label <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_format_stderr" "flag format not accepted" "--label" "use --label=<text>"; then
+    test_pass "review-pack rejects --label <value>"
+  else
+    test_fail "review-pack rejects --label <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --label --target=chatgpt >/dev/null 2> "$label_missing_stderr"
+  ); then
+    test_fail "review-pack rejects missing --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_missing_stderr" "missing flag value" "--label" "use --label=<text>"; then
+    test_pass "review-pack rejects missing --label value"
+  else
+    test_fail "review-pack rejects missing --label value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --label= --target=chatgpt >/dev/null 2> "$label_empty_stderr"
+  ); then
+    test_fail "review-pack rejects empty --label value"
+    status=1
+  elif smoke_assert_flag_error_shape "$label_empty_stderr" "empty flag value" "--label" "use --label=<text>"; then
+    test_pass "review-pack rejects empty --label value"
+  else
+    test_fail "review-pack rejects empty --label value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_CODEX_CALLED_FILE="$codex_called_file" PATH="$codex_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target=chatgpt --label=review
+  ) > "$chatgpt_output_file" 2> "$chatgpt_stderr_file"; then
+    :
+  else
+    test_fail "review-pack chatgpt bundle run succeeds"
+    status=1
+  fi
+
+  chatgpt_bundle_zip="$(sed -n '1p' "$chatgpt_output_file" | tr -d '\r')"
+  chatgpt_bundle_dir="${chatgpt_bundle_zip%.zip}"
+  chatgpt_repo_zip_output="$chatgpt_bundle_dir/repo-zip/output.txt"
+  chatgpt_repo_zip_path="$(sed -n 's/^INFO: zip path: //p' "$chatgpt_repo_zip_output" | tail -n 1)"
+
+  if [ "$(wc -l < "$chatgpt_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$chatgpt_output_file" && [ -f "$chatgpt_bundle_zip" ] && [ -d "$chatgpt_bundle_dir" ] && [ -f "$chatgpt_bundle_dir/summary.txt" ] && [ -f "$chatgpt_bundle_dir/post-codex/output.txt" ] && [ -f "$chatgpt_repo_zip_output" ] && [ -n "$chatgpt_repo_zip_path" ] && [ -f "$chatgpt_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ]; then
+    test_pass "review-pack chatgpt target creates a staged review bundle"
+  else
+    test_fail "review-pack chatgpt target creates a staged review bundle"
+    status=1
+  fi
+
+  if python3 - "$chatgpt_repo_zip_path" <<'PY'
+import pathlib
+import sys
+import zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(zip_path) as archive:
+    names = set(archive.namelist())
+    assert any(name.endswith('/.editorconfig') for name in names)
+    assert any(name.endswith('/docs/safe-untracked.md') for name in names)
+    assert not any('build/output.bin' in name for name in names)
+    assert not any('node_modules/pkg/cache.txt' in name for name in names)
+    assert not any('vendor/cache/tool.bin' in name for name in names)
+    assert not any('repo-automation-output/review-pack/output.txt' in name for name in names)
+    assert not any(name.endswith('/.env') or '/.env.' in name for name in names)
+PY
+  then
+    test_pass "review-pack chatgpt bundle includes only safe repository snapshot files"
+  else
+    test_fail "review-pack chatgpt bundle includes only safe repository snapshot files"
+    status=1
+  fi
+
+  if [ -f "$codex_called_file" ]; then
+    test_fail "review-pack chatgpt target does not invoke Codex"
+    status=1
+  else
+    test_pass "review-pack chatgpt target does not invoke Codex"
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_CODEX_CALLED_FILE="$codex_called_file" PATH="$codex_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target=codex --label=review
+  ) > "$codex_output_file" 2> "$codex_stderr_file"; then
+    :
+  else
+    test_fail "review-pack codex prompt run succeeds"
+    status=1
+  fi
+
+  codex_prompt_file="$(sed -n '1p' "$codex_output_file" | tr -d '\r')"
+
+  if [ "$(wc -l < "$codex_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$codex_output_file" && [ -f "$codex_prompt_file" ] && [ ! -e "$smoke_test_dir/review-pack" ] && grep -Fq 'Task' "$codex_prompt_file" && grep -Fq 'Goal' "$codex_prompt_file" && grep -Fq 'Scope' "$codex_prompt_file" && grep -Fq 'Evidence excerpt' "$codex_prompt_file" && grep -Fq 'Required behavior' "$codex_prompt_file" && grep -Fq 'Not in scope' "$codex_prompt_file" && grep -Fq 'Checks required' "$codex_prompt_file" && grep -Fq 'Output contract' "$codex_prompt_file"; then
+    test_pass "review-pack codex target creates a local prompt artifact"
+  else
+    test_fail "review-pack codex target creates a local prompt artifact"
+    status=1
+  fi
+
+  if [ -f "$codex_called_file" ]; then
+    test_fail "review-pack codex target does not invoke Codex"
+    status=1
+  else
+    test_pass "review-pack codex target does not invoke Codex"
+  fi
+
+  return "$status"
+}
+
+
+smoke_check_repair_prompt_contract() {
+  local status=0
+  local output_root=""
+  local failure_log_root=""
+  local codex_stub_dir=""
+  local codex_called_file=""
+  local help_file=""
+  local source_format_stderr=""
+  local source_missing_stderr=""
+  local source_empty_stderr=""
+  local source_unknown_stderr=""
+  local target_format_stderr=""
+  local target_missing_stderr=""
+  local target_empty_stderr=""
+  local target_unknown_stderr=""
+  local evidence_file_format_stderr=""
+  local evidence_file_missing_stderr=""
+  local evidence_file_empty_stderr=""
+  local pr_format_stderr=""
+  local pr_missing_stderr=""
+  local pr_empty_stderr=""
+  local run_id_format_stderr=""
+  local run_id_missing_stderr=""
+  local run_id_empty_stderr=""
+  local out_dir_format_stderr=""
+  local out_dir_missing_stderr=""
+  local out_dir_empty_stderr=""
+  local ci_json_file=""
+  local local_failure_log=""
+  local ci_stub_log=""
+  local ci_stub_dir=""
+  local ci_stub_path=""
+  local ci_output_file=""
+  local ci_prompt_file=""
+  local local_output_file=""
+  local local_prompt_file=""
+  local evidence_output_file=""
+  local evidence_prompt_file=""
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_artifact_safety_fixture "$smoke_test_dir" || return 1
+  output_root="$smoke_test_base/repair-prompt-output"
+  failure_log_root="$smoke_test_base/repair-prompt-failure"
+  codex_stub_dir="$smoke_test_base/repair-prompt-codex-stub"
+  codex_called_file="$smoke_test_base/repair-prompt-codex-called.txt"
+  help_file="$smoke_test_base/repair-prompt-help.txt"
+  source_format_stderr="$smoke_test_base/repair-prompt-source-format.stderr"
+  source_missing_stderr="$smoke_test_base/repair-prompt-source-missing.stderr"
+  source_empty_stderr="$smoke_test_base/repair-prompt-source-empty.stderr"
+  source_unknown_stderr="$smoke_test_base/repair-prompt-source-unknown.stderr"
+  target_format_stderr="$smoke_test_base/repair-prompt-target-format.stderr"
+  target_missing_stderr="$smoke_test_base/repair-prompt-target-missing.stderr"
+  target_empty_stderr="$smoke_test_base/repair-prompt-target-empty.stderr"
+  target_unknown_stderr="$smoke_test_base/repair-prompt-target-unknown.stderr"
+  evidence_file_format_stderr="$smoke_test_base/repair-prompt-evidence-format.stderr"
+  evidence_file_missing_stderr="$smoke_test_base/repair-prompt-evidence-missing.stderr"
+  evidence_file_empty_stderr="$smoke_test_base/repair-prompt-evidence-empty.stderr"
+  pr_format_stderr="$smoke_test_base/repair-prompt-pr-format.stderr"
+  pr_missing_stderr="$smoke_test_base/repair-prompt-pr-missing.stderr"
+  pr_empty_stderr="$smoke_test_base/repair-prompt-pr-empty.stderr"
+  run_id_format_stderr="$smoke_test_base/repair-prompt-run-id-format.stderr"
+  run_id_missing_stderr="$smoke_test_base/repair-prompt-run-id-missing.stderr"
+  run_id_empty_stderr="$smoke_test_base/repair-prompt-run-id-empty.stderr"
+  out_dir_format_stderr="$smoke_test_base/repair-prompt-out-dir-format.stderr"
+  out_dir_missing_stderr="$smoke_test_base/repair-prompt-out-dir-missing.stderr"
+  out_dir_empty_stderr="$smoke_test_base/repair-prompt-out-dir-empty.stderr"
+  missing_evidence_stderr="$smoke_test_base/repair-prompt-missing-evidence.stderr"
+  ci_json_file="$smoke_test_base/repair-prompt-ci-evidence.json"
+  local_failure_log="$failure_log_root/repo-automation-template/run-tests-20260516-120000.log"
+  ci_stub_log="$smoke_test_base/repair-prompt-ci-stub.log"
+  ci_stub_dir="$smoke_test_base/repair-prompt-ci-stub"
+  ci_stub_path="$smoke_test_dir/repo-automation/bin/ci-log-dump"
+  ci_output_file="$smoke_test_base/repair-prompt-ci.out"
+  local_output_file="$smoke_test_base/repair-prompt-local.out"
+  evidence_output_file="$smoke_test_base/repair-prompt-evidence.out"
+
+  mkdir -p "$failure_log_root/repo-automation-template" "$ci_stub_dir" "$codex_stub_dir" || return 1
+  cat > "$codex_stub_dir/codex" <<'EOF'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${SMOKE_CODEX_CALLED_FILE:-/dev/null}"
+printf 'codex invoked unexpectedly\n' >&2
+exit 99
+EOF
+  chmod +x "$codex_stub_dir/codex" || return 1
+
+  cat > "$ci_json_file" <<'EOF'
+{"script":"ci-log-dump","first_failure_label":"ci failure","first_failure_excerpt":"CI excerpt line one\npassword=secret-value","recommended_fix":"Restart the job","tail_excerpt":["tail line one","tail line two"],"overall_status":"fail"}
+EOF
+
+  cat > "$local_failure_log" <<'EOF'
+FAIL: local failure
+excerpt: local failure line
+password=supersecret
+fix: rerun the command
+EOF
+
+  cat > "$ci_stub_path" <<EOF
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "\$*" >> "$ci_stub_log"
+case "\$*" in
+  *'--first-failure'*'--machine-json'*)
+    :
+    ;;
+  *)
+    printf 'ci-log-dump stub missing required flags\n' >&2
+    exit 99
+    ;;
+esac
+cat <<'JSON'
+{"script":"ci-log-dump","first_failure_label":"gathered CI failure","first_failure_excerpt":"gathered ci excerpt\npassword=supersecret","recommended_fix":"fix the CI path","tail_excerpt":["tail line one","tail line two"],"overall_status":"fail"}
+JSON
+EOF
+  chmod +x "$ci_stub_path" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --help > "$help_file"
+  ) && grep -Fq -- '--source=<ci|local>' "$help_file" && grep -Fq -- '--target=codex' "$help_file" && grep -Fq -- '--evidence-file=<path>' "$help_file" && grep -Fq -- '--pr=<number>' "$help_file" && grep -Fq -- '--run-id=<id>' "$help_file"; then
+    test_pass "repair-prompt help shows strict value syntax"
+  else
+    test_fail "repair-prompt help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --source ci --target=codex >/dev/null 2> "$source_format_stderr"
+  ); then
+    test_fail "repair-prompt rejects --source <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_format_stderr" "flag format not accepted" "--source" "use --source=<ci|local>"; then
+    test_pass "repair-prompt rejects --source <value>"
+  else
+    test_fail "repair-prompt rejects --source <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --source >/dev/null 2> "$source_missing_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing --source value"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_missing_stderr" "missing flag value" "--source" "use --source=<ci|local>"; then
+    test_pass "repair-prompt rejects missing --source value"
+  else
+    test_fail "repair-prompt rejects missing --source value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --source= --target=codex >/dev/null 2> "$source_empty_stderr"
+  ); then
+    test_fail "repair-prompt rejects empty --source value"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_empty_stderr" "empty flag value" "--source" "use --source=<ci|local>"; then
+    test_pass "repair-prompt rejects empty --source value"
+  else
+    test_fail "repair-prompt rejects empty --source value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --source=watson --target=codex >/dev/null 2> "$source_unknown_stderr"
+  ); then
+    test_fail "repair-prompt rejects unsupported source values"
+    status=1
+  elif smoke_assert_flag_error_shape "$source_unknown_stderr" "unsupported flag value" "--source" "use --source=<ci|local>"; then
+    test_pass "repair-prompt rejects unsupported source values"
+  else
+    test_fail "repair-prompt rejects unsupported source values"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --target codex --source=ci >/dev/null 2> "$target_format_stderr"
+  ); then
+    test_fail "repair-prompt rejects --target <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_format_stderr" "flag format not accepted" "--target" "use --target=codex"; then
+    test_pass "repair-prompt rejects --target <value>"
+  else
+    test_fail "repair-prompt rejects --target <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --target >/dev/null 2> "$target_missing_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing --target value"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_missing_stderr" "missing flag value" "--target" "use --target=codex"; then
+    test_pass "repair-prompt rejects missing --target value"
+  else
+    test_fail "repair-prompt rejects missing --target value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --target= >/dev/null 2> "$target_empty_stderr"
+  ); then
+    test_fail "repair-prompt rejects empty --target value"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_empty_stderr" "empty flag value" "--target" "use --target=codex"; then
+    test_pass "repair-prompt rejects empty --target value"
+  else
+    test_fail "repair-prompt rejects empty --target value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --target=chatgpt --source=ci >/dev/null 2> "$target_unknown_stderr"
+  ); then
+    test_fail "repair-prompt rejects unsupported target values"
+    status=1
+  elif smoke_assert_flag_error_shape "$target_unknown_stderr" "unsupported flag value" "--target" "use --target=codex"; then
+    test_pass "repair-prompt rejects unsupported target values"
+  else
+    test_fail "repair-prompt rejects unsupported target values"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --evidence-file review-prompt.json --source=ci --target=codex >/dev/null 2> "$evidence_file_format_stderr"
+  ); then
+    test_fail "repair-prompt rejects --evidence-file <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$evidence_file_format_stderr" "flag format not accepted" "--evidence-file" "use --evidence-file=<path>"; then
+    test_pass "repair-prompt rejects --evidence-file <value>"
+  else
+    test_fail "repair-prompt rejects --evidence-file <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --evidence-file --source=ci --target=codex >/dev/null 2> "$evidence_file_missing_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing --evidence-file value"
+    status=1
+  elif smoke_assert_flag_error_shape "$evidence_file_missing_stderr" "missing flag value" "--evidence-file" "use --evidence-file=<path>"; then
+    test_pass "repair-prompt rejects missing --evidence-file value"
+  else
+    test_fail "repair-prompt rejects missing --evidence-file value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --evidence-file= --source=ci --target=codex >/dev/null 2> "$evidence_file_empty_stderr"
+  ); then
+    test_fail "repair-prompt rejects empty --evidence-file value"
+    status=1
+  elif smoke_assert_flag_error_shape "$evidence_file_empty_stderr" "empty flag value" "--evidence-file" "use --evidence-file=<path>"; then
+    test_pass "repair-prompt rejects empty --evidence-file value"
+  else
+    test_fail "repair-prompt rejects empty --evidence-file value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --pr 123 --source=ci --target=codex >/dev/null 2> "$pr_format_stderr"
+  ); then
+    test_fail "repair-prompt rejects --pr <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$pr_format_stderr" "flag format not accepted" "--pr" "use --pr=<number>"; then
+    test_pass "repair-prompt rejects --pr <value>"
+  else
+    test_fail "repair-prompt rejects --pr <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --pr --source=ci --target=codex >/dev/null 2> "$pr_missing_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$pr_missing_stderr" "missing flag value" "--pr" "use --pr=<number>"; then
+    test_pass "repair-prompt rejects missing --pr value"
+  else
+    test_fail "repair-prompt rejects missing --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --pr= --source=ci --target=codex >/dev/null 2> "$pr_empty_stderr"
+  ); then
+    test_fail "repair-prompt rejects empty --pr value"
+    status=1
+  elif smoke_assert_flag_error_shape "$pr_empty_stderr" "empty flag value" "--pr" "use --pr=<number>"; then
+    test_pass "repair-prompt rejects empty --pr value"
+  else
+    test_fail "repair-prompt rejects empty --pr value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --run-id 123 --source=ci --target=codex >/dev/null 2> "$run_id_format_stderr"
+  ); then
+    test_fail "repair-prompt rejects --run-id <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_id_format_stderr" "flag format not accepted" "--run-id" "use --run-id=<id>"; then
+    test_pass "repair-prompt rejects --run-id <value>"
+  else
+    test_fail "repair-prompt rejects --run-id <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --run-id --source=ci --target=codex >/dev/null 2> "$run_id_missing_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing --run-id value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_id_missing_stderr" "missing flag value" "--run-id" "use --run-id=<id>"; then
+    test_pass "repair-prompt rejects missing --run-id value"
+  else
+    test_fail "repair-prompt rejects missing --run-id value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --run-id= --source=ci --target=codex >/dev/null 2> "$run_id_empty_stderr"
+  ); then
+    test_fail "repair-prompt rejects empty --run-id value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_id_empty_stderr" "empty flag value" "--run-id" "use --run-id=<id>"; then
+    test_pass "repair-prompt rejects empty --run-id value"
+  else
+    test_fail "repair-prompt rejects empty --run-id value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --out-dir repair-prompt-output --source=ci --target=codex >/dev/null 2> "$out_dir_format_stderr"
+  ); then
+    test_fail "repair-prompt rejects --out-dir <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_format_stderr" "flag format not accepted" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "repair-prompt rejects --out-dir <value>"
+  else
+    test_fail "repair-prompt rejects --out-dir <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --out-dir --source=ci --target=codex >/dev/null 2> "$out_dir_missing_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing --out-dir value"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_missing_stderr" "missing flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "repair-prompt rejects missing --out-dir value"
+  else
+    test_fail "repair-prompt rejects missing --out-dir value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --out-dir= --source=ci --target=codex >/dev/null 2> "$out_dir_empty_stderr"
+  ); then
+    test_fail "repair-prompt rejects empty --out-dir value"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_empty_stderr" "empty flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "repair-prompt rejects empty --out-dir value"
+  else
+    test_fail "repair-prompt rejects empty --out-dir value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repair-prompt --source=ci --target=codex --evidence-file="$smoke_test_dir/missing-evidence.json" >/dev/null 2> "$missing_evidence_stderr"
+  ); then
+    test_fail "repair-prompt rejects missing evidence file"
+    status=1
+  elif grep -Fqx "fail: missing evidence file: $smoke_test_dir/missing-evidence.json" "$missing_evidence_stderr" && grep -Fqx 'fix: pass --evidence-file=<path> to an existing CI or local evidence file' "$missing_evidence_stderr"; then
+    test_pass "repair-prompt rejects missing evidence file"
+  else
+    test_fail "repair-prompt rejects missing evidence file"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_CODEX_CALLED_FILE="$codex_called_file" REPO_AUTOMATION_OUTPUT_DIR="$output_root" PATH="$codex_stub_dir:$PATH" repo-automation/bin/repair-prompt --source=ci --target=codex --evidence-file="$ci_json_file"
+  ) > "$evidence_output_file" 2> "$local_output_file"; then
+    :
+  else
+    test_fail "repair-prompt evidence-file run succeeds"
+    status=1
+  fi
+
+  evidence_prompt_file="$(sed -n '1p' "$evidence_output_file" | tr -d '\r')"
+  if [ "$(wc -l < "$evidence_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$evidence_output_file" && [ -f "$evidence_prompt_file" ] && grep -Fq 'CI excerpt line one' "$evidence_prompt_file" && grep -Fq 'Restart the job' "$evidence_prompt_file" && ! grep -Fq 'password=secret-value' "$evidence_prompt_file" && ! grep -Fq 'supersecret' "$evidence_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
+    test_pass "repair-prompt uses provided CI evidence file and redacts secrets"
+  else
+    test_fail "repair-prompt uses provided CI evidence file and redacts secrets"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_CODEX_CALLED_FILE="$codex_called_file" REPO_AUTOMATION_OUTPUT_DIR="$output_root" PATH="$codex_stub_dir:$PATH" repo-automation/bin/repair-prompt --source=ci --target=codex --pr=123
+  ) > "$ci_output_file" 2> "$local_output_file"; then
+    :
+  else
+    test_fail "repair-prompt CI gather run succeeds"
+    status=1
+  fi
+
+  ci_prompt_file="$(sed -n '1p' "$ci_output_file" | tr -d '\r')"
+  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--machine-json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && [ "$(wc -l < "$ci_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$ci_output_file"; then
+    test_pass "repair-prompt gathers CI evidence with ci-log-dump"
+  else
+    test_fail "repair-prompt gathers CI evidence with ci-log-dump"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_CODEX_CALLED_FILE="$codex_called_file" TMPDIR="$failure_log_root" REPO_AUTOMATION_OUTPUT_DIR="$output_root" PATH="$codex_stub_dir:$PATH" repo-automation/bin/repair-prompt --source=local --target=codex
+  ) > "$local_output_file" 2>&1; then
+    :
+  else
+    test_fail "repair-prompt local gather run succeeds"
+    status=1
+  fi
+
+  local_prompt_file="$(sed -n '1p' "$local_output_file" | tr -d '\r')"
+  if [ "$(wc -l < "$local_output_file" | tr -d '[:space:]')" = "1" ] && ! grep -Eq '^(INFO|PASS):' "$local_output_file" && [ -f "$local_prompt_file" ] && grep -Fq 'Local failure evidence' "$local_prompt_file" && grep -Fq 'local failure line' "$local_prompt_file" && grep -Fq 'Checks required' "$local_prompt_file" && ! grep -Fq 'password=supersecret' "$local_prompt_file" && ! grep -Fq 'supersecret' "$local_prompt_file" && [ ! -e "$smoke_test_dir/repair-prompt" ]; then
+    test_pass "repair-prompt local source creates a prompt artifact"
+  else
+    test_fail "repair-prompt local source creates a prompt artifact"
+    status=1
+  fi
+
+  if [ -f "$codex_called_file" ]; then
+    test_fail "repair-prompt target=codex does not invoke Codex"
+    status=1
+  else
+    test_pass "repair-prompt target=codex does not invoke Codex"
   fi
 
   return "$status"
@@ -2919,6 +3697,7 @@ smoke_check_repo_zip_contract() {
   printf 'repo zip artifact\n' > repo-zip/staging.txt || return 1
   printf 'self output artifact\n' > repo-automation-output/repo-zip/previous.txt || return 1
   mkdir -p nested/subdir || return 1
+  smoke_write_artifact_safety_fixture "$smoke_test_dir" || return 1
 
   if (
     cd nested/subdir || exit 1
@@ -2950,7 +3729,7 @@ smoke_check_repo_zip_contract() {
     status=1
   fi
 
-  if grep -Eq '^tracked\.txt$' "$files_file" && grep -Eq '^untracked\.txt$' "$files_file" && grep -Eq '^repo-automation/bin/repo-zip$' "$files_file" && grep -Eq '^repo-automation/bin/ci-log-dump$' "$files_file" && ! grep -Eq '^ignored\.log$' "$files_file" && ! grep -Eq '(^|/)\.git(/|$)' "$files_file" && ! grep -Eq '^post-codex/' "$files_file" && ! grep -Eq '^ci-log-dump/' "$files_file" && ! grep -Eq '^repo-zip/' "$files_file" && ! grep -Eq '^repo-automation-output/' "$files_file"; then
+  if grep -Eq '^tracked\.txt$' "$files_file" && grep -Eq '^untracked\.txt$' "$files_file" && grep -Eq '^repo-automation/bin/repo-zip$' "$files_file" && grep -Eq '^repo-automation/bin/ci-log-dump$' "$files_file" && grep -Eq '^\.editorconfig$' "$files_file" && grep -Eq '^docs/safe-untracked.md$' "$files_file" && ! grep -Eq '^ignored\.log$' "$files_file" && ! grep -Eq '^\.env$' "$files_file" && ! grep -Eq '^build/output\.bin$' "$files_file" && ! grep -Eq '^node_modules/pkg/cache\.txt$' "$files_file" && ! grep -Eq '^vendor/cache/tool\.bin$' "$files_file" && ! grep -Eq '^repo-automation-output/review-pack/output\.txt$' "$files_file" && ! grep -Eq '(^|/)\.git(/|$)' "$files_file" && ! grep -Eq '^post-codex/' "$files_file" && ! grep -Eq '^ci-log-dump/' "$files_file" && ! grep -Eq '^repo-zip/' "$files_file" && ! grep -Eq '^review-pack/' "$files_file" && ! grep -Eq '^repair-prompt/' "$files_file" && ! grep -Eq '^evidence-bundle/' "$files_file" && ! grep -Eq '^repo-automation-output/' "$files_file"; then
     test_pass "repo-zip file selection includes tracked and untracked non-ignored files only"
   else
     test_fail "repo-zip file selection includes tracked and untracked non-ignored files only"
@@ -2970,14 +3749,18 @@ with zipfile.ZipFile(zip_path) as archive:
     untracked_name = f'{zip_root}/untracked.txt'
     helper_name = f'{zip_root}/repo-automation/bin/repo-zip'
     ci_log_dump_name = f'{zip_root}/repo-automation/bin/ci-log-dump'
+    dotfile_name = f'{zip_root}/.editorconfig'
+    doc_name = f'{zip_root}/docs/safe-untracked.md'
     ignored_name = f'{zip_root}/ignored.log'
     assert tracked_name in names
     assert untracked_name in names
     assert helper_name in names
     assert ci_log_dump_name in names
+    assert dotfile_name in names
+    assert doc_name in names
     assert ignored_name not in names
     assert not any(name == f'{zip_root}/.git' or name.startswith(f'{zip_root}/.git/') for name in names)
-    assert not any('post-codex/' in name or 'ci-log-dump/' in name or 'repo-zip/' in name or 'repo-automation-output/' in name for name in names)
+    assert not any('post-codex/' in name or 'ci-log-dump/' in name or 'repo-zip/' in name or 'review-pack/' in name or 'repair-prompt/' in name or 'evidence-bundle/' in name or 'repo-automation-output/' in name for name in names)
     assert archive.read(tracked_name).decode('utf-8').endswith('tracked update\n')
     assert archive.read(untracked_name).decode('utf-8') == 'untracked content\n'
 PY
@@ -4228,7 +5011,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
   ) && python -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 23 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repair-prompt" in data.get("files_to_add", []) and "repo-automation/bin/review-pack" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repair-prompt.md" in data.get("files_to_add", []) and "repo-automation/docs/review-pack.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 25 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -4311,7 +5094,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/docs/repo-zip.md" ] && [ -f "$install_target/repo-automation/docs/evidence-bundle.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/repo-zip" ] && [ -f "$install_target/repo-automation/bin/evidence-bundle" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/repo-zip" ] && [ -x "$install_target/repo-automation/bin/evidence-bundle" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
+  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/docs/repair-prompt.md" ] && [ -f "$install_target/repo-automation/docs/review-pack.md" ] && [ -f "$install_target/repo-automation/docs/repo-zip.md" ] && [ -f "$install_target/repo-automation/docs/evidence-bundle.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/repair-prompt" ] && [ -f "$install_target/repo-automation/bin/review-pack" ] && [ -f "$install_target/repo-automation/bin/repo-zip" ] && [ -f "$install_target/repo-automation/bin/evidence-bundle" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/repair-prompt" ] && [ -x "$install_target/repo-automation/bin/review-pack" ] && [ -x "$install_target/repo-automation/bin/repo-zip" ] && [ -x "$install_target/repo-automation/bin/evidence-bundle" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"
@@ -4330,6 +5113,8 @@ smoke_check_installer_apply_contract() {
     [ -f repo-automation/tests/contracts/repo-doctor.sh ] || return 1
     [ -f repo-automation/tests/contracts/status-packet.sh ] || return 1
     [ -f repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
+    [ -f repo-automation/tests/contracts/repair-prompt.sh ] || return 1
+    [ -f repo-automation/tests/contracts/review-pack.sh ] || return 1
     [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
@@ -4349,6 +5134,8 @@ smoke_check_installer_apply_contract() {
     [ -x repo-automation/tests/contracts/repo-doctor.sh ] || return 1
     [ -x repo-automation/tests/contracts/status-packet.sh ] || return 1
     [ -x repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
+    [ -x repo-automation/tests/contracts/repair-prompt.sh ] || return 1
+    [ -x repo-automation/tests/contracts/review-pack.sh ] || return 1
     [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
