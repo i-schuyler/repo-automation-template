@@ -33,6 +33,9 @@ case "$cmd $sub" in
     url=""
     title=""
     state=""
+    if [ "${GH_STUB_PR_VIEW_EMPTY:-0}" -eq 1 ] 2>/dev/null; then
+      exit 1
+    fi
     if [ -n "${GH_STUB_PR_STATE_FILE:-}" ] && [ -f "$GH_STUB_PR_STATE_FILE" ]; then
       number="$(repo_flow_stub_field "$GH_STUB_PR_STATE_FILE" 1)"
       url="$(repo_flow_stub_field "$GH_STUB_PR_STATE_FILE" 2)"
@@ -151,6 +154,317 @@ PY
   ) || return 1
 }
 
+smoke_check_repo_flow_status_card_clean_main() {
+  local status=0
+  local gh_stub_dir=""
+  local human_out=""
+  local stderr_file=""
+  local create_log_file=""
+  local expected_file=""
+  local head_before=""
+  local head_after=""
+  local status_before=""
+  local status_after=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  human_out="$smoke_test_base/repo-flow-status-card-main.txt"
+  stderr_file="$smoke_test_base/repo-flow-status-card-main.stderr"
+  create_log_file="$smoke_test_base/repo-flow-status-card-main-create.log"
+  expected_file="$smoke_test_base/repo-flow-status-card-main.expected"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_EMPTY=1 \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    repo-automation/bin/repo-flow status-card > "$human_out" 2> "$stderr_file"
+  ) && [ ! -s "$stderr_file" ] && [ ! -f "$create_log_file" ]; then
+    cat > "$expected_file" <<'EOF'
+branch: main
+default: main
+worktree: clean
+tracked_changed: none
+untracked: none
+range_vs_default: none
+ahead_behind: ahead=0 behind=0
+pr: none
+checks: no-pr
+next: create feature branch
+EOF
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    if cmp -s "$expected_file" "$human_out" &&
+      [ "$head_before" = "$head_after" ] &&
+      [ "$status_before" = "$status_after" ]; then
+      test_pass "repo-flow status-card reports clean main state"
+    else
+      test_fail "repo-flow status-card reports clean main state"
+      status=1
+    fi
+  else
+    test_fail "repo-flow status-card reports clean main state"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_status_card_feature_no_pr() {
+  local status=0
+  local gh_stub_dir=""
+  local human_out=""
+  local stderr_file=""
+  local create_log_file=""
+  local expected_file=""
+  local remote_branch_ref=""
+  local head_before=""
+  local head_after=""
+  local status_before=""
+  local status_after=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  human_out="$smoke_test_base/repo-flow-status-card-feature-no-pr.txt"
+  stderr_file="$smoke_test_base/repo-flow-status-card-feature-no-pr.stderr"
+  create_log_file="$smoke_test_base/repo-flow-status-card-feature-no-pr-create.log"
+  expected_file="$smoke_test_base/repo-flow-status-card-feature-no-pr.expected"
+  remote_branch_ref="refs/heads/feature/repo-flow-status-card-no-pr"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-status-card-no-pr" || return 1
+
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_EMPTY=1 \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    repo-automation/bin/repo-flow status-card > "$human_out" 2> "$stderr_file"
+  ) && [ ! -s "$stderr_file" ] && [ ! -f "$create_log_file" ] && ! git --git-dir="$smoke_remote_dir" rev-parse --verify "$remote_branch_ref" >/dev/null 2>&1; then
+    cat > "$expected_file" <<'EOF'
+branch: feature/repo-flow-status-card-no-pr
+default: main
+worktree: clean
+tracked_changed: none
+untracked: none
+range_vs_default: 1
+ahead_behind: ahead=1 behind=0
+pr: none
+checks: no-pr
+next: repo-automation/bin/repo-flow --dry-run
+EOF
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    if cmp -s "$expected_file" "$human_out" &&
+      [ "$head_before" = "$head_after" ] &&
+      [ "$status_before" = "$status_after" ]; then
+      test_pass "repo-flow status-card reports a feature branch without a PR"
+    else
+      test_fail "repo-flow status-card reports a feature branch without a PR"
+      status=1
+    fi
+  else
+    test_fail "repo-flow status-card reports a feature branch without a PR"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_status_card_existing_pr() {
+  local status=0
+  local gh_stub_dir=""
+  local human_out=""
+  local json_out=""
+  local json_stderr_file=""
+  local stderr_file=""
+  local create_log_file=""
+  local expected_file=""
+  local remote_branch_ref=""
+  local head_before=""
+  local head_after=""
+  local status_before=""
+  local status_after=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  human_out="$smoke_test_base/repo-flow-status-card-existing-pr.txt"
+  json_out="$smoke_test_base/repo-flow-status-card-existing-pr.json"
+  json_stderr_file="$smoke_test_base/repo-flow-status-card-existing-pr-json.stderr"
+  stderr_file="$smoke_test_base/repo-flow-status-card-existing-pr.stderr"
+  create_log_file="$smoke_test_base/repo-flow-status-card-existing-pr-create.log"
+  expected_file="$smoke_test_base/repo-flow-status-card-existing-pr.expected"
+  remote_branch_ref="refs/heads/feature/repo-flow-status-card-pr"
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-status-card-pr" || return 1
+
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_NUMBER=901 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/901' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    repo-automation/bin/repo-flow status-card > "$human_out" 2> "$stderr_file"
+  ) && [ ! -s "$stderr_file" ] && [ ! -f "$create_log_file" ] && ! git --git-dir="$smoke_remote_dir" rev-parse --verify "$remote_branch_ref" >/dev/null 2>&1; then
+    cat > "$expected_file" <<'EOF'
+branch: feature/repo-flow-status-card-pr
+default: main
+worktree: clean
+tracked_changed: none
+untracked: none
+range_vs_default: 1
+ahead_behind: ahead=1 behind=0
+pr: #901 open https://github.com/i-schuyler/repo-automation-template/pull/901
+checks: pending
+next: repo-automation/bin/ci-watch --pr=901 --poll-seconds=5 --timeout=900
+EOF
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    if cmp -s "$expected_file" "$human_out" &&
+      [ "$head_before" = "$head_after" ] &&
+      [ "$status_before" = "$status_after" ] &&
+      (
+        cd "$smoke_test_dir" || return 1
+        PATH="$gh_stub_dir:$PATH" \
+        GH_STUB_PR_VIEW_NUMBER=901 \
+        GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/901' \
+        GH_STUB_PR_VIEW_STATE='OPEN' \
+        GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' \
+        repo-automation/bin/repo-flow status-card --json > "$json_out" 2> "$json_stderr_file"
+      ) && [ ! -s "$json_stderr_file" ] && python -m json.tool "$json_out" >/dev/null && smoke_json_assert "$json_out" 'data.get("mode") == "status-card" and data.get("branch") == "feature/repo-flow-status-card-pr" and data.get("pr_number") == 901 and data.get("checks_state") == "pending" and data.get("next_action") == "repo-automation/bin/ci-watch --pr=901 --poll-seconds=5 --timeout=900" and data.get("overall_status") == "pass"'; then
+      test_pass "repo-flow status-card reports an open PR and parseable JSON"
+    else
+      test_fail "repo-flow status-card reports an open PR and parseable JSON"
+      status=1
+    fi
+  else
+    test_fail "repo-flow status-card reports an open PR and parseable JSON"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_status_card_skipped_checks() {
+  local status=0
+  local gh_stub_dir=""
+  local human_out=""
+  local stderr_file=""
+  local create_log_file=""
+  local expected_file=""
+  local head_before=""
+  local head_after=""
+  local status_before=""
+  local status_after=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  human_out="$smoke_test_base/repo-flow-status-card-skipped-checks.txt"
+  stderr_file="$smoke_test_base/repo-flow-status-card-skipped-checks.stderr"
+  create_log_file="$smoke_test_base/repo-flow-status-card-skipped-checks-create.log"
+  expected_file="$smoke_test_base/repo-flow-status-card-skipped-checks.expected"
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-status-card-skipped" || return 1
+
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_NUMBER=902 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/902' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"docs","bucket":"skipped","state":"SKIPPED","workflow":"ci"}]' \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    repo-automation/bin/repo-flow status-card > "$human_out" 2> "$stderr_file"
+  ) && [ ! -s "$stderr_file" ] && [ ! -f "$create_log_file" ]; then
+    cat > "$expected_file" <<'EOF'
+branch: feature/repo-flow-status-card-skipped
+default: main
+worktree: clean
+tracked_changed: none
+untracked: none
+range_vs_default: 1
+ahead_behind: ahead=1 behind=0
+pr: #902 open https://github.com/i-schuyler/repo-automation-template/pull/902
+checks: unknown
+next: inspect CI status
+EOF
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    if cmp -s "$expected_file" "$human_out" &&
+      [ "$head_before" = "$head_after" ] &&
+      [ "$status_before" = "$status_after" ]; then
+      test_pass "repo-flow status-card treats skipped-only checks as non-blocking"
+    else
+      test_fail "repo-flow status-card treats skipped-only checks as non-blocking"
+      status=1
+    fi
+  else
+    test_fail "repo-flow status-card treats skipped-only checks as non-blocking"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_status_card_contract() {
+  local status=0
+  local help_out=""
+  local unknown_stderr=""
+  local local_bash_path=""
+  local gh_stub_dir=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  help_out="$smoke_test_base/repo-flow-status-card-help.txt"
+  unknown_stderr="$smoke_test_base/repo-flow-status-card-unknown.stderr"
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow status-card --help > "$help_out"
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow status-card [--json] [--help]' "$help_out"; then
+    test_pass "repo-flow status-card help shows strict syntax"
+  else
+    test_fail "repo-flow status-card help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow status-card --whatever >/dev/null 2> "$unknown_stderr"
+  ); then
+    test_fail "repo-flow status-card rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_stderr" "unknown flag" "--whatever" "run repo-automation/bin/repo-flow status-card --help"; then
+    test_pass "repo-flow status-card rejects unknown flags"
+  else
+    test_fail "repo-flow status-card rejects unknown flags"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_repo_flow_dry_run_json() {
   local status=0
   local gh_stub_dir=""
@@ -223,6 +537,7 @@ smoke_check_repo_flow_existing_pr() {
 
   smoke_setup_temp_repo || return 1
   smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   state_file="$smoke_test_base/repo-flow-existing-pr.txt"
   create_log_file="$smoke_test_base/repo-flow-existing-pr-create.log"
@@ -271,6 +586,7 @@ smoke_check_repo_flow_create_pr() {
 
   smoke_setup_temp_repo || return 1
   smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   state_file="$smoke_test_base/repo-flow-create-pr.txt"
   create_log_file="$smoke_test_base/repo-flow-create-pr.log"
@@ -312,6 +628,11 @@ smoke_check_repo_flow_create_pr() {
 smoke_main() {
   local status=0
 
+  smoke_run_named_check "smoke:repo-flow-status-card-clean-main" smoke_check_repo_flow_status_card_clean_main || status=1
+  smoke_run_named_check "smoke:repo-flow-status-card-feature-no-pr" smoke_check_repo_flow_status_card_feature_no_pr || status=1
+  smoke_run_named_check "smoke:repo-flow-status-card-existing-pr" smoke_check_repo_flow_status_card_existing_pr || status=1
+  smoke_run_named_check "smoke:repo-flow-status-card-skipped-checks" smoke_check_repo_flow_status_card_skipped_checks || status=1
+  smoke_run_named_check "smoke:repo-flow-status-card-contract" smoke_check_repo_flow_status_card_contract || status=1
   smoke_run_named_check "smoke:repo-flow-dry-run-json" smoke_check_repo_flow_dry_run_json || status=1
   smoke_run_named_check "smoke:repo-flow-existing-pr" smoke_check_repo_flow_existing_pr || status=1
   smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1

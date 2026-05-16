@@ -17,8 +17,8 @@ This doc is the source of truth for the routing matrix. [Helper Contracts](helpe
 | downstream install/update | `repo-automation-install` | no | yes | no | no | no | `starter-template-ready` |
 | repo snapshot | `repo-zip` | yes | yes | no | no | no | `evidence-bundle` |
 | final audit/archive | `evidence-bundle` | no | yes | no | yes | no | `status-packet` |
-| status-card | `status-card` | yes | no | no | no | no | `status-packet` |
-| review-pack for ChatGPT | `review-pack` | yes | yes | no | no | no | `status-card` |
+| status-card | `repo-flow status-card` | yes | no | no | read-only network | no | contextual: `branch-cleanup`, `repo-flow`, `ci-watch`, `pr-finish`, or `failure-log` |
+| review-pack for ChatGPT | `review-pack` | yes | yes | no | no | no | `repo-flow status-card` |
 | review-pack for Codex | `review-pack` | yes | yes | no | no | no | `repair-prompt` |
 | repair-prompt | `repair-prompt` | yes | yes | no | no | no | `add-doc-pr` |
 | guarded submit | `submit` | no | yes | yes | yes | maybe | `pr-finish` |

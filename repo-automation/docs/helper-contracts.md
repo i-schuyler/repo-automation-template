@@ -27,7 +27,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | inventory | `managed-file-check`, `managed-file-add` | targeted-local / mutating | managed-path review/update helpers |
 | readiness | `github-settings-check`, `starter-template-ready`, `automation-freshness` | instant / network-read | read-only inventory/readiness checks |
 | audit | `repo-doctor`, `run-tests`, `shellcheck-ci-parity` | broad-local / targeted-local | umbrella or broad-check helpers |
-| PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers |
+| PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers; includes read-only `repo-flow status-card` |
 | artifacts | `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | mutating / CI-owned | uploadable or log artifact helpers |
 | status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers |
 | release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | mutating / network-read | release, reporting, and install helpers |
@@ -36,11 +36,12 @@ Use the linked doc for route-specific or contract-specific rules.
 
 | Name | State | Route | Public | Notes |
 | --- | --- | --- | --- | --- |
-| `status-card` | planned | state card | no | placeholder for later status presentation work |
 | `review-pack` | planned | review bundle | no | placeholder for later review packet work |
 | `repair-prompt` | planned | repair prompt | no | placeholder for later recovery flow work |
 | `submit` | planned | submit action | no | placeholder for later submission flow work |
 | `autopilot plan-only` | planned | plan-only | no | placeholder for later autopilot planning flow |
+
+`repo-flow status-card` is the public read-only status screen that lives under the `repo-flow` helper.
 
 ## CI failure taxonomy
 

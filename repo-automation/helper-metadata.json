@@ -478,7 +478,7 @@
       "runs_run_tests": false,
       "can_run_broad_checks": false,
       "supports_quiet": true,
-      "supports_json": false,
+      "supports_json": true,
       "artifact_helper": false,
       "umbrella_helper": true,
       "workflow_role": "workflow",
@@ -621,13 +621,6 @@
     }
   ],
   "planned_routes": [
-    {
-      "name": "status-card",
-      "state": "planned",
-      "route": "state card",
-      "public": false,
-      "workflow_role": "status"
-    },
     {
       "name": "review-pack",
       "state": "planned",
