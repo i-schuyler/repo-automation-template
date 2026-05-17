@@ -364,6 +364,41 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/contracts/pr-workflow.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/report-upstream.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/status-diff.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/ci.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/repo-health.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/artifacts.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/install-release.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/contracts/add-doc-pr.sh",
       "owner": "repo-automation-template",
       "kind": "test"

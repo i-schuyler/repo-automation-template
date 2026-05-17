@@ -6,6 +6,8 @@ set -o pipefail
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/artifacts.sh"
 
 smoke_main() {
   local status=0
