@@ -11,7 +11,9 @@ smoke_main() {
   local status=0
   local smoke_output_capture=""
 
+  # shellcheck disable=SC2034 # Used by shared test_finish_output/test_render_json.
   TEST_OUTPUT_SCRIPT="smoke"
+  smoke_help_requested=0
   smoke_parse_output_mode "$@" || return 1
   if [ "$smoke_help_requested" -eq 1 ]; then
     return 0

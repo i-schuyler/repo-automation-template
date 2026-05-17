@@ -6,7 +6,6 @@ TEST_TEMP_ROOT="${TMPDIR:-$HOME/.cache}/repo-automation-template-tests"
 TEST_CURRENT_CHECK=""
 TEST_CURRENT_CHECK_REPORTED=0
 TEST_CURRENT_CHECK_FAILED=0
-TEST_CURRENT_CHECK_WARNED=0
 TEST_LAST_TIMEOUT=0
 TEST_TIMEOUT_AVAILABLE=""
 TEST_TIMEOUT_KILL_AFTER_AVAILABLE=""
@@ -51,7 +50,6 @@ test_record_event() {
       fi
       ;;
     warn)
-      TEST_CURRENT_CHECK_WARNED=1
       if [ "$TEST_FIRST_WARNING_INDEX" -lt 0 ]; then
         TEST_FIRST_WARNING_INDEX="$event_index"
       fi
@@ -203,8 +201,7 @@ test_run_named_check() {
   TEST_CURRENT_CHECK="$check_name"
   TEST_CURRENT_CHECK_REPORTED=0
   TEST_CURRENT_CHECK_FAILED=0
-  TEST_CURRENT_CHECK_WARNED=0
-  export TEST_CURRENT_CHECK
+    export TEST_CURRENT_CHECK
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
   fi

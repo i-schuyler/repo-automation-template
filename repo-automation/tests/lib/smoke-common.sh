@@ -40,6 +40,7 @@ smoke_parse_output_mode() {
         ;;
       --help)
         smoke_usage
+        # shellcheck disable=SC2034 # Read by smoke wrapper scripts after parsing.
         smoke_help_requested=1
         return 0
         ;;
