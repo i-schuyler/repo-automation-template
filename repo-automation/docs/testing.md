@@ -35,9 +35,9 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, starter-template profile template installation, and downstream install contract auditing in temporary repos, including the `repo-automation/tests/lib/test-common.sh` and `repo-automation/tests/lib/smoke-common.sh` harness dependencies plus `repo-automation/tests/contracts/` under `--include-tests`
 - starter-template install smoke coverage that exercises `repo-automation/bin/repo-automation-install --starter-template --apply` in a temporary target repo, verifies `repo-automation/bin/starter-template-ready --check-current`, verifies `repo-automation/bin/repo-doctor --quick --no-run-tests`, and checks that the source repo artifact guard stays clean after the run
 - smoke coverage for `repo-automation/bin/prepare-release` help, check, dry-run, apply, machine-JSON, and managed version placement updates in a temporary repo
-- lightweight docs CI via `repo-automation/tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks
+- lightweight docs CI via `repo-automation/tests/docs-check.sh` for markdown link validation, docs index coverage, stale phrasing, public entry-point navigation, and basic Markdown formatting checks; it follows the quiet-first contract where success prints `pass`, `--quiet` stays silent, and `--explain` keeps detailed progress lines
 - JSON parseability checks for branch cleanup and preflight
-- version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection in `repo-automation/tests/version-consistency.sh`
+- version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection in `repo-automation/tests/version-consistency.sh`; it also follows the quiet-first contract where success prints `pass`, `--quiet` stays silent, and `--explain` keeps detailed progress lines
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
