@@ -1457,6 +1457,8 @@ ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation
   pr_bundle_zip="$(grep -E '^/' "$pr_output_log" | tail -n 1 | tr -d '\r')"
   pr_bundle_dir="${pr_bundle_zip%.zip}"
   pr_summary_file="$pr_bundle_dir/summary.txt"
+  pr_ci_log_output_file="$pr_bundle_dir/ci-log-dump/output.txt"
+  pr_ci_log_path=""
   pr_bundle_root="$(basename "$pr_bundle_dir")"
 
   if grep -Eq '^PR number: 123$' "$pr_summary_file" && grep -Eq '^Included sections: .*ci-log-dump' "$pr_summary_file" && grep -Eq '^CI log dump dir: ' "$pr_summary_file"; then
@@ -1466,7 +1468,8 @@ ci log line two' REPO_AUTOMATION_OUTPUT_DIR="$output_root" ../../repo-automation
     status=1
   fi
 
-  if smoke_assert_single_path_output "$pr_output_log" && grep -q '^Saved log path: ' "$pr_bundle_dir/ci-log-dump/output.txt"; then
+  pr_ci_log_path="$(tr -d '\r' < "$pr_ci_log_output_file")"
+  if smoke_assert_single_path_output "$pr_output_log" && smoke_assert_single_path_output "$pr_ci_log_output_file" && [ -f "$pr_ci_log_path" ] && case "$pr_ci_log_path" in "$pr_bundle_dir/ci-log-dump/"*) true ;; *) false ;; esac; then
     test_pass "evidence-bundle PR mode saves CI log output"
   else
     test_fail "evidence-bundle PR mode saves CI log output"
