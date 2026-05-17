@@ -23,7 +23,7 @@ PR-first review remains the normal path; use `post-codex-packet`, `repo-zip`, `e
 | fallback review-pack for ChatGPT | `review-pack --target=chatgpt` | yes | yes | no | no | no | `repo-flow status-card` |
 | fallback review-pack for Codex | `review-pack --target=codex` | yes | yes | no | no | no | `repair-prompt` |
 | repair-prompt | `repair-prompt` | yes | yes | no | no | no | `add-doc-pr` |
-| guarded submit | `submit` | no | yes | yes | yes | maybe | `pr-finish` |
+| guarded submit | `repo-flow submit` | no | yes | yes | yes | maybe | `pr-finish` |
 | autopilot plan-only | `autopilot plan-only` | yes | no | no | no | no | `status-packet` |
 
 `review-pack --target=codex` and `repair-prompt --target=codex` are artifact-only routes; they do not invoke Codex.

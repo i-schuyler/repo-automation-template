@@ -17,10 +17,15 @@ repo_flow_stop_reason=""
 
 repo_flow_usage() {
   printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_status_card_usage() {
   printf 'Usage: repo-automation/bin/repo-flow status-card [--json] [--help]\n'
+}
+
+repo_flow_submit_usage() {
+  printf 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_info() {
@@ -337,6 +342,304 @@ EOF
   return 0
 }
 
+repo_flow_submit_stop() {
+  repo_flow_stop "$*"
+}
+
+repo_flow_submit_validate_path() {
+  local path="$1"
+
+  case "$path" in
+    "")
+      repo_flow_submit_stop "empty path"
+      return 1
+      ;;
+    /*)
+      repo_flow_submit_stop "absolute paths are not allowed: $path"
+      return 1
+      ;;
+    *..*)
+      repo_flow_submit_stop "path contains ..: $path"
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+repo_flow_submit_stage_paths() {
+  local paths_csv="$1"
+  local -n staged_paths_ref="$2"
+  local path=""
+  local tracked_path=0
+  local -a submit_paths=()
+
+  if ! git diff --cached --quiet --exit-code -- >/dev/null 2>&1; then
+    repo_flow_submit_stop "pre-staged changes are not allowed with --paths"
+    return 1
+  fi
+
+  IFS=, read -r -a submit_paths <<< "$paths_csv"
+
+  for path in "${submit_paths[@]}"; do
+    repo_flow_submit_validate_path "$path" || return 1
+    tracked_path=0
+    if git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+      tracked_path=1
+    fi
+    if [ "$tracked_path" -eq 0 ] && [ ! -e "$path" ] && [ ! -L "$path" ]; then
+      repo_flow_submit_stop "missing untracked path: $path"
+      return 1
+    fi
+  done
+
+  for path in "${submit_paths[@]}"; do
+    if ! git add -- "$path"; then
+      repo_flow_submit_stop "git add failed for path: $path"
+      return 1
+    fi
+    staged_paths_ref+=("$path")
+  done
+
+  return 0
+}
+
+repo_flow_submit_main() {
+  local watch=0
+  local diagnose_on_fail=0
+  local explain=0
+  local staged=0
+  local paths_csv=""
+  local message=""
+  local repo_root=""
+  local current_branch=""
+  local default_branch=""
+  local remote_name=""
+  local expected_remote_url=""
+  local remote_url=""
+  local command_status=0
+  local arg=""
+  local -a staged_paths=()
+  local -a delegate_args=()
+  local staged_files=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        repo_flow_submit_usage
+        return 0
+        ;;
+      --watch)
+        watch=1
+        ;;
+      --diagnose-on-fail)
+        diagnose_on_fail=1
+        ;;
+      --explain)
+        explain=1
+        repo_flow_explain=1
+        ;;
+      --paths=*)
+        paths_csv="${arg#--paths=}"
+        if [ -z "$paths_csv" ]; then
+          repo_auto_flag_error "empty flag value" "--paths" "use --paths=<path[,path...]>" || command_status=1
+        fi
+        ;;
+      --paths)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--paths" "use --paths=<path[,path...]>" || command_status=1
+        else
+          repo_auto_flag_error "missing flag value" "--paths" "use --paths=<path[,path...]>" || command_status=1
+        fi
+        ;;
+      --staged)
+        staged=1
+        ;;
+      --message=*)
+        message="${arg#--message=}"
+        if [ -z "$message" ]; then
+          repo_auto_flag_error "empty flag value" "--message" "use --message=<text>" || command_status=1
+        fi
+        ;;
+      --message)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--message" "use --message=<text>" || command_status=1
+        else
+          repo_auto_flag_error "missing flag value" "--message" "use --message=<text>" || command_status=1
+        fi
+        ;;
+      *)
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-flow submit --help" || command_status=1
+        else
+          repo_flow_submit_stop "unknown argument: $arg"
+          command_status=1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$command_status" -eq 0 ] && [ -z "$message" ]; then
+    repo_flow_submit_stop "missing required --message"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$staged" -eq 1 ] && [ -n "$paths_csv" ]; then
+    repo_flow_submit_stop "use either --paths or --staged, not both"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$staged" -eq 0 ] && [ -z "$paths_csv" ]; then
+    repo_flow_submit_stop "either --paths or --staged is required"
+    command_status=1
+  fi
+
+  repo_auto_require_command git || {
+    repo_flow_submit_stop "git is required"
+    command_status=1
+  }
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_root=$(repo_auto_repo_root) || {
+      repo_flow_submit_stop "failed to determine repo root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$repo_root" || {
+      repo_flow_submit_stop "failed to enter repo root: $repo_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      repo_flow_submit_stop "failed to load .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      repo_flow_submit_stop "invalid .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    default_branch="${DEFAULT_BRANCH:-main}"
+    remote_name="${REMOTE_NAME:-origin}"
+    expected_remote_url="${EXPECTED_REMOTE_URL:-}"
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "${PR_PROVIDER:-none}" != "github" ]; then
+    repo_flow_submit_stop "PR_PROVIDER must be github for repo-automation/bin/repo-flow submit"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_require_command gh || {
+      repo_flow_submit_stop "gh is required for repo-flow submit"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    remote_url=$(git remote get-url "$remote_name" 2>/dev/null) || {
+      repo_flow_submit_stop "failed to read remote URL for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
+    repo_flow_submit_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+      repo_flow_submit_stop "failed to determine current branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_branch_name "$current_branch" || {
+      repo_flow_submit_stop "invalid current branch name: $current_branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
+    repo_flow_submit_stop "current branch is default branch; checkout a feature branch"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$paths_csv" ]; then
+    if ! repo_flow_submit_stage_paths "$paths_csv" staged_paths; then
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    staged_files="$(git diff --cached --name-only)"
+    if [ -z "$staged_files" ]; then
+      repo_flow_submit_stop "no files are staged"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$explain" -eq 1 ]; then
+    repo_flow_info "mode: submit"
+    repo_flow_info "branch: $current_branch"
+    repo_flow_info "default branch: $default_branch"
+    repo_flow_info "commit message: $message"
+    repo_flow_info "staged files:"
+    while IFS= read -r staged_file; do
+      [ -n "$staged_file" ] || continue
+      printf '  %s\n' "$staged_file" >&2
+    done <<EOF
+$staged_files
+EOF
+  fi
+
+  if [ "$command_status" -eq 0 ] && ! git diff --cached --check >/dev/null 2>&1; then
+    repo_flow_submit_stop "git diff --cached --check failed"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if ! git commit --message="$message" >/dev/null 2>&1; then
+      repo_flow_submit_stop "git commit failed"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$explain" -eq 1 ]; then
+    repo_flow_info "commit created: $(git rev-parse --short HEAD 2>/dev/null)"
+    repo_flow_info "delegating to repo-flow PR creation/reuse path"
+    if [ "$watch" -eq 1 ]; then
+      repo_flow_info "watch: enabled"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ "$watch" -eq 1 ]; then
+      delegate_args+=(--watch)
+      if [ "$diagnose_on_fail" -eq 1 ]; then
+        delegate_args+=(--diagnose-on-fail)
+      fi
+    fi
+    repo_flow_main "${delegate_args[@]}"
+    command_status=$?
+  fi
+
+  return "$command_status"
+}
+
 repo_flow_main() {
   local mode="apply"
   local json=0
@@ -373,6 +676,10 @@ repo_flow_main() {
   if [ "${1:-}" = "status-card" ]; then
     shift
     repo_flow_status_card_main "$@"
+    return $?
+  elif [ "${1:-}" = "submit" ]; then
+    shift
+    repo_flow_submit_main "$@"
     return $?
   fi
 

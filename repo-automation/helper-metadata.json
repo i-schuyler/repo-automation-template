@@ -665,8 +665,8 @@
   "planned_routes": [
     {
       "name": "submit",
-      "state": "planned",
-      "route": "submit action",
+      "state": "implemented",
+      "route": "repo-flow submit",
       "public": false,
       "workflow_role": "workflow"
     },

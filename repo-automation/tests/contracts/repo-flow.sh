@@ -669,6 +669,193 @@ smoke_check_repo_flow_create_pr() {
   return "$status"
 }
 
+smoke_check_repo_flow_submit_paths() {
+  local status=0
+  local gh_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+  local head_before=""
+  local head_after=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  stdout_file="$smoke_test_base/repo-flow-submit-paths.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-paths.stderr"
+  create_log_file="$smoke_test_base/repo-flow-submit-paths-create.log"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-paths" || return 1
+
+  printf '\nrepo-flow submit paths line\n' >> "$smoke_test_dir/README.md" || return 1
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/701' \
+    GH_STUB_PR_VIEW_EMPTY=1 \
+    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit paths commit' > "$stdout_file" 2> "$stderr_file"
+  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/701' ] && [ -f "$create_log_file" ]; then
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit paths commit'; then
+      test_pass "repo-flow submit stages explicit paths and creates a PR"
+    else
+      test_fail "repo-flow submit stages explicit paths and creates a PR"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit stages explicit paths and creates a PR"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_submit_staged_watch() {
+  local status=0
+  local gh_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+  local create_log_file=""
+  local head_before=""
+  local head_after=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  stdout_file="$smoke_test_base/repo-flow-submit-staged-watch.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-staged-watch.stderr"
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-staged-watch" || return 1
+
+  printf '\nrepo-flow submit staged line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  git -C "$smoke_test_dir" add docs/testing.md || return 1
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_NUMBER=702 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/702' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit staged commit' --watch --diagnose-on-fail > "$stdout_file" 2> "$stderr_file"
+  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/702' ]; then
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit staged commit'; then
+      test_pass "repo-flow submit commits staged changes and watches the PR"
+    else
+      test_fail "repo-flow submit commits staged changes and watches the PR"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit commits staged changes and watches the PR"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_submit_contract() {
+  local status=0
+  local gh_stub_dir=""
+  local help_out=""
+  local invalid_abs_stderr=""
+  local invalid_dotdot_stderr=""
+  local missing_stderr=""
+  local staged_guard_stderr=""
+  local local_bash_path=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  help_out="$smoke_test_base/repo-flow-submit-help.txt"
+  invalid_abs_stderr="$smoke_test_base/repo-flow-submit-invalid-abs.stderr"
+  invalid_dotdot_stderr="$smoke_test_base/repo-flow-submit-invalid-dotdot.stderr"
+  missing_stderr="$smoke_test_base/repo-flow-submit-missing.stderr"
+  staged_guard_stderr="$smoke_test_base/repo-flow-submit-staged-guard.stderr"
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
+    test_pass "repo-flow submit help shows strict syntax"
+  else
+    test_fail "repo-flow submit help shows strict syntax"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-validation" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=/tmp/example --message=hi >/dev/null 2> "$invalid_abs_stderr"
+  ); then
+    test_fail "repo-flow submit rejects absolute paths"
+    status=1
+  elif grep -Fxq 'STOP: absolute paths are not allowed: /tmp/example' "$invalid_abs_stderr"; then
+    test_pass "repo-flow submit rejects absolute paths"
+  else
+    test_fail "repo-flow submit rejects absolute paths"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=docs/../README.md --message=hi >/dev/null 2> "$invalid_dotdot_stderr"
+  ); then
+    test_fail "repo-flow submit rejects .. paths"
+    status=1
+  elif grep -Fxq 'STOP: path contains ..: docs/../README.md' "$invalid_dotdot_stderr"; then
+    test_pass "repo-flow submit rejects .. paths"
+  else
+    test_fail "repo-flow submit rejects .. paths"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=missing.txt --message=hi >/dev/null 2> "$missing_stderr"
+  ); then
+    test_fail "repo-flow submit rejects missing untracked paths"
+    status=1
+  elif grep -Fxq 'STOP: missing untracked path: missing.txt' "$missing_stderr"; then
+    test_pass "repo-flow submit rejects missing untracked paths"
+  else
+    test_fail "repo-flow submit rejects missing untracked paths"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-staged-guard" || return 1
+  printf '\nrepo-flow submit staged guard line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  git -C "$smoke_test_dir" add docs/testing.md || return 1
+  printf '\nrepo-flow submit extra staged line\n' >> "$smoke_test_dir/README.md" || return 1
+  git -C "$smoke_test_dir" add README.md || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=docs/testing.md --message=hi >/dev/null 2> "$staged_guard_stderr"
+  ); then
+    test_fail "repo-flow submit rejects pre-staged changes when using --paths"
+    status=1
+  elif grep -Fxq 'STOP: pre-staged changes are not allowed with --paths' "$staged_guard_stderr"; then
+    test_pass "repo-flow submit rejects pre-staged changes when using --paths"
+  else
+    test_fail "repo-flow submit rejects pre-staged changes when using --paths"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_main() {
   local status=0
   local smoke_output_capture=""
@@ -693,6 +880,9 @@ smoke_main() {
     smoke_run_named_check "smoke:repo-flow-dry-run-json" smoke_check_repo_flow_dry_run_json || status=1
     smoke_run_named_check "smoke:repo-flow-existing-pr" smoke_check_repo_flow_existing_pr || status=1
     smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-paths" smoke_check_repo_flow_submit_paths || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
   else
     mkdir -p "$TEST_TEMP_ROOT" || return 1
     smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/repo-flow.XXXXXX")" || return 1
@@ -724,6 +914,15 @@ smoke_main() {
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-paths" smoke_check_repo_flow_submit_paths || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
     fi
 
     exec 1>&3 2>&4
