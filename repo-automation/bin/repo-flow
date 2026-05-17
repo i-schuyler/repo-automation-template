@@ -369,7 +369,6 @@ repo_flow_submit_validate_path() {
 
 repo_flow_submit_stage_paths() {
   local paths_csv="$1"
-  local -n staged_paths_ref="$2"
   local path=""
   local tracked_path=0
   local -a submit_paths=()
@@ -398,7 +397,6 @@ repo_flow_submit_stage_paths() {
       repo_flow_submit_stop "git add failed for path: $path"
       return 1
     fi
-    staged_paths_ref+=("$path")
   done
 
   return 0
@@ -580,8 +578,7 @@ repo_flow_submit_main() {
   fi
 
   if [ "$command_status" -eq 0 ] && [ -n "$paths_csv" ]; then
-    local -a submit_staged_paths=()
-    if ! repo_flow_submit_stage_paths "$paths_csv" submit_staged_paths; then
+    if ! repo_flow_submit_stage_paths "$paths_csv"; then
       command_status=1
     fi
   fi
