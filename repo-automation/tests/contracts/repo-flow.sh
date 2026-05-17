@@ -470,6 +470,11 @@ smoke_check_repo_flow_dry_run_json() {
   local gh_stub_dir=""
   local json_file=""
   local stderr_file=""
+  local dry_run_out=""
+  local dry_run_err=""
+  local explain_out=""
+  local explain_err=""
+  local help_out=""
   local unknown_flag_stderr=""
   local local_bash_path=""
 
@@ -479,10 +484,45 @@ smoke_check_repo_flow_dry_run_json() {
   gh_stub_dir="$smoke_test_base/gh-stub"
   json_file="$smoke_test_base/repo-flow-dry-run.json"
   stderr_file="$smoke_test_base/repo-flow-dry-run.stderr"
+  dry_run_out="$smoke_test_base/repo-flow-dry-run.out"
+  dry_run_err="$smoke_test_base/repo-flow-dry-run.err"
+  explain_out="$smoke_test_base/repo-flow-dry-run-explain.out"
+  explain_err="$smoke_test_base/repo-flow-dry-run-explain.err"
+  help_out="$smoke_test_base/repo-flow-help.txt"
   unknown_flag_stderr="$smoke_test_base/repo-flow-unknown.stderr"
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-plan" || return 1
   local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow --help > "$help_out"
+  ) && grep -Fq -- '--explain' "$help_out" && grep -Fq -- '--dry-run' "$help_out"; then
+    test_pass "repo-flow help shows strict syntax"
+  else
+    test_fail "repo-flow help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" REMOTE_NAME=localorigin EXPECTED_REMOTE_URL="" "$local_bash_path" repo-automation/bin/repo-flow --dry-run > "$dry_run_out" 2> "$dry_run_err"
+  ) && [ "$(cat "$dry_run_out")" = "plan" ] && [ ! -s "$dry_run_err" ]; then
+    test_pass "repo-flow dry-run output is compact"
+  else
+    test_fail "repo-flow dry-run output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" REMOTE_NAME=localorigin EXPECTED_REMOTE_URL="" "$local_bash_path" repo-automation/bin/repo-flow --dry-run --explain > "$explain_out" 2> "$explain_err"
+  ) && [ ! -s "$explain_out" ] && grep -Fq 'final status:' "$explain_err"; then
+    test_pass "repo-flow explain output is detailed"
+  else
+    test_fail "repo-flow explain output is detailed"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -533,6 +573,7 @@ smoke_check_repo_flow_existing_pr() {
   local state_file=""
   local create_log_file=""
   local stderr_file=""
+  local stdout_file=""
   local local_bash_path=""
 
   smoke_setup_temp_repo || return 1
@@ -542,6 +583,7 @@ smoke_check_repo_flow_existing_pr() {
   state_file="$smoke_test_base/repo-flow-existing-pr.txt"
   create_log_file="$smoke_test_base/repo-flow-existing-pr-create.log"
   stderr_file="$smoke_test_base/repo-flow-existing-pr.stderr"
+  stdout_file="$smoke_test_base/repo-flow-existing-pr.out"
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-existing" || return 1
   local_bash_path="$(command -v bash)" || return 1
@@ -557,10 +599,10 @@ smoke_check_repo_flow_existing_pr() {
     EXPECTED_REMOTE_URL="" \
     GH_STUB_PR_STATE_FILE="$state_file" \
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
-    "$local_bash_path" repo-automation/bin/repo-flow > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/repo-flow > "$stdout_file" 2> "$stderr_file"
   ); then
-    if grep -q 'PR status: existing #777 https://github.com/i-schuyler/repo-automation-template/pull/777' "$stderr_file" &&
-      grep -q 'final status: ready' "$stderr_file" &&
+    if [ "$(cat "$stdout_file")" = "https://github.com/i-schuyler/repo-automation-template/pull/777" ] &&
+      [ ! -s "$stderr_file" ] &&
       [ ! -s "$create_log_file" ] &&
       git -C "$smoke_test_dir" rev-parse --verify refs/remotes/localorigin/feature/repo-flow-existing >/dev/null 2>&1; then
       test_pass "repo-flow reuses an existing PR"
@@ -582,6 +624,7 @@ smoke_check_repo_flow_create_pr() {
   local state_file=""
   local create_log_file=""
   local stderr_file=""
+  local stdout_file=""
   local local_bash_path=""
 
   smoke_setup_temp_repo || return 1
@@ -591,6 +634,7 @@ smoke_check_repo_flow_create_pr() {
   state_file="$smoke_test_base/repo-flow-create-pr.txt"
   create_log_file="$smoke_test_base/repo-flow-create-pr.log"
   stderr_file="$smoke_test_base/repo-flow-create-pr.stderr"
+  stdout_file="$smoke_test_base/repo-flow-create-pr.out"
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-create" || return 1
   local_bash_path="$(command -v bash)" || return 1
@@ -604,10 +648,10 @@ smoke_check_repo_flow_create_pr() {
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
     GH_STUB_PR_CREATE_NUMBER=888 \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/888' \
-    "$local_bash_path" repo-automation/bin/repo-flow > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/repo-flow > "$stdout_file" 2> "$stderr_file"
   ); then
-    if grep -q 'PR status: created #888 https://github.com/i-schuyler/repo-automation-template/pull/888' "$stderr_file" &&
-      grep -q 'final status: ready' "$stderr_file" &&
+    if [ "$(cat "$stdout_file")" = "https://github.com/i-schuyler/repo-automation-template/pull/888" ] &&
+      [ ! -s "$stderr_file" ] &&
       grep -q 'gh pr create title=' "$create_log_file" &&
       git -C "$smoke_test_dir" rev-parse --verify refs/remotes/localorigin/feature/repo-flow-create >/dev/null 2>&1 &&
       [ -f "$state_file" ] &&

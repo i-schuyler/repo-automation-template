@@ -220,19 +220,10 @@ else:
 if machine_json:
     print(json.dumps(result, separators=(",", ":")))
 else:
-    print("RUNNING repo-automation freshness...")
-    print(
-        "RESULT: pass={0} warn=0 fail={1} skipped=0".format(
-            result["present_count"],
-            result["missing_count"] + len(validation_errors),
-        )
-    )
-    if validation_errors or missing_files:
-        print("FAIL:")
-        for message in validation_errors:
-            print(f"- {message}")
-        for path in missing_files:
-            print(f"- {path}")
+    if result["overall_status"] == "pass":
+        print("pass")
+    else:
+        print(f"fail: {result['stop_reason']}", file=sys.stderr)
 
 sys.exit(0 if result["overall_status"] == "pass" else 1)
 PY

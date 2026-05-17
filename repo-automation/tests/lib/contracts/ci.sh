@@ -23,6 +23,7 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_first_failure_value_stderr="$smoke_test_base/ci-log-dump-first-failure-value-$$.stderr"
   local ci_log_unknown_stderr="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
   local ci_log_first_failure_human="$smoke_test_base/ci-log-dump-first-failure-$$.txt"
+  local ci_log_quiet="$smoke_test_base/ci-log-dump-quiet-$$.txt"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$ci_log_out_dir" || return 1
@@ -32,11 +33,13 @@ smoke_check_ci_log_dump_contract() {
     repo-automation/bin/ci-log-dump --help > "$ci_log_help"
   ) && \
     grep -Fq -- '--repo=<owner/repo>' "$ci_log_help" && \
-    grep -Fq -- '--pr=NUMBER' "$ci_log_help" && \
-    grep -Fq -- '--run-id=ID' "$ci_log_help" && \
-    grep -Fq -- '--out-dir=PATH' "$ci_log_help" && \
-    grep -Fq -- '--tail=LINES' "$ci_log_help" && \
+    grep -Fq -- '--pr=<number|current|latest>' "$ci_log_help" && \
+    grep -Fq -- '--run-id=<id>' "$ci_log_help" && \
+    grep -Fq -- '--out-dir=<path>' "$ci_log_help" && \
+    grep -Fq -- '--tail=<lines>' "$ci_log_help" && \
     grep -Fq -- '--first-failure' "$ci_log_help" && \
+    grep -Fq -- '--quiet' "$ci_log_help" && \
+    grep -Fq -- '--explain' "$ci_log_help" && \
     ! grep -Fq -- '--pr NUMBER' "$ci_log_help" && \
     ! grep -Fq -- '--run-id ID' "$ci_log_help" && \
     ! grep -Fq -- '--out-dir PATH' "$ci_log_help" && \
@@ -145,10 +148,10 @@ smoke_check_ci_log_dump_contract() {
     ]' GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
 tail one
 tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --tail=2 --out-dir="$ci_log_out_dir" > "$ci_log_first_failure_human"
-  ) && grep -Eq '^Run id: 111$' "$ci_log_first_failure_human" && grep -Eq '^Saved log path: '"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Eq '^First failure label: fail: shellcheck$' "$ci_log_first_failure_human" && grep -Eq '^First failure excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.$' "$ci_log_first_failure_human" && grep -Eq '^Recommended fix: run shellcheck on the reported file and line$' "$ci_log_first_failure_human" && ! grep -Eq '^Tail excerpt:$' "$ci_log_first_failure_human"; then
-    test_pass "ci-log-dump first-failure reports compact shellcheck diagnosis"
+  ) && [ "$(wc -l < "$ci_log_first_failure_human")" -eq 1 ] && grep -Eq "^$ci_log_out_dir/actions_run_111_[0-9]{8}-[0-9]{6}\.log$" "$ci_log_first_failure_human"; then
+    test_pass "ci-log-dump default human output is path-only"
   else
-    test_fail "ci-log-dump first-failure reports compact shellcheck diagnosis"
+    test_fail "ci-log-dump default human output is path-only"
     status=1
   fi
 
@@ -158,11 +161,11 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
       {"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"schedule","headBranch":"branch/new","status":"completed","workflowName":"ci"}
     ]' GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
 tail one
-tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --machine-json --out-dir="$ci_log_out_dir" > "$ci_log_json"
-  ) && python -m json.tool "$ci_log_json" >/dev/null && smoke_json_assert "$ci_log_json" 'data.get("first_failure_label") == "fail: shellcheck" and "SC2086" in data.get("first_failure_excerpt", "") and data.get("recommended_fix") == "run shellcheck on the reported file and line" and data.get("log_path", "").endswith(".log") and data.get("overall_status") == "pass" and data.get("run_id") == "222"'; then
-    test_pass "ci-log-dump first-failure machine-json is parseable"
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --quiet --out-dir="$ci_log_out_dir" > "$ci_log_quiet"
+  ) && [ ! -s "$ci_log_quiet" ]; then
+    test_pass "ci-log-dump quiet success is silent"
   else
-    test_fail "ci-log-dump first-failure machine-json is parseable"
+    test_fail "ci-log-dump quiet success is silent"
     status=1
   fi
 
@@ -178,10 +181,10 @@ line three
 FAIL: ci run failed
 tail one
 tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" > "$ci_log_human"
-  ) && grep -Eq '^Run id: 222$' "$ci_log_human" && grep -Eq "^Saved log path: $ci_log_out_dir/actions_run_222_[0-9]{8}-[0-9]{6}\.log$" "$ci_log_human" && grep -Eq '^tail one$' "$ci_log_human" && grep -Eq '^tail two$' "$ci_log_human" && [ -n "$(find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -print -quit)" ]; then
-    test_pass "ci-log-dump latest-failed selects the newest failed run and saves the log"
+  ) && [ "$(wc -l < "$ci_log_human")" -eq 1 ] && grep -Eq "^$ci_log_out_dir/actions_run_222_[0-9]{8}-[0-9]{6}\.log$" "$ci_log_human" && [ -n "$(find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -print -quit)" ]; then
+    test_pass "ci-log-dump latest-failed reports path-only output"
   else
-    test_fail "ci-log-dump latest-failed selects the newest failed run and saves the log"
+    test_fail "ci-log-dump latest-failed reports path-only output"
     status=1
   fi
 
@@ -214,10 +217,24 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
 line two
 tail one
 tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" > "$ci_log_human"
-  ) && [ -e "$ci_log_retry_run_list_marker" ] && [ -e "$ci_log_retry_run_view_marker" ] && grep -Eq '^Run id: 222$' "$ci_log_human" && grep -Eq '^tail one$' "$ci_log_human" && grep -Eq '^tail two$' "$ci_log_human"; then
+  ) && [ -e "$ci_log_retry_run_list_marker" ] && [ -e "$ci_log_retry_run_view_marker" ] && [ "$(wc -l < "$ci_log_human")" -eq 1 ] && grep -Eq "^$ci_log_out_dir/actions_run_222_[0-9]{8}-[0-9]{6}\.log$" "$ci_log_human"; then
     test_pass "ci-log-dump retries transient gh failures before dumping the log"
   else
     test_fail "ci-log-dump retries transient gh failures before dumping the log"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[
+      {"databaseId":111,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"push","headBranch":"branch/old","status":"completed","workflowName":"ci"}
+    ]' GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
+tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --tail=2 --out-dir="$ci_log_out_dir" --explain > "$ci_log_first_failure_human"
+  ) && grep -Eq '^Target repo: i-schuyler/repo-automation-template$' "$ci_log_first_failure_human" && grep -Eq '^Run id: 111$' "$ci_log_first_failure_human" && grep -Eq '^Saved log path: '"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Eq '^First failure label: fail: shellcheck$' "$ci_log_first_failure_human" && grep -Eq '^First failure excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.$' "$ci_log_first_failure_human" && grep -Eq '^Recommended fix: run shellcheck on the reported file and line$' "$ci_log_first_failure_human" && ! grep -Eq '^Tail excerpt:$' "$ci_log_first_failure_human"; then
+    test_pass "ci-log-dump explain output is detailed"
+  else
+    test_fail "ci-log-dump explain output is detailed"
     status=1
   fi
 
@@ -248,7 +265,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
-  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" >/dev/null 2>&1 || true
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" "$ci_log_quiet" >/dev/null 2>&1 || true
   find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
   rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
   return "$status"

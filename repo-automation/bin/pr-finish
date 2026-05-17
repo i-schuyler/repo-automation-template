@@ -12,10 +12,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 pr_finish_json=0
+pr_finish_explain=0
 pr_finish_stop_reason=""
 
 pr_finish_usage() {
-  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr=<number|current|latest>] [--json] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
+  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr=<number|current|latest>] [--json] [--explain] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
 }
 
 pr_finish_flag_error() {
@@ -29,6 +30,7 @@ pr_finish_flag_error() {
 }
 
 pr_finish_info() {
+  [ "$pr_finish_explain" -eq 1 ] || return 0
   printf 'INFO: %s\n' "$*" >&2
 }
 
@@ -351,6 +353,9 @@ pr_finish_main() {
         json=1
         pr_finish_json=1
         ;;
+      --explain)
+        pr_finish_explain=1
+        ;;
       --squash)
         merge_mode_override="squash"
         ;;
@@ -533,14 +538,10 @@ pr_finish_main() {
       command_status=1
     }
     if [ "$command_status" -eq 0 ] && ! gh pr checks "$pr_number" --required --watch > "$watch_output_file" 2>&1; then
-      pr_finish_warn "gh pr checks --watch returned non-zero; re-checking status"
+      [ "$pr_finish_explain" -eq 1 ] && pr_finish_warn "gh pr checks --watch returned non-zero; re-checking status"
     fi
     if [ "$command_status" -eq 0 ] && grep -qx '\[\]' "$watch_output_file" 2>/dev/null; then
       checks_waited=1
-    fi
-    if [ -n "$watch_output_file" ] && [ -f "$watch_output_file" ]; then
-      cat "$watch_output_file" >&2
-      rm -f "$watch_output_file"
     fi
     action_taken="watched"
   fi
@@ -609,22 +610,11 @@ pr_finish_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$json" -eq 0 ]; then
-    pr_finish_print_human_status \
-      "$mode" \
-      "$current_branch" \
-      "$pr_number" \
-      "$pr_title" \
-      "$pr_url" \
-      "$pr_state" \
-      "$is_draft" \
-      "$mergeable" \
-      "$checks_status" \
-      "$checks_summary" \
-      "$merge_mode" \
-      "$delete_branch" \
-      "$can_merge" \
-      block_reasons
+  if [ "$do_watch" -eq 1 ] && [ -n "$watch_output_file" ] && [ -f "$watch_output_file" ]; then
+    if [ "$pr_finish_explain" -eq 1 ] || [ "$command_status" -ne 0 ] || [ "$checks_status" != "green" ]; then
+      cat "$watch_output_file" >&2
+    fi
+    rm -f "$watch_output_file"
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$do_merge" -eq 1 ]; then
@@ -698,6 +688,26 @@ pr_finish_main() {
       "$action_taken" \
       "$pr_finish_stop_reason" \
       block_reasons
+  elif [ "$command_status" -eq 0 ] && [ "$json" -eq 0 ]; then
+    if [ "$pr_finish_explain" -eq 1 ]; then
+      pr_finish_print_human_status \
+        "$mode" \
+        "$current_branch" \
+        "$pr_number" \
+        "$pr_title" \
+        "$pr_url" \
+        "$pr_state" \
+        "$is_draft" \
+        "$mergeable" \
+        "$checks_status" \
+        "$checks_summary" \
+        "$merge_mode" \
+        "$delete_branch" \
+        "$can_merge" \
+        block_reasons
+    else
+      printf 'pass\n'
+    fi
   fi
 
   return "$command_status"

@@ -12,11 +12,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 preflight_json=0
+preflight_explain=0
 preflight_stop_reason=""
 preflight_mode="run"
 
 preflight_usage() {
-  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--check-only] [--delete-safe-stale] [--json] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--check-only] [--delete-safe-stale] [--json] [--explain] [--help]\n'
 }
 
 preflight_flag_error() {
@@ -158,6 +159,9 @@ preflight_main() {
       --json)
         preflight_json=1
         ;;
+      --explain)
+        preflight_explain=1
+        ;;
       --help)
         preflight_usage
         return 0
@@ -272,10 +276,10 @@ preflight_main() {
   if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 1 ]; then
     current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || current_branch=""
     divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null) || divergence="unknown"
-    [ "$preflight_json" -eq 1 ] || {
+    if [ "$preflight_json" -eq 0 ] && [ "$preflight_explain" -eq 1 ]; then
       preflight_info "check-only complete"
       preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch=$requested_branch"
-    }
+    fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
@@ -373,14 +377,6 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$preflight_json" -eq 0 ]; then
-    preflight_info "preflight ready"
-    preflight_info "current branch: $current_branch"
-    preflight_info "default branch: $default_branch"
-    preflight_info "divergence from $remote_name/$default_branch: $divergence"
-    preflight_info "next step: begin slice edits"
-  fi
-
   if [ "$preflight_json" -eq 1 ]; then
     preflight_print_json \
       "$requested_branch" \
@@ -391,6 +387,21 @@ preflight_main() {
       "${active_cleanup_mode:-}" \
       "${cleanup_json:-null}" \
       "$preflight_stop_reason"
+  elif [ "$command_status" -eq 0 ]; then
+    if [ "$preflight_explain" -eq 1 ]; then
+      if [ "$check_only" -eq 1 ]; then
+        preflight_info "check-only complete"
+        preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch=$requested_branch"
+      else
+        preflight_info "preflight ready"
+        preflight_info "current branch: $current_branch"
+        preflight_info "default branch: $default_branch"
+        preflight_info "divergence from $remote_name/$default_branch: $divergence"
+        preflight_info "next step: begin slice edits"
+      fi
+    else
+      printf 'pass\n'
+    fi
   fi
 
   return "$command_status"

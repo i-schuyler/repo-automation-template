@@ -14,10 +14,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 prepare_release_mode="check"
 prepare_release_version=""
 prepare_release_machine_json=0
+prepare_release_explain=0
 prepare_release_help=0
 
 prepare_release_usage() {
-  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=<semver>] [--dry-run] [--apply] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=<semver>] [--dry-run] [--apply] [--machine-json] [--explain] [--help]\n'
 }
 
 prepare_release_stop() {
@@ -61,6 +62,9 @@ prepare_release_main() {
         ;;
       --machine-json)
         prepare_release_machine_json=1
+        ;;
+      --explain)
+        prepare_release_explain=1
         ;;
       --check)
         have_check=1
@@ -141,9 +145,10 @@ prepare_release_main() {
     return 1
   fi
 
-  PREPARE_RELEASE_MODE="$prepare_release_mode" \
+    PREPARE_RELEASE_MODE="$prepare_release_mode" \
     PREPARE_RELEASE_VERSION="$prepare_release_version" \
     PREPARE_RELEASE_MACHINE_JSON="$prepare_release_machine_json" \
+    PREPARE_RELEASE_EXPLAIN="$prepare_release_explain" \
     PREPARE_RELEASE_HELP="$prepare_release_help" \
     python3 - "$repo_root" <<'PY'
 from __future__ import annotations
@@ -158,6 +163,7 @@ repo_root = Path(sys.argv[1])
 mode = os.environ.get("PREPARE_RELEASE_MODE", "check")
 requested_version = os.environ.get("PREPARE_RELEASE_VERSION", "")
 machine_json = os.environ.get("PREPARE_RELEASE_MACHINE_JSON") == "1"
+explain = os.environ.get("PREPARE_RELEASE_EXPLAIN") == "1"
 
 version_pattern = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9._-]*)?$")
 
@@ -447,29 +453,36 @@ def process_file(path: Path, target_version: str, apply_mode: str):
 
 
 def emit_human() -> None:
-    print(f"INFO: mode: {mode}")
-    print(f"INFO: source automation release version: {result['source_version']}")
-    print(f"INFO: target automation release version: {result['target_version']}")
-    if result["results"]:
-        print("INFO: placements:")
-        for entry in result["results"]:
-            status = entry["status"]
-            path = entry["path"]
-            field = entry["field"]
-            before = entry["before"]
-            after = entry["after"]
-            reason = entry["reason"]
-            if status in {"planned", "updated"}:
-                print(f"INFO:   {path} {field}: {before} -> {after}")
-            elif status == "match":
-                print(f"PASS: {path} {field} matches {after}")
-            elif status == "skipped":
-                print(f"INFO:   {path} {field}: skipped ({reason})")
-            elif status == "missing":
-                print(f"FAIL: {path} {field}: missing ({reason})")
-            elif status == "mismatch":
-                print(f"FAIL: {path} {field}: {before} != {after}")
-    print(f"INFO: summary: planned={result['planned_count']} updated={result['updated_count']} unchanged={result['unchanged_count']} skipped={result['skipped_count']} missing={result['missing_count']}")
+    if explain:
+        print(f"mode: {mode}")
+        print(f"source automation release version: {result['source_version']}")
+        print(f"target automation release version: {result['target_version']}")
+        if result["results"]:
+            print("placements:")
+            for entry in result["results"]:
+                status = entry["status"]
+                path = entry["path"]
+                field = entry["field"]
+                before = entry["before"]
+                after = entry["after"]
+                reason = entry["reason"]
+                if status in {"planned", "updated"}:
+                    print(f"  {path} {field}: {before} -> {after}")
+                elif status == "match":
+                    print(f"PASS: {path} {field} matches {after}")
+                elif status == "skipped":
+                    print(f"  {path} {field}: skipped ({reason})")
+                elif status == "missing":
+                    print(f"FAIL: {path} {field}: missing ({reason})")
+                elif status == "mismatch":
+                    print(f"FAIL: {path} {field}: {before} != {after}")
+        print(f"summary: planned={result['planned_count']} updated={result['updated_count']} unchanged={result['unchanged_count']} skipped={result['skipped_count']} missing={result['missing_count']}")
+        return
+
+    if result["mode"] == "dry-run":
+        print("plan")
+    else:
+        print("pass")
 
 
 try:

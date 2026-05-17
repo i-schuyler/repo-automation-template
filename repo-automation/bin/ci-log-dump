@@ -15,6 +15,8 @@ ci_log_dump_tail_lines=160
 ci_log_dump_failed_only=1
 ci_log_dump_latest_failed=0
 ci_log_dump_machine_json=0
+ci_log_dump_quiet=0
+ci_log_dump_explain=0
 ci_log_dump_first_failure=0
 ci_log_dump_first_failure_label=""
 ci_log_dump_first_failure_excerpt=""
@@ -22,7 +24,7 @@ ci_log_dump_first_failure_recommended_fix=""
 ci_log_dump_gh_failure_message=""
 
 ci_log_dump_usage() {
-  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=NUMBER] [--run-id=ID] [--out-dir=PATH] [--tail=LINES] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|current|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_log_dump_flag_error() {
@@ -466,6 +468,12 @@ ci_log_dump_main() {
       --machine-json)
         ci_log_dump_machine_json=1
         ;;
+      --quiet)
+        ci_log_dump_quiet=1
+        ;;
+      --explain)
+        ci_log_dump_explain=1
+        ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then
           ci_log_dump_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-log-dump --help"
@@ -581,21 +589,27 @@ ci_log_dump_main() {
     fi
     ci_log_dump_print_json "$log_path" "$size_bytes" "$run_id"
   else
-    printf 'Target repo: %s\n' "$ci_log_dump_repo"
-    if [ -n "$ci_log_dump_pr" ]; then
-      printf 'PR number: %s\n' "$ci_log_dump_pr"
-    fi
-    printf 'Run id: %s\n' "$run_id"
-    printf 'Saved log path: %s\n' "$log_path"
-    printf 'File size: %s bytes\n' "$size_bytes"
-    if [ "$ci_log_dump_first_failure" -eq 1 ]; then
-      ci_log_dump_first_failure_details "$log_path"
-      printf 'First failure label: %s\n' "$ci_log_dump_first_failure_label"
-      printf 'First failure excerpt: %s\n' "$ci_log_dump_first_failure_excerpt"
-      printf 'Recommended fix: %s\n' "$ci_log_dump_first_failure_recommended_fix"
+    if [ "$ci_log_dump_quiet" -eq 1 ]; then
+      :
+    elif [ "$ci_log_dump_explain" -eq 1 ]; then
+      printf 'Target repo: %s\n' "$ci_log_dump_repo"
+      if [ -n "$ci_log_dump_pr" ]; then
+        printf 'PR number: %s\n' "$ci_log_dump_pr"
+      fi
+      printf 'Run id: %s\n' "$run_id"
+      printf 'Saved log path: %s\n' "$log_path"
+      printf 'File size: %s bytes\n' "$size_bytes"
+      if [ "$ci_log_dump_first_failure" -eq 1 ]; then
+        ci_log_dump_first_failure_details "$log_path"
+        printf 'First failure label: %s\n' "$ci_log_dump_first_failure_label"
+        printf 'First failure excerpt: %s\n' "$ci_log_dump_first_failure_excerpt"
+        printf 'Recommended fix: %s\n' "$ci_log_dump_first_failure_recommended_fix"
+      else
+        printf 'Tail excerpt:\n'
+        ci_log_dump_tail_excerpt "$log_path"
+      fi
     else
-      printf 'Tail excerpt:\n'
-      ci_log_dump_tail_excerpt "$log_path"
+      printf '%s\n' "$log_path"
     fi
   fi
 }

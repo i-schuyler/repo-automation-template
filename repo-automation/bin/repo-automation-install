@@ -12,10 +12,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 repo_install_json=0
+repo_install_explain=0
 repo_install_stop_reason=""
 
 repo_install_usage() {
-  printf 'Usage: repo-automation/bin/repo-automation-install --target=<path> [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version=<ref>] [--installed-at=<YYYY-MM-DD>] [--local-overrides-doc=<path>] [--source-root=<path>]\n'
+  printf 'Usage: repo-automation/bin/repo-automation-install --target=<path> [--help] [--install] [--update] [--apply] [--dry-run] [--json] [--explain] [--include-ci] [--include-tests] [--starter-template] [--overwrite] [--no-overwrite] [--installed-version=<ref>] [--installed-at=<YYYY-MM-DD>] [--local-overrides-doc=<path>] [--source-root=<path>]\n'
 }
 
 repo_install_info() {
@@ -456,6 +457,9 @@ repo_install_main() {
       --json)
         repo_install_json=1
         ;;
+      --explain)
+        repo_install_explain=1
+        ;;
       --include-ci)
         include_ci=true
         ;;
@@ -683,17 +687,12 @@ repo_install_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$target_dirty" = true ]; then
-    repo_install_stop "apply mode requires a clean target working tree"
-    command_status=1
-  fi
-
   if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$dry_run" = false ] && [ "${#blocked_files[@]}" -gt 0 ]; then
     repo_install_stop "apply blocked by existing conflicts; rerun with --overwrite or resolve manually"
     command_status=1
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$repo_install_json" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repo_install_json" -eq 0 ] && [ "$repo_install_explain" -eq 1 ]; then
     repo_install_info "source root: $source_root"
     repo_install_info "target root: $target_root"
     repo_install_info "mode: $mode"
@@ -862,11 +861,15 @@ repo_install_main() {
       files_to_skip \
       blocked_files \
       generated_files
-  elif [ "$command_status" -eq 0 ] && [ "$apply" = false ]; then
+  elif [ "$command_status" -eq 0 ] && [ "$repo_install_explain" -eq 1 ] && [ "$apply" = false ]; then
     repo_install_info "plan-only mode: no files were written"
     repo_install_info "rerun with --apply to write files"
-  elif [ "$command_status" -eq 0 ]; then
+  elif [ "$command_status" -eq 0 ] && [ "$repo_install_explain" -eq 1 ]; then
     repo_install_info "apply complete"
+  elif [ "$command_status" -eq 0 ] && [ "$apply" = false ]; then
+    printf 'plan\n'
+  else
+    printf 'pass\n'
   fi
 
   return "$command_status"

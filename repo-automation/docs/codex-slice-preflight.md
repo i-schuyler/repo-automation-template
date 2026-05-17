@@ -7,6 +7,7 @@ The script requires `--branch=<name>`. It validates branch safety and rejects th
 Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
 
 `--check-only` validates config, remote expectations, current worktree status, and branch-cleanup planning without checking out or creating the requested branch.
+Use `--explain` for the detailed preflight report; default success is compact `pass`.
 
 `--delete-safe-stale` allows local safe stale deletion by calling `repo-automation/bin/branch-cleanup --apply`. Without this flag, branch cleanup stays in plan mode.
 

@@ -229,18 +229,13 @@ if result["fail_count"] == 0:
 if machine_json:
     print(json.dumps(result, separators=(",", ":")))
 else:
-    print("RUNNING starter-template readiness...")
-    print(
-        "RESULT: pass={0} warn=0 fail={1} skipped=0".format(
-            result["pass_count"],
-            result["fail_count"],
-        )
-    )
-    if result["fail_count"] > 0:
-        print("FAIL:")
+    if result["overall_status"] == "pass":
+        print("pass")
+    else:
         for check in result["checks"]:
             if check["status"] == "fail":
-                print(f"- {check['message']}")
+                print(f"fail: {check['message']}", file=sys.stderr)
+                break
 
 sys.exit(0 if result["overall_status"] == "pass" else 1)
 PY

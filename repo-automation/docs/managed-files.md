@@ -38,6 +38,8 @@ Default human output:
 
     repo-automation/bin/automation-freshness
 
+Clean success prints `pass`; failures print a single `fail:` line on stderr.
+
 Machine output:
 
     repo-automation/bin/automation-freshness --machine-json

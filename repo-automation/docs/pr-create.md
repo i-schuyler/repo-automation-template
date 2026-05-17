@@ -8,6 +8,8 @@ Default behavior is PR creation through `gh pr create`. It does not merge.
 
 Value flags use `--flag=<value>` syntax. Space-separated values are rejected.
 
+Default success output is compact: `plan` for dry-run, PR URL when created, or `pass` if no URL is available. Use `--explain` for the full human summary.
+
 The helper expects the current repo automation GitHub workflow conventions already used elsewhere in this repo:
 
 - SSH-style GitHub remotes by default

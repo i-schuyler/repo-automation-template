@@ -36,6 +36,8 @@ smoke_check_add_doc_pr_docs_only() {
   local add_doc_pr_create_stderr="$smoke_test_base/add-doc-pr-create-$$.stderr"
   local add_doc_pr_create_body="$smoke_test_base/add-doc-pr-create-body.md"
   local add_doc_pr_create_repo="$smoke_test_base/add-doc-pr-create-repo"
+  local add_doc_pr_plan_stdout="$smoke_test_base/add-doc-pr-plan.out"
+  local add_doc_pr_plan_stderr="$smoke_test_base/add-doc-pr-plan.err"
   local add_doc_pr_run_tests_marker="$smoke_test_base/add-doc-pr-run-tests-called"
   local add_doc_pr_docs_check_marker="$smoke_test_base/add-doc-pr-docs-check-called"
   local add_doc_pr_failure_details=""
@@ -43,11 +45,17 @@ smoke_check_add_doc_pr_docs_only() {
   local ci_log_dump_help="$smoke_test_base/ci-log-dump-help-$$.txt"
   local report_upstream_help="$smoke_test_base/report-upstream-help-$$.txt"
   local install_help="$smoke_test_base/repo-install-help-$$.txt"
+  local pr_create_plan_stdout="$smoke_test_base/pr-create-plan.out"
+  local pr_create_plan_stderr="$smoke_test_base/pr-create-plan.err"
+  local pr_finish_help="$smoke_test_base/pr-finish-help-$$.txt"
+  local branch_cleanup_help="$smoke_test_base/branch-cleanup-help-$$.txt"
+  local preflight_explain_stdout="$smoke_test_base/preflight-explain.out"
+  local preflight_explain_stderr="$smoke_test_base/preflight-explain.err"
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/branch-cleanup --help >/dev/null
-  ); then
+    repo-automation/bin/branch-cleanup --help > "$branch_cleanup_help"
+  ) && grep -Fq -- '--explain' "$branch_cleanup_help"; then
     test_pass "branch-cleanup help succeeds"
   else
     test_fail "branch-cleanup help succeeds"
@@ -56,8 +64,8 @@ smoke_check_add_doc_pr_docs_only() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/pr-finish --help >/dev/null
-  ); then
+    repo-automation/bin/pr-finish --help > "$pr_finish_help"
+  ) && grep -Fq -- '--explain' "$pr_finish_help"; then
     test_pass "pr-finish help succeeds"
   else
     test_fail "pr-finish help succeeds"
@@ -75,6 +83,7 @@ smoke_check_add_doc_pr_docs_only() {
     grep -Fq -- '--commit-message=<text>' "$add_doc_pr_help" && \
     grep -Fq -- '--allow=<path-prefix>' "$add_doc_pr_help" && \
     grep -Fq -- '--base=<branch>' "$add_doc_pr_help" && \
+    grep -Fq -- '--explain' "$add_doc_pr_help" && \
     ! grep -Fq -- '--branch BRANCH' "$add_doc_pr_help" && \
     ! grep -Fq -- '--title TITLE' "$add_doc_pr_help" && \
     ! grep -Fq -- '--body-file FILE' "$add_doc_pr_help" && \
@@ -92,6 +101,7 @@ smoke_check_add_doc_pr_docs_only() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-report-upstream --help > "$report_upstream_help"
   ) && grep -Fq -- '--type=<bug|feature>' "$report_upstream_help" && \
+    grep -Fq -- '--explain' "$report_upstream_help" && \
     grep -Fq -- '--title=<text>' "$report_upstream_help" && \
     grep -Fq -- '--command=<text>' "$report_upstream_help" && \
     grep -Fq -- '--logs-file=<path>' "$report_upstream_help" && \
@@ -118,6 +128,7 @@ smoke_check_add_doc_pr_docs_only() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --help > "$install_help"
   ) && grep -Fq -- '--target=<path>' "$install_help" && \
+    grep -Fq -- '--explain' "$install_help" && \
     grep -Fq -- '--installed-version=<ref>' "$install_help" && \
     grep -Fq -- '--source-root=<path>' "$install_help" && \
     ! grep -Fq -- '--target PATH' "$install_help" && \
@@ -132,7 +143,7 @@ smoke_check_add_doc_pr_docs_only() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/ci-log-dump --help > "$ci_log_dump_help"
-  ) && grep -q 'Usage: repo-automation/bin/ci-log-dump' "$ci_log_dump_help"; then
+  ) && grep -q 'Usage: repo-automation/bin/ci-log-dump' "$ci_log_dump_help" && grep -Fq -- '--quiet' "$ci_log_dump_help" && grep -Fq -- '--explain' "$ci_log_dump_help"; then
     test_pass "ci-log-dump help succeeds"
   else
     test_fail "ci-log-dump help succeeds"
@@ -173,6 +184,16 @@ smoke_check_add_doc_pr_docs_only() {
       add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_stderr"))"
     fi
     test_fail "add-doc-pr docs-only plan/json succeeds${add_doc_pr_failure_details}"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/add-doc-pr --plan > "$add_doc_pr_plan_stdout" 2> "$add_doc_pr_plan_stderr"
+  ) && [ "$(cat "$add_doc_pr_plan_stdout")" = "plan" ] && [ ! -s "$add_doc_pr_plan_stderr" ]; then
+    test_pass "add-doc-pr plan output is compact"
+  else
+    test_fail "add-doc-pr plan output is compact"
     status=1
   fi
 
@@ -321,7 +342,7 @@ EOF
     :
   fi
 
-  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$add_doc_pr_create_json" "$add_doc_pr_create_stderr" "$repo_doctor_help" "$ci_log_dump_help" "$report_upstream_help" "$install_help" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_json" "$add_doc_pr_stderr" "$add_doc_pr_create_json" "$add_doc_pr_create_stderr" "$add_doc_pr_plan_stdout" "$add_doc_pr_plan_stderr" "$branch_cleanup_help" "$pr_finish_help" "$repo_doctor_help" "$ci_log_dump_help" "$report_upstream_help" "$install_help" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -370,6 +391,8 @@ smoke_check_pr_create_body_file() {
   local branch_missing_stderr="$smoke_test_base/pr-create-branch-missing-$$.stderr"
   local branch_empty_stderr="$smoke_test_base/pr-create-branch-empty-$$.stderr"
   local unknown_stderr="$smoke_test_base/pr-create-unknown-$$.stderr"
+  local pr_create_plan_stdout="$smoke_test_base/pr-create-plan.out"
+  local pr_create_plan_stderr="$smoke_test_base/pr-create-plan.err"
   local gh_stub_dir="$smoke_test_base/gh-pr-create-stub"
   local body_text="Mixed PR body from file"
 
@@ -381,6 +404,7 @@ smoke_check_pr_create_body_file() {
     grep -Fq -- '--base=<branch>' "$helper_help" && \
     grep -Fq -- '--title=<text>' "$helper_help" && \
     grep -Fq -- '--body-file=<path>' "$helper_help" && \
+    grep -Fq -- '--explain' "$helper_help" && \
     grep -Fq -- '--body=<text>' "$helper_help" && \
     ! grep -Fq -- '--branch BRANCH' "$helper_help" && \
     ! grep -Fq -- '--base BRANCH' "$helper_help" && \
@@ -415,6 +439,16 @@ smoke_check_pr_create_body_file() {
     fi
   else
     test_fail "pr-create body-file PR creation succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --dry-run --branch="$branch_name" --base=main --title="Mixed change body file" --body-file="$helper_body" > "$pr_create_plan_stdout" 2> "$pr_create_plan_stderr"
+  ) && [ "$(cat "$pr_create_plan_stdout")" = "plan" ] && [ ! -s "$pr_create_plan_stderr" ]; then
+    test_pass "pr-create dry-run output is compact"
+  else
+    test_fail "pr-create dry-run output is compact"
     status=1
   fi
 
@@ -478,7 +512,7 @@ smoke_check_pr_create_body_file() {
     :
   fi
 
-  rm -f "$helper_json" "$helper_log" "$helper_body" "$helper_body_copy" "$helper_help" "$branch_format_stderr" "$branch_missing_stderr" "$branch_empty_stderr" "$unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$helper_json" "$helper_log" "$helper_body" "$helper_body_copy" "$helper_help" "$branch_format_stderr" "$branch_missing_stderr" "$branch_empty_stderr" "$unknown_stderr" "$pr_create_plan_stdout" "$pr_create_plan_stderr" >/dev/null 2>&1 || true
   rm -rf "$gh_stub_dir" >/dev/null 2>&1 || true
   return "$status"
 }
@@ -532,6 +566,7 @@ smoke_check_pr_create_body_text() {
 smoke_check_branch_cleanup_json() {
   local status=0
   local branch_json="$smoke_test_dir/branch-cleanup.json"
+  local branch_plan_stdout="$smoke_test_base/branch-cleanup-plan-$$.txt"
   local unknown_flag_stderr="$smoke_test_base/branch-cleanup-unknown.stderr"
   local start_branch=""
 
@@ -542,6 +577,16 @@ smoke_check_branch_cleanup_json() {
     test_pass "branch-cleanup json is parseable"
   else
     test_fail "branch-cleanup json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/branch-cleanup --plan > "$branch_plan_stdout"
+  ) && [ "$(cat "$branch_plan_stdout")" = "plan" ]; then
+    test_pass "branch-cleanup plan output is compact"
+  else
+    test_fail "branch-cleanup plan output is compact"
     status=1
   fi
 
@@ -608,6 +653,8 @@ smoke_check_branch_cleanup_json() {
     status=1
   fi
 
+  rm -f "$branch_json" "$branch_plan_stdout" "$unknown_flag_stderr" >/dev/null 2>&1 || true
+
   return "$status"
 }
 
@@ -620,6 +667,8 @@ smoke_check_preflight_json() {
   local branch_missing_stderr="$smoke_test_dir/preflight-branch-missing.stderr"
   local branch_empty_stderr="$smoke_test_dir/preflight-branch-empty.stderr"
   local branch_unknown_stderr="$smoke_test_dir/preflight-branch-unknown.stderr"
+  local preflight_explain_stdout="$smoke_test_dir/preflight-explain.out"
+  local preflight_explain_stderr="$smoke_test_dir/preflight-explain.err"
   local local_bash_path=""
   local shim_dir=""
 
@@ -647,10 +696,22 @@ smoke_check_preflight_json() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/codex-slice-preflight --help > "$preflight_help"
-  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
+  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && grep -Fq -- '--explain' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
     test_pass "preflight help shows strict branch syntax"
   else
     test_fail "preflight help shows strict branch syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git reset --hard >/dev/null 2>&1 || return 1
+    git clean -fd >/dev/null 2>&1 || return 1
+    repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke > "$preflight_explain_stdout" 2> "$preflight_explain_stderr"
+  ) && [ "$(cat "$preflight_explain_stdout")" = "pass" ]; then
+    test_pass "preflight default human output is compact"
+  else
+    test_fail "preflight default human output is compact"
     status=1
   fi
 
@@ -740,16 +801,22 @@ smoke_check_preflight_json() {
     fi
   fi
 
+  rm -f "$preflight_explain_stdout" "$preflight_explain_stderr" >/dev/null 2>&1 || true
+
   return "$status"
 }
 
 smoke_check_pr_finish_watch_exit() {
   local status=0
   local blocked_stderr="$smoke_test_dir/pr-finish-watch-blocked.log"
+  local blocked_stdout="$smoke_test_dir/pr-finish-watch-blocked.out"
   local green_stderr="$smoke_test_dir/pr-finish-watch-green.log"
+  local green_stdout="$smoke_test_dir/pr-finish-watch-green.out"
+  local green_explain_stderr="$smoke_test_dir/pr-finish-watch-green-explain.log"
   local diagnose_stderr="$smoke_test_dir/pr-finish-watch-diagnose.log"
   local diagnose_fail_stderr="$smoke_test_dir/pr-finish-watch-diagnose-fail.log"
   local missing_stderr="$smoke_test_dir/pr-finish-watch-missing.log"
+  local missing_stdout="$smoke_test_dir/pr-finish-watch-missing.out"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local local_bash_path=""
 
@@ -780,11 +847,23 @@ smoke_check_pr_finish_watch_exit() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 >/dev/null 2> "$green_stderr"
-  ); then
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 > "$green_stdout" 2> "$green_stderr"
+  ) && [ "$(cat "$green_stdout")" = "pass" ] && [ ! -s "$green_stderr" ]; then
     test_pass "pr-finish watch exits zero when checks are green"
   else
     test_fail "pr-finish watch exits zero when checks are green"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
+  ) && grep -q 'mode: watch' "$green_explain_stderr" && grep -q 'checks status: green' "$green_explain_stderr"; then
+    test_pass "pr-finish watch explain output is detailed"
+  else
+    test_fail "pr-finish watch explain output is detailed"
     status=1
   fi
 
@@ -837,7 +916,7 @@ tail two' \
       '[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' > "$smoke_test_base/pr-checks-sequence.json"
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_SEQUENCE_FILE="$smoke_test_base/pr-checks-sequence.json" \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$missing_stderr"
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 > "$missing_stdout" 2> "$missing_stderr"
   ); then
     test_pass "pr-finish watch retries missing checks before failing"
   else
@@ -845,12 +924,14 @@ tail two' \
     status=1
   fi
 
-  if grep -q 'watch completed with checks status: green' "$missing_stderr" && ! grep -q 'diagnosis ' "$missing_stderr"; then
+  if [ "$(cat "$missing_stdout")" = "pass" ] && [ ! -s "$missing_stderr" ]; then
     :
   else
     test_fail "pr-finish watch retries missing checks without diagnosis"
     status=1
   fi
+
+  rm -f "$blocked_stdout" "$green_stdout" "$green_explain_stderr" >/dev/null 2>&1 || true
 
   return "$status"
 }

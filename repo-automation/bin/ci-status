@@ -10,10 +10,12 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 ci_status_pr=""
 ci_status_branch=""
 ci_status_machine_json=0
+ci_status_quiet=0
+ci_status_explain=0
 ci_status_summary_json=""
 
 ci_status_usage() {
-  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--machine-json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_status_flag_error() {
@@ -249,29 +251,43 @@ ci_status_collect() {
 }
 
 ci_status_print_human() {
-  python3 - "$ci_status_summary_json" <<'PY'
+  local mode="$1"
+  python3 - "$ci_status_summary_json" "$mode" <<'PY'
 import json
 import sys
 
 summary = json.loads(sys.argv[1])
 mode = summary.get('mode', '')
+output_mode = sys.argv[2]
 overall = summary.get('overall_status', 'fail')
-if mode == 'pr':
-    print(f"Target: PR #{summary.get('pr', '')}")
-    print(f"Overall status: {overall}")
-    print('Checks:')
-    for item in summary.get('checks', []):
-        print(f"- {item.get('name', '')}: {item.get('bucket', '')}")
-else:
-    print(f"Target: branch {summary.get('branch', '')}")
-    print(f"Overall status: {overall}")
-    print('Latest run:')
-    run = summary.get('latest_run', {})
-    if not run:
-        print('- none')
+if output_mode == 'explain':
+    if mode == 'pr':
+        print(f"Target: PR #{summary.get('pr', '')}")
+        print(f"Overall status: {overall}")
+        print('Checks:')
+        for item in summary.get('checks', []):
+            print(f"- {item.get('name', '')}: {item.get('bucket', '')}")
     else:
-        pieces = [f"#{run.get('number', '')}", run.get('name', ''), run.get('status', ''), run.get('conclusion', '')]
-        print('- ' + ' '.join(piece for piece in pieces if piece).strip())
+        print(f"Target: branch {summary.get('branch', '')}")
+        print(f"Overall status: {overall}")
+        print('Latest run:')
+        run = summary.get('latest_run', {})
+        if not run:
+            print('- none')
+        else:
+            pieces = [f"#{run.get('number', '')}", run.get('name', ''), run.get('status', ''), run.get('conclusion', '')]
+            print('- ' + ' '.join(piece for piece in pieces if piece).strip())
+    raise SystemExit(0)
+
+if overall == 'pass':
+    print('pass')
+elif overall == 'pending':
+    print('wait')
+elif overall == 'warn':
+    print('warn', file=sys.stderr)
+else:
+    reason = summary.get('stop_reason', '') or 'ci status failed'
+    print(f'fail: {reason}', file=sys.stderr)
 PY
 }
 
@@ -330,6 +346,12 @@ ci_status_main() {
       --machine-json)
         ci_status_machine_json=1
         ;;
+      --quiet)
+        ci_status_quiet=1
+        ;;
+      --explain)
+        ci_status_explain=1
+        ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then
           ci_status_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-status --help"
@@ -353,7 +375,14 @@ ci_status_main() {
   if [ "$ci_status_machine_json" -eq 1 ]; then
     ci_status_print_json
   else
-    ci_status_print_human
+    if [ "$ci_status_quiet" -eq 1 ] && [ "$(printf '%s' "$ci_status_summary_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("overall_status","fail"))')" = "pass" ]; then
+      return 0
+    fi
+    if [ "$ci_status_explain" -eq 1 ]; then
+      ci_status_print_human explain
+    else
+      ci_status_print_human summary
+    fi
   fi
 }
 
