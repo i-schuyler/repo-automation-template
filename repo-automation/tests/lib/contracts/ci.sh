@@ -33,10 +33,10 @@ smoke_check_ci_log_dump_contract() {
     repo-automation/bin/ci-log-dump --help > "$ci_log_help"
   ) && \
     grep -Fq -- '--repo=<owner/repo>' "$ci_log_help" && \
-    grep -Fq -- '--pr=NUMBER' "$ci_log_help" && \
-    grep -Fq -- '--run-id=ID' "$ci_log_help" && \
-    grep -Fq -- '--out-dir=PATH' "$ci_log_help" && \
-    grep -Fq -- '--tail=LINES' "$ci_log_help" && \
+    grep -Fq -- '--pr=<number|current|latest>' "$ci_log_help" && \
+    grep -Fq -- '--run-id=<id>' "$ci_log_help" && \
+    grep -Fq -- '--out-dir=<path>' "$ci_log_help" && \
+    grep -Fq -- '--tail=<lines>' "$ci_log_help" && \
     grep -Fq -- '--first-failure' "$ci_log_help" && \
     grep -Fq -- '--quiet' "$ci_log_help" && \
     grep -Fq -- '--explain' "$ci_log_help" && \
