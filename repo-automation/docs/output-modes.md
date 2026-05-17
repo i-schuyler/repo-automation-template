@@ -218,6 +218,15 @@ Rules:
 - Preserve full child details in logs, JSON, or `--explain` when useful.
 - Keep umbrella success output as compact as any single script.
 
+## Contract-test wrappers
+
+The contract-test wrappers and smoke harness use the same quiet-first posture as the public helpers.
+
+- default success: `pass`
+- `--quiet` success: empty stdout and stderr
+- `--explain`: RUNNING/PASS/FAIL progress
+- `--json`: valid JSON only on stdout
+
 ## Artifact-producing commands
 
 Artifact-producing helpers should print path-only success when the artifact path is the result.
