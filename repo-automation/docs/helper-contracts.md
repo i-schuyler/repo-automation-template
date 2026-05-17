@@ -37,7 +37,7 @@ Use the linked doc for route-specific or contract-specific rules.
 
 | Name | State | Route | Public | Notes |
 | --- | --- | --- | --- | --- |
-| `submit` | planned | submit action | no | placeholder for later submission flow work |
+| `submit` | implemented | `repo-flow submit` | no | guarded explicit-path commit / PR helper |
 | `autopilot plan-only` | planned | plan-only | no | placeholder for later autopilot planning flow |
 
 `repo-flow status-card` is the public read-only status screen that lives under the `repo-flow` helper.

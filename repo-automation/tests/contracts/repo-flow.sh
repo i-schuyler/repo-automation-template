@@ -718,7 +718,6 @@ smoke_check_repo_flow_submit_staged_watch() {
   local gh_stub_dir=""
   local stdout_file=""
   local stderr_file=""
-  local create_log_file=""
   local head_before=""
   local head_after=""
 

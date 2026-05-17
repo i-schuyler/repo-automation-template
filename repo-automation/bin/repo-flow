@@ -419,9 +419,10 @@ repo_flow_submit_main() {
   local remote_url=""
   local command_status=0
   local arg=""
-  local -a staged_paths=()
   local -a delegate_args=()
   local staged_files=""
+  local uncommitted_status=""
+  local unstaged_or_untracked_status=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -579,7 +580,8 @@ repo_flow_submit_main() {
   fi
 
   if [ "$command_status" -eq 0 ] && [ -n "$paths_csv" ]; then
-    if ! repo_flow_submit_stage_paths "$paths_csv" staged_paths; then
+    local -a submit_staged_paths=()
+    if ! repo_flow_submit_stage_paths "$paths_csv" submit_staged_paths; then
       command_status=1
     fi
   fi
@@ -588,6 +590,15 @@ repo_flow_submit_main() {
     staged_files="$(git diff --cached --name-only)"
     if [ -z "$staged_files" ]; then
       repo_flow_submit_stop "no files are staged"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    uncommitted_status="$(git status --porcelain)"
+    unstaged_or_untracked_status="$(printf '%s\n' "$uncommitted_status" | grep -Ev '^[MADRC][[:space:]]' || true)"
+    if [ -n "$unstaged_or_untracked_status" ]; then
+      repo_flow_submit_stop "unrequested working tree changes remain; commit a clean explicit submit"
       command_status=1
     fi
   fi
