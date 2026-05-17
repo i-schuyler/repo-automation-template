@@ -4,6 +4,11 @@
 
 It verifies the branch is not `main`, checks the worktree, reports ahead/behind versus `origin/main`, pushes the current branch when needed, and either reuses or creates the branch PR.
 
+`repo-automation/bin/repo-flow submit` is the guarded phone-first commit entrypoint.
+Use `--paths=<path[,path...]>` to stage only explicit repo-relative paths, or `--staged` to commit the current index.
+It refuses absolute paths, `..`, default-branch submits, and pre-staged changes when `--paths` is used.
+`--watch` hands off to the existing PR finish watch path; `--diagnose-on-fail` is only forwarded with `--watch`.
+
 `--watch` hands off to `repo-automation/bin/pr-finish --watch --pr=current` after the branch is pushed and a PR exists.
 `--diagnose-on-fail` is forwarded when combined with `--watch`; blocked checks then surface the first-failure diagnosis from `ci-log-dump`.
 `pr-finish` retries briefly if checks are not registered yet right after PR creation or reuse.
@@ -34,5 +39,7 @@ Usage examples:
     repo-automation/bin/repo-flow --watch
     repo-automation/bin/repo-flow --watch --diagnose-on-fail
     repo-automation/bin/repo-flow --json
+    repo-automation/bin/repo-flow submit --paths=docs/repo-flow.md --message="update repo-flow docs"
+    repo-automation/bin/repo-flow submit --staged --message="commit staged work"
     repo-automation/bin/repo-flow status-card
     repo-automation/bin/repo-flow status-card --json
