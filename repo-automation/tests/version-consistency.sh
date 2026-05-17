@@ -4,15 +4,56 @@
 set -u
 set -o pipefail
 
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh"
+
+version_consistency_quiet=0
+version_consistency_explain=0
+
+version_consistency_usage() {
+  printf 'Usage: repo-automation/tests/version-consistency.sh [--quiet] [--explain] [--help]\n'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --quiet)
+      version_consistency_quiet=1
+      ;;
+    --explain)
+      version_consistency_explain=1
+      ;;
+    --help)
+      version_consistency_usage
+      exit 0
+      ;;
+    --*)
+      repo_auto_flag_error "unknown flag" "$1" "run repo-automation/tests/version-consistency.sh --help" >&2
+      exit 1
+      ;;
+    *)
+      repo_auto_stop "unknown argument: $1"
+      exit 1
+      ;;
+  esac
+  shift
+done
+
 version_main() {
   local repo_root
   local expected_version
 
-  repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+  repo_root="$(cd "$script_dir/../.." && pwd)"
   cd "$repo_root" || return 1
 
   if [ -x repo-automation/bin/prepare-release ]; then
-    repo-automation/bin/prepare-release --check "$@" || return $?
+    if [ "$version_consistency_explain" -eq 1 ]; then
+      repo-automation/bin/prepare-release --check --explain || return $?
+    elif [ "$version_consistency_quiet" -eq 1 ]; then
+      repo-automation/bin/prepare-release --check >/dev/null 2>/dev/null || return $?
+    else
+      repo-automation/bin/prepare-release --check >/dev/null || return $?
+    fi
   else
     if [ ! -f VERSION ]; then
       printf 'FAIL: VERSION exists\n' >&2
@@ -26,55 +67,70 @@ version_main() {
     fi
 
     if grep -q '^REPO_AUTOMATION_VERSION="'"$expected_version"'"$' .repo-automation.conf; then
-      printf 'PASS: installed automation config REPO_AUTOMATION_VERSION matches VERSION\n'
+      if [ "$version_consistency_explain" -eq 1 ]; then
+        printf 'PASS: installed automation config REPO_AUTOMATION_VERSION matches VERSION\n'
+      fi
     else
       printf 'FAIL: installed automation config REPO_AUTOMATION_VERSION matches VERSION\n' >&2
       return 1
     fi
 
     if grep -q "Current version: $expected_version" README.md; then
-      printf 'PASS: automation README current version matches VERSION\n'
+      if [ "$version_consistency_explain" -eq 1 ]; then
+        printf 'PASS: automation README current version matches VERSION\n'
+      fi
     else
       printf 'FAIL: automation README current version matches VERSION\n' >&2
       return 1
     fi
 
     if grep -q "^## \\[$expected_version\\] - Unreleased$" CHANGELOG.md; then
-      printf 'PASS: automation CHANGELOG has unreleased heading for VERSION\n'
+      if [ "$version_consistency_explain" -eq 1 ]; then
+        printf 'PASS: automation CHANGELOG has unreleased heading for VERSION\n'
+      fi
     else
       printf 'FAIL: automation CHANGELOG has unreleased heading for VERSION\n' >&2
       return 1
     fi
 
     if grep -q "| Current version line | starts at $expected_version |" docs/DECISIONS.md; then
-      printf 'PASS: automation DECISIONS current version line matches VERSION\n'
+      if [ "$version_consistency_explain" -eq 1 ]; then
+        printf 'PASS: automation DECISIONS current version line matches VERSION\n'
+      fi
     else
       printf 'FAIL: automation DECISIONS current version line matches VERSION\n' >&2
       return 1
     fi
 
     if grep -q '^Current version: '"$expected_version"'$' docs/VERSIONING.md &&      grep -q 'Version Modes' docs/VERSIONING.md &&      grep -q 'prepare-release' docs/VERSIONING.md &&      grep -q 'REPO_AUTOMATION_CONF_VERSION' docs/VERSIONING.md; then
-      printf 'PASS: VERSIONING documents automation version modes and guard\n'
+      if [ "$version_consistency_explain" -eq 1 ]; then
+        printf 'PASS: VERSIONING documents automation version modes and guard\n'
+      fi
     else
       printf 'FAIL: VERSIONING documents automation version modes and guard\n' >&2
       return 1
     fi
 
     if grep -q '^REPO_AUTOMATION_VERSION="'"$expected_version"'"$' examples/downstream/.repo-automation.conf.example ||      grep -q '^INSTALLED_VERSION_OR_REF="'"${expected_version}-EXAMPLE"'"$' examples/downstream/.repo-automation.conf.example; then
-      printf 'PASS: downstream example installed automation ref is aligned or explicit EXAMPLE suffix\n'
+      if [ "$version_consistency_explain" -eq 1 ]; then
+        printf 'PASS: downstream example installed automation ref is aligned or explicit EXAMPLE suffix\n'
+      fi
     else
       printf 'FAIL: downstream example installed automation ref is aligned or explicit EXAMPLE suffix\n' >&2
       return 1
     fi
   fi
 
-  python3 - "$repo_root" <<'PY' || return 1
+  VERSION_CONSISTENCY_QUIET="$version_consistency_quiet" VERSION_CONSISTENCY_EXPLAIN="$version_consistency_explain" python3 - "$repo_root" <<'PY' || return 1
 from pathlib import Path
 import json
 import re
+import os
 import sys
 
 repo_root = Path(sys.argv[1]).resolve()
+quiet = os.environ.get('VERSION_CONSISTENCY_QUIET') == '1'
+explain = os.environ.get('VERSION_CONSISTENCY_EXPLAIN') == '1'
 manifest_path = repo_root / 'repo-automation' / 'manifest.json'
 installer_path = repo_root / 'repo-automation' / 'bin' / 'repo-automation-install'
 helper_metadata_path = repo_root / 'repo-automation' / 'helper-metadata.json'
@@ -216,8 +272,13 @@ if missing_helper_installer:
     print('Smallest fix: add the missing helper paths to repo-automation/bin/repo-automation-install managed-file coverage, or remove them from repo-automation/helper-metadata.json if they are no longer public.', file=sys.stderr)
     raise SystemExit(1)
 
-print('PASS: manifest-vs-installer managed-file coverage matches')
+if explain:
+    print('PASS: manifest-vs-installer managed-file coverage matches')
 PY
+
+  if [ "$version_consistency_quiet" -eq 0 ] && [ "$version_consistency_explain" -eq 0 ]; then
+    printf 'pass\n'
+  fi
 }
 
 version_main "$@"

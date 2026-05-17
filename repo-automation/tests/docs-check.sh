@@ -4,15 +4,53 @@
 set -u
 set -o pipefail
 
-repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh"
 
-python3 - "$repo_root" <<'PY'
+docs_check_quiet=0
+docs_check_explain=0
+
+docs_check_usage() {
+  printf 'Usage: repo-automation/tests/docs-check.sh [--quiet] [--explain] [--help]\n'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --quiet)
+      docs_check_quiet=1
+      ;;
+    --explain)
+      docs_check_explain=1
+      ;;
+    --help)
+      docs_check_usage
+      exit 0
+      ;;
+    --*)
+      repo_auto_flag_error "unknown flag" "$1" "run repo-automation/tests/docs-check.sh --help" >&2
+      exit 1
+      ;;
+    *)
+      repo_auto_stop "unknown argument: $1"
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+repo_root="$(cd "$script_dir/../.." && pwd)"
+
+DOCS_CHECK_QUIET="$docs_check_quiet" DOCS_CHECK_EXPLAIN="$docs_check_explain" python3 - "$repo_root" <<'PY'
 from pathlib import Path
 from urllib.parse import unquote
 import re
+import os
 import sys
 
 repo_root = Path(sys.argv[1]).resolve()
+quiet = os.environ.get('DOCS_CHECK_QUIET') == '1'
+explain = os.environ.get('DOCS_CHECK_EXPLAIN') == '1'
 link_pattern = re.compile(r'(?<!\!)\[[^\]]+\]\(([^)]+)\)')
 markdown_suffixes = {'.md', '.markdown'}
 text_suffixes = {'.md', '.markdown', '.yml', '.yaml', '.sh', '.txt'}
@@ -222,19 +260,17 @@ if failures:
         print(message)
     sys.exit(1)
 
-print('PASS: docs checks passed')
-print('PASS: local markdown links')
-print('PASS: docs index coverage')
-print('PASS: public entry points')
-print('PASS: readme integrity')
-print('PASS: phrase scans')
-print('PASS: markdown formatting')
+if explain:
+    print('PASS: docs checks passed')
+    print('PASS: local markdown links')
+    print('PASS: docs index coverage')
+    print('PASS: public entry points')
+    print('PASS: readme integrity')
+    print('PASS: phrase scans')
+    print('PASS: markdown formatting')
+elif not quiet:
+    print('pass')
 PY
 status=$?
-if [ "$status" -eq 0 ]; then
-  printf '%s\n' 'PASS: repo-automation/tests/docs-check.sh'
-else
-  printf '%s\n' 'FAIL: repo-automation/tests/docs-check.sh'
-fi
 exit "$status"
 # repo-automation/tests/docs-check.sh EOF
