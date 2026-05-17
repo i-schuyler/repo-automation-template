@@ -21,7 +21,8 @@ smoke_main() {
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     smoke_run "$@" || status=1
   else
-    smoke_output_capture="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-automation-template-tests/smoke.XXXXXX")" || return 1
+    mkdir -p "$TEST_TEMP_ROOT" || return 1
+    smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/smoke.XXXXXX")" || return 1
     if smoke_run "$@" >"$smoke_output_capture" 2>&1; then
       :
     else

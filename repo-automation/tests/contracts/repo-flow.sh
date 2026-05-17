@@ -694,7 +694,8 @@ smoke_main() {
     smoke_run_named_check "smoke:repo-flow-existing-pr" smoke_check_repo_flow_existing_pr || status=1
     smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
   else
-    smoke_output_capture="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-automation-template-tests/repo-flow.XXXXXX")" || return 1
+    mkdir -p "$TEST_TEMP_ROOT" || return 1
+    smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/repo-flow.XXXXXX")" || return 1
     exec 3>&1 4>&2
     exec >"$smoke_output_capture" 2>&1
     trap 'test_cleanup' EXIT INT TERM
