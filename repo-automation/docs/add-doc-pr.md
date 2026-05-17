@@ -8,6 +8,8 @@ Default behavior is plan-only. It does not commit, push, or create a PR unless `
 
 Value flags use `--flag=<value>` syntax. Space-separated values are rejected.
 
+Default success output is compact: `plan` for preview, PR URL when a PR is created, or `pass` otherwise. Use `--explain` for the full human summary.
+
 ## Docs-Only Boundary
 
 Default allowed paths:

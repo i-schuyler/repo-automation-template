@@ -14,10 +14,23 @@ smoke_check_report_upstream_preview() {
   local report_feature_json="$smoke_test_base/report-upstream-feature-$$.json"
   local report_preview_bug="$smoke_test_base/report-upstream-bug-preview-$$.md"
   local report_preview_feature="$smoke_test_base/report-upstream-feature-preview-$$.md"
+  local report_bug_human="$smoke_test_base/report-upstream-bug-human-$$.txt"
+  local report_bug_explain="$smoke_test_base/report-upstream-bug-explain-$$.txt"
+  local report_help="$smoke_test_base/report-upstream-help-$$.txt"
   local report_type_format_stderr="$smoke_test_base/report-upstream-type-format-$$.stderr"
   local report_type_missing_stderr="$smoke_test_base/report-upstream-type-missing-$$.stderr"
   local report_type_empty_stderr="$smoke_test_base/report-upstream-type-empty-$$.stderr"
   local report_unknown_stderr="$smoke_test_base/report-upstream-unknown-$$.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream --help > "$report_help"
+  ) && grep -Fq -- '--explain' "$report_help" && ! grep -Fq -- '--quiet' "$report_help"; then
+    test_pass "report-upstream help shows explain output mode"
+  else
+    test_fail "report-upstream help shows explain output mode"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -34,6 +47,41 @@ smoke_check_report_upstream_preview() {
     test_pass "report-upstream bug dry-run/json preview succeeds"
   else
     test_fail "report-upstream bug dry-run/json preview succeeds"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream \
+      --type=bug \
+      --title="Bug smoke" \
+      --command="repo-automation/bin/example --flag" \
+      --expected=works \
+      --actual=fails \
+      --dry-run \
+      --preview-file="$report_preview_bug" > "$report_bug_human"
+  ) && [ "$(cat "$report_bug_human")" = "$report_preview_bug" ]; then
+    test_pass "report-upstream default human output is compact"
+  else
+    test_fail "report-upstream default human output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-report-upstream \
+      --type=bug \
+      --title="Bug smoke" \
+      --command="repo-automation/bin/example --flag" \
+      --expected=works \
+      --actual=fails \
+      --dry-run \
+      --explain \
+      --preview-file="$report_preview_bug" > /dev/null 2> "$report_bug_explain"
+  ) && grep -Fq 'preview file:' "$report_bug_explain" && grep -Fq 'issue type: bug' "$report_bug_explain"; then
+    test_pass "report-upstream explain output is detailed"
+  else
+    test_fail "report-upstream explain output is detailed"
     status=1
   fi
 
@@ -127,7 +175,7 @@ smoke_check_report_upstream_preview() {
     test_pass "report-upstream invalid type fails safely"
   fi
 
-  rm -f "$report_bug_json" "$report_feature_json" "$report_preview_bug" "$report_preview_feature" "$report_type_format_stderr" "$report_type_missing_stderr" "$report_type_empty_stderr" "$report_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$report_bug_json" "$report_feature_json" "$report_preview_bug" "$report_preview_feature" "$report_bug_human" "$report_bug_explain" "$report_help" "$report_type_format_stderr" "$report_type_missing_stderr" "$report_type_empty_stderr" "$report_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

@@ -12,13 +12,15 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 pr_create_json=0
+pr_create_explain=0
 pr_create_stop_reason=""
 
 pr_create_usage() {
-  printf 'Usage: repo-automation/bin/pr-create [--help] [--dry-run] [--json] [--branch=<name>] [--base=<branch>] [--title=<text>] [--body-file=<path>] [--body=<text>]\n'
+  printf 'Usage: repo-automation/bin/pr-create [--help] [--dry-run] [--json] [--explain] [--branch=<name>] [--base=<branch>] [--title=<text>] [--body-file=<path>] [--body=<text>]\n'
 }
 
 pr_create_info() {
+  [ "$pr_create_explain" -eq 1 ] || return 0
   printf 'INFO: %s\n' "$*" >&2
 }
 
@@ -111,6 +113,9 @@ pr_create_main() {
         json=1
         # shellcheck disable=SC2034 # shared JSON flag is observed by the JSON printer path
         pr_create_json=1
+        ;;
+      --explain)
+        pr_create_explain=1
         ;;
       --branch=*)
         branch_arg="${arg#--branch=}"
@@ -371,10 +376,18 @@ pr_create_main() {
   if [ "$json" -eq 1 ]; then
     pr_create_print_json "$mode" "$head_branch" "$base_branch" "$title" "$pr_number" "$pr_url" "$action_taken" "$pr_create_stop_reason"
   elif [ "$command_status" -eq 0 ]; then
-    if [ "$dry_run" -eq 1 ]; then
-      pr_create_info "dry-run complete; no PR created"
+    if [ "$pr_create_explain" -eq 1 ]; then
+      if [ "$dry_run" -eq 1 ]; then
+        pr_create_info "dry-run complete; no PR created"
+      else
+        pr_create_info "PR created: #$pr_number $pr_url"
+      fi
+    elif [ "$dry_run" -eq 1 ]; then
+      printf 'plan\n'
+    elif [ -n "$pr_url" ]; then
+      printf '%s\n' "$pr_url"
     else
-      pr_create_info "PR created: #$pr_number $pr_url"
+      printf 'pass\n'
     fi
   fi
 

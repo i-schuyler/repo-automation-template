@@ -13,6 +13,7 @@ Default behavior is preview/plan-only. No issue is created unless `--submit` is 
 - `--dry-run` never submits, even when `--submit` is passed.
 - `--submit` without `--yes` prompts for explicit confirmation after preview.
 - `--submit --yes` supports non-interactive submission when required fields exist and secret scan passes.
+- `--explain` prints the detailed preview report; default success is the preview path or issue URL.
 
 ## Installed context
 

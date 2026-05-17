@@ -35,3 +35,5 @@ The saved file name uses the format `actions_run_<run-id>_<timestamp>.log`.
 `--first-failure` parses the saved failed log locally and reports the first actionable failure label, excerpt, and next fix hint using the shared CI failure taxonomy.
 
 `--machine-json` emits a single JSON object with the repo, PR number when present, run id, saved path, file size, and tail excerpt. With `--first-failure`, it also includes `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`.
+
+`--quiet` suppresses clean-success output. `--explain` prints the detailed human summary. Default success is the saved path only.

@@ -746,6 +746,9 @@ smoke_check_github_settings_contract() {
   local github_settings_json="$smoke_test_base/github-settings-check-$$.json"
   local github_settings_repo_json="$smoke_test_base/github-settings-check-repo-$$.json"
   local github_settings_help="$smoke_test_base/github-settings-check-help-$$.txt"
+  local github_settings_pass_human="$smoke_test_base/github-settings-check-pass-$$.txt"
+  local github_settings_quiet_human="$smoke_test_base/github-settings-check-quiet-$$.txt"
+  local github_settings_explain_human="$smoke_test_base/github-settings-check-explain-$$.txt"
   local github_settings_repo_format_stderr="$smoke_test_base/github-settings-check-repo-format.stderr"
   local github_settings_repo_missing_stderr="$smoke_test_base/github-settings-check-repo-missing.stderr"
   local github_settings_repo_empty_stderr="$smoke_test_base/github-settings-check-repo-empty.stderr"
@@ -758,10 +761,40 @@ smoke_check_github_settings_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/github-settings-check --help > "$github_settings_help"
-  ) && grep -Fq -- '--repo=<owner/repo>' "$github_settings_help" && ! grep -Fq -- '--repo OWNER/REPO' "$github_settings_help"; then
+  ) && grep -Fq -- '--repo=<owner/repo>' "$github_settings_help" && grep -Fq -- '--quiet' "$github_settings_help" && grep -Fq -- '--explain' "$github_settings_help" && ! grep -Fq -- '--repo OWNER/REPO' "$github_settings_help"; then
     test_pass "github-settings-check help shows strict repo syntax"
   else
     test_fail "github-settings-check help shows strict repo syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check > "$github_settings_pass_human" 2>&1
+  ) && [ "$(cat "$github_settings_pass_human")" = "pass" ]; then
+    test_pass "github-settings-check default human output is compact"
+  else
+    test_fail "github-settings-check default human output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --quiet > "$github_settings_quiet_human" 2>&1
+  ) && [ ! -s "$github_settings_quiet_human" ]; then
+    test_pass "github-settings-check quiet success is silent"
+  else
+    test_fail "github-settings-check quiet success is silent"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --explain > "$github_settings_explain_human" 2>&1
+  ) && grep -Eq '^pass=[0-9]+ warn=[0-9]+ fail=[0-9]+ skipped=[0-9]+$' "$github_settings_explain_human" && grep -Eq '^PASS: github-context - ' "$github_settings_explain_human"; then
+    test_pass "github-settings-check explain output is detailed"
+  else
+    test_fail "github-settings-check explain output is detailed"
     status=1
   fi
 
@@ -850,7 +883,7 @@ smoke_check_github_settings_contract() {
     status=1
   fi
 
-  rm -f "$github_settings_json" "$github_settings_doctor_json" >/dev/null 2>&1 || true
+  rm -f "$github_settings_json" "$github_settings_repo_json" "$github_settings_help" "$github_settings_repo_format_stderr" "$github_settings_repo_missing_stderr" "$github_settings_repo_empty_stderr" "$github_settings_unknown_stderr" "$github_settings_pass_human" "$github_settings_quiet_human" "$github_settings_explain_human" "$github_settings_doctor_json" >/dev/null 2>&1 || true
   return "$status"
 }
 

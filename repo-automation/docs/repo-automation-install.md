@@ -10,6 +10,7 @@
 - never commits, pushes, creates PRs, merges, or deletes branches in the target repo
 - supports JSON output with valid JSON on stdout and human logs on stderr
 - keeps the selected install profile explicit in human and JSON output
+- `--explain` prints the detailed human summary; default success is compact `plan` or `pass`
 
 If mode is not explicitly passed:
 

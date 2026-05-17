@@ -12,10 +12,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 add_doc_pr_json=0
+add_doc_pr_explain=0
 add_doc_pr_stop_reason=""
 
 add_doc_pr_usage() {
-  printf 'Usage: repo-automation/bin/add-doc-pr [--help] [--plan] [--dry-run] [--json] [--branch=<name>] [--title=<text>] [--body-file=<path>] [--body=<text>] [--commit-message=<text>] [--allow=<path-prefix>] [--no-push] [--create-pr] [--base=<branch>]\n'
+  printf 'Usage: repo-automation/bin/add-doc-pr [--help] [--plan] [--dry-run] [--json] [--explain] [--branch=<name>] [--title=<text>] [--body-file=<path>] [--body=<text>] [--commit-message=<text>] [--allow=<path-prefix>] [--no-push] [--create-pr] [--base=<branch>]\n'
 }
 
 add_doc_pr_info() {
@@ -280,6 +281,9 @@ add_doc_pr_main() {
         ;;
       --json)
         add_doc_pr_json=1
+        ;;
+      --explain)
+        add_doc_pr_explain=1
         ;;
       --branch=*)
         branch_arg="${arg#--branch=}"
@@ -552,7 +556,7 @@ add_doc_pr_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$add_doc_pr_json" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$add_doc_pr_json" -eq 0 ] && [ "$add_doc_pr_explain" -eq 1 ]; then
     add_doc_pr_emit_human_summary "$mode" "$target_branch" "$base_branch" allowed_paths changed_files blocked_files
   fi
 
@@ -713,12 +717,20 @@ add_doc_pr_main() {
       changed_files \
       blocked_files
   elif [ "$command_status" -eq 0 ]; then
-    if [ "$create_pr" -eq 0 ]; then
-      add_doc_pr_info "plan complete; no commit, push, or PR creation executed"
-    elif [ "$mode" = "dry-run" ]; then
-      add_doc_pr_info "dry-run complete; no commit, push, or PR creation executed"
+    if [ "$add_doc_pr_explain" -eq 1 ]; then
+      if [ "$create_pr" -eq 0 ]; then
+        add_doc_pr_info "plan complete; no commit, push, or PR creation executed"
+      elif [ "$mode" = "dry-run" ]; then
+        add_doc_pr_info "dry-run complete; no commit, push, or PR creation executed"
+      else
+        add_doc_pr_info "PR created: #$pr_number $pr_url"
+      fi
+    elif [ "$create_pr" -eq 0 ] || [ "$mode" = "dry-run" ]; then
+      printf 'plan\n'
+    elif [ -n "$pr_url" ]; then
+      printf '%s\n' "$pr_url"
     else
-      add_doc_pr_info "PR created: #$pr_number $pr_url"
+      printf 'pass\n'
     fi
   fi
 

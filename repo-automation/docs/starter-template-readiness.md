@@ -15,6 +15,8 @@ Default human output:
 
     repo-automation/bin/starter-template-ready
 
+Clean success prints `pass`; failures print a single `fail:` line on stderr.
+
 Check the current repo explicitly:
 
     repo-automation/bin/starter-template-ready --check-current

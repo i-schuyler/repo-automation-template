@@ -12,6 +12,7 @@ Safe stale local branch means all of the following:
 - branch name passes shared branch validation
 
 Default behavior is plan-only. No deletion happens unless `--apply` is passed.
+Use `--explain` for the detailed branch summary; default success is compact `plan` or `pass`.
 
 The script never deletes remote branches and never force-deletes local branches.
 

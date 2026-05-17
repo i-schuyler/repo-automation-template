@@ -114,14 +114,15 @@ def as_bool(value: object) -> bool | None:
 
 def print_help() -> None:
     print(
-        """Usage: repo-automation/bin/github-settings-check [--repo=<owner/repo>] [--machine-json] [--quiet] [--help]
+        """Usage: repo-automation/bin/github-settings-check [--repo=<owner/repo>] [--machine-json] [--quiet] [--explain] [--help]
 
 Check GitHub repository settings readiness for the current checkout or an explicit repo.
 
 Flags:
   --repo=<owner/repo>   Check the named repository instead of inferring origin
   --machine-json        Emit machine-readable JSON output
-  --quiet               Suppress the banner line in human output
+  --quiet               Suppress clean-success output in human mode
+  --explain             Show the full compact report in human mode
   --help                Show this help text and exit
 """,
         end="",
@@ -138,6 +139,7 @@ def flag_error(reason: str, flag: str, fix: str) -> int:
 def parse_args(argv: list[str]) -> argparse.Namespace | int:
     machine_json = False
     quiet = False
+    explain = False
     repo = ""
 
     index = 0
@@ -154,6 +156,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace | int:
             quiet = True
             index += 1
             continue
+        if arg == "--explain":
+            explain = True
+            index += 1
+            continue
         if arg == "--repo":
             next_arg = argv[index + 1] if index + 1 < len(argv) else ""
             if not next_arg or next_arg.startswith("-"):
@@ -168,7 +174,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace | int:
         if arg.startswith("-"):
             return flag_error("unknown flag", arg, "run repo-automation/bin/github-settings-check --help")
         return flag_error("unknown flag", arg, "run repo-automation/bin/github-settings-check --help")
-    return argparse.Namespace(repo=repo, machine_json=machine_json, quiet=quiet)
+    return argparse.Namespace(repo=repo, machine_json=machine_json, quiet=quiet, explain=explain)
 
 
 def main() -> int:
@@ -187,7 +193,7 @@ def main() -> int:
 
     result: dict[str, object] = {
         "script": "github-settings-check",
-        "mode": "machine-json" if args.machine_json else ("quiet" if args.quiet else "summary"),
+        "mode": "machine-json" if args.machine_json else ("quiet" if args.quiet else ("explain" if args.explain else "summary")),
         "repo": repo,
         "repo_source": repo_source,
         "worktree_root": str(worktree_root),
@@ -442,35 +448,29 @@ def main() -> int:
         print(json.dumps(result, separators=(",", ":")))
         return 0 if result["overall_status"] != "fail" else 1
 
-    if not args.quiet:
-        print("RUNNING github settings readiness...")
-
-    print(
-        "RESULT: pass={0} warn={1} fail={2} skipped={3}".format(
-            result["pass_count"],
-            result["warn_count"],
-            result["fail_count"],
-            result["skipped_count"],
+    if args.explain:
+        print(
+            "pass={0} warn={1} fail={2} skipped={3}".format(
+                result["pass_count"],
+                result["warn_count"],
+                result["fail_count"],
+                result["skipped_count"],
+            )
         )
-    )
-
-    if result["warn_count"] > 0:
-        print("WARN:")
         for check in result["checks"]:
-            if check["status"] == "warn":
-                print(f"- {check['name']}: {check['message']}")
-
-    if result["skipped_count"] > 0:
-        print("SKIP:")
-        for check in result["checks"]:
-            if check["status"] == "skipped":
-                print(f"- {check['name']}: {check['message']}")
-
-    if result["fail_count"] > 0:
-        print("FAIL:")
+            print(f"{check['status'].upper()}: {check['name']} - {check['message']}")
+    elif result["fail_count"] > 0:
         for check in result["checks"]:
             if check["status"] == "fail":
-                print(f"- {check['name']}: {check['message']}")
+                print(f"fail: {check['message']}", file=sys.stderr)
+                break
+    elif result["warn_count"] > 0:
+        for check in result["checks"]:
+            if check["status"] == "warn":
+                print(f"warn: {check['message']}", file=sys.stderr)
+                break
+    elif not args.quiet:
+        print("pass")
 
     return 0 if result["overall_status"] != "fail" else 1
 

@@ -9,12 +9,15 @@ Supported flags:
 - `--poll-seconds=SECONDS` sets the polling interval
 - `--timeout=SECONDS` sets the overall wait limit
 - `--machine-json` returns machine-readable output
+- `--quiet` suppresses the clean-success `pass` line
+- `--explain` prints the elapsed status report
 
 Behavior:
 
 - reuses the read-only CI status checks from `repo-automation/bin/ci-status`
 - never creates, updates, merges, closes, or deletes anything
 - exits non-zero on CI failure, timeout, or GitHub access problems
+- default success is compact `pass`
 
 Examples:
 

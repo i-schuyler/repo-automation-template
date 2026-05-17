@@ -14,6 +14,9 @@ smoke_check_prepare_release_contract() {
   local prepare_release_check_json="$smoke_test_base/prepare-release-check-$$.json"
   local prepare_release_dry_run_json="$smoke_test_base/prepare-release-dry-run-$$.json"
   local prepare_release_apply_json="$smoke_test_base/prepare-release-apply-$$.json"
+  local prepare_release_check_human="$smoke_test_base/prepare-release-check-$$.txt"
+  local prepare_release_dry_run_human="$smoke_test_base/prepare-release-dry-run-$$.txt"
+  local prepare_release_apply_human="$smoke_test_base/prepare-release-apply-$$.txt"
   local pre_dry_run_status="$smoke_test_base/prepare-release-pre-dry-run-status-$$.txt"
   local post_dry_run_status="$smoke_test_base/prepare-release-post-dry-run-status-$$.txt"
   local prepare_release_version_format_stderr="$smoke_test_base/prepare-release-version-format-$$.stderr"
@@ -26,6 +29,7 @@ smoke_check_prepare_release_contract() {
     repo-automation/bin/prepare-release --help > "$prepare_release_help_out"
   ) && grep -q '^Usage: repo-automation/bin/prepare-release ' "$prepare_release_help_out" && \
     grep -Fq -- '--version=<semver>' "$prepare_release_help_out" && \
+    grep -Fq -- '--explain' "$prepare_release_help_out" && \
     ! grep -Fq -- '--version SEMVER' "$prepare_release_help_out"; then
     test_pass "prepare-release help succeeds"
   else
@@ -98,6 +102,16 @@ smoke_check_prepare_release_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --check > "$prepare_release_check_human"
+  ) && [ "$(cat "$prepare_release_check_human")" = "pass" ]; then
+    test_pass "prepare-release check output is compact"
+  else
+    test_fail "prepare-release check output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     git status --short > "$pre_dry_run_status" &&
       repo-automation/bin/prepare-release --version=0.2.0 --dry-run --machine-json > "$prepare_release_dry_run_json" &&
       git status --short > "$post_dry_run_status"
@@ -111,12 +125,32 @@ smoke_check_prepare_release_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --version=0.2.0 --dry-run > "$prepare_release_dry_run_human"
+  ) && [ "$(cat "$prepare_release_dry_run_human")" = "plan" ]; then
+    test_pass "prepare-release dry-run output is compact"
+  else
+    test_fail "prepare-release dry-run output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/prepare-release --version=0.2.0 --apply --machine-json > "$prepare_release_apply_json"
   ) && python -m json.tool "$prepare_release_apply_json" >/dev/null && \
     smoke_json_assert "$prepare_release_apply_json" 'data.get("mode") == "apply" and data.get("overall_status") == "pass" and data.get("target_version") == "0.2.0" and data.get("updated_count", 0) > 0'; then
     test_pass "prepare-release apply updates files"
   else
     test_fail "prepare-release apply updates files"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/prepare-release --version=0.2.0 --apply > "$prepare_release_apply_human"
+  ) && [ "$(cat "$prepare_release_apply_human")" = "pass" ]; then
+    test_pass "prepare-release apply output is compact"
+  else
+    test_fail "prepare-release apply output is compact"
     status=1
   fi
 
@@ -137,7 +171,7 @@ smoke_check_prepare_release_contract() {
     status=1
   fi
 
-  rm -f "$prepare_release_help_out" "$prepare_release_check_json" "$prepare_release_dry_run_json" "$prepare_release_apply_json" "$pre_dry_run_status" "$post_dry_run_status" "$prepare_release_version_format_stderr" "$prepare_release_version_missing_stderr" "$prepare_release_version_empty_stderr" "$prepare_release_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$prepare_release_help_out" "$prepare_release_check_json" "$prepare_release_dry_run_json" "$prepare_release_apply_json" "$prepare_release_check_human" "$prepare_release_dry_run_human" "$prepare_release_apply_human" "$pre_dry_run_status" "$post_dry_run_status" "$prepare_release_version_format_stderr" "$prepare_release_version_missing_stderr" "$prepare_release_version_empty_stderr" "$prepare_release_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -153,7 +187,7 @@ smoke_check_automation_freshness_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/automation-freshness > "$freshness_default_out"
-  ) && grep -Eq '^RESULT: pass=' "$freshness_default_out" && ! grep -Eq '^FAIL:$' "$freshness_default_out"; then
+  ) && [ "$(cat "$freshness_default_out")" = "pass" ]; then
     test_pass "automation-freshness human default output is compact"
   else
     test_fail "automation-freshness human default output is compact"
@@ -316,9 +350,9 @@ smoke_check_starter_template_readiness() {
   local readiness_json="$smoke_test_base/starter-template-ready-$$.json"
   local readiness_missing_json="$smoke_test_base/starter-template-ready-missing-$$.json"
   local readiness_doctor_out="$smoke_test_base/repo-doctor-starter-template-readiness-$$.txt"
+  local readiness_human_out="$smoke_test_base/starter-template-ready-human-$$.txt"
   local readiness_missing_template="$smoke_test_dir/.github/pull_request_template.md"
   local readiness_missing_backup="$smoke_test_base/pull_request_template.md.bak"
-  local readiness_human="$smoke_test_base/starter-template-ready-human-$$.txt"
   local source_format_stderr="$smoke_test_base/starter-template-ready-source-format.stderr"
   local source_missing_stderr="$smoke_test_base/starter-template-ready-source-missing.stderr"
   local source_empty_stderr="$smoke_test_base/starter-template-ready-source-empty.stderr"
@@ -388,8 +422,8 @@ smoke_check_starter_template_readiness() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/starter-template-ready --check-current > "$readiness_human"
-  ) && grep -Eq '^RUNNING starter-template readiness\.\.\.$' "$readiness_human" && grep -Eq '^RESULT: pass=[0-9]+ warn=0 fail=0 skipped=0$' "$readiness_human"; then
+    repo-automation/bin/starter-template-ready --check-current > "$readiness_human_out"
+  ) && [ "$(cat "$readiness_human_out")" = "pass" ]; then
     test_pass "starter-template-ready default human output passes"
   else
     test_fail "starter-template-ready default human output passes"
@@ -424,13 +458,15 @@ smoke_check_starter_template_readiness() {
     )
   fi
 
-  rm -f "$readiness_json" "$readiness_missing_json" "$readiness_human" "$readiness_doctor_out" >/dev/null 2>&1 || true
+  rm -f "$readiness_json" "$readiness_missing_json" "$readiness_human_out" "$readiness_doctor_out" >/dev/null 2>&1 || true
   return "$status"
 }
 
 smoke_check_installer_apply_contract() {
   local status=0
   local install_plan_json="$smoke_test_base/repo-install-plan-$$.json"
+  local install_plan_human="$smoke_test_base/repo-install-plan-$$.txt"
+  local install_apply_human="$smoke_test_base/repo-install-apply-$$.txt"
   local install_target="$smoke_test_base/install-target-$$"
   local install_target_remote="$smoke_test_base/install-target-$$-remote.git"
   local install_status_before
@@ -478,6 +514,16 @@ smoke_check_installer_apply_contract() {
     fi
   else
     test_fail "repo-automation-install plan/json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target="$install_target" --include-tests > "$install_plan_human"
+  ) && [ "$(cat "$install_plan_human")" = "plan" ]; then
+    test_pass "repo-automation-install plan output is compact"
+  else
+    test_fail "repo-automation-install plan output is compact"
     status=1
   fi
 
@@ -557,6 +603,16 @@ smoke_check_installer_apply_contract() {
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target="$install_target" --apply --include-tests > "$install_apply_human"
+  ) && [ "$(cat "$install_apply_human")" = "pass" ]; then
+    test_pass "repo-automation-install apply output is compact"
+  else
+    test_fail "repo-automation-install apply output is compact"
     status=1
   fi
 
@@ -702,7 +758,7 @@ smoke_check_installer_apply_contract() {
     status=1
   fi
 
-  rm -f "$install_plan_json" >/dev/null 2>&1 || true
+  rm -f "$install_plan_json" "$install_plan_human" "$install_apply_human" >/dev/null 2>&1 || true
   rm -f "$install_doctor_json" >/dev/null 2>&1 || true
   rm -f "$install_target_format_stderr" "$install_target_missing_stderr" "$install_target_empty_stderr" "$install_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"

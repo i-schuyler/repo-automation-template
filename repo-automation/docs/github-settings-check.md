@@ -35,4 +35,6 @@ Quiet human output:
 
     repo-automation/bin/github-settings-check --quiet
 
+`--explain` prints the full compact status report. Default success is compact `pass`.
+
 The helper uses read-only `gh api` calls only.

@@ -12,10 +12,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 report_upstream_json=0
+report_upstream_explain=0
 report_upstream_stop_reason=""
 
 report_upstream_usage() {
-  printf 'Usage: repo-automation/bin/repo-automation-report-upstream [--help] [--plan] [--dry-run] [--json] [--type=<bug|feature>] [--title=<text>] [--command=<text>] [--expected=<text>] [--actual=<text>] [--use-case=<text>] [--proposed=<text>] [--why-upstream=<text>] [--logs-file=<path>] [--body-file=<path>] [--preview-file=<path>] [--submit] [--yes] [--label=<name>] [--repo=<owner/repo>]\n'
+  printf 'Usage: repo-automation/bin/repo-automation-report-upstream [--help] [--plan] [--dry-run] [--json] [--explain] [--type=<bug|feature>] [--title=<text>] [--command=<text>] [--expected=<text>] [--actual=<text>] [--use-case=<text>] [--proposed=<text>] [--why-upstream=<text>] [--logs-file=<path>] [--body-file=<path>] [--preview-file=<path>] [--submit] [--yes] [--label=<name>] [--repo=<owner/repo>]\n'
 }
 
 report_upstream_info() {
@@ -192,6 +193,9 @@ report_upstream_main() {
         ;;
       --json)
         report_upstream_json=1
+        ;;
+      --explain)
+        report_upstream_explain=1
         ;;
       --type=*)
         report_type="${arg#--type=}"
@@ -515,16 +519,6 @@ report_upstream_main() {
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$report_upstream_json" -eq 0 ]; then
-    report_upstream_info "issue body preview generated"
-    report_upstream_info "preview file: $preview_file"
-    report_upstream_info "upstream repo target: $upstream_repo"
-    report_upstream_info "issue type: $report_type"
-    report_upstream_info "installed automation version/ref: $installed_version_or_ref"
-    report_upstream_info "local overrides present: $local_overrides_present"
-    report_upstream_info "redact secrets before submission"
-  fi
-
   if [ "$command_status" -eq 0 ] && [ "$submit" -eq 1 ]; then
     repo_auto_require_command gh || {
       report_upstream_stop "gh is required for --submit"
@@ -562,13 +556,16 @@ report_upstream_main() {
       issue_number="$(report_upstream_extract_issue_number "$issue_url")"
       submitted=true
       action_taken="submitted"
-      [ "$report_upstream_json" -eq 1 ] || report_upstream_info "issue submitted: $issue_url"
+      [ "$report_upstream_json" -eq 1 ] || {
+        if [ "$report_upstream_explain" -eq 1 ]; then
+          report_upstream_info "issue submitted: $issue_url"
+        fi
+      }
     fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$submit" -eq 0 ]; then
     action_taken="preview"
-    [ "$report_upstream_json" -eq 1 ] || report_upstream_info "preview-only mode; no issue was submitted"
   fi
 
   if [ "$report_upstream_json" -eq 1 ]; then
@@ -590,6 +587,26 @@ report_upstream_main() {
     printf '"action_taken":"%s",' "$(report_upstream_json_escape "$action_taken")"
     printf '"stop_reason":"%s"' "$(report_upstream_json_escape "$report_upstream_stop_reason")"
     printf '}\n'
+  elif [ "$command_status" -eq 0 ]; then
+    if [ "$report_upstream_explain" -eq 1 ]; then
+      report_upstream_info "preview file: $preview_file"
+      report_upstream_info "upstream repo target: $upstream_repo"
+      report_upstream_info "issue type: $report_type"
+      report_upstream_info "installed automation version/ref: $installed_version_or_ref"
+      report_upstream_info "local overrides present: $local_overrides_present"
+      report_upstream_info "redact secrets before submission"
+      if [ "$submit" -eq 1 ]; then
+        report_upstream_info "issue submitted: $issue_url"
+      fi
+    elif [ "$submit" -eq 1 ]; then
+      if [ -n "$issue_url" ]; then
+        printf '%s\n' "$issue_url"
+      else
+        printf 'pass\n'
+      fi
+    else
+      printf '%s\n' "$preview_file"
+    fi
   fi
 
   return "$command_status"

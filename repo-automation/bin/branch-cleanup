@@ -13,13 +13,15 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 branch_cleanup_mode="plan"
 branch_cleanup_json=0
+branch_cleanup_explain=0
 branch_cleanup_stop_reason=""
 
 branch_cleanup_usage() {
-  printf 'Usage: repo-automation/bin/branch-cleanup [--plan] [--apply] [--json] [--help]\n'
+  printf 'Usage: repo-automation/bin/branch-cleanup [--plan] [--apply] [--json] [--explain] [--help]\n'
 }
 
 branch_cleanup_info() {
+  [ "$branch_cleanup_explain" -eq 1 ] || return 0
   printf 'INFO: %s\n' "$*" >&2
 }
 
@@ -149,6 +151,9 @@ branch_cleanup_main() {
         ;;
       --json)
         branch_cleanup_json=1
+        ;;
+      --explain)
+        branch_cleanup_explain=1
         ;;
       --help)
         branch_cleanup_usage
@@ -285,13 +290,9 @@ branch_cleanup_main() {
     done
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$branch_cleanup_json" -eq 0 ]; then
-    branch_cleanup_emit_human_plan "$current_branch" "$default_branch" candidates skipped
-  fi
-
   if [ "$command_status" -eq 0 ] && [ "$branch_cleanup_mode" = "apply" ]; then
     if [ "${#candidates[@]}" -eq 0 ]; then
-      [ "$branch_cleanup_json" -eq 1 ] || branch_cleanup_info "no eligible branches to delete"
+      :
     else
       for branch_name in "${candidates[@]}"; do
         if ! git branch -d "$branch_name" >/dev/null 2>&1; then
@@ -305,12 +306,24 @@ branch_cleanup_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$branch_cleanup_mode" = "plan" ] && [ "$branch_cleanup_json" -eq 0 ]; then
-    branch_cleanup_info "no deletion happened"
-  fi
-
   if [ "$branch_cleanup_json" -eq 1 ]; then
     branch_cleanup_print_json "$default_branch" "$current_branch" "$branch_cleanup_stop_reason" candidates skipped deleted
+  elif [ "$command_status" -eq 0 ]; then
+    if [ "$branch_cleanup_explain" -eq 1 ]; then
+      branch_cleanup_emit_human_plan "$current_branch" "$default_branch" candidates skipped
+      if [ "$branch_cleanup_mode" = "apply" ]; then
+        if [ "${#deleted[@]}" -eq 0 ]; then
+          branch_cleanup_info "no eligible branches deleted"
+        else
+          branch_cleanup_info "deleted branches:"
+          printf '  %s\n' "${deleted[@]}" >&2
+        fi
+      fi
+    elif [ "$branch_cleanup_mode" = "plan" ]; then
+      printf 'plan\n'
+    else
+      printf 'pass\n'
+    fi
   fi
 
   return "$command_status"
