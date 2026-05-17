@@ -687,11 +687,6 @@ repo_install_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$target_dirty" = true ]; then
-    repo_install_stop "apply mode requires a clean target working tree"
-    command_status=1
-  fi
-
   if [ "$command_status" -eq 0 ] && [ "$apply" = true ] && [ "$dry_run" = false ] && [ "${#blocked_files[@]}" -gt 0 ]; then
     repo_install_stop "apply blocked by existing conflicts; rerun with --overwrite or resolve manually"
     command_status=1
