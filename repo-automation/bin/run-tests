@@ -259,6 +259,14 @@ run_tests_print_smoke_failure_excerpt() {
   sed -n "${start_line},${end_line}p" "$output_file"
 }
 
+run_tests_print_log_reference() {
+  local log_file="$1"
+
+  if [ -n "$log_file" ]; then
+    printf 'log: %s\n' "$log_file"
+  fi
+}
+
 run_tests_first_entry_by_status() {
   local want_status="$1"
   local entry name status rest timed_out message
@@ -411,6 +419,7 @@ run_tests_print_human() {
     else
       printf 'fail: %s\n' "$name"
     fi
+    run_tests_print_log_reference "$run_tests_log_file"
     if [ "$run_tests_mode" != "quiet" ]; then
       printf 'fix: %s\n' "$run_tests_next_hint"
     fi

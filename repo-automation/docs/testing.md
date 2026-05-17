@@ -39,6 +39,8 @@ CI runs the same core checks:
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection in `repo-automation/tests/version-consistency.sh`; it also follows the quiet-first contract where success prints `pass`, `--quiet` stays silent, and `--explain` keeps detailed progress lines
 
+CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, and the `repo-automation/bin/run-tests` failure summary includes the referenced log path when logging is enabled.
+
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
 `repo-automation/bin/add-doc-pr` smoke coverage does not create real PRs.
@@ -64,6 +66,7 @@ Tests do not delete remote branches and do not use force delete for local branch
 The freshness helper keeps a smaller contract: human output by default, `--machine-json` for machine output, and `--source-root=/path/to/checkout` when checking a different checkout.
 
 ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs ShellCheck when available and warns when missing.
+When CI reports a ShellCheck failure, open the `shellcheck.log` artifact instead of rerunning the full suite locally on Android.
 
 
 ## Output modes
