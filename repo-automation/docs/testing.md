@@ -53,7 +53,7 @@ Starter-template smoke coverage uses a temporary target repo under `${TMPDIR:-$H
 
 Smoke tests use temporary directories under `${TMPDIR:-$HOME/.cache}/repo-automation-template-tests`.
 Smoke tests source `repo-automation/tests/lib/smoke-common.sh` (which loads `repo-automation/tests/lib/test-common.sh`) for named subchecks, timeout ownership, and registered temp-dir cleanup.
-Smoke scenario execution is split across `repo-automation/tests/contracts/*.sh`, with `repo-automation/tests/smoke.sh` as the orchestrator.
+Smoke scenario execution is split across `repo-automation/tests/contracts/*.sh` plus focused shared modules in `repo-automation/tests/lib/contracts/*.sh`, with `repo-automation/tests/smoke.sh` as the orchestrator.
 The shared harness owns child-process cleanup, temp-dir cleanup, and timeout fallback warnings.
 
 Tests do not delete remote branches and do not use force delete for local branches.

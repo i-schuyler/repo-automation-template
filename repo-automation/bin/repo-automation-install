@@ -372,6 +372,13 @@ repo_install_main() {
   local -a optional_test_files=(
     "repo-automation/tests/lib/test-common.sh"
     "repo-automation/tests/lib/smoke-common.sh"
+    "repo-automation/tests/lib/contracts/pr-workflow.sh"
+    "repo-automation/tests/lib/contracts/report-upstream.sh"
+    "repo-automation/tests/lib/contracts/status-diff.sh"
+    "repo-automation/tests/lib/contracts/ci.sh"
+    "repo-automation/tests/lib/contracts/repo-health.sh"
+    "repo-automation/tests/lib/contracts/artifacts.sh"
+    "repo-automation/tests/lib/contracts/install-release.sh"
     "repo-automation/tests/docs-check.sh"
     "repo-automation/tests/smoke.sh"
     "repo-automation/tests/contracts/add-doc-pr.sh"
