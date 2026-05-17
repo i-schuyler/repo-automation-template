@@ -4,6 +4,9 @@
 
 TEST_TEMP_ROOT="${TMPDIR:-$HOME/.cache}/repo-automation-template-tests"
 TEST_CURRENT_CHECK=""
+TEST_CURRENT_CHECK_REPORTED=0
+TEST_CURRENT_CHECK_FAILED=0
+TEST_CURRENT_CHECK_WARNED=0
 TEST_LAST_TIMEOUT=0
 TEST_TIMEOUT_AVAILABLE=""
 TEST_TIMEOUT_KILL_AFTER_AVAILABLE=""
@@ -11,22 +14,180 @@ TEST_TIMEOUT_WARNED=0
 TEST_CLEANUP_RAN=0
 TEST_TEMP_DIRS=()
 TEST_CHILD_PIDS=()
+TEST_OUTPUT_MODE="${TEST_OUTPUT_MODE:-summary}"
+TEST_OUTPUT_SCRIPT="${TEST_OUTPUT_SCRIPT:-smoke}"
+TEST_EVENT_KIND=()
+TEST_EVENT_CHECK=()
+TEST_EVENT_MESSAGE=()
+TEST_FIRST_FAILURE_INDEX=-1
+TEST_FIRST_WARNING_INDEX=-1
+
+test_escape_json() {
+  local value="${1:-}"
+
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+test_record_event() {
+  local kind="$1"
+  local message="$2"
+  local event_index
+
+  event_index="${#TEST_EVENT_KIND[@]}"
+  TEST_EVENT_KIND+=("$kind")
+  TEST_EVENT_CHECK+=("${TEST_CURRENT_CHECK:-}")
+  TEST_EVENT_MESSAGE+=("$message")
+
+  case "$kind" in
+    fail)
+      TEST_CURRENT_CHECK_FAILED=1
+      if [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
+        TEST_FIRST_FAILURE_INDEX="$event_index"
+      fi
+      ;;
+    warn)
+      TEST_CURRENT_CHECK_WARNED=1
+      if [ "$TEST_FIRST_WARNING_INDEX" -lt 0 ]; then
+        TEST_FIRST_WARNING_INDEX="$event_index"
+      fi
+      ;;
+  esac
+}
 
 test_info() {
-  printf 'INFO: %s\n' "$*"
+  [ "$TEST_OUTPUT_MODE" = "explain" ] && printf 'INFO: %s\n' "$*"
+  return 0
 }
 
 test_warn() {
-  printf 'WARN: %s\n' "$*" >&2
+  TEST_CURRENT_CHECK_REPORTED=1
+  test_record_event "warn" "$*"
+  [ "$TEST_OUTPUT_MODE" = "explain" ] && printf 'WARN: %s\n' "$*" >&2
+  return 0
 }
 
 test_fail() {
-  printf 'FAIL: %s\n' "$*" >&2
+  TEST_CURRENT_CHECK_REPORTED=1
+  test_record_event "fail" "$*"
+  [ "$TEST_OUTPUT_MODE" = "explain" ] && printf 'FAIL: %s\n' "$*" >&2
   return 1
 }
 
 test_pass() {
-  printf 'PASS: %s\n' "$*"
+  TEST_CURRENT_CHECK_REPORTED=1
+  test_record_event "pass" "$*"
+  [ "$TEST_OUTPUT_MODE" = "explain" ] && printf 'PASS: %s\n' "$*"
+  return 0
+}
+
+test_render_first_failure() {
+  local fail_index="$TEST_FIRST_FAILURE_INDEX"
+  local message=""
+  local check_name=""
+
+  if [ "$fail_index" -lt 0 ]; then
+    return 1
+  fi
+
+  message="${TEST_EVENT_MESSAGE[$fail_index]}"
+  check_name="${TEST_EVENT_CHECK[$fail_index]}"
+
+  if [ -n "$message" ]; then
+    printf 'fail: %s\n' "$message" >&2
+  elif [ -n "$check_name" ]; then
+    printf 'fail: %s\n' "$check_name" >&2
+  else
+    printf 'fail\n' >&2
+  fi
+  return 0
+}
+
+test_render_json() {
+  local overall_status="$1"
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local idx=0
+  local json_checks=""
+  local check_name=""
+  local kind=""
+  local message=""
+  local first=1
+
+  while [ "$idx" -lt "${#TEST_EVENT_KIND[@]}" ]; do
+    kind="${TEST_EVENT_KIND[$idx]}"
+    check_name="${TEST_EVENT_CHECK[$idx]}"
+    message="${TEST_EVENT_MESSAGE[$idx]}"
+    case "$kind" in
+      pass) pass_count=$((pass_count + 1)) ;;
+      warn) warn_count=$((warn_count + 1)) ;;
+      fail) fail_count=$((fail_count + 1)) ;;
+    esac
+    if [ "$first" -eq 0 ]; then
+      json_checks+=','
+    fi
+    json_checks+="{\"check\":\"$(test_escape_json "$check_name")\",\"status\":\"$(test_escape_json "$kind")\",\"message\":\"$(test_escape_json "$message")\"}"
+    first=0
+    idx=$((idx + 1))
+  done
+
+  printf '{'
+  printf '"script":"%s",' "$(test_escape_json "$TEST_OUTPUT_SCRIPT")"
+  printf '"mode":"json",'
+  printf '"status":"%s",' "$(test_escape_json "$overall_status")"
+  printf '"pass_count":%s,' "$pass_count"
+  printf '"warn_count":%s,' "$warn_count"
+  printf '"fail_count":%s,' "$fail_count"
+  printf '"checks":[%s]' "$json_checks"
+  if [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
+    printf ',"first_failure":{"check":"%s","message":"%s"}' \
+      "$(test_escape_json "${TEST_EVENT_CHECK[$TEST_FIRST_FAILURE_INDEX]}")" \
+      "$(test_escape_json "${TEST_EVENT_MESSAGE[$TEST_FIRST_FAILURE_INDEX]}")"
+  fi
+  printf '}\n'
+}
+
+test_finish_output() {
+  local status="${1:-0}"
+  local fail_count=0
+  local warn_count=0
+  local idx=0
+
+  while [ "$idx" -lt "${#TEST_EVENT_KIND[@]}" ]; do
+    case "${TEST_EVENT_KIND[$idx]}" in
+      fail) fail_count=$((fail_count + 1)) ;;
+      warn) warn_count=$((warn_count + 1)) ;;
+    esac
+    idx=$((idx + 1))
+  done
+
+  case "$TEST_OUTPUT_MODE" in
+    json)
+      test_render_json "$([ "$status" -eq 0 ] && printf 'pass' || printf 'fail')"
+      ;;
+    explain)
+      if [ "$status" -eq 0 ]; then
+        printf 'pass\n'
+      fi
+      ;;
+    quiet)
+      if [ "$status" -ne 0 ]; then
+        test_render_first_failure || printf 'fail\n'
+      fi
+      ;;
+    *)
+      if [ "$status" -eq 0 ]; then
+        printf 'pass\n'
+      else
+        test_render_first_failure || printf 'fail\n'
+      fi
+      ;;
+  esac
 }
 
 test_run_named_check() {
@@ -40,18 +201,30 @@ test_run_named_check() {
   fi
 
   TEST_CURRENT_CHECK="$check_name"
+  TEST_CURRENT_CHECK_REPORTED=0
+  TEST_CURRENT_CHECK_FAILED=0
+  TEST_CURRENT_CHECK_WARNED=0
   export TEST_CURRENT_CHECK
-  printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
+  if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
+    printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
+  fi
 
   if test_run_with_timeout "$timeout_seconds" "$scenario_function"; then
-    test_pass "$TEST_CURRENT_CHECK"
+    if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ]; then
+      return 1
+    fi
+    if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
+      test_pass "$TEST_CURRENT_CHECK"
+    fi
     return 0
   fi
 
-  if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
-    test_fail "$TEST_CURRENT_CHECK timed out"
-  else
-    test_fail "$TEST_CURRENT_CHECK"
+  if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
+    if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
+      test_fail "$TEST_CURRENT_CHECK timed out"
+    else
+      test_fail "$TEST_CURRENT_CHECK"
+    fi
   fi
 
   return 1

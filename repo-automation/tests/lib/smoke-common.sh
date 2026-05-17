@@ -16,6 +16,55 @@ smoke_test_base=""
 smoke_test_dir=""
 smoke_remote_dir=""
 smoke_expected_origin_url="git@github.com:i-schuyler/repo-automation-template.git"
+smoke_output_mode="${smoke_output_mode:-summary}"
+smoke_help_requested=0
+
+smoke_usage() {
+  printf 'Usage: repo-automation/tests/smoke.sh [--quiet] [--explain] [--json] [--help]\n'
+}
+
+smoke_parse_output_mode() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --quiet)
+        smoke_output_mode="quiet"
+        ;;
+      --explain)
+        smoke_output_mode="explain"
+        ;;
+      --json)
+        smoke_output_mode="json"
+        ;;
+      --help)
+        smoke_usage
+        smoke_help_requested=1
+        return 0
+        ;;
+      *)
+        if [ "${arg#--}" != "$arg" ]; then
+          printf 'fail: unknown flag: %s\n' "$arg" >&2
+        else
+          printf 'fail: unknown argument: %s\n' "$arg" >&2
+        fi
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  TEST_OUTPUT_MODE="$smoke_output_mode"
+  return 0
+}
+
+smoke_finish_output() {
+  local status="${1:-0}"
+
+  test_finish_output "$status"
+  return "$status"
+}
 
 smoke_contract_names=(
   "smoke:add-doc-pr-contract"
@@ -74,13 +123,16 @@ smoke_run_all_contracts() {
   local i=0
 
   for i in "${!smoke_contract_scripts[@]}"; do
-    test_run_named_check "${smoke_contract_names[$i]}" "${smoke_contract_scripts[$i]}" || status=1
+    smoke_run_named_check "${smoke_contract_names[$i]}" "${smoke_contract_scripts[$i]}" || status=1
   done
 
   return "$status"
 }
 
 smoke_run() {
+  local status=0
+  local smoke_output_capture=""
+
   trap 'test_cleanup' EXIT INT TERM
 
   cd "$smoke_repo_root" || return 1
@@ -89,7 +141,18 @@ smoke_run() {
     test_warn_timeout_once
   fi
 
-  smoke_run_all_contracts
+  if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
+    smoke_run_all_contracts || status=1
+  else
+    smoke_output_capture="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-automation-template-tests/smoke.XXXXXX")" || return 1
+    exec 3>&1 4>&2
+    exec >"$smoke_output_capture" 2>&1
+    smoke_run_all_contracts || status=1
+    exec 1>&3 2>&4
+    rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
+  fi
+
+  return "$status"
 }
 
 smoke_json_assert() {
