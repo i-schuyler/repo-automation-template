@@ -20,6 +20,8 @@ smoke_check_run_tests_contract() {
   local run_tests_log_file="$smoke_test_base/run-tests-log-$$.log"
   local run_tests_no_log_file="$smoke_test_base/run-tests-no-log-$$.log"
   local run_tests_no_log_out="$smoke_test_base/run-tests-no-log-$$.txt"
+  local run_tests_failure_log="$smoke_test_base/run-tests-failure-$$.log"
+  local run_tests_failure_out="$smoke_test_base/run-tests-failure-$$.txt"
   local run_tests_timeout_format_stderr="$smoke_test_base/run-tests-timeout-format-$$.stderr"
   local run_tests_timeout_missing_stderr="$smoke_test_base/run-tests-timeout-missing-$$.stderr"
   local run_tests_timeout_empty_stderr="$smoke_test_base/run-tests-timeout-empty-$$.stderr"
@@ -97,6 +99,28 @@ smoke_check_run_tests_contract() {
     test_fail "run-tests log-file creates a log"
     status=1
   fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > docs/run-tests-diagnostic.md <<'EOF'
+# Diagnostic
+
+Body.
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet --log-file="$run_tests_failure_log" > "$run_tests_failure_out"
+  ); then
+    test_fail "run-tests quiet failure references the log file"
+    status=1
+  elif grep -Fq "log: $run_tests_failure_log" "$run_tests_failure_out" &&
+    grep -Fq 'fail: repo-automation/tests/docs-check.sh' "$run_tests_failure_out" &&
+    grep -Fq 'COMMAND: repo-automation/tests/docs-check.sh' "$run_tests_failure_log" &&
+    grep -Fq 'FAIL: docs index coverage:' "$run_tests_failure_log"; then
+    test_pass "run-tests quiet failure references the log file"
+  else
+    test_fail "run-tests quiet failure references the log file"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/docs/run-tests-diagnostic.md" >/dev/null 2>&1 || true
 
   if (
     cd "$smoke_repo_root" || return 1
@@ -361,7 +385,7 @@ EOF
     status=1
   fi
 
-  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_default_out" "$run_tests_subset_changed_default_err" "$run_tests_subset_changed_quiet_out" "$run_tests_subset_changed_quiet_err" "$run_tests_subset_changed_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_default_out" "$run_tests_subset_changed_default_err" "$run_tests_subset_changed_quiet_out" "$run_tests_subset_changed_quiet_err" "$run_tests_subset_changed_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
   return "$status"
 }
 
