@@ -17,7 +17,7 @@ repo_flow_stop_reason=""
 
 repo_flow_usage() {
   printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
-  printf '       repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_status_card_usage() {
@@ -25,7 +25,7 @@ repo_flow_status_card_usage() {
 }
 
 repo_flow_submit_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_info() {
@@ -369,11 +369,12 @@ repo_flow_submit_validate_path() {
 
 repo_flow_submit_stage_paths() {
   local paths_csv="$1"
+  local allow_pre_staged="${2:-0}"
   local path=""
   local tracked_path=0
   local -a submit_paths=()
 
-  if ! git diff --cached --quiet --exit-code -- >/dev/null 2>&1; then
+  if [ "$allow_pre_staged" -eq 0 ] && ! git diff --cached --quiet --exit-code -- >/dev/null 2>&1; then
     repo_flow_submit_stop "pre-staged changes are not allowed with --paths"
     return 1
   fi
@@ -400,6 +401,32 @@ repo_flow_submit_stage_paths() {
   done
 
   return 0
+}
+
+repo_flow_submit_collect_modified_paths() {
+  local status=""
+  local path=""
+  local -a modified_paths=()
+  local -A seen_paths=()
+
+  status="$(git diff --name-only --diff-filter=MRD --cached; git diff --name-only --diff-filter=MRD)"
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    repo_flow_submit_validate_path "$path" || return 1
+    if [ -z "${seen_paths[$path]:-}" ]; then
+      modified_paths+=("$path")
+      seen_paths["$path"]=1
+    fi
+  done <<EOF
+$status
+EOF
+
+  if [ "${#modified_paths[@]}" -eq 0 ]; then
+    repo_flow_submit_stop "no modified tracked paths found"
+    return 1
+  fi
+
+  printf '%s\n' "${modified_paths[@]}"
 }
 
 repo_flow_submit_path_is_requested() {
@@ -457,7 +484,10 @@ repo_flow_submit_main() {
   local diagnose_on_fail=0
   local explain=0
   local staged=0
+  local modified=0
   local paths_csv=""
+  local -a modified_paths=()
+  local modified_paths_csv=""
   local message=""
   local repo_root=""
   local current_branch=""
@@ -516,6 +546,9 @@ repo_flow_submit_main() {
       --staged)
         staged=1
         ;;
+      --modified)
+        modified=1
+        ;;
       --message=*)
         message="${arg#--message=}"
         if [ -z "$message" ]; then
@@ -551,8 +584,18 @@ repo_flow_submit_main() {
     command_status=1
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$staged" -eq 0 ] && [ -z "$paths_csv" ]; then
-    repo_flow_submit_stop "either --paths or --staged is required"
+  if [ "$command_status" -eq 0 ] && [ "$modified" -eq 1 ] && [ -n "$paths_csv" ]; then
+    repo_flow_submit_stop "use either --modified or --paths, not both"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$modified" -eq 1 ] && [ "$staged" -eq 1 ]; then
+    repo_flow_submit_stop "use either --modified or --staged, not both"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$modified" -eq 0 ] && [ "$staged" -eq 0 ] && [ -z "$paths_csv" ]; then
+    repo_flow_submit_stop "either --modified, --paths or --staged is required"
     command_status=1
   fi
 
@@ -636,6 +679,17 @@ repo_flow_submit_main() {
   if [ "$command_status" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
     repo_flow_submit_stop "current branch is default branch; checkout a feature branch"
     command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$modified" -eq 1 ]; then
+    mapfile -t modified_paths < <(repo_flow_submit_collect_modified_paths) || command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "${#modified_paths[@]}" -gt 0 ]; then
+    modified_paths_csv="$(printf '%s\n' "${modified_paths[@]}" | python3 -c 'import sys; print(",".join(line.strip() for line in sys.stdin if line.strip()))')"
+    if ! repo_flow_submit_stage_paths "$modified_paths_csv" 1; then
+      command_status=1
+    fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ -n "$paths_csv" ]; then

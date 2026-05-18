@@ -190,9 +190,18 @@ PY
   fi
 
   if [ ! -s "$checks_file" ]; then
+    ci_status_summary_json="$(python3 - "$pr_number" "$head_sha" <<'PY'
+import json
+import sys
+
+pr_number = sys.argv[1]
+head_sha = sys.argv[2]
+print(json.dumps({'overall_status': 'pending', 'latest_run': {}, 'matching_run_count': 0, 'run_count': 0, 'head_sha': head_sha, 'script': 'ci-status', 'machine_json': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''}))
+PY
+)"
+    ci_status_overall_status="pending"
     rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
-    repo_auto_stop "gh pr checks returned no data for #$pr_number"
-    return 1
+    return 0
   fi
 
   if [ -n "$head_sha" ]; then
