@@ -165,12 +165,12 @@ smoke_check_add_doc_pr_docs_only() {
       --allow=templates/ \
       --base=main \
       > "$add_doc_pr_json" 2> "$add_doc_pr_stderr"
-  ) && python -m json.tool "$add_doc_pr_json" >/dev/null; then
+  ) && python3 -m json.tool "$add_doc_pr_json" >/dev/null; then
     if smoke_json_assert "$add_doc_pr_json" 'data.get("branch") == "docs/my-doc-update" and data.get("base_branch") == "main" and "docs/plan-doc.md" in data.get("changed_files", []) and len(data.get("blocked_files", [])) == 0'; then
       test_pass "add-doc-pr docs-only plan/json succeeds"
     else
       if [ -s "$add_doc_pr_json" ]; then
-        add_doc_pr_failure_details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_json")"
+        add_doc_pr_failure_details="$(python3 -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_json")"
       elif [ -s "$add_doc_pr_stderr" ]; then
         add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_stderr"))"
       fi
@@ -179,7 +179,7 @@ smoke_check_add_doc_pr_docs_only() {
     fi
   else
     if [ -s "$add_doc_pr_json" ]; then
-      add_doc_pr_failure_details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_json")"
+      add_doc_pr_failure_details="$(python3 -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_json")"
     elif [ -s "$add_doc_pr_stderr" ]; then
       add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_stderr"))"
     fi
@@ -257,7 +257,7 @@ EOF
         --base=main \
         > "$add_doc_pr_create_json" 2> "$add_doc_pr_create_stderr"
     )
-  ) && python -m json.tool "$add_doc_pr_create_json" >/dev/null && \
+  ) && python3 -m json.tool "$add_doc_pr_create_json" >/dev/null && \
     smoke_json_assert "$add_doc_pr_create_json" 'data.get("checks_run") is True' && \
     ! grep -Fq 'docs-check output' "$add_doc_pr_create_stderr" && \
     [ -f "$add_doc_pr_docs_check_marker" ] && \
@@ -265,7 +265,7 @@ EOF
     test_pass "add-doc-pr dry-run create-pr validates docs-only changes"
   else
     if [ -s "$add_doc_pr_create_json" ]; then
-      add_doc_pr_failure_details="$(python -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (checks_run=" + json.dumps(data.get("checks_run")) + "; action_taken=" + json.dumps(data.get("action_taken")) + "; stop_reason=" + json.dumps(data.get("stop_reason")) + "; changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_create_json")"
+      add_doc_pr_failure_details="$(python3 -c 'import json, pathlib, sys; data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")); print(" (checks_run=" + json.dumps(data.get("checks_run")) + "; action_taken=" + json.dumps(data.get("action_taken")) + "; stop_reason=" + json.dumps(data.get("stop_reason")) + "; changed_files=" + json.dumps(data.get("changed_files", [])) + "; blocked_files=" + json.dumps(data.get("blocked_files", [])) + ")")' "$add_doc_pr_create_json")"
     elif [ -s "$add_doc_pr_create_stderr" ]; then
       add_doc_pr_failure_details=" (stderr=$(tr '\n' ' ' < "$add_doc_pr_create_stderr"))"
     fi
@@ -349,18 +349,20 @@ EOF
 smoke_check_add_doc_pr_blocked_file() {
   local status=0
   local add_doc_pr_block_json="$smoke_test_base/add-doc-pr-blocked-$$.json"
+  local add_doc_pr_block_stderr="$smoke_test_base/add-doc-pr-blocked-$$.stderr"
 
   if (
     cd "$smoke_test_dir" || return 1
     printf '0.1.1\n' > VERSION || return 1
-    repo-automation/bin/add-doc-pr --plan --json > "$add_doc_pr_block_json"
+    repo-automation/bin/add-doc-pr --plan --json > "$add_doc_pr_block_json" 2> "$add_doc_pr_block_stderr"
     return 1
   ); then
     test_fail "add-doc-pr blocks repo-automation/ boundary changes in plan mode"
     status=1
   else
-    if python -m json.tool "$add_doc_pr_block_json" >/dev/null && \
-      smoke_json_assert "$add_doc_pr_block_json" '"VERSION" in data.get("blocked_files", [])'; then
+    if python3 -m json.tool "$add_doc_pr_block_json" >/dev/null && \
+      smoke_json_assert "$add_doc_pr_block_json" '"VERSION" in data.get("blocked_files", [])' && \
+      grep -Fq 'STOP: docs-only boundary violation' "$add_doc_pr_block_stderr"; then
       test_pass "add-doc-pr blocks repo-automation/ boundary changes in plan mode"
     else
       test_fail "add-doc-pr blocks repo-automation/ boundary changes in plan mode"
@@ -375,7 +377,7 @@ smoke_check_add_doc_pr_blocked_file() {
     :
   fi
 
-  rm -f "$add_doc_pr_block_json" >/dev/null 2>&1 || true
+  rm -f "$add_doc_pr_block_json" "$add_doc_pr_block_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -429,7 +431,7 @@ smoke_check_pr_create_body_file() {
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/321' \
     GH_STUB_PR_VIEW_NUMBER=321 \
     repo-automation/bin/pr-create --json --branch="$branch_name" --base=main --title="Mixed change body file" --body-file="$helper_body" > "$helper_json"
-  ) && python -m json.tool "$helper_json" >/dev/null && \
+  ) && python3 -m json.tool "$helper_json" >/dev/null && \
     smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "321" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/321" and data.get("branch") == "feature/pr-create-body-file" and data.get("base_branch") == "main"'; then
     if grep -Fq 'gh pr create title=Mixed change body file base=main head=feature/pr-create-body-file body_file=' "$helper_log" && cmp -s "$helper_body" "$helper_body_copy"; then
       test_pass "pr-create body-file PR creation succeeds"
@@ -537,7 +539,7 @@ smoke_check_pr_create_body_text() {
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/322' \
     GH_STUB_PR_VIEW_NUMBER=322 \
     repo-automation/bin/pr-create --json --branch="$branch_name" --base=main --title="Mixed change body text" --body="$body_text" > "$helper_json"
-  ) && python -m json.tool "$helper_json" >/dev/null && \
+  ) && python3 -m json.tool "$helper_json" >/dev/null && \
     smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "322" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/322" and data.get("branch") == "feature/pr-create-body-text" and data.get("base_branch") == "main"'; then
     if grep -Fq 'gh pr create title=Mixed change body text base=main head=feature/pr-create-body-text body_file=' "$helper_log" && printf '%s\n' "$body_text" | cmp -s - "$helper_body_copy"; then
       test_pass "pr-create body-text PR creation succeeds"
@@ -573,7 +575,7 @@ smoke_check_branch_cleanup_json() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/branch-cleanup --json --plan > "$branch_json"
-  ) && python -m json.tool "$branch_json" >/dev/null; then
+  ) && python3 -m json.tool "$branch_json" >/dev/null; then
     test_pass "branch-cleanup json is parseable"
   else
     test_fail "branch-cleanup json is parseable"
@@ -686,7 +688,7 @@ smoke_check_preflight_json() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_json"
-  ) && python -m json.tool "$preflight_json" >/dev/null; then
+  ) && python3 -m json.tool "$preflight_json" >/dev/null; then
     test_pass "preflight json is parseable"
   else
     test_fail "preflight json is parseable"

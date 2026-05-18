@@ -43,7 +43,7 @@ smoke_check_report_upstream_preview() {
       --dry-run \
       --json \
       --preview-file="$report_preview_bug" > "$report_bug_json"
-  ) && python -m json.tool "$report_bug_json" >/dev/null && [ -f "$report_preview_bug" ]; then
+  ) && python3 -m json.tool "$report_bug_json" >/dev/null && [ -f "$report_preview_bug" ]; then
     test_pass "report-upstream bug dry-run/json preview succeeds"
   else
     test_fail "report-upstream bug dry-run/json preview succeeds"
@@ -96,7 +96,7 @@ smoke_check_report_upstream_preview() {
       --dry-run \
       --json \
       --preview-file="$report_preview_feature" > "$report_feature_json"
-  ) && python -m json.tool "$report_feature_json" >/dev/null && [ -f "$report_preview_feature" ]; then
+  ) && python3 -m json.tool "$report_feature_json" >/dev/null && [ -f "$report_preview_feature" ]; then
     test_pass "report-upstream feature dry-run/json preview succeeds"
   else
     test_fail "report-upstream feature dry-run/json preview succeeds"
@@ -197,7 +197,7 @@ smoke_check_report_upstream_secret_scan() {
     test_fail "report-upstream secret scan blocks likely secret logs"
     status=1
   else
-    if python -m json.tool "$report_secret_json" >/dev/null && \
+    if python3 -m json.tool "$report_secret_json" >/dev/null && \
       smoke_json_assert "$report_secret_json" 'data.get("redaction_scan") == "blocked"'; then
       test_pass "report-upstream secret scan blocks likely secret logs"
     else
