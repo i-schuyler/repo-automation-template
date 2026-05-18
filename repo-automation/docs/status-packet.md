@@ -14,10 +14,22 @@ Default human output includes:
 Supported flags:
 
 - `--machine-json` returns machine-readable output.
+- `--final-summary` returns the compact handoff block:
+
+```text
+===== FINAL SUMMARY =====
+branch=<branch>
+rc=<code>
+output_lines=<n>
+url_or_stop=<url|pass|STOP message>
+status_count=<n>
+===== END =====
+```
 
 Examples:
 
     repo-automation/bin/status-packet
     repo-automation/bin/status-packet --machine-json
+    repo-automation/bin/status-packet --final-summary
 
 The helper does not print full diffs or full logs, and it skips PR lookup cleanly when `gh` is missing or unavailable.

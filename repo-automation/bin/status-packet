@@ -8,6 +8,7 @@ set -o pipefail
 source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
 status_packet_machine_json=0
+status_packet_final_summary=0
 status_packet_warnings=()
 status_packet_script_dir="$(cd "$(dirname "$0")" && pwd)"
 status_packet_branch=""
@@ -25,7 +26,7 @@ status_packet_pr_head_ref=""
 status_packet_pr_base_ref=""
 
 status_packet_usage() {
-  printf 'Usage: repo-automation/bin/status-packet [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/status-packet [--machine-json] [--final-summary] [--help]\n'
 }
 
 status_packet_json_escape() {
@@ -45,6 +46,17 @@ status_packet_temp_root() {
 status_packet_warn() {
   local message="$1"
   status_packet_warnings+=("$message")
+}
+
+status_packet_count_lines() {
+  local value="${1:-}"
+
+  if [ -z "$value" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  printf '%s' "$value" | awk 'END { print NR + 0 }'
 }
 
 status_packet_append_unique() {
@@ -304,6 +316,60 @@ status_packet_print_human() {
   fi
 }
 
+status_packet_print_final_summary() {
+  local status_count=0
+  local tracked_count="${#status_packet_tracked_files[@]}"
+  local untracked_count="${#status_packet_untracked_files[@]}"
+  local warning_count="${#status_packet_warnings[@]}"
+  local status_section_lines=0
+  local tracked_section_lines=0
+  local untracked_section_lines=0
+  local warning_section_lines=0
+  local pr_section_lines=1
+  local output_lines=0
+  local url_or_stop="pass"
+
+  status_count="$(status_packet_count_lines "$status_packet_status_short")"
+  if [ "$status_count" -gt 0 ]; then
+    status_section_lines="$status_count"
+  else
+    status_section_lines=1
+  fi
+
+  if [ "$tracked_count" -gt 0 ]; then
+    tracked_section_lines="$tracked_count"
+  else
+    tracked_section_lines=1
+  fi
+
+  if [ "$untracked_count" -gt 0 ]; then
+    untracked_section_lines="$untracked_count"
+  else
+    untracked_section_lines=1
+  fi
+
+  if [ "$warning_count" -gt 0 ]; then
+    warning_section_lines=$((1 + warning_count))
+  fi
+
+  if [ "$status_packet_pr_available" -eq 1 ] && [ -n "$status_packet_pr_url" ]; then
+    url_or_stop="$status_packet_pr_url"
+    pr_section_lines=6
+  elif [ "$status_packet_pr_available" -eq 1 ]; then
+    pr_section_lines=1
+  fi
+
+  output_lines=$((1 + 1 + status_section_lines + 1 + tracked_section_lines + 1 + untracked_section_lines + 1 + 2 + 1 + pr_section_lines + warning_section_lines))
+
+  printf '===== FINAL SUMMARY =====\n'
+  printf 'branch=%s\n' "$status_packet_branch"
+  printf 'rc=0\n'
+  printf 'output_lines=%s\n' "$output_lines"
+  printf 'url_or_stop=%s\n' "$url_or_stop"
+  printf 'status_count=%s\n' "$status_count"
+  printf '===== END =====\n'
+}
+
 status_packet_json_array() {
   local item
   local escaped_item
@@ -353,6 +419,9 @@ status_packet_main() {
       --machine-json)
         status_packet_machine_json=1
         ;;
+      --final-summary)
+        status_packet_final_summary=1
+        ;;
       *)
         repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/status-packet --help" || return 1
         return 1
@@ -371,6 +440,8 @@ status_packet_main() {
 
   if [ "$status_packet_machine_json" -eq 1 ]; then
     status_packet_print_json
+  elif [ "$status_packet_final_summary" -eq 1 ]; then
+    status_packet_print_final_summary
   else
     status_packet_print_human
   fi

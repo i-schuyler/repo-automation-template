@@ -142,6 +142,23 @@ Rules:
 - `--explain` still must not dump long raw logs by default.
 - If a long log matters, print the exact log path and the smallest useful excerpt.
 
+## Final summary handoff
+
+Some read-only helpers expose a final-summary mode for operator review.
+It is a compact copy/paste block and must stay within 10 lines.
+
+Example:
+
+```text
+===== FINAL SUMMARY =====
+branch=feature/demo
+rc=0
+output_lines=8
+url_or_stop=https://github.com/org/repo/pull/123
+status_count=2
+===== END =====
+```
+
 ## JSON modes
 
 Scripts may expose `--json`, `--machine-json`, or both.
