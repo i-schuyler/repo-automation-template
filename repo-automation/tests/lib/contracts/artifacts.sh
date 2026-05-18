@@ -189,6 +189,54 @@ PY
   return "$status"
 }
 
+smoke_check_post_codex_review_contract() {
+  local status=0
+  local review_tmp_root="$smoke_test_base/post-codex-review-tmp"
+  local review_log_root="$review_tmp_root/repo-automation-template"
+  local review_output_root="$smoke_test_base/post-codex-review-output"
+  local review_summary_file="$smoke_test_base/post-codex-review-summary.txt"
+  local review_failure_log="$review_log_root/repo-doctor-20260518-120000.log"
+  local review_packet_path=""
+  local review_packet_line=""
+  local review_packet_file=""
+
+  smoke_setup_temp_repo || return 1
+  mkdir -p "$review_log_root" "$review_output_root" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '\npost codex review change\n' >> README.md || return 1
+    printf 'post codex review staged\n' > docs/post-codex-review-staged.txt || return 1
+    git add docs/post-codex-review-staged.txt || return 1
+    printf 'scratch\n' > post-codex-review-scratch.txt || return 1
+    cat > "$review_failure_log" <<'EOF'
+FAIL: docs-check - broken link in docs/INDEX.md
+tail line
+EOF
+    TMPDIR="$review_tmp_root" REPO_AUTOMATION_OUTPUT_DIR="$review_output_root" repo-automation/bin/post-codex-review --packet > "$review_summary_file"
+  ); then
+    :
+  else
+    test_fail "post-codex-review final summary runs successfully"
+    status=1
+  fi
+
+  review_packet_line="$(sed -n '9p' "$review_summary_file" 2>/dev/null || true)"
+  review_packet_path="${review_packet_line#packet=}"
+  review_packet_file="$review_packet_path"
+
+  if [ "$(wc -l < "$review_summary_file" | tr -d '[:space:]')" -eq 10 ] && grep -Fxq '===== FINAL SUMMARY =====' "$review_summary_file" && grep -Eq '^branch=main$' "$review_summary_file" && grep -Eq '^status_count=3$' "$review_summary_file" && grep -Fxq 'changed=README.md' "$review_summary_file" && grep -Fxq 'staged=docs/post-codex-review-staged.txt' "$review_summary_file" && grep -Fxq 'untracked=post-codex-review-scratch.txt' "$review_summary_file" && grep -Fxq 'first_failure=docs-check' "$review_summary_file" && grep -Fxq "log=$review_failure_log" "$review_summary_file" && grep -Eq '^packet=.*/post-codex-review-.*\.zip$' "$review_summary_file" && [ -f "$review_packet_file" ] && grep -Fxq '===== END =====' "$review_summary_file"; then
+    test_pass "post-codex-review final summary stays compact and packet-aware"
+  else
+    test_fail "post-codex-review final summary stays compact and packet-aware"
+    status=1
+  fi
+
+  rm -f "$review_summary_file" "$review_failure_log" >/dev/null 2>&1 || true
+  rm -rf "$review_output_root" "$review_tmp_root" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_review_pack_contract() {
   local status=0
   local output_root=""

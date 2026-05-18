@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# repo-automation/bin/post-codex-review
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+post_codex_review_packet=0
+post_codex_review_repo_root=""
+post_codex_review_branch=""
+post_codex_review_status_count=0
+post_codex_review_changed=()
+post_codex_review_staged=()
+post_codex_review_untracked=()
+post_codex_review_first_failure="none"
+post_codex_review_log="none"
+post_codex_review_packet_path="none"
+post_codex_review_failure_record=""
+
+post_codex_review_usage() {
+  printf 'Usage: repo-automation/bin/post-codex-review [--packet] [--help]\n'
+}
+
+post_codex_review_join_csv() {
+  local -n items_ref="$1"
+  local joined=""
+  local item=""
+
+  for item in "${items_ref[@]}"; do
+    if [ -n "$joined" ]; then
+      joined+=","
+    fi
+    joined+="$item"
+  done
+
+  if [ -z "$joined" ]; then
+    printf 'none\n'
+  else
+    printf '%s\n' "$joined"
+  fi
+}
+
+post_codex_review_count_lines() {
+  local value="${1:-}"
+
+  if [ -z "$value" ]; then
+    printf '0\n'
+    return 0
+  fi
+
+  printf '%s' "$value" | awk 'END { print NR + 0 }'
+}
+
+post_codex_review_collect_repo_state() {
+  local repo_root="$1"
+  local path=""
+
+  post_codex_review_branch="$(git branch --show-current 2>/dev/null || true)"
+  if [ -z "$post_codex_review_branch" ]; then
+    post_codex_review_branch="HEAD"
+  fi
+
+  post_codex_review_status_count="$(post_codex_review_count_lines "$(git status --short --untracked-files=normal 2>/dev/null || true)")"
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && post_codex_review_changed+=("$path")
+  done <<EOF
+$(cd "$repo_root" && git diff --name-only --diff-filter=ACDMR | sed '/^$/d' | sort -u)
+EOF
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && post_codex_review_staged+=("$path")
+  done <<EOF
+$(cd "$repo_root" && git diff --cached --name-only --diff-filter=ACDMR | sed '/^$/d' | sort -u)
+EOF
+
+  while IFS= read -r path; do
+    [ -n "$path" ] && post_codex_review_untracked+=("$path")
+  done <<EOF
+$(cd "$repo_root" && git ls-files --others --exclude-standard | sed '/^$/d' | sort -u)
+EOF
+}
+
+post_codex_review_recent_logs_root() {
+  printf '%s/repo-automation-template\n' "${TMPDIR:-$HOME/.cache}"
+}
+
+post_codex_review_head_timestamp() {
+  git log -1 --format=%ct 2>/dev/null || printf '0\n'
+}
+
+post_codex_review_extract_failure_label() {
+  local log_file="$1"
+  local failure_line=""
+  local label=""
+
+  failure_line="$(grep -m1 -E '^(FAIL|fail): ' "$log_file" 2>/dev/null || true)"
+  case "$failure_line" in
+    FAIL:\ *)
+      label="${failure_line#FAIL: }"
+      label="${label%% -*}"
+      ;;
+    fail:\ *)
+      label="${failure_line#fail: }"
+      label="${label%% -*}"
+      ;;
+  esac
+
+  if [ -n "$label" ]; then
+    printf '%s\n' "$label"
+  fi
+}
+
+post_codex_review_find_failure_log() {
+  local root
+  local candidate
+  local label=""
+  local sorted_logs=""
+  local head_timestamp=""
+  local candidate_timestamp=""
+
+  root="$(post_codex_review_recent_logs_root)"
+  [ -d "$root" ] || return 0
+  head_timestamp="$(post_codex_review_head_timestamp)"
+
+  sorted_logs="$(
+    find "$root" -maxdepth 1 -type f \( -name 'run-tests-*.log' -o -name 'repo-doctor-*.log' \) -print 2>/dev/null |
+      while IFS= read -r candidate; do
+        [ -n "$candidate" ] || continue
+        printf '%s\t%s\n' "$(stat -c '%Y' "$candidate" 2>/dev/null || printf '0')" "$candidate"
+      done | sort -nr | cut -f2-
+  )"
+
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+    candidate_timestamp="$(stat -c '%Y' "$candidate" 2>/dev/null || printf '0')"
+    if [ "$candidate_timestamp" -lt "$head_timestamp" ]; then
+      continue
+    fi
+    label="$(post_codex_review_extract_failure_label "$candidate")"
+    if [ -n "$label" ]; then
+      printf '%s\t%s\n' "$candidate" "$label"
+      return 0
+    fi
+  done <<EOF
+$sorted_logs
+EOF
+}
+
+post_codex_review_create_packet() {
+  local output_dir="${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}"
+  local packet_path=""
+
+  if [ ! -x "$post_codex_review_repo_root/repo-automation/bin/post-codex-packet" ]; then
+    repo_auto_stop "missing helper: repo-automation/bin/post-codex-packet"
+    return 1
+  fi
+
+  packet_path="$(
+    cd "$post_codex_review_repo_root" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_dir" repo-automation/bin/post-codex-packet --label=post-codex-review
+  )" || return 1
+
+  printf '%s\n' "$packet_path"
+}
+
+post_codex_review_print_summary() {
+  printf '===== FINAL SUMMARY =====\n'
+  printf 'branch=%s\n' "$post_codex_review_branch"
+  printf 'status_count=%s\n' "$post_codex_review_status_count"
+  printf 'changed=%s\n' "$(post_codex_review_join_csv post_codex_review_changed)"
+  printf 'staged=%s\n' "$(post_codex_review_join_csv post_codex_review_staged)"
+  printf 'untracked=%s\n' "$(post_codex_review_join_csv post_codex_review_untracked)"
+  printf 'first_failure=%s\n' "$post_codex_review_first_failure"
+  printf 'log=%s\n' "$post_codex_review_log"
+  printf 'packet=%s\n' "$post_codex_review_packet_path"
+  printf '===== END =====\n'
+}
+
+post_codex_review_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        post_codex_review_usage
+        return 0
+        ;;
+      --packet)
+        post_codex_review_packet=1
+        ;;
+      *)
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/post-codex-review --help" || return 1
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  post_codex_review_repo_root="$(repo_auto_repo_root)" || return 1
+  cd "$post_codex_review_repo_root" || return 1
+
+  post_codex_review_collect_repo_state "$post_codex_review_repo_root" || return 1
+  post_codex_review_failure_record="$(post_codex_review_find_failure_log 2>/dev/null || true)"
+  if [ -n "$post_codex_review_failure_record" ]; then
+    post_codex_review_log="${post_codex_review_failure_record%%$'\t'*}"
+    post_codex_review_first_failure="${post_codex_review_failure_record#*$'\t'}"
+  fi
+
+  if [ "$post_codex_review_packet" -eq 1 ]; then
+    post_codex_review_packet_path="$(post_codex_review_create_packet)" || return 1
+  fi
+
+  post_codex_review_print_summary
+}
+
+post_codex_review_main "$@"
+# repo-automation/bin/post-codex-review EOF

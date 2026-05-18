@@ -28,7 +28,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | readiness | `github-settings-check`, `starter-template-ready`, `automation-freshness` | instant / network-read | read-only inventory/readiness checks |
 | audit | `repo-doctor`, `run-tests`, `shellcheck-ci-parity` | broad-local / targeted-local | umbrella or broad-check helpers |
 | PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers; includes read-only `repo-flow status-card` |
-| artifacts | `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | mutating / CI-owned | uploadable or log artifact helpers |
+| artifacts | `post-codex-review`, `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | instant / mutating / CI-owned | compact review summaries, uploadable packets, or log artifact helpers |
 | review/repair | `review-pack`, `repair-prompt` | mutating | fallback review bundle / repair prompt helpers; `review-pack --target=codex` and `repair-prompt --target=codex` create local artifacts only |
 | status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers |
 | release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | mutating / network-read | release, reporting, and install helpers |
