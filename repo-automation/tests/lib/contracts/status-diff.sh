@@ -144,6 +144,7 @@ smoke_check_touched_files_and_ci_contract() {
   local ci_watch_help="$smoke_test_base/ci-watch-help-$$.txt"
   local ci_status_pr_json="$smoke_test_base/ci-status-pr-$$.json"
   local ci_status_branch_json="$smoke_test_base/ci-status-branch-$$.json"
+  local ci_status_pr_json_mode="$smoke_test_base/ci-status-pr-json-$$.json"
   local ci_status_pr_human="$smoke_test_base/ci-status-pr-human-$$.txt"
   local ci_status_pr_quiet="$smoke_test_base/ci-status-pr-quiet-$$.txt"
   local ci_status_pr_explain="$smoke_test_base/ci-status-pr-explain-$$.txt"
@@ -158,6 +159,7 @@ smoke_check_touched_files_and_ci_contract() {
   local ci_watch_timeout_empty_stderr="$smoke_test_base/ci-watch-timeout-empty-$$.txt"
   local ci_watch_unknown_stderr="$smoke_test_base/ci-watch-unknown-$$.txt"
   local ci_watch_pass_json="$smoke_test_base/ci-watch-pass-$$.json"
+  local ci_watch_pass_json_mode="$smoke_test_base/ci-watch-pass-json-$$.json"
   local ci_watch_pass_stderr="$smoke_test_base/ci-watch-pass-$$.txt"
   local ci_watch_pass_human="$smoke_test_base/ci-watch-pass-human-$$.txt"
   local ci_watch_pass_quiet="$smoke_test_base/ci-watch-pass-quiet-$$.txt"
@@ -193,6 +195,8 @@ smoke_check_touched_files_and_ci_contract() {
   ) && \
     grep -Fq -- '--pr=<number>' "$ci_status_help" && \
     grep -Fq -- '--branch=<name>' "$ci_status_help" && \
+    grep -Fq -- '--json' "$ci_status_help" && \
+    grep -Fq -- '--machine-json' "$ci_status_help" && \
     grep -Fq -- '--quiet' "$ci_status_help" && \
     grep -Fq -- '--explain' "$ci_status_help" && \
     ! grep -Fq -- '--pr=NUMBER' "$ci_status_help" && \
@@ -211,6 +215,8 @@ smoke_check_touched_files_and_ci_contract() {
     grep -Fq -- '--branch=<name>' "$ci_watch_help" && \
     grep -Fq -- '--poll-seconds=<seconds>' "$ci_watch_help" && \
     grep -Fq -- '--timeout=<seconds>' "$ci_watch_help" && \
+    grep -Fq -- '--json' "$ci_watch_help" && \
+    grep -Fq -- '--machine-json' "$ci_watch_help" && \
     grep -Fq -- '--quiet' "$ci_watch_help" && \
     grep -Fq -- '--explain' "$ci_watch_help" && \
     ! grep -Fq -- '--pr=NUMBER' "$ci_watch_help" && \
@@ -325,6 +331,17 @@ range touch
     test_pass "ci-status pr machine-json is parseable"
   else
     test_fail "ci-status pr machine-json is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --json > "$ci_status_pr_json_mode"
+  ) && python3 -m json.tool "$ci_status_pr_json_mode" >/dev/null && \
+    smoke_json_assert "$ci_status_pr_json_mode" 'data.get("mode") == "pr" and data.get("overall_status") == "pending" and len(data.get("checks", [])) == 1'; then
+    test_pass "ci-status pr json is parseable"
+  else
+    test_fail "ci-status pr json is parseable"
     status=1
   fi
 
@@ -447,6 +464,17 @@ range touch
 
   if (
     cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --json > "$ci_watch_pass_json_mode" 2> "$ci_watch_pass_stderr"
+  ) && python3 -m json.tool "$ci_watch_pass_json_mode" >/dev/null && \
+    smoke_json_assert "$ci_watch_pass_json_mode" 'data.get("overall_status") == "pass"'; then
+    test_pass "ci-watch json exits cleanly"
+  else
+    test_fail "ci-watch json exits cleanly"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 > "$ci_watch_pass_human" 2>&1
   ) && [ "$(cat "$ci_watch_pass_human")" = "pass" ]; then
     test_pass "ci-watch default human output is compact"
@@ -554,7 +582,7 @@ range touch
     status=1
   fi
 
-  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_branch_json" "$ci_status_pr_human" "$ci_status_pr_quiet" "$ci_status_pr_explain" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" "$ci_watch_pass_json" "$ci_watch_pass_stderr" "$ci_watch_pass_human" "$ci_watch_pass_quiet" "$ci_watch_pass_explain" "$ci_watch_fail_json" "$ci_watch_fail_stderr" >/dev/null 2>&1 || true
+  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_pr_json_mode" "$ci_status_branch_json" "$ci_status_pr_human" "$ci_status_pr_quiet" "$ci_status_pr_explain" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" "$ci_watch_pass_json" "$ci_watch_pass_json_mode" "$ci_watch_pass_stderr" "$ci_watch_pass_human" "$ci_watch_pass_quiet" "$ci_watch_pass_explain" "$ci_watch_fail_json" "$ci_watch_fail_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

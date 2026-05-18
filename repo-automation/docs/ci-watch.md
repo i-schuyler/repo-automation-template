@@ -8,7 +8,8 @@ Supported flags:
 - `--branch=NAME` watches a branch through the same CI snapshot logic
 - `--poll-seconds=SECONDS` sets the polling interval
 - `--timeout=SECONDS` sets the overall wait limit
-- `--machine-json` returns machine-readable output
+- `--json` returns compact machine-readable output
+- `--machine-json` keeps the legacy/specialized machine-readable output shape
 - `--quiet` suppresses the clean-success `pass` line
 - `--explain` prints the elapsed status report
 
@@ -22,4 +23,4 @@ Behavior:
 Examples:
 
     repo-automation/bin/ci-watch --pr=123 --poll-seconds=10 --timeout=600
-    repo-automation/bin/ci-watch --branch=feature/example --machine-json
+    repo-automation/bin/ci-watch --branch=feature/example --json

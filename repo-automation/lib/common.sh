@@ -429,4 +429,12 @@ repo_auto_print_config_summary() {
   printf ')\n'
 }
 
+repo_auto_print_final_summary() {
+  printf '===== FINAL SUMMARY =====\n'
+  for summary_line in "$@"; do
+    printf '%s\n' "$summary_line"
+  done
+  printf '===== END =====\n'
+}
+
 # repo-automation/lib/common.sh EOF

@@ -470,6 +470,7 @@ repo_flow_submit_main() {
   local staged_files=""
   local uncommitted_status=""
   local unstaged_or_untracked_status=""
+  local submit_delegated=0
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -696,8 +697,17 @@ EOF
         delegate_args+=(--diagnose-on-fail)
       fi
     fi
+    submit_delegated=1
     repo_flow_main "${delegate_args[@]}"
     command_status=$?
+  fi
+
+  if [ "$explain" -eq 1 ] && [ "$submit_delegated" -eq 0 ]; then
+    repo_auto_print_final_summary \
+      "branch=$current_branch" \
+      "rc=$command_status" \
+      "mode=submit" \
+      "url_or_stop=${repo_flow_stop_reason:-pass}" >&2
   fi
 
   return "$command_status"
@@ -1043,10 +1053,17 @@ EOF
       "$final_status" \
       "$action_taken" \
       "$repo_flow_stop_reason"
-  elif [ "$command_status" -eq 0 ]; then
-    if [ "$repo_flow_explain" -eq 1 ]; then
+  elif [ "$repo_flow_explain" -eq 1 ]; then
+    if [ "$command_status" -eq 0 ]; then
       repo_flow_info "final status: $final_status"
-    elif [ "$dry_run" -eq 1 ]; then
+    fi
+    repo_auto_print_final_summary \
+      "branch=$current_branch" \
+      "rc=$command_status" \
+      "mode=$mode" \
+      "url_or_stop=${pr_url:-${repo_flow_stop_reason:-$final_status}}" >&2
+  elif [ "$command_status" -eq 0 ]; then
+    if [ "$dry_run" -eq 1 ]; then
       printf 'plan\n'
     elif [ -n "$pr_url" ]; then
       printf '%s\n' "$pr_url"

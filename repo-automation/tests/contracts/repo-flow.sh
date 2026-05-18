@@ -572,7 +572,7 @@ smoke_check_repo_flow_dry_run_json() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" REMOTE_NAME=localorigin EXPECTED_REMOTE_URL="" "$local_bash_path" repo-automation/bin/repo-flow --dry-run --explain > "$explain_out" 2> "$explain_err"
-  ) && [ ! -s "$explain_out" ] && grep -Fq 'final status:' "$explain_err"; then
+  ) && [ ! -s "$explain_out" ] && grep -Fq 'final status:' "$explain_err" && grep -Fxq '===== FINAL SUMMARY =====' "$explain_err" && grep -Fxq '===== END =====' "$explain_err"; then
     test_pass "repo-flow explain output is detailed"
   else
     test_fail "repo-flow explain output is detailed"

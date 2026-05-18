@@ -243,8 +243,8 @@ preflight_main() {
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
-    preflight_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+  if [ "$command_status" -eq 0 ] && ! repo_auto_remote_matches_upstream "$remote_url" "$expected_remote_url" "${UPSTREAM_REPO_FULL_NAME:-}"; then
+    preflight_stop "remote URL mismatch for $remote_name: expected $expected_remote_url or GitHub SSH alias for ${UPSTREAM_REPO_FULL_NAME:-unknown}, got $remote_url"
     command_status=1
   fi
 
@@ -387,8 +387,8 @@ preflight_main() {
       "${active_cleanup_mode:-}" \
       "${cleanup_json:-null}" \
       "$preflight_stop_reason"
-  elif [ "$command_status" -eq 0 ]; then
-    if [ "$preflight_explain" -eq 1 ]; then
+  elif [ "$preflight_explain" -eq 1 ]; then
+    if [ "$command_status" -eq 0 ]; then
       if [ "$check_only" -eq 1 ]; then
         preflight_info "check-only complete"
         preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch=$requested_branch"
@@ -399,9 +399,14 @@ preflight_main() {
         preflight_info "divergence from $remote_name/$default_branch: $divergence"
         preflight_info "next step: begin slice edits"
       fi
-    else
-      printf 'pass\n'
     fi
+    repo_auto_print_final_summary \
+      "branch=$requested_branch" \
+      "rc=$command_status" \
+      "mode=$preflight_mode" \
+      "url_or_stop=${preflight_stop_reason:-pass}" >&2
+  elif [ "$command_status" -eq 0 ]; then
+    printf 'pass\n'
   fi
 
   return "$command_status"

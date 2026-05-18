@@ -14,6 +14,7 @@ When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also ac
 `--diagnose-on-fail` is forwarded when combined with `--watch`; blocked checks then surface the first-failure diagnosis from `ci-log-dump`.
 `pr-finish` retries briefly if checks are not registered yet right after PR creation or reuse.
 Use `--explain` for the full human flow report; default success is compact `plan`, PR URL, or `pass`.
+`--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
 
 `--dry-run` / `--plan` reports the flow without pushing or creating a PR.
 `status-card` is a read-only state screen. It never pushes, creates a PR, watches CI, or mutates the repo.
