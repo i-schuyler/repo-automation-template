@@ -829,10 +829,8 @@ smoke_check_repo_flow_submit_contract() {
   local alias_create_stdout=""
   local alias_create_stderr=""
   local alias_create_log_file=""
-  local alias_reuse_state_file=""
   local alias_reuse_stdout=""
   local alias_reuse_stderr=""
-  local alias_reuse_log_file=""
   local local_bash_path=""
   local ssh_stub_dir=""
   local status_before=""
@@ -902,10 +900,8 @@ smoke_check_repo_flow_submit_contract() {
     status=1
   fi
 
-  alias_reuse_state_file="$smoke_test_base/repo-flow-submit-alias-reuse-pr.txt"
   alias_reuse_stdout="$smoke_test_base/repo-flow-submit-alias-reuse.out"
   alias_reuse_stderr="$smoke_test_base/repo-flow-submit-alias-reuse.stderr"
-  alias_reuse_log_file="$smoke_test_base/repo-flow-submit-alias-reuse.log"
   printf '\nrepo-flow submit alias reuse line\n' >> "$smoke_test_dir/README.md" || return 1
   smoke_prepare_repo_flow_submit_remote_validation 'git@github-alias:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
   if (

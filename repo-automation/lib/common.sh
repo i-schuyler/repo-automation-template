@@ -213,7 +213,7 @@ repo_auto_validate_required_config() {
     return 1
   }
 
-  for value in "$UPSTREAM_REPO_FULL_NAME" "$INSTALLED_FROM"; do
+  for value in "${UPSTREAM_REPO_FULL_NAME:-}" "$INSTALLED_FROM"; do
     [[ "$value" =~ ^[^[:space:]/]+/[^[:space:]/]+$ ]] || {
       repo_auto_stop "invalid repo full name in config"
       return 1
@@ -319,6 +319,46 @@ repo_auto_validate_required_config() {
   esac
 
   return 0
+}
+
+repo_auto_remote_alias_resolves_to_github() {
+  local remote_url="$1"
+  local remote_host=""
+
+  case "$remote_url" in
+    git@*:*/*.git)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  if ! command -v ssh >/dev/null 2>&1; then
+    return 1
+  fi
+
+  remote_host="${remote_url#git@}"
+  remote_host="${remote_host%%:*}"
+  remote_host="$(ssh -G "$remote_host" 2>/dev/null | awk '/^hostname / {print $2; exit}')"
+  [ "$remote_host" = "github.com" ]
+}
+
+repo_auto_remote_matches_upstream() {
+  local remote_url="$1"
+  local expected_remote_url="$2"
+  local upstream_repo_full_name="${3:-}"
+
+  [ -n "$expected_remote_url" ] || return 0
+  [ "$remote_url" = "$expected_remote_url" ] && return 0
+
+  case "$remote_url" in
+    git@*:"$upstream_repo_full_name".git)
+      repo_auto_remote_alias_resolves_to_github "$remote_url"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 repo_auto_print_config_summary() {
