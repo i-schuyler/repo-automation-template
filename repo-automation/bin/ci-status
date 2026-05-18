@@ -9,13 +9,15 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
 ci_status_pr=""
 ci_status_branch=""
+ci_status_json=0
 ci_status_machine_json=0
 ci_status_quiet=0
 ci_status_explain=0
 ci_status_summary_json=""
+ci_status_overall_status=""
 
 ci_status_usage() {
-  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--machine-json] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--json] [--machine-json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_status_flag_error() {
@@ -157,6 +159,7 @@ summary.update({'script': 'ci-status', 'machine_json': True, 'mode': 'pr', 'pr':
 print(json.dumps(summary))
 PY
 )"
+  ci_status_overall_status="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("overall_status","fail"))' "$ci_status_summary_json")"
   rm -f "$checks_file" "$stderr_file" >/dev/null 2>&1 || true
 }
 
@@ -236,6 +239,7 @@ summary.update({'script': 'ci-status', 'machine_json': True, 'mode': 'branch', '
 print(json.dumps(summary))
 PY
 )"
+  ci_status_overall_status="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("overall_status","fail"))' "$ci_status_summary_json")"
   rm -f "$runs_file" "$stderr_file" >/dev/null 2>&1 || true
 }
 
@@ -346,6 +350,9 @@ ci_status_main() {
       --machine-json)
         ci_status_machine_json=1
         ;;
+      --json)
+        ci_status_json=1
+        ;;
       --quiet)
         ci_status_quiet=1
         ;;
@@ -372,7 +379,7 @@ ci_status_main() {
   ci_status_check_auth || return 1
   ci_status_collect || return 1
 
-  if [ "$ci_status_machine_json" -eq 1 ]; then
+  if [ "$ci_status_json" -eq 1 ] || [ "$ci_status_machine_json" -eq 1 ]; then
     ci_status_print_json
   else
     if [ "$ci_status_quiet" -eq 1 ] && [ "$(printf '%s' "$ci_status_summary_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("overall_status","fail"))')" = "pass" ]; then
@@ -384,6 +391,12 @@ ci_status_main() {
       ci_status_print_human summary
     fi
   fi
+
+  if [ "${ci_status_overall_status:-fail}" = "fail" ]; then
+    return 1
+  fi
+
+  return 0
 }
 
 ci_status_main "$@"

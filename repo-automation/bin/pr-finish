@@ -688,7 +688,7 @@ pr_finish_main() {
       "$action_taken" \
       "$pr_finish_stop_reason" \
       block_reasons
-  elif [ "$command_status" -eq 0 ] && [ "$json" -eq 0 ]; then
+  elif [ "$json" -eq 0 ]; then
     if [ "$pr_finish_explain" -eq 1 ]; then
       pr_finish_print_human_status \
         "$mode" \
@@ -705,8 +705,28 @@ pr_finish_main() {
         "$delete_branch" \
         "$can_merge" \
         block_reasons
-    else
-      printf 'pass\n'
+      repo_auto_print_final_summary \
+        "branch=$current_branch" \
+        "rc=$command_status" \
+        "mode=$mode" \
+        "url_or_stop=${pr_url:-${pr_finish_stop_reason:-$checks_status}}" >&2
+    elif [ "$command_status" -eq 0 ]; then
+      if [ "$mode" = "watch" ]; then
+        if [ "$checks_status" = "green" ]; then
+          printf 'pass\n'
+        else
+          pr_finish_warn "watch completed with checks status: $checks_status"
+        fi
+      elif [ "$do_merge" -eq 1 ]; then
+        [ "$json" -eq 1 ] || pr_finish_info "merge completed for PR #$pr_number"
+        if [ -n "$pr_url" ]; then
+          printf '%s\n' "$pr_url"
+        else
+          printf 'pass\n'
+        fi
+      else
+        printf 'pass\n'
+      fi
     fi
   fi
 

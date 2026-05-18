@@ -11,13 +11,14 @@ ci_watch_pr=""
 ci_watch_branch=""
 ci_watch_poll_seconds=10
 ci_watch_timeout_seconds=600
+ci_watch_json=0
 ci_watch_machine_json=0
 ci_watch_quiet=0
 ci_watch_explain=0
 ci_watch_summary_json=""
 
 ci_watch_usage() {
-  printf 'Usage: repo-automation/bin/ci-watch [--pr=<number> | --branch=<name>] [--poll-seconds=<seconds>] [--timeout=<seconds>] [--machine-json] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-watch [--pr=<number> | --branch=<name>] [--poll-seconds=<seconds>] [--timeout=<seconds>] [--json] [--machine-json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_watch_flag_error() {
@@ -58,13 +59,13 @@ ci_watch_poll() {
   ci_status_err="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-watch-status-stderr.XXXXXX")"
 
   if [ -n "$ci_watch_pr" ]; then
-    if ! "$(dirname "$0")/ci-status" --pr="$ci_watch_pr" --machine-json >"$ci_status_out" 2>"$ci_status_err"; then
+    if ! "$(dirname "$0")/ci-status" --pr="$ci_watch_pr" --json >"$ci_status_out" 2>"$ci_status_err"; then
       cat "$ci_status_err" >&2
       rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
       return 1
     fi
   else
-    if ! "$(dirname "$0")/ci-status" --branch="$ci_watch_branch" --machine-json >"$ci_status_out" 2>"$ci_status_err"; then
+    if ! "$(dirname "$0")/ci-status" --branch="$ci_watch_branch" --json >"$ci_status_out" 2>"$ci_status_err"; then
       cat "$ci_status_err" >&2
       rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
       return 1
@@ -205,6 +206,9 @@ ci_watch_main() {
       --machine-json)
         ci_watch_machine_json=1
         ;;
+      --json)
+        ci_watch_json=1
+        ;;
       --quiet)
         ci_watch_quiet=1
         ;;
@@ -240,7 +244,7 @@ ci_watch_main() {
 
     case "$status" in
       pass)
-        if [ "$ci_watch_machine_json" -eq 1 ]; then
+        if [ "$ci_watch_json" -eq 1 ] || [ "$ci_watch_machine_json" -eq 1 ]; then
           ci_watch_print_json "$status" "$elapsed"
         else
           if [ "$ci_watch_explain" -eq 1 ]; then
@@ -252,7 +256,7 @@ ci_watch_main() {
         return 0
         ;;
       fail)
-        if [ "$ci_watch_machine_json" -eq 1 ]; then
+        if [ "$ci_watch_json" -eq 1 ] || [ "$ci_watch_machine_json" -eq 1 ]; then
           ci_watch_print_json "$status" "$elapsed"
         else
           if [ "$ci_watch_explain" -eq 1 ]; then
@@ -271,7 +275,7 @@ ci_watch_main() {
         sleep "$ci_watch_poll_seconds"
         ;;
       *)
-        if [ "$ci_watch_machine_json" -eq 1 ]; then
+        if [ "$ci_watch_json" -eq 1 ] || [ "$ci_watch_machine_json" -eq 1 ]; then
           ci_watch_print_json "$status" "$elapsed"
         else
           if [ "$ci_watch_explain" -eq 1 ]; then

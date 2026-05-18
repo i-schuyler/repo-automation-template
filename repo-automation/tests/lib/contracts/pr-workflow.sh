@@ -22,6 +22,30 @@ smoke_pr_create_prepare_branch() {
   git commit -m "test: $branch_name" >/dev/null 2>&1 || return 1
 }
 
+smoke_write_preflight_ssh_stub() {
+  local ssh_stub_dir="$1"
+
+  mkdir -p "$ssh_stub_dir" || return 1
+  cat > "$ssh_stub_dir/ssh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+if [ "${1:-}" = "-G" ]; then
+  case "${2:-}" in
+    github-alias)
+      printf 'hostname github.com\n'
+      ;;
+    *)
+      printf 'hostname example.com\n'
+      ;;
+  esac
+  exit 0
+fi
+printf 'ssh stub unexpected args\n' >&2
+exit 1
+EOF
+  chmod +x "$ssh_stub_dir/ssh" || return 1
+}
+
 smoke_check_add_doc_pr_docs_only() {
   local status=0
   local add_doc_pr_json="$smoke_test_base/add-doc-pr-plan-$$.json"
@@ -395,6 +419,7 @@ smoke_check_pr_create_body_file() {
   local unknown_stderr="$smoke_test_base/pr-create-unknown-$$.stderr"
   local pr_create_plan_stdout="$smoke_test_base/pr-create-plan.out"
   local pr_create_plan_stderr="$smoke_test_base/pr-create-plan.err"
+  local pr_create_explain_stderr="$smoke_test_base/pr-create-explain.err"
   local gh_stub_dir="$smoke_test_base/gh-pr-create-stub"
   local body_text="Mixed PR body from file"
 
@@ -451,6 +476,16 @@ smoke_check_pr_create_body_file() {
     test_pass "pr-create dry-run output is compact"
   else
     test_fail "pr-create dry-run output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-create --dry-run --explain --branch="$branch_name" --base=main --title="Mixed change body file" --body-file="$helper_body" > /dev/null 2> "$pr_create_explain_stderr"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$pr_create_explain_stderr" && grep -Eq '^branch=feature/pr-create-body-file$' "$pr_create_explain_stderr" && grep -Eq '^rc=0$' "$pr_create_explain_stderr" && grep -Eq '^url_or_stop=dry-run$' "$pr_create_explain_stderr" && grep -Fxq '===== END =====' "$pr_create_explain_stderr"; then
+    test_pass "pr-create explain output ends with FINAL SUMMARY"
+  else
+    test_fail "pr-create explain output ends with FINAL SUMMARY"
     status=1
   fi
 
@@ -671,8 +706,10 @@ smoke_check_preflight_json() {
   local branch_unknown_stderr="$smoke_test_dir/preflight-branch-unknown.stderr"
   local preflight_explain_stdout="$smoke_test_dir/preflight-explain.out"
   local preflight_explain_stderr="$smoke_test_dir/preflight-explain.err"
+  local preflight_alias_explain_stderr="$smoke_test_dir/preflight-alias-explain.err"
   local local_bash_path=""
   local shim_dir=""
+  local ssh_stub_dir="$smoke_test_base/preflight-ssh-stub"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -714,6 +751,18 @@ smoke_check_preflight_json() {
     test_pass "preflight default human output is compact"
   else
     test_fail "preflight default human output is compact"
+    status=1
+  fi
+
+  smoke_write_preflight_ssh_stub "$ssh_stub_dir" || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    git remote set-url origin 'git@github-alias:i-schuyler/repo-automation-template.git' >/dev/null 2>&1 || return 1
+    PATH="$ssh_stub_dir:$PATH" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_alias_explain_stderr"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_alias_explain_stderr" && grep -Eq '^branch=feature/preflight-smoke$' "$preflight_alias_explain_stderr" && grep -Eq '^rc=0$' "$preflight_alias_explain_stderr" && grep -Eq '^url_or_stop=pass$' "$preflight_alias_explain_stderr" && grep -Fxq '===== END =====' "$preflight_alias_explain_stderr"; then
+    test_pass "preflight explain output ends with FINAL SUMMARY"
+  else
+    test_fail "preflight explain output ends with FINAL SUMMARY"
     status=1
   fi
 
@@ -862,7 +911,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
-  ) && grep -q 'mode: watch' "$green_explain_stderr" && grep -q 'checks status: green' "$green_explain_stderr"; then
+  ) && grep -q 'mode: watch' "$green_explain_stderr" && grep -q 'checks status: green' "$green_explain_stderr" && grep -Fxq '===== FINAL SUMMARY =====' "$green_explain_stderr" && grep -Fxq '===== END =====' "$green_explain_stderr"; then
     test_pass "pr-finish watch explain output is detailed"
   else
     test_fail "pr-finish watch explain output is detailed"

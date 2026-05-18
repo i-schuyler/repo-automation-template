@@ -6,7 +6,8 @@ Supported flags:
 
 - `--pr=NUMBER` checks a pull request directly
 - `--branch=NAME` checks a branch by looking for its PR first and then recent workflow runs
-- `--machine-json` returns machine-readable output
+- `--json` returns compact machine-readable output
+- `--machine-json` keeps the legacy/specialized machine-readable output shape
 - `--quiet` suppresses the compact clean `pass` line
 - `--explain` prints the full compact status report
 
@@ -22,4 +23,4 @@ Examples:
 
     repo-automation/bin/ci-status --pr=123
     repo-automation/bin/ci-status --branch=feature/example
-    repo-automation/bin/ci-status --pr=123 --machine-json
+    repo-automation/bin/ci-status --pr=123 --json

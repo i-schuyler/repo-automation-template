@@ -16,6 +16,7 @@ Use `--explain` to print the full human status report; default success is compac
 `--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green.
 
 `--sync-main` switches to `main` and runs `git pull --ff-only` after a successful merge.
+`--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
 
 Merge is blocked when any of the following are true:
 

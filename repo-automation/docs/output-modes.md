@@ -167,6 +167,8 @@ status_count=2
 ## JSON modes
 
 Scripts may expose `--json`, `--machine-json`, or both.
+Prefer `--json` as the canonical compact machine mode.
+Keep `--machine-json` only when a helper already exposes it, and document it as legacy or specialized machine output.
 
 Rules:
 

@@ -375,14 +375,21 @@ pr_create_main() {
 
   if [ "$json" -eq 1 ]; then
     pr_create_print_json "$mode" "$head_branch" "$base_branch" "$title" "$pr_number" "$pr_url" "$action_taken" "$pr_create_stop_reason"
-  elif [ "$command_status" -eq 0 ]; then
-    if [ "$pr_create_explain" -eq 1 ]; then
+  elif [ "$pr_create_explain" -eq 1 ]; then
+    if [ "$command_status" -eq 0 ]; then
       if [ "$dry_run" -eq 1 ]; then
         pr_create_info "dry-run complete; no PR created"
       else
         pr_create_info "PR created: #$pr_number $pr_url"
       fi
-    elif [ "$dry_run" -eq 1 ]; then
+    fi
+    repo_auto_print_final_summary \
+      "branch=$head_branch" \
+      "rc=$command_status" \
+      "mode=$mode" \
+      "url_or_stop=${pr_url:-${pr_create_stop_reason:-$mode}}" >&2
+  elif [ "$command_status" -eq 0 ]; then
+    if [ "$dry_run" -eq 1 ]; then
       printf 'plan\n'
     elif [ -n "$pr_url" ]; then
       printf '%s\n' "$pr_url"
