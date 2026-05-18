@@ -443,8 +443,8 @@ repo_doctor_check_automation_freshness() {
     return 1
   fi
 
-  if command -v python >/dev/null 2>&1 && python -m json.tool "$freshness_json" >/dev/null 2>&1; then
-    if python - "$freshness_json" <<'PY'
+  if command -v python3 >/dev/null 2>&1 && python3 -m json.tool "$freshness_json" >/dev/null 2>&1; then
+    if python3 - "$freshness_json" <<'PY'
 import json
 import pathlib
 import sys
@@ -493,8 +493,8 @@ repo_doctor_check_starter_template_readiness() {
     return 1
   fi
 
-  if command -v python >/dev/null 2>&1 && python -m json.tool "$readiness_json" >/dev/null 2>&1; then
-    if readiness_message="$(python - "$readiness_json" <<'PY'
+  if command -v python3 >/dev/null 2>&1 && python3 -m json.tool "$readiness_json" >/dev/null 2>&1; then
+    if readiness_message="$(python3 - "$readiness_json" <<'PY'
 import json
 import pathlib
 import sys
@@ -532,13 +532,13 @@ repo_doctor_check_json_contracts() {
   preflight_json="$temp_root/repo-doctor-preflight.json"
 
   if repo-automation/bin/branch-cleanup --json --plan > "$branch_json" 2>/dev/null; then
-    if command -v python >/dev/null 2>&1 && python -m json.tool "$branch_json" >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1 && python3 -m json.tool "$branch_json" >/dev/null 2>&1; then
       repo_doctor_add_check "json-branch-cleanup" "pass" "branch-cleanup json parseable"
-    elif command -v python >/dev/null 2>&1; then
+    elif command -v python3 >/dev/null 2>&1; then
       repo_doctor_add_check "json-branch-cleanup" "fail" "branch-cleanup json is not parseable"
       status=1
     else
-      repo_doctor_add_check "json-branch-cleanup" "warn" "python missing; skipped parse check"
+      repo_doctor_add_check "json-branch-cleanup" "warn" "python3 missing; skipped parse check"
     fi
   else
     repo_doctor_add_check "json-branch-cleanup" "fail" "branch-cleanup json command failed"
@@ -546,13 +546,13 @@ repo_doctor_check_json_contracts() {
   fi
 
   if repo-automation/bin/codex-slice-preflight --json --check-only --branch feature/doctor-smoke > "$preflight_json" 2>/dev/null; then
-    if command -v python >/dev/null 2>&1 && python -m json.tool "$preflight_json" >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1 && python3 -m json.tool "$preflight_json" >/dev/null 2>&1; then
       repo_doctor_add_check "json-preflight" "pass" "preflight json parseable"
-    elif command -v python >/dev/null 2>&1; then
+    elif command -v python3 >/dev/null 2>&1; then
       repo_doctor_add_check "json-preflight" "fail" "preflight json is not parseable"
       status=1
     else
-      repo_doctor_add_check "json-preflight" "warn" "python missing; skipped parse check"
+      repo_doctor_add_check "json-preflight" "warn" "python3 missing; skipped parse check"
     fi
   else
     repo_doctor_add_check "json-preflight" "fail" "preflight json command failed"

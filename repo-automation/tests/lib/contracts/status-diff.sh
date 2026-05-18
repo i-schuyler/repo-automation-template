@@ -69,7 +69,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" repo-automation/bin/failure-log --kind=run-tests --lines=2 --machine-json > "$kind_json"
-  ) && python -m json.tool "$kind_json" >/dev/null &&     smoke_json_assert "$kind_json" 'data.get("script") == "failure-log" and data.get("kind") == "run-tests" and data.get("lines") == 2 and data.get("log_file", "").endswith("run-tests-20260512-120000.log") and len(data.get("excerpt", [])) == 2 and "FAIL: latest run-tests failure" in data.get("excerpt", [])'; then
+  ) && python3 -m json.tool "$kind_json" >/dev/null &&     smoke_json_assert "$kind_json" 'data.get("script") == "failure-log" and data.get("kind") == "run-tests" and data.get("lines") == 2 and data.get("log_file", "").endswith("run-tests-20260512-120000.log") and len(data.get("excerpt", [])) == 2 and "FAIL: latest run-tests failure" in data.get("excerpt", [])'; then
     test_pass "failure-log kind filter, line limits, and machine-json work"
   else
     test_fail "failure-log kind filter, line limits, and machine-json work"
@@ -228,7 +228,7 @@ smoke_check_touched_files_and_ci_contract() {
     printf '\nsmoke touched-files\n' >> README.md || return 1
     : > scratch.txt || return 1
     PATH="$gh_stub_dir:$PATH" repo-automation/bin/touched-files --machine-json > "$touched_worktree_json"
-  ) && python -m json.tool "$touched_worktree_json" >/dev/null && \
+  ) && python3 -m json.tool "$touched_worktree_json" >/dev/null && \
     smoke_json_assert "$touched_worktree_json" 'data.get("mode") == "working-tree" and "README.md" in data.get("working_tree_tracked_files", []) and "scratch.txt" in data.get("untracked_files", [])'; then
     test_pass "touched-files working-tree fallback is parseable"
   else
@@ -258,7 +258,7 @@ range touch
     git add repo-automation/docs/testing.md || return 1
     git commit -m "range touch" >/dev/null || return 1
     repo-automation/bin/touched-files --machine-json > "$touched_range_json"
-  ) && python -m json.tool "$touched_range_json" >/dev/null &&     smoke_json_assert "$touched_range_json" 'data.get("mode") == "commit-range" and "repo-automation/docs/testing.md" in data.get("commit_range_files", [])'; then
+  ) && python3 -m json.tool "$touched_range_json" >/dev/null &&     smoke_json_assert "$touched_range_json" 'data.get("mode") == "commit-range" and "repo-automation/docs/testing.md" in data.get("commit_range_files", [])'; then
     test_pass "touched-files commit-range output is parseable"
   else
     test_fail "touched-files commit-range output is parseable"
@@ -320,7 +320,7 @@ range touch
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --machine-json > "$ci_status_pr_json"
-  ) && python -m json.tool "$ci_status_pr_json" >/dev/null && \
+  ) && python3 -m json.tool "$ci_status_pr_json" >/dev/null && \
     smoke_json_assert "$ci_status_pr_json" 'data.get("mode") == "pr" and data.get("overall_status") == "pending" and len(data.get("checks", [])) == 1'; then
     test_pass "ci-status pr machine-json is parseable"
   else
@@ -361,7 +361,7 @@ range touch
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[{"number":99,"name":"ci","status":"completed","conclusion":"success"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/demo --machine-json > "$ci_status_branch_json"
-  ) && python -m json.tool "$ci_status_branch_json" >/dev/null && \
+  ) && python3 -m json.tool "$ci_status_branch_json" >/dev/null && \
     smoke_json_assert "$ci_status_branch_json" 'data.get("mode") == "branch" and data.get("overall_status") == "pass" and data.get("latest_run", {}).get("number") == 99'; then
     test_pass "ci-status branch machine-json is parseable"
   else
@@ -437,7 +437,7 @@ range touch
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
-  ) && python -m json.tool "$ci_watch_pass_json" >/dev/null && \
+  ) && python3 -m json.tool "$ci_watch_pass_json" >/dev/null && \
     smoke_json_assert "$ci_watch_pass_json" 'data.get("overall_status") == "pass"'; then
     test_pass "ci-watch pass exits cleanly"
   else
@@ -481,7 +481,7 @@ range touch
   ); then
     test_fail "ci-watch fail exits nonzero"
     status=1
-  elif python -m json.tool "$ci_watch_fail_json" >/dev/null && \
+  elif python3 -m json.tool "$ci_watch_fail_json" >/dev/null && \
     smoke_json_assert "$ci_watch_fail_json" 'data.get("overall_status") == "fail"'; then
     test_pass "ci-watch fail exits nonzero"
   else
@@ -596,7 +596,7 @@ status packet smoke
   if (
     cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --machine-json > "$status_json"
-  ) && python -m json.tool "$status_json" >/dev/null &&     smoke_json_assert "$status_json" 'data.get("script") == "status-packet" and data.get("machine_json") is True and data.get("branch") == "main" and "README.md" in data.get("changed_tracked_files", []) and "status-packet-scratch.txt" in data.get("untracked_files", []) and data.get("recent_logs", {}).get("run_tests", "").endswith("run-tests-20260512-140000.log") and data.get("recent_logs", {}).get("repo_doctor", "").endswith("repo-doctor-20260512-150000.log") and data.get("overall_status") == "pass"'; then
+  ) && python3 -m json.tool "$status_json" >/dev/null &&     smoke_json_assert "$status_json" 'data.get("script") == "status-packet" and data.get("machine_json") is True and data.get("branch") == "main" and "README.md" in data.get("changed_tracked_files", []) and "status-packet-scratch.txt" in data.get("untracked_files", []) and data.get("recent_logs", {}).get("run_tests", "").endswith("run-tests-20260512-140000.log") and data.get("recent_logs", {}).get("repo_doctor", "").endswith("repo-doctor-20260512-150000.log") and data.get("overall_status") == "pass"'; then
     test_pass "status-packet machine-json reports compact repo state"
   else
     test_fail "status-packet machine-json reports compact repo state"

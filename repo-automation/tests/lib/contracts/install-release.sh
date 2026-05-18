@@ -92,7 +92,7 @@ smoke_check_prepare_release_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/prepare-release --check --machine-json > "$prepare_release_check_json"
-  ) && python -m json.tool "$prepare_release_check_json" >/dev/null && \
+  ) && python3 -m json.tool "$prepare_release_check_json" >/dev/null && \
     smoke_json_assert "$prepare_release_check_json" 'data.get("mode") == "check" and data.get("overall_status") == "pass" and data.get("source_version") == "0.1.0" and data.get("target_version") == "0.1.0"'; then
     test_pass "prepare-release check passes"
   else
@@ -115,7 +115,7 @@ smoke_check_prepare_release_contract() {
     git status --short > "$pre_dry_run_status" &&
       repo-automation/bin/prepare-release --version=0.2.0 --dry-run --machine-json > "$prepare_release_dry_run_json" &&
       git status --short > "$post_dry_run_status"
-  ) && cmp -s "$pre_dry_run_status" "$post_dry_run_status" && python -m json.tool "$prepare_release_dry_run_json" >/dev/null && \
+  ) && cmp -s "$pre_dry_run_status" "$post_dry_run_status" && python3 -m json.tool "$prepare_release_dry_run_json" >/dev/null && \
     smoke_json_assert "$prepare_release_dry_run_json" 'data.get("mode") == "dry-run" and data.get("overall_status") == "pass" and data.get("target_version") == "0.2.0" and data.get("planned_count", 0) > 0 and data.get("updated_count", 0) == 0'; then
     test_pass "prepare-release dry-run reports planned changes"
   else
@@ -136,7 +136,7 @@ smoke_check_prepare_release_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/prepare-release --version=0.2.0 --apply --machine-json > "$prepare_release_apply_json"
-  ) && python -m json.tool "$prepare_release_apply_json" >/dev/null && \
+  ) && python3 -m json.tool "$prepare_release_apply_json" >/dev/null && \
     smoke_json_assert "$prepare_release_apply_json" 'data.get("mode") == "apply" and data.get("overall_status") == "pass" and data.get("target_version") == "0.2.0" and data.get("updated_count", 0) > 0'; then
     test_pass "prepare-release apply updates files"
   else
@@ -154,7 +154,7 @@ smoke_check_prepare_release_contract() {
     status=1
   fi
 
-  if python -m json.tool "$prepare_release_apply_json" >/dev/null &&     smoke_json_assert "$prepare_release_apply_json" 'data.get("mode") == "apply" and data.get("overall_status") == "pass" and data.get("updated_count", 0) == 11 and any(entry.get("path", "").endswith("docs/VERSIONING.md") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("docs/DECISIONS.md") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("examples/downstream/.repo-automation.conf.example") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("docs/DOWNSTREAM_FEEDBACK.md") and entry.get("status") == "updated" for entry in data.get("results", []))'; then
+  if python3 -m json.tool "$prepare_release_apply_json" >/dev/null &&     smoke_json_assert "$prepare_release_apply_json" 'data.get("mode") == "apply" and data.get("overall_status") == "pass" and data.get("updated_count", 0) == 11 and any(entry.get("path", "").endswith("docs/VERSIONING.md") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("docs/DECISIONS.md") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("examples/downstream/.repo-automation.conf.example") and entry.get("status") == "updated" for entry in data.get("results", [])) and any(entry.get("path", "").endswith("docs/DOWNSTREAM_FEEDBACK.md") and entry.get("status") == "updated" for entry in data.get("results", []))'; then
     test_pass "prepare-release updates managed version placements"
   else
     test_fail "prepare-release updates managed version placements"
@@ -197,7 +197,7 @@ smoke_check_automation_freshness_contract() {
   if (
     cd "$smoke_repo_root" || return 1
     repo-automation/bin/automation-freshness --machine-json --source-root="$smoke_test_dir" > "$freshness_json"
-  ) && python -m json.tool "$freshness_json" >/dev/null && \
+  ) && python3 -m json.tool "$freshness_json" >/dev/null && \
     smoke_json_assert "$freshness_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$smoke_test_dir"'" and data.get("manifest_path", "").endswith("repo-automation/manifest.json") and any(item.get("path") == "repo-automation/bin/automation-freshness" and item.get("present") for item in data.get("managed_files", []))'; then
     test_pass "automation-freshness machine-json is parseable"
   else
@@ -291,7 +291,7 @@ smoke_check_installer_starter_template_profile() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$starter_target" --starter-template --json > "$starter_plan_json"
-  ) && python -m json.tool "$starter_plan_json" >/dev/null && \
+  ) && python3 -m json.tool "$starter_plan_json" >/dev/null && \
     smoke_json_assert "$starter_plan_json" 'data.get("mode") == "install" and data.get("profile") == "starter-template" and ".github/pull_request_template.md" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-bug.yml" in data.get("files_to_add", []) and ".github/ISSUE_TEMPLATE/automation-feature.yml" in data.get("files_to_add", []) and ".github/workflows/ci.yml" not in data.get("files_to_add", []) and data.get("target_remote_status") in ("missing", "unsupported", "present")'; then
     test_pass "repo-automation-install starter-template plan/json includes template files"
   else
@@ -312,7 +312,7 @@ smoke_check_installer_starter_template_profile() {
   if (
     cd "$starter_target" || return 1
     repo-automation/bin/starter-template-ready --check-current --machine-json > "$starter_ready_json"
-  ) && python -m json.tool "$starter_ready_json" >/dev/null && \
+  ) && python3 -m json.tool "$starter_ready_json" >/dev/null && \
     smoke_json_assert "$starter_ready_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$starter_target"'"'; then
     test_pass "starter-template-ready passes for installed starter target"
   else
@@ -323,7 +323,7 @@ smoke_check_installer_starter_template_profile() {
   if (
     cd "$starter_target" || return 1
     repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn > "$starter_doctor_json"
-  ) && python -m json.tool "$starter_doctor_json" >/dev/null && \
+  ) && python3 -m json.tool "$starter_doctor_json" >/dev/null && \
     smoke_json_assert "$starter_doctor_json" 'data.get("mode") == "quick" and data.get("overall_status") in ("pass", "warn") and not any(check.get("status") == "fail" for check in data.get("checks", []))'; then
     test_pass "repo-doctor quick/no-run-tests passes for installed starter target"
   else
@@ -334,7 +334,7 @@ smoke_check_installer_starter_template_profile() {
   if (
     cd "$smoke_repo_root" || return 1
     repo-automation/bin/repo-doctor --check=artifact-guard --json --json-level=all > "$starter_artifact_json"
-  ) && python -m json.tool "$starter_artifact_json" >/dev/null && \
+  ) && python3 -m json.tool "$starter_artifact_json" >/dev/null && \
     smoke_json_assert "$starter_artifact_json" 'data.get("overall_status") == "pass" and any(check.get("name") == "artifact-guard" and check.get("status") == "pass" for check in data.get("checks", []))'; then
     test_pass "source repo artifact guard remains clean after starter-template smoke"
   else
@@ -361,7 +361,7 @@ smoke_check_starter_template_readiness() {
   if (
     cd "$smoke_repo_root" || return 1
     repo-automation/bin/starter-template-ready --machine-json --source-root="$smoke_test_dir" > "$readiness_json"
-  ) && python -m json.tool "$readiness_json" >/dev/null &&     smoke_json_assert "$readiness_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$smoke_test_dir"'"'; then
+  ) && python3 -m json.tool "$readiness_json" >/dev/null &&     smoke_json_assert "$readiness_json" 'data.get("overall_status") == "pass" and data.get("source_root") == "'"$smoke_test_dir"'"'; then
     test_pass "starter-template-ready source-root machine-json passes"
   else
     test_fail "starter-template-ready source-root machine-json passes"
@@ -447,7 +447,7 @@ smoke_check_starter_template_readiness() {
     result=$?
     mv "$readiness_missing_backup" "$readiness_missing_template" || return 1
     [ "$result" -ne 0 ]
-  ) && python -m json.tool "$readiness_missing_json" >/dev/null &&     smoke_json_assert "$readiness_missing_json" 'data.get("overall_status") == "fail" and ".github/pull_request_template.md" in (data.get("stop_reason") or "")'; then
+  ) && python3 -m json.tool "$readiness_missing_json" >/dev/null &&     smoke_json_assert "$readiness_missing_json" 'data.get("overall_status") == "fail" and ".github/pull_request_template.md" in (data.get("stop_reason") or "")'; then
     test_pass "starter-template-ready reports missing starter-template files"
   else
     test_fail "starter-template-ready reports missing starter-template files"
@@ -505,7 +505,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
-  ) && python -m json.tool "$install_plan_json" >/dev/null; then
+  ) && python3 -m json.tool "$install_plan_json" >/dev/null; then
     if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/repair-prompt" in data.get("files_to_add", []) and "repo-automation/bin/review-pack" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/repair-prompt.md" in data.get("files_to_add", []) and "repo-automation/docs/review-pack.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 25 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
@@ -692,7 +692,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$install_target" || return 1
     repo-automation/bin/repo-doctor --json --quick --no-run-tests > "$install_doctor_json"
-  ) && python -m json.tool "$install_doctor_json" >/dev/null && \
+  ) && python3 -m json.tool "$install_doctor_json" >/dev/null && \
     smoke_json_assert "$install_doctor_json" 'data.get("overall_status") in ("pass", "warn") and any(check.get("status") == "warn" for check in data.get("checks", [])) and not any(check.get("status") == "fail" for check in data.get("checks", []))'; then
     test_pass "repo-automation-install target repo-doctor json audit succeeds"
   else
@@ -735,7 +735,7 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json > "$install_plan_json"
-  ) && python -m json.tool "$install_plan_json" >/dev/null && \
+  ) && python3 -m json.tool "$install_plan_json" >/dev/null && \
     smoke_json_assert "$install_plan_json" 'data.get("mode") == "update"'; then
     test_pass "repo-automation-install second plan infers update mode"
   else

@@ -594,7 +594,7 @@ EOF
     git commit -m "init" >/dev/null || return 1
     git init --bare --initial-branch=main "$smoke_remote_dir" >/dev/null || return 1
     git remote add origin "$smoke_remote_dir" || return 1
-    git push -u origin main >/dev/null || return 1
+    git push -u origin main >/dev/null 2>&1 || return 1
     git remote set-url origin "$smoke_expected_origin_url" || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     cat > .repo-automation.conf <<EOF

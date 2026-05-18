@@ -82,7 +82,7 @@ smoke_check_run_tests_contract() {
   if (
     cd "$smoke_repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn > "$run_tests_json" 2> "$run_tests_json_err"
-  ) && [ ! -s "$run_tests_json_err" ] && python -m json.tool "$run_tests_json" >/dev/null && \
+  ) && [ ! -s "$run_tests_json_err" ] && python3 -m json.tool "$run_tests_json" >/dev/null && \
     smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
     test_pass "run-tests json warn is parseable"
   else
@@ -282,7 +282,7 @@ EOF
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
     repo-automation/bin/run-tests --smoke --json --json-level=all > "$run_tests_subset_smoke_json" || true
-  ) && python -m json.tool "$run_tests_subset_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_smoke_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/smoke.sh"'; then
+  ) && python3 -m json.tool "$run_tests_subset_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_smoke_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/smoke.sh"'; then
     test_pass "run-tests smoke subset runs only smoke"
   else
     test_fail "run-tests smoke subset runs only smoke"
@@ -292,7 +292,7 @@ EOF
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
     repo-automation/bin/run-tests --docs --json --json-level=all > "$run_tests_subset_docs_json" || true
-  ) && python -m json.tool "$run_tests_subset_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_docs_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/docs-check.sh"'; then
+  ) && python3 -m json.tool "$run_tests_subset_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_docs_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/docs-check.sh"'; then
     test_pass "run-tests docs subset runs only docs-check"
   else
     test_fail "run-tests docs subset runs only docs-check"
@@ -302,7 +302,7 @@ EOF
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
     repo-automation/bin/run-tests --version --json --json-level=all > "$run_tests_subset_version_json" || true
-  ) && python -m json.tool "$run_tests_subset_version_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_version_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/version-consistency.sh"'; then
+  ) && python3 -m json.tool "$run_tests_subset_version_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_version_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/version-consistency.sh"'; then
     test_pass "run-tests version subset runs only version-consistency"
   else
     test_fail "run-tests version subset runs only version-consistency"
@@ -342,7 +342,7 @@ EOF
   if [ -n "$run_tests_subset_repo" ] && (
     cd "$run_tests_subset_repo" || return 1
     repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_json" || true
-  ) && python -m json.tool "$run_tests_subset_changed_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_json" 'data.get("selected_subsets") == ["docs"] and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+  ) && python3 -m json.tool "$run_tests_subset_changed_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_json" 'data.get("selected_subsets") == ["docs"] and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
     test_pass "run-tests changed subset follows docs-only changes"
   else
     test_fail "run-tests changed subset follows docs-only changes"
@@ -360,7 +360,7 @@ EOF
     printf '\nsubset docs plus smoke change\n' >> repo-automation/docs/testing.md || return 1
     printf '\n# subset smoke change\n' >> repo-automation/tests/smoke.sh || return 1
     repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_smoke_json" || true
-  ) && python -m json.tool "$run_tests_subset_changed_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_smoke_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+  ) && python3 -m json.tool "$run_tests_subset_changed_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_smoke_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
     test_pass "run-tests changed subset follows docs plus smoke changes"
   else
     test_fail "run-tests changed subset follows docs plus smoke changes"
@@ -378,7 +378,7 @@ EOF
     printf '\nsubset docs plus bin change\n' >> repo-automation/docs/testing.md || return 1
     printf '\n# subset bin change\n' >> repo-automation/bin/failure-log || return 1
     repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_bin_json" || true
-  ) && python -m json.tool "$run_tests_subset_changed_bin_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_bin_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
+  ) && python3 -m json.tool "$run_tests_subset_changed_bin_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_bin_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
     test_pass "run-tests changed subset follows docs plus bin changes"
   else
     test_fail "run-tests changed subset follows docs plus bin changes"
@@ -468,7 +468,7 @@ smoke_check_repo_doctor_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --json --check=config --json-level=all > "$doctor_json_warn" 2> "$doctor_json_warn_err"
-  ) && [ ! -s "$doctor_json_warn_err" ] && python -m json.tool "$doctor_json_warn" >/dev/null && \
+  ) && [ ! -s "$doctor_json_warn_err" ] && python3 -m json.tool "$doctor_json_warn" >/dev/null && \
     smoke_json_assert "$doctor_json_warn" 'data.get("overall_status") == "pass" and data.get("json_level") == "all" and any(check.get("name") == "config-exists" and check.get("status") == "pass" for check in data.get("checks", []))'; then
     test_pass "repo-doctor json output is parseable"
   else
@@ -509,7 +509,7 @@ smoke_check_repo_doctor_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --json --quick > "$doctor_json"
-  ) && python -m json.tool "$doctor_json" >/dev/null; then
+  ) && python3 -m json.tool "$doctor_json" >/dev/null; then
     test_pass "repo-doctor json quick is parseable"
   else
     test_fail "repo-doctor json quick is parseable"
@@ -706,7 +706,7 @@ smoke_check_repo_doctor_artifact_guard() {
     git add scratch.txt >/dev/null 2>&1 || return 1
     git commit -m "track scratch file" >/dev/null 2>&1 || return 1
     repo-automation/bin/repo-doctor --check=artifact-guard --json --json-level=all > "$artifact_pass_json"
-  ) && python -m json.tool "$artifact_pass_json" >/dev/null && \
+  ) && python3 -m json.tool "$artifact_pass_json" >/dev/null && \
     smoke_json_assert "$artifact_pass_json" 'data.get("overall_status") == "pass" and any(check.get("name") == "artifact-guard" and check.get("status") == "pass" for check in data.get("checks", []))'; then
     test_pass "repo-doctor artifact guard ignores tracked root files"
   else
@@ -726,7 +726,7 @@ smoke_check_repo_doctor_artifact_guard() {
     repo-automation/bin/repo-doctor --check=artifact-guard --json > "$artifact_fail_json"
     result=$?
     [ "$result" -ne 0 ]
-  ) && python -m json.tool "$artifact_fail_json" >/dev/null && \
+  ) && python3 -m json.tool "$artifact_fail_json" >/dev/null && \
     smoke_json_assert "$artifact_fail_json" 'data.get("overall_status") == "fail" and any(check.get("name") == "artifact-guard" and check.get("status") == "fail" and ".cache/" in check.get("message", "") and "tmp/" in check.get("message", "") and "temp/" in check.get("message", "") and "touched.json" in check.get("message", "") and "range.json" in check.get("message", "") and ".tmp-guard" in check.get("message", "") and "tmp-guard.tmp" in check.get("message", "") and "root.log" in check.get("message", "") and "tmp-guard.log" in check.get("message", "") and "scratch.txt" not in check.get("message", "") for check in data.get("checks", []))'; then
     test_pass "repo-doctor artifact guard detects repo-root artifacts"
   else
@@ -749,7 +749,7 @@ smoke_check_repo_doctor_missing_config() {
     result=$?
     mv .repo-automation.conf.bak .repo-automation.conf || return 1
     [ "$result" -ne 0 ]
-  ) && python -m json.tool "$doctor_missing_json" >/dev/null && \
+  ) && python3 -m json.tool "$doctor_missing_json" >/dev/null && \
     smoke_json_assert "$doctor_missing_json" 'data.get("overall_status") == "fail"'; then
     test_pass "repo-doctor missing config fails safely"
   else
@@ -825,7 +825,7 @@ smoke_check_github_settings_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --repo=i-schuyler/repo-automation-template --machine-json > "$github_settings_repo_json"
-  ) && python -m json.tool "$github_settings_repo_json" >/dev/null && \
+  ) && python3 -m json.tool "$github_settings_repo_json" >/dev/null && \
     smoke_json_assert "$github_settings_repo_json" 'data.get("overall_status") == "pass" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("repo_source") == "flag"'; then
     test_pass "github-settings-check accepts explicit repo syntax"
   else
@@ -888,7 +888,7 @@ smoke_check_github_settings_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --machine-json > "$github_settings_json"
-  ) && python -m json.tool "$github_settings_json" >/dev/null && \
+  ) && python3 -m json.tool "$github_settings_json" >/dev/null && \
     smoke_json_assert "$github_settings_json" 'data.get("overall_status") == "pass" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("default_branch") == "main" and data.get("actions_enabled") is True and data.get("pr_template_exists") is True and data.get("issue_templates_exist") is True and data.get("ci_workflow_exists") is True'; then
     test_pass "github-settings-check machine-json is parseable"
   else
@@ -899,7 +899,7 @@ smoke_check_github_settings_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" repo-automation/bin/repo-doctor --check=github-settings-readiness --json --json-level=all > "$github_settings_doctor_json"
-  ) && python -m json.tool "$github_settings_doctor_json" >/dev/null && \
+  ) && python3 -m json.tool "$github_settings_doctor_json" >/dev/null && \
     smoke_json_assert "$github_settings_doctor_json" 'data.get("overall_status") == "pass" and any(check.get("name") == "github-settings-readiness" and check.get("status") == "pass" for check in data.get("checks", []))'; then
     test_pass "repo-doctor github-settings-readiness check passes"
   else
@@ -993,7 +993,7 @@ smoke_check_managed_file_tools_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/managed-file-add --path="$managed_file_new_path" --kind=doc >/dev/null
-  ) && python -m json.tool "$managed_file_manifest_path" >/dev/null && \
+  ) && python3 -m json.tool "$managed_file_manifest_path" >/dev/null && \
     grep -Fq -- "\"path\": \"$managed_file_new_path\"" "$managed_file_manifest_path" && \
     grep -Fq -- "\"$managed_file_new_path\"" "$managed_file_installer_path"; then
     test_pass "managed-file-add updates manifest and installer coverage"
