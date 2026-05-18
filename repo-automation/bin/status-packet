@@ -48,6 +48,19 @@ status_packet_warn() {
   status_packet_warnings+=("$message")
 }
 
+status_packet_final_summary_pick_status() {
+  local candidate="$1"
+
+  case "$candidate" in
+    https://*|STOP:*|pass|fail:*|blocked:*)
+      printf '%s\n' "$candidate"
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 status_packet_count_lines() {
   local value="${1:-}"
 
@@ -327,7 +340,7 @@ status_packet_print_final_summary() {
   local warning_section_lines=0
   local pr_section_lines=1
   local output_lines=0
-  local url_or_stop="pass"
+  local url_or_stop=""
   local final_summary_after_start_hook="${FINAL_SUMMARY_AFTER_START_HOOK:-}"
   local final_summary_before_end_hook="${FINAL_SUMMARY_BEFORE_END_HOOK:-}"
   local final_summary_hook_lines=0
@@ -355,11 +368,19 @@ status_packet_print_final_summary() {
     warning_section_lines=$((1 + warning_count))
   fi
 
-  if [ "$status_packet_pr_available" -eq 1 ] && [ -n "$status_packet_pr_url" ]; then
+  if [ -n "$final_summary_after_start_hook" ] && url_or_stop="$(status_packet_final_summary_pick_status "$final_summary_after_start_hook")"; then
+    :
+  elif [ -n "$final_summary_before_end_hook" ] && url_or_stop="$(status_packet_final_summary_pick_status "$final_summary_before_end_hook")"; then
+    :
+  elif [ "$status_packet_pr_available" -eq 1 ] && [ -n "$status_packet_pr_url" ]; then
     url_or_stop="$status_packet_pr_url"
     pr_section_lines=6
   elif [ "$status_packet_pr_available" -eq 1 ]; then
     pr_section_lines=1
+  fi
+
+  if [ -z "$url_or_stop" ]; then
+    url_or_stop="pass"
   fi
 
   if [ -n "$final_summary_after_start_hook" ]; then
