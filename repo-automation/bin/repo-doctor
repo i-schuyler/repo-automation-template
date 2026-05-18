@@ -332,6 +332,14 @@ repo_doctor_check_scripts() {
   local script_path
   local script_name
 
+  local search_dirs=()
+  local search_dir
+
+  for search_dir in repo-automation/bin repo-automation/lib repo-automation/tests; do
+    [ -d "$search_dir" ] || continue
+    search_dirs+=("$search_dir")
+  done
+
   while IFS= read -r script_path; do
     [ -n "$script_path" ] || continue
     case "$script_path" in
@@ -353,7 +361,7 @@ repo_doctor_check_scripts() {
     esac
     repo_doctor_check_script_one "$script_path" "$script_name" || status=1
   done <<EOF
-$(find repo-automation/bin repo-automation/lib repo-automation/tests -type f | LC_ALL=C sort)
+$(find "${search_dirs[@]}" -type f | LC_ALL=C sort)
 EOF
 
   if [ -f "repo-automation/bin/automation-freshness" ]; then
