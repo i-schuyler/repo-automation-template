@@ -80,6 +80,7 @@ repo_auto_secret_scan_file() {
 
 repo_auto_load_config() {
   local config_path
+  local local_config_path
 
   config_path=$(repo_auto_config_path) || return 1
 
@@ -95,6 +96,17 @@ repo_auto_load_config() {
     repo_auto_stop "failed to source config file: $config_path"
     return 1
   }
+
+  local_config_path="${config_path%.conf}.local.conf"
+  if [ -f "$local_config_path" ]; then
+    repo_auto_secret_scan_file "$local_config_path" || return 1
+
+    # shellcheck source=/dev/null
+    . "$local_config_path" || {
+      repo_auto_stop "failed to source local config file: $local_config_path"
+      return 1
+    }
+  fi
 }
 
 repo_auto_state_dir() {

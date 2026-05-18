@@ -1048,4 +1048,33 @@ smoke_check_shellcheck_ci_parity_contract() {
   return "$status"
 }
 
+smoke_check_repo_config_local_override_contract() {
+  local status=0
+  local local_config_path="$smoke_test_dir/.repo-automation.local.conf"
+
+  if {
+    cd "$smoke_test_dir" || return 1
+    cat > "$local_config_path" <<'EOF'
+DEFAULT_BRANCH="trunk"
+FINAL_SUMMARY_AFTER_START_HOOK="mark"
+FINAL_SUMMARY_BEFORE_END_HOOK="recap"
+EOF
+    # shellcheck disable=SC1091
+    source repo-automation/lib/common.sh && repo_auto_load_config >/dev/null && \
+      [ "$CI_PROVIDER" = "github" ] && \
+      [ "$CHECK_PROFILE_DEFAULT" = "docs" ] && \
+      [ "$DEFAULT_BRANCH" = "trunk" ] && \
+      [ "$FINAL_SUMMARY_AFTER_START_HOOK" = "mark" ] && \
+      [ "$FINAL_SUMMARY_BEFORE_END_HOOK" = "recap" ]
+  }; then
+    test_pass "repo-automation config loads local overrides after tracked defaults"
+  else
+    test_fail "repo-automation config loads local overrides after tracked defaults"
+    status=1
+  fi
+
+  rm -f "$local_config_path" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 # repo-automation/tests/lib/contracts/repo-health.sh EOF

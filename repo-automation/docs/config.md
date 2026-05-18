@@ -1,6 +1,7 @@
 # Repo Automation Config
 
 `.repo-automation.conf` is the repo-local entry point for public-safe automation settings.
+`.repo-automation.local.conf` is the optional local override layer for workflow-only values.
 
 This doc is the public loading and behavior guide. The schema contract lives in [Config Schema](config-schema.md).
 
@@ -14,6 +15,7 @@ The config file records the public, installable shape of the repo automation tem
 - branch, docs, provider, timeout, and check-profile defaults
 
 The file is meant to be sourceable by Bash and readable in downstream repos without exposing secrets, tokens, host credentials, private keys, or machine-local private paths.
+Tracked defaults should stay fork-friendly; put local hook values and similar workflow-only settings in `.repo-automation.local.conf`.
 
 ## Version Fields
 
@@ -82,3 +84,5 @@ See [docs/VERSIONING.md](../../docs/VERSIONING.md) and [version-modes.md](versio
 Future workflow scripts must load configuration through `repo-automation/lib/common.sh` instead of re-implementing config lookup or validation.
 
 For behavior-changing scripts such as branch cleanup and preflight, invalid config, secret-scan failure, or source failure must stop execution instead of silently falling back.
+
+Loading order is tracked config first, then `.repo-automation.local.conf` when present, so local values override tracked defaults without editing the tracked file. Config updates must not overwrite or clear local override files.

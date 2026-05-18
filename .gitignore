@@ -9,3 +9,4 @@ tmp/
 *.log
 .env
 .env.*
+.repo-automation.local.conf

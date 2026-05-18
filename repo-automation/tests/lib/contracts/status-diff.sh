@@ -568,7 +568,7 @@ smoke_check_status_packet_contract() {
   local status_final_summary_hooks="$smoke_test_base/status-packet-final-summary-hooks-$$.txt"
   local gh_stub_dir="$smoke_test_base/gh-stub-status-packet"
   local status_unknown_stderr="$smoke_test_base/status-packet-unknown-$$.txt"
-  local status_packet_config="$smoke_test_dir/.repo-automation.conf"
+  local status_packet_local_config="$smoke_test_dir/.repo-automation.local.conf"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$log_root" || return 1
@@ -616,15 +616,15 @@ status packet smoke
     status=1
   fi
 
-  cat >> "$status_packet_config" <<'EOF'
-FINAL_SUMMARY_AFTER_START_HOOK="after-start hook"
-FINAL_SUMMARY_BEFORE_END_HOOK="before-end hook"
+  cat > "$status_packet_local_config" <<'EOF'
+FINAL_SUMMARY_AFTER_START_HOOK="mark"
+FINAL_SUMMARY_BEFORE_END_HOOK="recap"
 EOF
 
   if (
     cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --final-summary > "$status_final_summary_hooks"
-  ) && [ "$(wc -l < "$status_final_summary_hooks" | tr -d '[:space:]')" -eq 9 ] && [ "$(sed -n '2p' "$status_final_summary_hooks")" = 'after-start hook' ] && [ "$(sed -n '8p' "$status_final_summary_hooks")" = 'before-end hook' ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary_hooks" && grep -Eq '^branch=main$' "$status_final_summary_hooks" && grep -Eq '^rc=0$' "$status_final_summary_hooks" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary_hooks" && awk -F= '$1=="output_lines" { exit !($2 <= 25) }' "$status_final_summary_hooks" && grep -Eq '^url_or_stop=pass$' "$status_final_summary_hooks" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary_hooks" && grep -Fxq '===== END =====' "$status_final_summary_hooks"; then
+  ) && [ "$(wc -l < "$status_final_summary_hooks" | tr -d '[:space:]')" -eq 9 ] && [ "$(sed -n '2p' "$status_final_summary_hooks")" = 'mark' ] && [ "$(sed -n '8p' "$status_final_summary_hooks")" = 'recap' ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary_hooks" && grep -Eq '^branch=main$' "$status_final_summary_hooks" && grep -Eq '^rc=0$' "$status_final_summary_hooks" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary_hooks" && awk -F= '$1=="output_lines" { exit !($2 <= 25) }' "$status_final_summary_hooks" && grep -Eq '^url_or_stop=pass$' "$status_final_summary_hooks" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary_hooks" && grep -Fxq '===== END =====' "$status_final_summary_hooks"; then
     test_pass "status-packet final-summary hook lines render in the contract"
   else
     test_fail "status-packet final-summary hook lines render in the contract"
@@ -652,7 +652,7 @@ EOF
     :
   fi
 
-  rm -f "$status_human" "$status_json" "$status_final_summary" "$status_final_summary_hooks" "$status_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$status_human" "$status_json" "$status_final_summary" "$status_final_summary_hooks" "$status_unknown_stderr" "$status_packet_local_config" >/dev/null 2>&1 || true
   rm -f "$log_root"/run-tests-20260512-140000.log "$log_root"/repo-doctor-20260512-150000.log >/dev/null 2>&1 || true
   rmdir "$log_root" "$temp_root" >/dev/null 2>&1 || true
   return "$status"

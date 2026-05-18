@@ -29,9 +29,12 @@ status_count=<n>
 Local mark/recap example:
 
 ```sh
-FINAL_SUMMARY_AFTER_START_HOOK="mark: local workflow"
-FINAL_SUMMARY_BEFORE_END_HOOK="recap: local workflow"
+FINAL_SUMMARY_AFTER_START_HOOK="mark"
+FINAL_SUMMARY_BEFORE_END_HOOK="recap"
 ```
+
+The final-summary block stays compact and must remain at or below 25 lines.
+When present, those hook values come from `.repo-automation.local.conf`, not the tracked config.
 
 Examples:
 
