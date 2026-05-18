@@ -826,6 +826,13 @@ smoke_check_repo_flow_submit_contract() {
   local canonical_remote_stderr=""
   local alias_remote_stderr=""
   local rejected_remote_stderr=""
+  local alias_create_stdout=""
+  local alias_create_stderr=""
+  local alias_create_log_file=""
+  local alias_reuse_state_file=""
+  local alias_reuse_stdout=""
+  local alias_reuse_stderr=""
+  local alias_reuse_log_file=""
   local local_bash_path=""
   local ssh_stub_dir=""
   local status_before=""
@@ -875,7 +882,47 @@ smoke_check_repo_flow_submit_contract() {
     status=1
   fi
 
+  alias_create_stdout="$smoke_test_base/repo-flow-submit-alias-create.out"
+  alias_create_stderr="$smoke_test_base/repo-flow-submit-alias-create.stderr"
+  alias_create_log_file="$smoke_test_base/repo-flow-submit-alias-create.log"
+  printf '\nrepo-flow submit alias create line\n' >> "$smoke_test_dir/README.md" || return 1
   smoke_prepare_repo_flow_submit_remote_validation 'git@github-alias:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    git remote set-url --push origin "$smoke_remote_dir" >/dev/null 2>&1 || return 1
+    PATH="$ssh_stub_dir:$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_FAIL_ONCE_FILE="$smoke_test_base/repo-flow-submit-alias-create-view.fail" \
+    GH_STUB_PR_CREATE_LOG_FILE="$alias_create_log_file" \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/703' \
+    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias commit' > "$alias_create_stdout" 2> "$alias_create_stderr"
+  ) && grep -Eq '^https://github\.com/i-schuyler/repo-automation-template/pull/[0-9]+$' "$alias_create_stdout" && grep -Fq 'gh pr create title=' "$alias_create_log_file"; then
+    test_pass "repo-flow submit accepts a GitHub SSH alias through the delegated PR create path"
+  else
+    test_fail "repo-flow submit accepts a GitHub SSH alias through the delegated PR create path"
+    status=1
+  fi
+
+  alias_reuse_state_file="$smoke_test_base/repo-flow-submit-alias-reuse-pr.txt"
+  alias_reuse_stdout="$smoke_test_base/repo-flow-submit-alias-reuse.out"
+  alias_reuse_stderr="$smoke_test_base/repo-flow-submit-alias-reuse.stderr"
+  alias_reuse_log_file="$smoke_test_base/repo-flow-submit-alias-reuse.log"
+  printf '\nrepo-flow submit alias reuse line\n' >> "$smoke_test_dir/README.md" || return 1
+  smoke_prepare_repo_flow_submit_remote_validation 'git@github-alias:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    git remote set-url --push origin "$smoke_remote_dir" >/dev/null 2>&1 || return 1
+    PATH="$ssh_stub_dir:$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_NUMBER=904 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/904' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias reuse commit' > "$alias_reuse_stdout" 2> "$alias_reuse_stderr"
+  ) && [ "$(cat "$alias_reuse_stdout")" = 'https://github.com/i-schuyler/repo-automation-template/pull/904' ]; then
+    test_pass "repo-flow submit accepts a GitHub SSH alias through the delegated PR reuse path"
+  else
+    test_fail "repo-flow submit accepts a GitHub SSH alias through the delegated PR reuse path"
+    status=1
+  fi
+
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$ssh_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=missing.txt --message=hi >/dev/null 2> "$alias_remote_stderr"
