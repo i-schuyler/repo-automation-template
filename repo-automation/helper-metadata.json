@@ -292,6 +292,27 @@
       "config_keys": []
     },
     {
+      "name": "post-codex-review",
+      "path": "repo-automation/bin/post-codex-review",
+      "doc_path": "repo-automation/docs/post-codex-review.md",
+      "contract_test_path": "repo-automation/tests/contracts/post-codex-review.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "targeted-local",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": false,
+      "supports_json": false,
+      "artifact_helper": true,
+      "umbrella_helper": false,
+      "workflow_role": "artifact",
+      "config_keys": []
+    },
+    {
       "name": "repair-prompt",
       "path": "repo-automation/bin/repair-prompt",
       "doc_path": "repo-automation/docs/repair-prompt.md",

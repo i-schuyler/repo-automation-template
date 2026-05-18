@@ -48,6 +48,7 @@ shellcheck -e SC2317 \
   repo-automation/bin/branch-cleanup \
   repo-automation/bin/codex-slice-preflight \
   repo-automation/bin/post-codex-packet \
+  repo-automation/bin/post-codex-review \
   repo-automation/bin/pr-finish \
   repo-automation/bin/add-doc-pr \
   repo-automation/bin/repo-automation-report-upstream \

@@ -46,6 +46,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 28. [Failure Log](../repo-automation/docs/failure-log.md)
 29. [Status Packet](../repo-automation/docs/status-packet.md)
 30. [Post Codex Packet](../repo-automation/docs/post-codex-packet.md)
+31. [Post Codex Review](../repo-automation/docs/post-codex-review.md)
 31. [Evidence Bundle](../repo-automation/docs/evidence-bundle.md)
 32. [Review Pack](../repo-automation/docs/review-pack.md)
 33. [Repair Prompt](../repo-automation/docs/repair-prompt.md)
