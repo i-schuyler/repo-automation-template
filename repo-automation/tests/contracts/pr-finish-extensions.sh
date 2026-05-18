@@ -59,8 +59,9 @@ smoke_check_pr_finish_watch_latest() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
-    "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=latest > /dev/null 2> "$stderr_file"
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-901' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":901,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-latest","headSha":"current-sha-901","status":"completed","workflowName":"ci"}]' \
+    "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=latest --explain > /dev/null 2> "$stderr_file"
   ); then
     if grep -q 'mode: watch' "$stderr_file" &&
       grep -q 'pr: #901 watch latest title' "$stderr_file" &&
@@ -108,7 +109,7 @@ smoke_check_pr_finish_status_current() {
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
-    "$local_bash_path" repo-automation/bin/pr-finish --status --pr=current > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/pr-finish --status --pr=current --explain > /dev/null 2> "$stderr_file"
   ); then
     if grep -q 'mode: status' "$stderr_file" &&
       grep -q 'pr: #654 current title' "$stderr_file" &&
@@ -145,7 +146,7 @@ smoke_check_pr_finish_pr_flag_shapes() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-finish --help > "$help_file"
-  ) && grep -Fq -- '--pr=<number|current|latest>' "$help_file" && ! grep -Fq -- '--pr NUMBER' "$help_file"; then
+  ) && grep -Fq -- '--pr=<number|current|latest>' "$help_file" && grep -Fq -- '--timeout=<seconds>' "$help_file" && ! grep -Fq -- '--pr NUMBER' "$help_file"; then
     test_pass "pr-finish help shows strict pr syntax"
   else
     test_fail "pr-finish help shows strict pr syntax"
@@ -239,7 +240,7 @@ smoke_check_pr_finish_merge_current_sync_main() {
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
     GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
-    "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=current --sync-main --delete-branch > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=current --sync-main --delete-branch --explain > /dev/null 2> "$stderr_file"
   ); then
     if grep -q 'merge completed for PR #655' "$stderr_file" &&
       grep -q 'synced main with git pull --ff-only' "$stderr_file" &&
@@ -311,6 +312,46 @@ smoke_check_pr_finish_merge_failure_skips_sync_main() {
   return "$status"
 }
 
+smoke_check_pr_finish_merge_blocks_until_current_head() {
+  local status=0
+  local gh_stub_dir="$smoke_test_dir/gh-stub"
+  local merge_log_file="$smoke_test_dir/pr-finish-merge-blocked.gh-log"
+  local stderr_file="$smoke_test_dir/pr-finish-merge-blocked.stderr"
+  local local_bash_path=""
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_NUMBER=888 \
+    GH_STUB_PR_VIEW_TITLE='merge blocked title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/888' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-888' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":900,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-888","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=888 >/dev/null 2> "$stderr_file"
+  ); then
+    test_fail "pr-finish merge blocks until current head checks exist"
+    status=1
+  elif grep -q 'merge blocked by current PR state/check gates' "$stderr_file" &&
+    grep -q 'checks-pending' "$stderr_file" &&
+    [ ! -s "$merge_log_file" ]; then
+    test_pass "pr-finish merge blocks until current head checks exist"
+  else
+    test_fail "pr-finish merge blocks until current head checks exist"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_main() {
   local status=0
 
@@ -323,6 +364,7 @@ smoke_main() {
   smoke_run_named_check "smoke:pr-finish-pr-flag-shapes" smoke_check_pr_finish_pr_flag_shapes || status=1
   smoke_run_named_check "smoke:pr-finish-merge-current-sync-main" smoke_check_pr_finish_merge_current_sync_main || status=1
   smoke_run_named_check "smoke:pr-finish-merge-failure-skips-sync-main" smoke_check_pr_finish_merge_failure_skips_sync_main || status=1
+  smoke_run_named_check "smoke:pr-finish-merge-blocks-until-current-head" smoke_check_pr_finish_merge_blocks_until_current_head || status=1
 
   return "$status"
 }

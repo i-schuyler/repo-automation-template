@@ -13,7 +13,8 @@ Supported flags:
 
 Behavior:
 
-- uses `gh pr checks` for PR status where practical
+- resolves the current PR head SHA and only reports green/red for runs on that exact head
+- waits/pends when the current head SHA has no attached run yet
 - falls back to `gh run list` for branch workflow status where practical
 - fails cleanly when `gh` is missing, not authenticated, offline, or when no PR / workflow run can be found
 - never creates, updates, merges, closes, or deletes anything

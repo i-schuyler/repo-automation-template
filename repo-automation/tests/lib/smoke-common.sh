@@ -255,6 +255,9 @@ case "$cmd $sub" in
       *' --json headRefName '*|*' --jq .headRefName '*)
         printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
         ;;
+      *' --json headRefOid '*|*' --jq .headRefOid '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_SHA:-}"
+        ;;
       *)
         printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
         ;;
@@ -270,6 +273,9 @@ case "$cmd $sub" in
     if [ "${GH_STUB_PR_MERGE_EXIT:-0}" -ne 0 ] 2>/dev/null; then
       printf '%s\n' "${GH_STUB_PR_MERGE_ERROR:-merge failed}" >&2
       exit "${GH_STUB_PR_MERGE_EXIT}"
+    fi
+    if [ "${GH_STUB_PR_MERGE_UPDATE_MAIN:-0}" -eq 1 ] 2>/dev/null; then
+      git branch -f main HEAD >/dev/null 2>&1 || true
     fi
     ;;
   'pr create')
@@ -325,12 +331,22 @@ case "$cmd $sub" in
     esac
     ;;
   'run list')
-    if [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
+    if [ -n "${GH_STUB_RUN_LIST_SEQUENCE_FILE:-}" ] && [ -f "$GH_STUB_RUN_LIST_SEQUENCE_FILE" ]; then
+      first_line="$(sed -n '1p' "$GH_STUB_RUN_LIST_SEQUENCE_FILE" 2>/dev/null || true)"
+      rest_lines="$(sed -n '2,$p' "$GH_STUB_RUN_LIST_SEQUENCE_FILE" 2>/dev/null || true)"
+      if [ -n "$first_line" ]; then
+        printf '%s\n' "$first_line"
+        printf '%s\n' "$rest_lines" > "$GH_STUB_RUN_LIST_SEQUENCE_FILE"
+      else
+        printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
+      fi
+    elif [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
       : > "$GH_STUB_RUN_LIST_FAIL_ONCE_FILE"
       printf '%s\n' "${GH_STUB_RUN_LIST_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
       exit 1
+    else
+      printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     fi
-    printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     ;;
   'run view')
     if [ -n "${GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR:-}" ]; then
