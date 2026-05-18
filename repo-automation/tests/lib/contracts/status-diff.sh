@@ -564,6 +564,7 @@ smoke_check_status_packet_contract() {
   local log_root="$temp_root/repo-automation-template"
   local status_human="$smoke_test_base/status-packet-human-$$.txt"
   local status_json="$smoke_test_base/status-packet-json-$$.json"
+  local status_final_summary="$smoke_test_base/status-packet-final-summary-$$.txt"
   local gh_stub_dir="$smoke_test_base/gh-stub-status-packet"
   local status_unknown_stderr="$smoke_test_base/status-packet-unknown-$$.txt"
 
@@ -605,6 +606,16 @@ status packet smoke
 
   if (
     cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --final-summary > "$status_final_summary"
+  ) && [ "$(wc -l < "$status_final_summary" | tr -d '[:space:]')" -le 10 ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary" && grep -Eq '^branch=main$' "$status_final_summary" && grep -Eq '^rc=0$' "$status_final_summary" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary" && grep -Eq '^url_or_stop=pass$' "$status_final_summary" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary" && grep -Fxq '===== END =====' "$status_final_summary"; then
+    test_pass "status-packet final-summary output uses the compact marker contract"
+  else
+    test_fail "status-packet final-summary output uses the compact marker contract"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --whatever >/dev/null 2> "$status_unknown_stderr"
   ); then
     test_fail "status-packet rejects unknown flags"
@@ -624,7 +635,7 @@ status packet smoke
     :
   fi
 
-  rm -f "$status_human" "$status_json" "$status_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$status_human" "$status_json" "$status_final_summary" "$status_unknown_stderr" >/dev/null 2>&1 || true
   rm -f "$log_root"/run-tests-20260512-140000.log "$log_root"/repo-doctor-20260512-150000.log >/dev/null 2>&1 || true
   rmdir "$log_root" "$temp_root" >/dev/null 2>&1 || true
   return "$status"
