@@ -609,7 +609,7 @@ status packet smoke
   if (
     cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --final-summary > "$status_final_summary"
-  ) && [ "$(wc -l < "$status_final_summary" | tr -d '[:space:]')" -eq 7 ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary" && grep -Eq '^branch=main$' "$status_final_summary" && grep -Eq '^rc=0$' "$status_final_summary" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary" && grep -Eq '^url_or_stop=pass$' "$status_final_summary" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary" && grep -Fxq '===== END =====' "$status_final_summary"; then
+  ) && [ "$(wc -l < "$status_final_summary" | tr -d '[:space:]')" -eq 7 ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary" && grep -Eq '^branch=main$' "$status_final_summary" && grep -Eq '^rc=0$' "$status_final_summary" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary" && awk -F= '$1=="output_lines" { exit !($2 <= 25) }' "$status_final_summary" && grep -Eq '^url_or_stop=pass$' "$status_final_summary" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary" && grep -Fxq '===== END =====' "$status_final_summary"; then
     test_pass "status-packet final-summary output uses the compact marker contract"
   else
     test_fail "status-packet final-summary output uses the compact marker contract"
@@ -624,7 +624,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" PATH="$gh_stub_dir:$PATH" GH_STUB_PR_LIST_JSON='[]' repo-automation/bin/status-packet --final-summary > "$status_final_summary_hooks"
-  ) && [ "$(wc -l < "$status_final_summary_hooks" | tr -d '[:space:]')" -eq 9 ] && [ "$(sed -n '2p' "$status_final_summary_hooks")" = 'after-start hook' ] && [ "$(sed -n '8p' "$status_final_summary_hooks")" = 'before-end hook' ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary_hooks" && grep -Eq '^branch=main$' "$status_final_summary_hooks" && grep -Eq '^rc=0$' "$status_final_summary_hooks" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary_hooks" && grep -Eq '^url_or_stop=pass$' "$status_final_summary_hooks" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary_hooks" && grep -Fxq '===== END =====' "$status_final_summary_hooks"; then
+  ) && [ "$(wc -l < "$status_final_summary_hooks" | tr -d '[:space:]')" -eq 9 ] && [ "$(sed -n '2p' "$status_final_summary_hooks")" = 'after-start hook' ] && [ "$(sed -n '8p' "$status_final_summary_hooks")" = 'before-end hook' ] && grep -Fxq '===== FINAL SUMMARY =====' "$status_final_summary_hooks" && grep -Eq '^branch=main$' "$status_final_summary_hooks" && grep -Eq '^rc=0$' "$status_final_summary_hooks" && grep -Eq '^output_lines=[0-9]+$' "$status_final_summary_hooks" && awk -F= '$1=="output_lines" { exit !($2 <= 25) }' "$status_final_summary_hooks" && grep -Eq '^url_or_stop=pass$' "$status_final_summary_hooks" && grep -Eq '^status_count=[0-9]+$' "$status_final_summary_hooks" && grep -Fxq '===== END =====' "$status_final_summary_hooks"; then
     test_pass "status-packet final-summary hook lines render in the contract"
   else
     test_fail "status-packet final-summary hook lines render in the contract"
