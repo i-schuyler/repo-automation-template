@@ -16,6 +16,7 @@ Supported flags:
 Behavior:
 
 - reuses the read-only CI status checks from `repo-automation/bin/ci-status`
+- surfaces the first actionable failure and log path when available
 - never creates, updates, merges, closes, or deletes anything
 - exits non-zero on CI failure, timeout, or GitHub access problems
 - default success is compact `pass`

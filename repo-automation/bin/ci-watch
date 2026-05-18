@@ -51,6 +51,52 @@ print(data.get('overall_status', 'fail'))
 PY
 }
 
+ci_watch_json_field() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+path = sys.argv[2].split('.')
+cur = data
+for key in path:
+    if isinstance(cur, dict):
+        cur = cur.get(key, '')
+    else:
+        cur = ''
+        break
+print(cur if cur is not None else '')
+PY
+}
+
+ci_watch_print_failure_details() {
+  local latest_run_id=""
+  local failure_json=""
+  local failure_status=0
+  local failure_label=""
+  local failure_log_path=""
+  local failure_excerpt=""
+  local failure_fix=""
+
+  latest_run_id="$(ci_watch_json_field "$ci_watch_summary_json" latest_run.databaseId)"
+  [ -n "$latest_run_id" ] || return 0
+
+  failure_json="$(repo-automation/bin/ci-log-dump --run-id="$latest_run_id" --first-failure --machine-json 2>&1)" || failure_status=$?
+  if [ "$failure_status" -ne 0 ] || [ -z "$failure_json" ]; then
+    return 0
+  fi
+
+  failure_label="$(ci_watch_json_field "$failure_json" first_failure_label)"
+  failure_log_path="$(ci_watch_json_field "$failure_json" log_path)"
+  failure_excerpt="$(ci_watch_json_field "$failure_json" first_failure_excerpt)"
+  failure_fix="$(ci_watch_json_field "$failure_json" recommended_fix)"
+
+  [ -n "$failure_label" ] && printf 'actionable failure: %s\n' "$failure_label" >&2
+  [ -n "$failure_log_path" ] && printf 'log path: %s\n' "$failure_log_path" >&2
+  [ -n "$failure_excerpt" ] && printf 'excerpt: %s\n' "$failure_excerpt" >&2
+  [ -n "$failure_fix" ] && printf 'fix: %s\n' "$failure_fix" >&2
+}
+
 ci_watch_poll() {
   local ci_status_out
   local ci_status_err
@@ -255,6 +301,9 @@ ci_watch_main() {
         return 0
         ;;
       fail)
+        if [ "$ci_watch_json" -eq 0 ] && [ "$ci_watch_machine_json" -eq 0 ]; then
+          ci_watch_print_failure_details
+        fi
         if [ "$ci_watch_json" -eq 1 ] || [ "$ci_watch_machine_json" -eq 1 ]; then
           ci_watch_print_json "$status" "$elapsed"
         else

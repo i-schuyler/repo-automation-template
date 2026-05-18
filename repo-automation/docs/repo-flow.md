@@ -8,11 +8,11 @@ It verifies the branch is not `main`, checks the worktree, reports ahead/behind 
 Use `--paths=<path[,path...]>` to stage only explicit repo-relative paths, or `--staged` to commit the current index.
 It refuses absolute paths, `..`, default-branch submits, pre-staged changes, and any unrequested dirty or untracked worktree changes before staging when `--paths` is used.
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
-`--watch` hands off to the existing PR finish watch path; `--diagnose-on-fail` is only forwarded with `--watch`.
+`--watch` hands off to the repo-native PR completion path with a bounded timeout; `--timeout=<seconds>` sets that limit.
+`--diagnose-on-fail` is only forwarded with `--watch`.
 
-`--watch` hands off to `repo-automation/bin/pr-finish --watch --pr=current` after the branch is pushed and a PR exists.
-`--diagnose-on-fail` is forwarded when combined with `--watch`; blocked checks then surface the first-failure diagnosis from `ci-log-dump`.
-`pr-finish` retries briefly if checks are not registered yet right after PR creation or reuse.
+`--watch` hands off to `repo-automation/bin/pr-finish --watch --merge --delete-branch --sync-main --pr=current` after the branch is pushed and a PR exists.
+`pr-finish` watches the current PR head SHA, retries briefly while checks attach, and merges/deletes/syncs only after the current head is green.
 Use `--explain` for the full human flow report; default success is compact `plan`, PR URL, or `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
 

@@ -8,12 +8,12 @@ Default behavior is plan/status-only. It does not merge unless `--merge` is expl
 
 `--pr=current` resolves the PR associated with the current branch.
 
-`--watch` waits on required checks but does not merge by itself.
-If checks are briefly missing right after PR creation or reuse, `--watch` retries a few times before failing.
-`--watch --diagnose-on-fail` also runs `repo-automation/bin/ci-log-dump --pr=<number> --first-failure --machine-json` when the final checks status is blocked/red and prints a short diagnosis label/path/excerpt/fix hint.
+`--watch` waits on the current PR head SHA with a bounded timeout and does not merge by itself.
+`--timeout=<seconds>` sets the overall watch limit.
+`--watch --diagnose-on-fail` also runs `repo-automation/bin/ci-log-dump --run-id=<id> --first-failure --machine-json` when the final checks status is blocked/red and prints a short diagnosis label/path/excerpt/fix hint.
 Use `--explain` to print the full human status report; default success is compact `pass`.
 
-`--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green.
+`--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green for the current head SHA.
 
 `--sync-main` switches to `main` and runs `git pull --ff-only` after a successful merge.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.

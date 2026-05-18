@@ -14,9 +14,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pr_finish_json=0
 pr_finish_explain=0
 pr_finish_stop_reason=""
+pr_finish_watch_timeout_seconds=900
 
 pr_finish_usage() {
-  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--pr=<number|current|latest>] [--json] [--explain] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
+  printf 'Usage: repo-automation/bin/pr-finish [--plan|--status] [--watch] [--merge] [--timeout=<seconds>] [--pr=<number|current|latest>] [--json] [--explain] [--squash|--merge-commit|--rebase] [--delete-branch|--no-delete-branch] [--sync-main] [--diagnose-on-fail] [--help]\n'
 }
 
 pr_finish_flag_error() {
@@ -74,9 +75,18 @@ pr_finish_resolve_current_pr_number() {
   gh pr view --json number --jq '.number' 2>/dev/null
 }
 
-pr_finish_checks_summary() {
+pr_finish_resolve_current_head_sha() {
+  gh pr view --json headRefOid --jq '.headRefOid' 2>/dev/null
+}
+
+pr_finish_head_sha_for_pr() {
   local pr_number="$1"
-  gh pr checks "$pr_number" --required --json name,state,bucket --jq 'if length == 0 then "" else map("\(.name):\(.bucket)/\(.state)") | join("; ") end' 2>/dev/null
+  local head_sha=""
+
+  head_sha="$(pr_finish_resolve_current_head_sha)"
+  if [ -n "$head_sha" ]; then
+    printf '%s' "$head_sha"
+  fi
 }
 
 pr_finish_checks_collect() {
@@ -87,35 +97,44 @@ pr_finish_checks_collect() {
   local rc=0
   local checks_json=""
   local checks_summary=""
-  local pass_count=0
-  local pending_count=0
-  local fail_count=0
-  local cancel_count=0
-  local skipping_count=0
 
-  checks_json=$(gh pr checks "$pr_number" --required --json name,state,bucket 2>/dev/null) || rc=$?
-  checks_summary=$(pr_finish_checks_summary "$pr_number")
+  checks_json="$(repo-automation/bin/ci-status --pr="$pr_number" --machine-json 2>/dev/null)" || rc=$?
+  if [ -n "$checks_json" ]; then
+    checks_status="$(python3 - "$checks_json" <<'PY'
+import json
+import sys
 
-  if [ -z "$checks_json" ]; then
-    checks_json="[]"
-  fi
+summary = json.loads(sys.argv[1])
+overall = summary.get('overall_status', 'warn')
+mapping = {'pass': 'green', 'pending': 'pending', 'fail': 'blocked', 'warn': 'unknown'}
+print(mapping.get(overall, 'unknown'))
+PY
+)"
+    checks_summary="$(python3 - "$checks_json" <<'PY'
+import json
+import sys
 
-  pass_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"pass"' | wc -l | tr -d '[:space:]')
-  pending_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"pending"' | wc -l | tr -d '[:space:]')
-  fail_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"fail"' | wc -l | tr -d '[:space:]')
-  cancel_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"cancel"' | wc -l | tr -d '[:space:]')
-  skipping_count=$(printf '%s' "$checks_json" | grep -o '"bucket":"skipping"' | wc -l | tr -d '[:space:]')
-
-  if [ "${pass_count:-0}" -eq 0 ] && [ "${pending_count:-0}" -eq 0 ] && [ "${fail_count:-0}" -eq 0 ] && [ "${cancel_count:-0}" -eq 0 ] && [ "${skipping_count:-0}" -eq 0 ]; then
-    printf -v "$checks_status_ref" '%s' "missing"
-  elif [ "${fail_count:-0}" -gt 0 ] || [ "${cancel_count:-0}" -gt 0 ] || [ "${skipping_count:-0}" -gt 0 ]; then
-    printf -v "$checks_status_ref" '%s' "blocked"
-  elif [ "${pending_count:-0}" -gt 0 ]; then
-    printf -v "$checks_status_ref" '%s' "pending"
-  elif [ "${pass_count:-0}" -gt 0 ]; then
-    printf -v "$checks_status_ref" '%s' "green"
+summary = json.loads(sys.argv[1])
+overall = summary.get('overall_status', 'warn')
+latest = summary.get('latest_run', {}) or {}
+head_sha = summary.get('head_sha', '')
+if latest:
+    pieces = [
+        f"#{latest.get('number', '')}",
+        latest.get('workflowName', '') or latest.get('name', ''),
+        latest.get('status', ''),
+        latest.get('conclusion', ''),
+    ]
+    print(' '.join(part for part in pieces if part).strip())
+elif head_sha:
+    print(f'waiting for checks on head {head_sha}')
+else:
+    print(overall)
+PY
+)"
+    printf -v "$checks_status_ref" '%s' "$checks_status"
   else
-    printf -v "$checks_status_ref" '%s' "unknown"
+    printf -v "$checks_status_ref" '%s' "blocked"
   fi
 
   if [ -z "$checks_summary" ]; then
@@ -127,39 +146,9 @@ pr_finish_checks_collect() {
   return "$rc"
 }
 
-pr_finish_wait_for_checks_registration() {
-  local pr_number="$1"
-  local attempts="${2:-3}"
-  local attempt=1
-  local collected_checks_json=""
-  local collected_checks_status=""
-  local collected_checks_summary=""
-  local observed_missing=0
-
-  while [ "$attempt" -le "$attempts" ]; do
-    pr_finish_checks_collect \
-      "$pr_number" \
-      collected_checks_json \
-      collected_checks_status \
-      collected_checks_summary || true
-    if [ "$collected_checks_status" != "missing" ]; then
-      break
-    fi
-    observed_missing=1
-    if [ "$attempt" -lt "$attempts" ]; then
-      sleep 1 >/dev/null 2>&1 || true
-    fi
-    attempt=$((attempt + 1))
-  done
-
-  pr_finish_wait_checks_json="$collected_checks_json"
-  pr_finish_wait_checks_status="$collected_checks_status"
-  pr_finish_wait_checks_summary="$collected_checks_summary"
-  pr_finish_wait_checks_waited="$observed_missing"
-}
-
 pr_finish_diagnose_on_fail() {
   local pr_number="$1"
+  local run_id="${2:-}"
   local diagnosis_json=""
   local diagnosis_status=0
   local diagnosis_label=""
@@ -168,7 +157,11 @@ pr_finish_diagnose_on_fail() {
   local diagnosis_fix=""
   local diagnosis_reason=""
 
-  diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+  if [ -n "$run_id" ]; then
+    diagnosis_json="$(repo-automation/bin/ci-log-dump --run-id="$run_id" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+  else
+    diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+  fi
 
   if [ "$diagnosis_status" -eq 0 ]; then
     diagnosis_label="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("first_failure_label",""))' "$diagnosis_json" 2>/dev/null || printf '')"
@@ -280,6 +273,7 @@ pr_finish_main() {
   local delete_branch=0
   local sync_main=0
   local diagnose_on_fail=0
+  local watch_timeout_seconds="$pr_finish_watch_timeout_seconds"
   local merge_mode_override=""
   local merge_mode=""
   local command_status=0
@@ -299,7 +293,6 @@ pr_finish_main() {
   local checks_status=""
   local checks_summary=""
   local checks_json="[]"
-  local checks_waited=0
   local can_merge="false"
   local action_taken="none"
   local worktree_status=""
@@ -307,6 +300,8 @@ pr_finish_main() {
   local arg
   local merge_output=""
   local watch_output_file=""
+  local pr_head_sha=""
+  local watch_output=""
   local -a block_reasons=()
 
   while [ "$#" -gt 0 ]; do
@@ -373,6 +368,18 @@ pr_finish_main() {
         ;;
       --sync-main)
         sync_main=1
+        ;;
+      --timeout=*)
+        watch_timeout_seconds="${arg#--timeout=}"
+        if [ -z "$watch_timeout_seconds" ]; then
+          pr_finish_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>" || command_status=1
+        elif ! repo_auto_is_positive_integer "$watch_timeout_seconds"; then
+          repo_auto_stop "invalid --timeout value: $watch_timeout_seconds"
+          command_status=1
+        fi
+        ;;
+      --timeout)
+        pr_finish_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>" || command_status=1
         ;;
       --diagnose-on-fail)
         diagnose_on_fail=1
@@ -530,6 +537,7 @@ pr_finish_main() {
     pr_state=$(gh pr view "$pr_number" --json state --jq '.state' 2>/dev/null) || pr_state=""
     is_draft=$(gh pr view "$pr_number" --json isDraft --jq '.isDraft' 2>/dev/null) || is_draft=""
     mergeable=$(gh pr view "$pr_number" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable=""
+    pr_head_sha=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid' 2>/dev/null) || pr_head_sha=""
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$do_watch" -eq 1 ]; then
@@ -537,27 +545,24 @@ pr_finish_main() {
       pr_finish_stop "failed to create temporary watch output file"
       command_status=1
     }
-    if [ "$command_status" -eq 0 ] && ! gh pr checks "$pr_number" --required --watch > "$watch_output_file" 2>&1; then
-      [ "$pr_finish_explain" -eq 1 ] && pr_finish_warn "gh pr checks --watch returned non-zero; re-checking status"
+    if [ -z "$pr_head_sha" ]; then
+      pr_finish_stop "unable to determine current PR head SHA"
+      command_status=1
+    elif ! CI_STATUS_EXPECTED_HEAD_SHA="$pr_head_sha" "$script_dir/ci-watch" --pr="$pr_number" --poll-seconds=5 --timeout="$watch_timeout_seconds" >"$watch_output_file" 2>&1; then
+      watch_output="$(cat "$watch_output_file" 2>/dev/null || true)"
+      if printf '%s' "$watch_output" | grep -Eq 'timed out after [0-9]+s while waiting for CI'; then
+        pr_finish_stop "timed out after ${watch_timeout_seconds}s while waiting for CI"
+      else
+        pr_finish_stop "CI failed for PR #$pr_number"
+      fi
+      command_status=1
+    else
+      action_taken="watched"
     fi
-    if [ "$command_status" -eq 0 ] && grep -qx '\[\]' "$watch_output_file" 2>/dev/null; then
-      checks_waited=1
-    fi
-    action_taken="watched"
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    if [ "$do_watch" -eq 1 ]; then
-      pr_finish_wait_for_checks_registration "$pr_number" 3
-      checks_json="$pr_finish_wait_checks_json"
-      checks_status="$pr_finish_wait_checks_status"
-      checks_summary="$pr_finish_wait_checks_summary"
-      if [ "${pr_finish_wait_checks_waited:-0}" -eq 1 ]; then
-        checks_waited=1
-      fi
-    else
-      pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
-    fi
+    pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
   fi
 
   if [ "$command_status" -eq 0 ]; then
@@ -590,13 +595,26 @@ pr_finish_main() {
         ;;
     esac
 
+    if [ "$do_merge" -eq 1 ] && [ "$json" -eq 0 ] && [ "$pr_finish_explain" -eq 0 ] && [ "$checks_status" != "green" ]; then
+      pr_finish_warn "checks-$checks_status"
+    fi
+
     if [ "$do_watch" -eq 1 ] && [ "$checks_status" != "green" ]; then
       pr_finish_warn "watch completed with checks status: $checks_status"
-      if [ "$diagnose_on_fail" -eq 1 ] && [ "$checks_status" = "blocked" ]; then
-        pr_finish_diagnose_on_fail "$pr_number" || true
+      if [ "$checks_status" = "blocked" ] && [ "$diagnose_on_fail" -eq 1 ]; then
+        latest_run_id="$(python3 - "$checks_json" <<'PY'
+import json
+import sys
+
+summary = json.loads(sys.argv[1])
+latest = summary.get('latest_run', {}) or {}
+print(latest.get('databaseId', ''))
+PY
+)"
+        pr_finish_diagnose_on_fail "$pr_number" "$latest_run_id" || true
       fi
       command_status=1
-    elif [ "$do_watch" -eq 1 ] && [ "$checks_status" = "green" ] && [ "$checks_waited" -eq 1 ]; then
+    elif [ "$do_watch" -eq 1 ] && [ "$checks_status" = "green" ]; then
       pr_finish_info "watch completed with checks status: green"
     fi
 

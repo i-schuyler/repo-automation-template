@@ -62,6 +62,12 @@ case "$cmd $sub" in
       *' --json state '*|*' --jq .state '*)
         printf '%s\n' "$state"
         ;;
+      *' --json headRefName '*|*' --jq .headRefName '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
+        ;;
+      *' --json headRefOid '*|*' --jq .headRefOid '*)
+        printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_SHA:-}"
+        ;;
       *)
         printf '%s\n' "$number"
         ;;
@@ -145,6 +151,34 @@ printf 'ssh stub unexpected args\n' >&2
 exit 1
 EOF
   chmod +x "$ssh_stub_dir/ssh" || return 1
+}
+
+smoke_write_repo_flow_git_sync_stub() {
+  local git_stub_dir="$1"
+  local git_log_file="$2"
+
+  mkdir -p "$git_stub_dir" || return 1
+  cat > "$git_stub_dir/git" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  checkout)
+    if [ -n "${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git $*" >> "$SMOKE_GIT_LOG_FILE"
+    fi
+    exec "${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "$@"
+    ;;
+  pull)
+    if [ -n "${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git $*" >> "$SMOKE_GIT_LOG_FILE"
+    fi
+    exit 0
+    ;;
+esac
+exec "${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "$@"
+EOF
+  chmod +x "$git_stub_dir/git" || return 1
+  printf '%s\n' "$git_log_file"
 }
 
 smoke_prepare_repo_flow_branch() {
@@ -552,7 +586,7 @@ smoke_check_repo_flow_dry_run_json() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow --help > "$help_out"
-  ) && grep -Fq -- '--explain' "$help_out" && grep -Fq -- '--dry-run' "$help_out"; then
+  ) && grep -Fq -- '--explain' "$help_out" && grep -Fq -- '--dry-run' "$help_out" && grep -Fq -- '--timeout=<seconds>' "$help_out"; then
     test_pass "repo-flow help shows strict syntax"
   else
     test_fail "repo-flow help shows strict syntax"
@@ -771,17 +805,26 @@ smoke_check_repo_flow_submit_paths() {
 smoke_check_repo_flow_submit_staged_watch() {
   local status=0
   local gh_stub_dir=""
+  local git_stub_dir=""
   local stdout_file=""
   local stderr_file=""
+  local git_log_file=""
   local head_before=""
   local head_after=""
+  local local_bash_path=""
+  local real_git=""
 
   smoke_setup_temp_repo || return 1
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
+  git_stub_dir="$smoke_test_base/git-stub"
   stdout_file="$smoke_test_base/repo-flow-submit-staged-watch.out"
   stderr_file="$smoke_test_base/repo-flow-submit-staged-watch.stderr"
+  git_log_file="$smoke_test_base/repo-flow-submit-staged-watch.git-log"
   smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_write_repo_flow_git_sync_stub "$git_stub_dir" "$git_log_file" >/dev/null || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
   smoke_prepare_repo_flow_remote || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-submit-staged-watch" || return 1
 
@@ -791,23 +834,30 @@ smoke_check_repo_flow_submit_staged_watch() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" \
+    PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
     GH_STUB_PR_VIEW_NUMBER=702 \
     GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/702' \
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
-    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit staged commit' --watch --diagnose-on-fail > "$stdout_file" 2> "$stderr_file"
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-702' \
+    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":601,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-submit-staged-watch","headSha":"old-sha-702","status":"completed","workflowName":"ci"},{"databaseId":602,"conclusion":"success","createdAt":"2026-05-12T13:05:00Z","event":"pull_request","headBranch":"feature/repo-flow-submit-staged-watch","headSha":"current-sha-702","status":"completed","workflowName":"ci"}]' \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit staged commit' --watch --timeout=30 --diagnose-on-fail > "$stdout_file" 2> "$stderr_file"
   ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/702' ]; then
     head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
-    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit staged commit'; then
-      test_pass "repo-flow submit commits staged changes and watches the PR"
+    if [ "$head_before" != "$head_after" ] &&
+      git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit staged commit' &&
+      grep -q 'git checkout main' "$git_log_file" &&
+      grep -q 'git pull --ff-only' "$git_log_file"; then
+      test_pass "repo-flow submit completes the PR on the current head SHA"
     else
-      test_fail "repo-flow submit commits staged changes and watches the PR"
+      test_fail "repo-flow submit completes the PR on the current head SHA"
       status=1
     fi
   else
-    test_fail "repo-flow submit commits staged changes and watches the PR"
+    test_fail "repo-flow submit completes the PR on the current head SHA"
     status=1
   fi
 
@@ -855,7 +905,7 @@ smoke_check_repo_flow_submit_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
-  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
     test_pass "repo-flow submit help shows strict syntax"
   else
     test_fail "repo-flow submit help shows strict syntax"

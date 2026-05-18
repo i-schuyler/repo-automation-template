@@ -16,8 +16,8 @@ repo_flow_explain=0
 repo_flow_stop_reason=""
 
 repo_flow_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
-  printf '       repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_status_card_usage() {
@@ -25,7 +25,7 @@ repo_flow_status_card_usage() {
 }
 
 repo_flow_submit_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_info() {
@@ -453,6 +453,7 @@ EOF
 
 repo_flow_submit_main() {
   local watch=0
+  local watch_timeout_seconds=900
   local diagnose_on_fail=0
   local explain=0
   local staged=0
@@ -466,11 +467,9 @@ repo_flow_submit_main() {
   local remote_url=""
   local command_status=0
   local arg=""
-  local -a delegate_args=()
   local staged_files=""
   local uncommitted_status=""
   local unstaged_or_untracked_status=""
-  local submit_delegated=0
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -481,6 +480,18 @@ repo_flow_submit_main() {
         ;;
       --watch)
         watch=1
+        ;;
+      --timeout=*)
+        watch_timeout_seconds="${arg#--timeout=}"
+        if [ -z "$watch_timeout_seconds" ]; then
+          repo_auto_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>" || command_status=1
+        elif ! repo_auto_is_positive_integer "$watch_timeout_seconds"; then
+          repo_auto_stop "invalid --timeout value: $watch_timeout_seconds"
+          command_status=1
+        fi
+        ;;
+      --timeout)
+        repo_auto_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>" || command_status=1
         ;;
       --diagnose-on-fail)
         diagnose_on_fail=1
@@ -684,7 +695,7 @@ EOF
 
   if [ "$command_status" -eq 0 ] && [ "$explain" -eq 1 ]; then
     repo_flow_info "commit created: $(git rev-parse --short HEAD 2>/dev/null)"
-    repo_flow_info "delegating to repo-flow PR creation/reuse path"
+    repo_flow_info "delegating to repo-native PR completion path"
     if [ "$watch" -eq 1 ]; then
       repo_flow_info "watch: enabled"
     fi
@@ -692,22 +703,34 @@ EOF
 
   if [ "$command_status" -eq 0 ]; then
     if [ "$watch" -eq 1 ]; then
-      delegate_args+=(--watch)
-      if [ "$diagnose_on_fail" -eq 1 ]; then
-        delegate_args+=(--diagnose-on-fail)
+      if [ "$explain" -eq 1 ]; then
+        repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
       fi
+      if [ "$diagnose_on_fail" -eq 1 ]; then
+        if [ "$explain" -eq 1 ]; then
+          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
+        else
+          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+        fi
+      else
+        if [ "$explain" -eq 1 ]; then
+          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain
+        else
+          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds"
+        fi
+      fi
+      command_status=$?
+      if [ "$command_status" -ne 0 ]; then
+        repo_flow_stop "pr-finish completion failed for PR #$pr_number"
+        final_status="blocked"
+      else
+        action_taken="completed-pr"
+        final_status="completed"
+      fi
+    else
+      repo_flow_main
+      command_status=$?
     fi
-    submit_delegated=1
-    repo_flow_main "${delegate_args[@]}"
-    command_status=$?
-  fi
-
-  if [ "$explain" -eq 1 ] && [ "$submit_delegated" -eq 0 ]; then
-    repo_auto_print_final_summary \
-      "branch=$current_branch" \
-      "rc=$command_status" \
-      "mode=submit" \
-      "url_or_stop=${repo_flow_stop_reason:-pass}" >&2
   fi
 
   return "$command_status"
@@ -718,6 +741,7 @@ repo_flow_main() {
   local json=0
   local dry_run=0
   local watch=0
+  local watch_timeout_seconds=900
   local diagnose_on_fail=0
   local repo_root=""
   local current_branch=""
@@ -769,6 +793,18 @@ repo_flow_main() {
         ;;
       --watch)
         watch=1
+        ;;
+      --timeout=*)
+        watch_timeout_seconds="${arg#--timeout=}"
+        if [ -z "$watch_timeout_seconds" ]; then
+          repo_auto_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>" || command_status=1
+        elif ! repo_auto_is_positive_integer "$watch_timeout_seconds"; then
+          repo_auto_stop "invalid --timeout value: $watch_timeout_seconds"
+          command_status=1
+        fi
+        ;;
+      --timeout)
+        repo_auto_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>" || command_status=1
         ;;
       --diagnose-on-fail)
         diagnose_on_fail=1
@@ -1019,19 +1055,42 @@ EOF
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 0 ] && [ "$watch" -eq 1 ]; then
+    if [ "$json" -eq 0 ]; then
+      repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
+    fi
     if [ "$diagnose_on_fail" -eq 1 ]; then
-      if "$script_dir/pr-finish" --watch --diagnose-on-fail --pr=current >/dev/null; then
-        action_taken="watched-pr"
+      if [ "$repo_flow_explain" -eq 1 ]; then
+        if "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain; then
+          action_taken="completed-pr"
+          final_status="completed"
+        else
+          repo_flow_stop "pr-finish completion failed for PR #$pr_number"
+          command_status=1
+          final_status="blocked"
+        fi
+      elif "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail; then
+        action_taken="completed-pr"
+        final_status="completed"
       else
-        repo_flow_stop "pr-finish watch failed for PR #$pr_number"
+        repo_flow_stop "pr-finish completion failed for PR #$pr_number"
         command_status=1
         final_status="blocked"
       fi
     else
-      if "$script_dir/pr-finish" --watch --pr=current >/dev/null; then
-        action_taken="watched-pr"
+      if [ "$repo_flow_explain" -eq 1 ]; then
+        if "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain; then
+          action_taken="completed-pr"
+          final_status="completed"
+        else
+          repo_flow_stop "pr-finish completion failed for PR #$pr_number"
+          command_status=1
+          final_status="blocked"
+        fi
+      elif "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds"; then
+        action_taken="completed-pr"
+        final_status="completed"
       else
-        repo_flow_stop "pr-finish watch failed for PR #$pr_number"
+        repo_flow_stop "pr-finish completion failed for PR #$pr_number"
         command_status=1
         final_status="blocked"
       fi

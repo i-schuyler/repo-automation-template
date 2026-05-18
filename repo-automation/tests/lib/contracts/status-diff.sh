@@ -377,6 +377,32 @@ range touch
 
   if (
     cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":701,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-321","status":"completed","workflowName":"ci"},{"databaseId":702,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-321","status":"completed","workflowName":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --machine-json > "$ci_status_pr_json_mode"
+  ) && python3 -m json.tool "$ci_status_pr_json_mode" >/dev/null && \
+    smoke_json_assert "$ci_status_pr_json_mode" 'data.get("mode") == "pr" and data.get("overall_status") == "pass" and data.get("matching_run_count") == 1 and data.get("latest_run", {}).get("databaseId") == 702'; then
+    test_pass "ci-status ignores stale prior SHA runs"
+  else
+    test_fail "ci-status ignores stale prior SHA runs"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":701,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-321","status":"completed","workflowName":"ci"},{"databaseId":702,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-321","status":"completed","workflowName":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
+  ) && python3 -m json.tool "$ci_watch_pass_json" >/dev/null && \
+    smoke_json_assert "$ci_watch_pass_json" 'data.get("mode") == "pr" and data.get("overall_status") == "pass"'; then
+    test_pass "ci-watch ignores stale prior SHA runs"
+  else
+    test_fail "ci-watch ignores stale prior SHA runs"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[{"number":99,"name":"ci","status":"completed","conclusion":"success"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/demo --machine-json > "$ci_status_branch_json"
   ) && python3 -m json.tool "$ci_status_branch_json" >/dev/null && \
     smoke_json_assert "$ci_status_branch_json" 'data.get("mode") == "branch" and data.get("overall_status") == "pass" and data.get("latest_run", {}).get("number") == 99'; then
