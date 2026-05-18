@@ -331,12 +331,22 @@ case "$cmd $sub" in
     esac
     ;;
   'run list')
-    if [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
+    if [ -n "${GH_STUB_RUN_LIST_SEQUENCE_FILE:-}" ] && [ -f "$GH_STUB_RUN_LIST_SEQUENCE_FILE" ]; then
+      first_line="$(sed -n '1p' "$GH_STUB_RUN_LIST_SEQUENCE_FILE" 2>/dev/null || true)"
+      rest_lines="$(sed -n '2,$p' "$GH_STUB_RUN_LIST_SEQUENCE_FILE" 2>/dev/null || true)"
+      if [ -n "$first_line" ]; then
+        printf '%s\n' "$first_line"
+        printf '%s\n' "$rest_lines" > "$GH_STUB_RUN_LIST_SEQUENCE_FILE"
+      else
+        printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
+      fi
+    elif [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
       : > "$GH_STUB_RUN_LIST_FAIL_ONCE_FILE"
       printf '%s\n' "${GH_STUB_RUN_LIST_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
       exit 1
+    else
+      printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     fi
-    printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     ;;
   'run view')
     if [ -n "${GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR:-}" ]; then

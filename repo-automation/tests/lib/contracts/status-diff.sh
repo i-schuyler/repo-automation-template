@@ -166,6 +166,7 @@ smoke_check_touched_files_and_ci_contract() {
   local ci_watch_pass_explain="$smoke_test_base/ci-watch-pass-explain-$$.txt"
   local ci_watch_fail_json="$smoke_test_base/ci-watch-fail-$$.json"
   local ci_watch_fail_stderr="$smoke_test_base/ci-watch-fail-$$.txt"
+  local ci_watch_no_checks_stderr="$smoke_test_base/ci-watch-no-checks-$$.txt"
   local gh_stub_dir="$smoke_test_base/gh-stub"
   local touched_range_repo=""
   local touched_base_format_stderr="$smoke_test_base/touched-files-base-format-$$.txt"
@@ -394,10 +395,25 @@ range touch
     GH_STUB_RUN_LIST_JSON='[{"databaseId":701,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-321","status":"completed","workflowName":"ci"},{"databaseId":702,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-321","status":"completed","workflowName":"ci"}]' \
     PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
   ) && python3 -m json.tool "$ci_watch_pass_json" >/dev/null && \
-    smoke_json_assert "$ci_watch_pass_json" 'data.get("mode") == "pr" and data.get("overall_status") == "pass"'; then
+    smoke_json_assert "$ci_watch_pass_json" 'data.get("overall_status") == "pass" and data.get("ci_status", {}).get("mode") == "pr" and data.get("ci_status", {}).get("matching_run_count") == 1 and data.get("ci_status", {}).get("latest_run", {}).get("databaseId") == 702'; then
     test_pass "ci-watch ignores stale prior SHA runs"
   else
     test_fail "ci-watch ignores stale prior SHA runs"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
+    GH_STUB_RUN_LIST_JSON='[]' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 > /dev/null 2> "$ci_watch_no_checks_stderr"
+  ); then
+    test_fail "ci-watch waits when current head has no runs yet"
+    status=1
+  elif grep -Eq 'timed out after 1s while waiting for CI' "$ci_watch_no_checks_stderr"; then
+    test_pass "ci-watch waits when current head has no runs yet"
+  else
+    test_fail "ci-watch waits when current head has no runs yet"
     status=1
   fi
 
@@ -608,7 +624,7 @@ range touch
     status=1
   fi
 
-  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_pr_json_mode" "$ci_status_branch_json" "$ci_status_pr_human" "$ci_status_pr_quiet" "$ci_status_pr_explain" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" "$ci_watch_pass_json" "$ci_watch_pass_json_mode" "$ci_watch_pass_stderr" "$ci_watch_pass_human" "$ci_watch_pass_quiet" "$ci_watch_pass_explain" "$ci_watch_fail_json" "$ci_watch_fail_stderr" >/dev/null 2>&1 || true
+  rm -f "$touched_worktree_json" "$touched_range_json" "$ci_status_help" "$ci_watch_help" "$ci_status_pr_json" "$ci_status_pr_json_mode" "$ci_status_branch_json" "$ci_status_pr_human" "$ci_status_pr_quiet" "$ci_status_pr_explain" "$ci_status_failure_stderr" "$ci_watch_timeout_stderr" "$ci_status_pr_format_stderr" "$ci_status_pr_missing_stderr" "$ci_status_pr_empty_stderr" "$ci_status_unknown_stderr" "$ci_watch_timeout_format_stderr" "$ci_watch_timeout_missing_stderr" "$ci_watch_timeout_empty_stderr" "$ci_watch_unknown_stderr" "$ci_watch_pass_json" "$ci_watch_pass_json_mode" "$ci_watch_pass_stderr" "$ci_watch_pass_human" "$ci_watch_pass_quiet" "$ci_watch_pass_explain" "$ci_watch_fail_json" "$ci_watch_fail_stderr" "$ci_watch_no_checks_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

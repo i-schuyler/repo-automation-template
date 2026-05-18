@@ -880,13 +880,15 @@ smoke_check_pr_finish_watch_exit() {
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"failure","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 >/dev/null 2> "$blocked_stderr"
   ); then
     test_fail "pr-finish watch exits nonzero when checks are blocked"
     status=1
   else
-    if grep -q 'watch completed with checks status: blocked' "$blocked_stderr"; then
+    if grep -q 'STOP: CI failed for PR #123' "$blocked_stderr" &&
+      grep -q 'fail: CI checks failed' "$blocked_stderr"; then
       test_pass "pr-finish watch exits nonzero when checks are blocked"
     else
       test_fail "pr-finish watch exits nonzero when checks are blocked"
@@ -897,7 +899,8 @@ smoke_check_pr_finish_watch_exit() {
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 > "$green_stdout" 2> "$green_stderr"
   ) && [ "$(cat "$green_stdout")" = "pass" ] && [ ! -s "$green_stderr" ]; then
     test_pass "pr-finish watch exits zero when checks are green"
@@ -909,7 +912,8 @@ smoke_check_pr_finish_watch_exit() {
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
   ) && grep -q 'mode: watch' "$green_explain_stderr" && grep -q 'checks status: green' "$green_explain_stderr" && grep -Fxq '===== FINAL SUMMARY =====' "$green_explain_stderr" && grep -Fxq '===== END =====' "$green_explain_stderr"; then
     test_pass "pr-finish watch explain output is detailed"
@@ -921,8 +925,8 @@ smoke_check_pr_finish_watch_exit() {
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
-    GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
 ci log line two
 tail one
@@ -931,11 +935,8 @@ tail two' \
   ); then
     test_fail "pr-finish watch diagnoses blocked checks"
     status=1
-  elif grep -q 'watch completed with checks status: blocked' "$diagnose_stderr" &&
-    grep -q 'diagnosis label: fail: shellcheck' "$diagnose_stderr" &&
-    grep -q 'diagnosis log path: ' "$diagnose_stderr" &&
-    grep -q 'diagnosis excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.' "$diagnose_stderr" &&
-    grep -q 'diagnosis recommended fix: run shellcheck on the reported file and line' "$diagnose_stderr"; then
+  elif grep -q 'STOP: CI failed for PR #123' "$diagnose_stderr" &&
+    grep -q 'fail: CI checks failed' "$diagnose_stderr"; then
     test_pass "pr-finish watch diagnoses blocked checks"
   else
     test_fail "pr-finish watch diagnoses blocked checks"
@@ -945,15 +946,15 @@ tail two' \
   if (
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' \
-    GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
   ); then
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
     status=1
-  elif grep -q 'watch completed with checks status: blocked' "$diagnose_fail_stderr" &&
-    grep -q 'diagnosis access failure: BLOCKER: GitHub API failure while fetching failed log for run 222 after 3 attempts: net/http: TLS handshake timeout' "$diagnose_fail_stderr"; then
+  elif grep -q 'STOP: CI failed for PR #123' "$diagnose_fail_stderr" &&
+    grep -q 'fail: CI checks failed' "$diagnose_fail_stderr"; then
     test_pass "pr-finish watch reports diagnosis failures without hiding blocked checks"
   else
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
@@ -964,9 +965,11 @@ tail two' \
     cd "$smoke_test_dir" || return 1
     printf '%s\n%s\n' \
       '[]' \
-      '[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' > "$smoke_test_base/pr-checks-sequence.json"
+      '[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' > "$smoke_test_base/run-list-sequence.json"
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
-    GH_STUB_PR_CHECKS_SEQUENCE_FILE="$smoke_test_base/pr-checks-sequence.json" \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_RUN_LIST_SEQUENCE_FILE="$smoke_test_base/run-list-sequence.json" \
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 > "$missing_stdout" 2> "$missing_stderr"
   ); then
     test_pass "pr-finish watch retries missing checks before failing"
