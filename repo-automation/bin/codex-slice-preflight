@@ -118,6 +118,9 @@ preflight_main() {
   local branch_preexists=0
   local worktree_status=""
   local cleanup_json=""
+  local branch_before=""
+  local branch_after=""
+  local status_count=0
   local arg
 
   while [ "$#" -gt 0 ]; do
@@ -249,6 +252,15 @@ preflight_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+      preflight_stop "failed to determine current branch"
+      command_status=1
+    }
+  fi
+
+  branch_before="${current_branch:-}"
+
+  if [ "$command_status" -eq 0 ]; then
     worktree_status=$(git status --porcelain)
     if [ -n "$worktree_status" ] && [ "$check_only" -eq 0 ]; then
       preflight_stop "working tree must be clean before preflight"
@@ -377,6 +389,9 @@ preflight_main() {
     fi
   fi
 
+  branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '')"
+  status_count="$(git status --short --untracked-files=normal 2>/dev/null | awk 'END { print NR + 0 }')"
+
   if [ "$preflight_json" -eq 1 ]; then
     preflight_print_json \
       "$requested_branch" \
@@ -388,22 +403,15 @@ preflight_main() {
       "${cleanup_json:-null}" \
       "$preflight_stop_reason"
   elif [ "$preflight_explain" -eq 1 ]; then
-    if [ "$command_status" -eq 0 ]; then
-      if [ "$check_only" -eq 1 ]; then
-        preflight_info "check-only complete"
-        preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch=$requested_branch"
-      else
-        preflight_info "preflight ready"
-        preflight_info "current branch: $current_branch"
-        preflight_info "default branch: $default_branch"
-        preflight_info "divergence from $remote_name/$default_branch: $divergence"
-        preflight_info "next step: begin slice edits"
-      fi
-    fi
     repo_auto_print_final_summary \
-      "branch=$requested_branch" \
-      "rc=$command_status" \
+      "script=codex-slice-preflight" \
       "mode=$preflight_mode" \
+      "rc=$command_status" \
+      "branch_before=${branch_before:-}" \
+      "branch_after=${branch_after:-}" \
+      "default_branch=${default_branch:-}" \
+      "divergence=${divergence:-unknown}" \
+      "status_count=${status_count:-0}" \
       "url_or_stop=${preflight_stop_reason:-pass}" >&2
   elif [ "$command_status" -eq 0 ]; then
     printf 'pass\n'
