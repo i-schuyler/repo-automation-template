@@ -26,7 +26,7 @@ status_packet_pr_head_ref=""
 status_packet_pr_base_ref=""
 
 status_packet_usage() {
-  printf 'Usage: repo-automation/bin/status-packet [--machine-json] [--final-summary] [--help]\n'
+  printf 'Usage: repo-automation/bin/status-packet [--machine-json] [--explain] [--help]\n'
 }
 
 status_packet_json_escape() {
@@ -456,7 +456,7 @@ status_packet_main() {
       --machine-json)
         status_packet_machine_json=1
         ;;
-      --final-summary)
+      --explain)
         status_packet_final_summary=1
         ;;
       *)

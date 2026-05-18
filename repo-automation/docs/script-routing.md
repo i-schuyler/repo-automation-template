@@ -20,7 +20,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | repo snapshot | `repo-zip` | yes | yes | no | no | no | `evidence-bundle` |
 | final audit/archive | `evidence-bundle` | no | yes | no | yes | no | `status-packet` |
 | status-card | `repo-flow status-card` | yes | no | no | read-only network | no | contextual: `branch-cleanup`, `repo-flow`, `ci-watch`, `pr-finish`, or `failure-log` |
-| fallback review-pack for ChatGPT | `review-pack --target=chatgpt` | yes | yes | no | no | no | `repo-flow status-card` |
+| fallback review-pack | `review-pack --target=review` | yes | yes | no | no | no | `repo-flow status-card` |
 | fallback review-pack for Codex | `review-pack --target=codex` | yes | yes | no | no | no | `repair-prompt` |
 | repair-prompt | `repair-prompt` | yes | yes | no | no | no | `add-doc-pr` |
 | guarded submit | `repo-flow submit` | no | yes | yes | yes | maybe | `pr-finish` |

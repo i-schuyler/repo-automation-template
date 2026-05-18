@@ -195,13 +195,24 @@ smoke_check_post_codex_review_contract() {
   local review_log_root="$review_tmp_root/repo-automation-template"
   local review_output_root="$smoke_test_base/post-codex-review-output"
   local review_summary_file="$smoke_test_base/post-codex-review-summary.txt"
+  local review_default_file="$smoke_test_base/post-codex-review-default.txt"
+  local review_quiet_file="$smoke_test_base/post-codex-review-quiet.txt"
+  local review_explain_file="$smoke_test_base/post-codex-review-explain.txt"
+  local review_json_file="$smoke_test_base/post-codex-review.json"
   local review_failure_log="$review_log_root/repo-doctor-20260518-120000.log"
+  local review_local_config=""
   local review_packet_path=""
   local review_packet_line=""
   local review_packet_file=""
 
   smoke_setup_temp_repo || return 1
   mkdir -p "$review_log_root" "$review_output_root" || return 1
+  review_local_config="$smoke_test_dir/.repo-automation.local.conf"
+  printf '.repo-automation.local.conf\n' >> "$smoke_test_dir/.git/info/exclude" || return 1
+  cat > "$review_local_config" <<'EOF'
+FINAL_SUMMARY_AFTER_START_HOOK="mark"
+FINAL_SUMMARY_BEFORE_END_HOOK="recap"
+EOF
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -214,6 +225,10 @@ FAIL: docs-check - broken link in docs/INDEX.md
 tail line
 EOF
     TMPDIR="$review_tmp_root" REPO_AUTOMATION_OUTPUT_DIR="$review_output_root" repo-automation/bin/post-codex-review --packet > "$review_summary_file"
+    TMPDIR="$review_tmp_root" REPO_AUTOMATION_OUTPUT_DIR="$review_output_root" repo-automation/bin/post-codex-review --packet > "$review_default_file"
+    TMPDIR="$review_tmp_root" REPO_AUTOMATION_OUTPUT_DIR="$review_output_root" repo-automation/bin/post-codex-review --quiet --packet > "$review_quiet_file"
+    TMPDIR="$review_tmp_root" REPO_AUTOMATION_OUTPUT_DIR="$review_output_root" repo-automation/bin/post-codex-review --explain --packet > "$review_explain_file"
+    TMPDIR="$review_tmp_root" REPO_AUTOMATION_OUTPUT_DIR="$review_output_root" repo-automation/bin/post-codex-review --json --packet > "$review_json_file"
   ); then
     :
   else
@@ -221,18 +236,69 @@ EOF
     status=1
   fi
 
-  review_packet_line="$(sed -n '9p' "$review_summary_file" 2>/dev/null || true)"
+  review_packet_line="$(sed -n '10p' "$review_summary_file" 2>/dev/null || true)"
   review_packet_path="${review_packet_line#packet=}"
   review_packet_file="$review_packet_path"
 
-  if [ "$(wc -l < "$review_summary_file" | tr -d '[:space:]')" -eq 10 ] && grep -Fxq '===== FINAL SUMMARY =====' "$review_summary_file" && grep -Eq '^branch=main$' "$review_summary_file" && grep -Eq '^status_count=3$' "$review_summary_file" && grep -Fxq 'changed=README.md' "$review_summary_file" && grep -Fxq 'staged=docs/post-codex-review-staged.txt' "$review_summary_file" && grep -Fxq 'untracked=post-codex-review-scratch.txt' "$review_summary_file" && grep -Fxq 'first_failure=docs-check' "$review_summary_file" && grep -Fxq "log=$review_failure_log" "$review_summary_file" && grep -Eq '^packet=.*/post-codex-review-.*\.zip$' "$review_summary_file" && [ -f "$review_packet_file" ] && grep -Fxq '===== END =====' "$review_summary_file"; then
+  if [ "$(wc -l < "$review_summary_file" | tr -d '[:space:]')" -eq 12 ] && grep -Fxq '===== FINAL SUMMARY =====' "$review_summary_file" && [ "$(sed -n '2p' "$review_summary_file")" = 'mark' ] && grep -Eq '^branch=main$' "$review_summary_file" && grep -Eq '^status_count=3$' "$review_summary_file" && grep -Fxq 'changed=README.md' "$review_summary_file" && grep -Fxq 'staged=docs/post-codex-review-staged.txt' "$review_summary_file" && grep -Fxq 'untracked=post-codex-review-scratch.txt' "$review_summary_file" && grep -Fxq 'first_failure=docs-check' "$review_summary_file" && grep -Fxq "log=$review_failure_log" "$review_summary_file" && grep -Eq '^packet=.*/post-codex-review-.*\.zip$' "$review_summary_file" && [ "$(sed -n '11p' "$review_summary_file")" = 'recap' ] && [ -f "$review_packet_file" ] && grep -Fxq '===== END =====' "$review_summary_file"; then
     test_pass "post-codex-review final summary stays compact and packet-aware"
   else
     test_fail "post-codex-review final summary stays compact and packet-aware"
     status=1
   fi
 
+  if [ "$(wc -l < "$review_default_file" | tr -d '[:space:]')" -eq 12 ] && grep -Fxq '===== FINAL SUMMARY =====' "$review_default_file" && [ "$(sed -n '2p' "$review_default_file")" = 'mark' ] && [ "$(sed -n '11p' "$review_default_file")" = 'recap' ] && grep -Fxq '===== END =====' "$review_default_file"; then
+    test_pass "post-codex-review default prints compact final summary"
+  else
+    test_fail "post-codex-review default prints compact final summary"
+    status=1
+  fi
+
+  if [ ! -s "$review_quiet_file" ]; then
+    test_pass "post-codex-review quiet stays silent on success"
+  else
+    test_fail "post-codex-review quiet stays silent on success"
+    status=1
+  fi
+
+  if [ "$(wc -l < "$review_explain_file" | tr -d '[:space:]')" -eq 12 ] && grep -Fxq '===== FINAL SUMMARY =====' "$review_explain_file" && [ "$(sed -n '2p' "$review_explain_file")" = 'mark' ] && [ "$(sed -n '11p' "$review_explain_file")" = 'recap' ] && grep -Fxq '===== END =====' "$review_explain_file"; then
+    test_pass "post-codex-review explain ends with final summary"
+  else
+    test_fail "post-codex-review explain ends with final summary"
+    status=1
+  fi
+
+  if python3 - "$review_json_file" "$review_failure_log" <<'PY'
+import json
+import pathlib
+import sys
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+assert data["script"] == "post-codex-review"
+assert data["status"] == "fail"
+assert isinstance(data["changed"], list)
+assert isinstance(data["staged"], list)
+assert isinstance(data["untracked"], list)
+assert data["first_failure"] == "docs-check"
+assert data["log"] == sys.argv[2]
+assert data["packet"] is not None and data["packet"].endswith(".zip")
+PY
+  then
+    test_pass "post-codex-review json emits actionable facts"
+  else
+    test_fail "post-codex-review json emits actionable facts"
+    status=1
+  fi
+
+  if grep -Eq '===== FINAL SUMMARY =====|WARN:|^fail:' "$review_json_file"; then
+    test_fail "post-codex-review json stays compact and JSON-only"
+    status=1
+  else
+    test_pass "post-codex-review json stays compact and JSON-only"
+  fi
+
   rm -f "$review_summary_file" "$review_failure_log" >/dev/null 2>&1 || true
+  rm -f "$review_default_file" "$review_quiet_file" "$review_explain_file" "$review_json_file" >/dev/null 2>&1 || true
+  rm -f "$review_local_config" >/dev/null 2>&1 || true
   rm -rf "$review_output_root" "$review_tmp_root" >/dev/null 2>&1 || true
   return "$status"
 }
@@ -253,14 +319,15 @@ smoke_check_review_pack_contract() {
   local label_format_stderr=""
   local label_missing_stderr=""
   local label_empty_stderr=""
-  local chatgpt_output_file=""
-  local chatgpt_stderr_file=""
-  local chatgpt_bundle_zip=""
-  local chatgpt_bundle_dir=""
-  local chatgpt_post_codex_output=""
-  local chatgpt_post_codex_path=""
-  local chatgpt_repo_zip_output=""
-  local chatgpt_repo_zip_path=""
+  local review_pack_target_name="review"
+  local review_pack_output_file=""
+  local review_pack_stderr_file=""
+  local review_pack_bundle_zip=""
+  local review_pack_bundle_dir=""
+  local review_pack_post_codex_output=""
+  local review_pack_post_codex_path=""
+  local review_pack_repo_zip_output=""
+  local review_pack_repo_zip_path=""
   local codex_output_file=""
   local codex_stderr_file=""
   local codex_prompt_file=""
@@ -281,8 +348,8 @@ smoke_check_review_pack_contract() {
   label_format_stderr="$smoke_test_base/review-pack-label-format.stderr"
   label_missing_stderr="$smoke_test_base/review-pack-label-missing.stderr"
   label_empty_stderr="$smoke_test_base/review-pack-label-empty.stderr"
-  chatgpt_output_file="$smoke_test_base/review-pack-chatgpt.out"
-  chatgpt_stderr_file="$smoke_test_base/review-pack-chatgpt.err"
+  review_pack_output_file="$smoke_test_base/review-pack-output.out"
+  review_pack_stderr_file="$smoke_test_base/review-pack-output.err"
   codex_output_file="$smoke_test_base/review-pack-codex.out"
   codex_stderr_file="$smoke_test_base/review-pack-codex.err"
 
@@ -299,7 +366,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/review-pack --help > "$help_file"
-  ) && grep -Fq -- '--target=<chatgpt|codex>' "$help_file" && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<text>' "$help_file" && ! grep -Fq -- '--target CHATGPT' "$help_file"; then
+  ) && grep -Fq -- "--target=<${review_pack_target_name}|codex>" "$help_file" && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<text>' "$help_file"; then
     test_pass "review-pack help shows strict value syntax"
   else
     test_fail "review-pack help shows strict value syntax"
@@ -308,11 +375,11 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --target chatgpt >/dev/null 2> "$target_format_stderr"
+    repo-automation/bin/review-pack --target "$review_pack_target_name" >/dev/null 2> "$target_format_stderr"
   ); then
     test_fail "review-pack rejects --target <value>"
     status=1
-  elif smoke_assert_flag_error_shape "$target_format_stderr" "flag format not accepted" "--target" "use --target=<chatgpt|codex>"; then
+  elif smoke_assert_flag_error_shape "$target_format_stderr" "flag format not accepted" "--target" "use --target=<review|codex>"; then
     test_pass "review-pack rejects --target <value>"
   else
     test_fail "review-pack rejects --target <value>"
@@ -325,7 +392,7 @@ EOF
   ); then
     test_fail "review-pack rejects missing --target value"
     status=1
-  elif smoke_assert_flag_error_shape "$target_missing_stderr" "missing flag value" "--target" "use --target=<chatgpt|codex>"; then
+  elif smoke_assert_flag_error_shape "$target_missing_stderr" "missing flag value" "--target" "use --target=<review|codex>"; then
     test_pass "review-pack rejects missing --target value"
   else
     test_fail "review-pack rejects missing --target value"
@@ -338,7 +405,7 @@ EOF
   ); then
     test_fail "review-pack rejects empty --target value"
     status=1
-  elif smoke_assert_flag_error_shape "$target_empty_stderr" "empty flag value" "--target" "use --target=<chatgpt|codex>"; then
+  elif smoke_assert_flag_error_shape "$target_empty_stderr" "empty flag value" "--target" "use --target=<review|codex>"; then
     test_pass "review-pack rejects empty --target value"
   else
     test_fail "review-pack rejects empty --target value"
@@ -351,7 +418,7 @@ EOF
   ); then
     test_fail "review-pack rejects unsupported target values"
     status=1
-  elif smoke_assert_flag_error_shape "$target_unknown_stderr" "unsupported flag value" "--target" "use --target=<chatgpt|codex>"; then
+  elif smoke_assert_flag_error_shape "$target_unknown_stderr" "unsupported flag value" "--target" "use --target=<review|codex>"; then
     test_pass "review-pack rejects unsupported target values"
   else
     test_fail "review-pack rejects unsupported target values"
@@ -360,7 +427,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --out-dir review-pack-output --target=chatgpt >/dev/null 2> "$out_dir_format_stderr"
+    repo-automation/bin/review-pack --out-dir review-pack-output --target="$review_pack_target_name" >/dev/null 2> "$out_dir_format_stderr"
   ); then
     test_fail "review-pack rejects --out-dir <value>"
     status=1
@@ -373,7 +440,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --out-dir --target=chatgpt >/dev/null 2> "$out_dir_missing_stderr"
+    repo-automation/bin/review-pack --out-dir --target="$review_pack_target_name" >/dev/null 2> "$out_dir_missing_stderr"
   ); then
     test_fail "review-pack rejects missing --out-dir value"
     status=1
@@ -386,7 +453,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --out-dir= --target=chatgpt >/dev/null 2> "$out_dir_empty_stderr"
+    repo-automation/bin/review-pack --out-dir= --target="$review_pack_target_name" >/dev/null 2> "$out_dir_empty_stderr"
   ); then
     test_fail "review-pack rejects empty --out-dir value"
     status=1
@@ -399,7 +466,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --label review --target=chatgpt >/dev/null 2> "$label_format_stderr"
+    repo-automation/bin/review-pack --label review --target="$review_pack_target_name" >/dev/null 2> "$label_format_stderr"
   ); then
     test_fail "review-pack rejects --label <value>"
     status=1
@@ -412,7 +479,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --label --target=chatgpt >/dev/null 2> "$label_missing_stderr"
+    repo-automation/bin/review-pack --label --target="$review_pack_target_name" >/dev/null 2> "$label_missing_stderr"
   ); then
     test_fail "review-pack rejects missing --label value"
     status=1
@@ -425,7 +492,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/review-pack --label= --target=chatgpt >/dev/null 2> "$label_empty_stderr"
+    repo-automation/bin/review-pack --label= --target="$review_pack_target_name" >/dev/null 2> "$label_empty_stderr"
   ); then
     test_fail "review-pack rejects empty --label value"
     status=1
@@ -438,29 +505,29 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    SMOKE_CODEX_CALLED_FILE="$codex_called_file" PATH="$codex_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target=chatgpt --label=review
-  ) > "$chatgpt_output_file" 2> "$chatgpt_stderr_file"; then
+    SMOKE_CODEX_CALLED_FILE="$codex_called_file" PATH="$codex_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review
+  ) > "$review_pack_output_file" 2> "$review_pack_stderr_file"; then
     :
   else
-    test_fail "review-pack chatgpt bundle run succeeds"
+    test_fail "review-pack target bundle run succeeds"
     status=1
   fi
 
-  chatgpt_bundle_zip="$(grep -E '^/' "$chatgpt_output_file" | tail -n 1 | tr -d '\r')"
-  chatgpt_bundle_dir="${chatgpt_bundle_zip%.zip}"
-  chatgpt_post_codex_output="$chatgpt_bundle_dir/post-codex/output.txt"
-  chatgpt_repo_zip_output="$chatgpt_bundle_dir/repo-zip/output.txt"
-  chatgpt_post_codex_path="$(grep -E '^/' "$chatgpt_post_codex_output" | tail -n 1 | tr -d '\r')"
-  chatgpt_repo_zip_path="$(grep -E '^/' "$chatgpt_repo_zip_output" | tail -n 1 | tr -d '\r')"
+  review_pack_bundle_zip="$(grep -E '^/' "$review_pack_output_file" | tail -n 1 | tr -d '\r')"
+  review_pack_bundle_dir="${review_pack_bundle_zip%.zip}"
+  review_pack_post_codex_output="$review_pack_bundle_dir/post-codex/output.txt"
+  review_pack_repo_zip_output="$review_pack_bundle_dir/repo-zip/output.txt"
+  review_pack_post_codex_path="$(grep -E '^/' "$review_pack_post_codex_output" | tail -n 1 | tr -d '\r')"
+  review_pack_repo_zip_path="$(grep -E '^/' "$review_pack_repo_zip_output" | tail -n 1 | tr -d '\r')"
 
-  if smoke_assert_single_path_output "$chatgpt_output_file" && [ -f "$chatgpt_bundle_zip" ] && [ -d "$chatgpt_bundle_dir" ] && [ -f "$chatgpt_bundle_dir/summary.txt" ] && [ -f "$chatgpt_post_codex_output" ] && [ -n "$chatgpt_post_codex_path" ] && [ -f "$chatgpt_post_codex_path" ] && [ -f "$chatgpt_repo_zip_output" ] && [ -n "$chatgpt_repo_zip_path" ] && [ -f "$chatgpt_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ]; then
-    test_pass "review-pack chatgpt target creates a staged review bundle"
+  if smoke_assert_single_path_output "$review_pack_output_file" && [ -f "$review_pack_bundle_zip" ] && [ -d "$review_pack_bundle_dir" ] && [ -f "$review_pack_bundle_dir/summary.txt" ] && [ -f "$review_pack_post_codex_output" ] && [ -n "$review_pack_post_codex_path" ] && [ -f "$review_pack_post_codex_path" ] && [ -f "$review_pack_repo_zip_output" ] && [ -n "$review_pack_repo_zip_path" ] && [ -f "$review_pack_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ]; then
+    test_pass "review-pack target creates a staged review bundle"
   else
-    test_fail "review-pack chatgpt target creates a staged review bundle"
+    test_fail "review-pack target creates a staged review bundle"
     status=1
   fi
 
-  if python3 - "$chatgpt_repo_zip_path" <<'PY'
+  if python3 - "$review_pack_repo_zip_path" <<'PY'
 import pathlib
 import sys
 import zipfile
@@ -477,17 +544,17 @@ with zipfile.ZipFile(zip_path) as archive:
     assert not any(name.endswith('/.env') or '/.env.' in name for name in names)
 PY
   then
-    test_pass "review-pack chatgpt bundle includes only safe repository snapshot files"
+    test_pass "review-pack target bundle includes only safe repository snapshot files"
   else
-    test_fail "review-pack chatgpt bundle includes only safe repository snapshot files"
+    test_fail "review-pack target bundle includes only safe repository snapshot files"
     status=1
   fi
 
   if [ -f "$codex_called_file" ]; then
-    test_fail "review-pack chatgpt target does not invoke Codex"
+    test_fail "review-pack target does not invoke Codex"
     status=1
   else
-    test_pass "review-pack chatgpt target does not invoke Codex"
+    test_pass "review-pack target does not invoke Codex"
   fi
 
   if (
@@ -738,7 +805,7 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/repair-prompt --target=chatgpt --source=ci >/dev/null 2> "$target_unknown_stderr"
+    repo-automation/bin/repair-prompt --target=review --source=ci >/dev/null 2> "$target_unknown_stderr"
   ); then
     test_fail "repair-prompt rejects unsupported target values"
     status=1

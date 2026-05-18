@@ -3,7 +3,7 @@
 Status: approved draft canon
 Repo target: `repo-automation-template`
 Intended repo path after approval: `repo-automation/docs/command-shape.md`
-Purpose: define the newest command style for repo automation docs, ChatGPT handoffs, Codex prompts, and CI-safe examples.
+Purpose: define the newest command style for repo automation docs, operator handoffs, Codex prompts, and CI-safe examples.
 
 This document replaces older command-shape language. The newest design is the only design.
 
@@ -170,7 +170,8 @@ Use these meanings consistently across helpers.
 | `--source-root=<path>` | automation source root |
 | `--source=<ci|local>` | repair-prompt evidence source |
 | `--target-root=<path>` | downstream install target root |
-| `--target=<chatgpt|codex>` | review-pack / repair-prompt audience |
+| `--target=<review|codex>` | review-pack audience |
+| `--target=codex` | repair-prompt audience |
 | `--out-dir=<path>` | output directory override |
 | `--evidence-file=<path>` | pre-generated evidence input |
 | `--timeout=<seconds>` | maximum runtime for local check/watch operation |
@@ -197,7 +198,7 @@ Use these flags consistently.
 | `--json-level=warn` | failures and warnings are useful |
 | `--json-level=all` | all check details are needed |
 
-Do not add `--agents` unless `--quiet` and JSON modes cannot express a future need.
+Do not add extra assistant-specific public modes unless `--quiet` and JSON modes cannot express a future need.
 
 ## Agent-preferred checks
 
@@ -233,7 +234,7 @@ Manual Termux command blocks that operate inside this repo should start with:
 cd ~/projects/repo-automation-template
 ```
 
-Use `mark` before commands when ChatGPT needs the output pasted back. Use `recap` at the end of the same block.
+Use `mark` before commands when an operator needs the output pasted back. Use `recap` at the end of the same block.
 
 Example:
 
@@ -245,7 +246,7 @@ git status --short
 recap
 ```
 
-If ChatGPT does not need terminal output back, omit `mark` and `recap`.
+If the operator does not need terminal output back, omit `mark` and `recap`.
 
 ## Branch preflight shape
 
@@ -263,7 +264,7 @@ git branch --show-current
 git status --short
 ```
 
-Use `mark` and `recap` when ChatGPT needs to review the output:
+Use `mark` and `recap` when an operator needs to review the output:
 
 ```bash
 cd ~/projects/repo-automation-template
@@ -297,7 +298,7 @@ Add task-specific output instructions only when the default `AGENTS.md` final-ou
 
 Do not repeat `AGENTS.md` rules in prompts by default.
 
-Do not reference ChatGPT conversation history, uploaded files, or “approved in chat” unless the needed content is pasted into the prompt or already exists in the repo.
+Do not reference conversation history, uploaded files, or “approved in chat” unless the needed content is pasted into the prompt or already exists in the repo.
 
 ## Post-Codex status reminder
 

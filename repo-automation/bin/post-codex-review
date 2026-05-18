@@ -8,19 +8,20 @@ set -o pipefail
 source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
 post_codex_review_packet=0
+post_codex_review_mode="summary"
 post_codex_review_repo_root=""
 post_codex_review_branch=""
 post_codex_review_status_count=0
 post_codex_review_changed=()
 post_codex_review_staged=()
 post_codex_review_untracked=()
-post_codex_review_first_failure="none"
-post_codex_review_log="none"
-post_codex_review_packet_path="none"
+post_codex_review_first_failure=""
+post_codex_review_log=""
+post_codex_review_packet_path=""
 post_codex_review_failure_record=""
 
 post_codex_review_usage() {
-  printf 'Usage: repo-automation/bin/post-codex-review [--packet] [--help]\n'
+  printf 'Usage: repo-automation/bin/post-codex-review [--quiet] [--explain] [--json] [--packet] [--help]\n'
 }
 
 post_codex_review_join_csv() {
@@ -53,6 +54,26 @@ post_codex_review_count_lines() {
   printf '%s' "$value" | awk 'END { print NR + 0 }'
 }
 
+post_codex_review_local_hook_value() {
+  local value="${1:-}"
+
+  if [ -n "$value" ]; then
+    printf '%s\n' "${value%%$'\n'*}"
+  else
+    printf 'none\n'
+  fi
+}
+
+post_codex_review_json_escape() {
+  local input="$1"
+  input=${input//\\/\\\\}
+  input=${input//\"/\\\"}
+  input=${input//$'\n'/\\n}
+  input=${input//$'\r'/\\r}
+  input=${input//$'\t'/\\t}
+  printf '%s' "$input"
+}
+
 post_codex_review_collect_repo_state() {
   local repo_root="$1"
   local path=""
@@ -81,6 +102,17 @@ EOF
   done <<EOF
 $(cd "$repo_root" && git ls-files --others --exclude-standard | sed '/^$/d' | sort -u)
 EOF
+
+  return 0
+}
+
+post_codex_review_load_local_hooks() {
+  local local_config="$post_codex_review_repo_root/.repo-automation.local.conf"
+
+  if [ -f "$local_config" ]; then
+    # shellcheck source=/dev/null
+    . "$local_config" || return 1
+  fi
 }
 
 post_codex_review_recent_logs_root() {
@@ -167,16 +199,72 @@ post_codex_review_create_packet() {
 }
 
 post_codex_review_print_summary() {
+  local final_summary_after_start_hook="${FINAL_SUMMARY_AFTER_START_HOOK:-}"
+  local final_summary_before_end_hook="${FINAL_SUMMARY_BEFORE_END_HOOK:-}"
+
   printf '===== FINAL SUMMARY =====\n'
+  if [ -n "$final_summary_after_start_hook" ]; then
+    printf '%s\n' "$(post_codex_review_local_hook_value "$final_summary_after_start_hook")"
+  fi
   printf 'branch=%s\n' "$post_codex_review_branch"
   printf 'status_count=%s\n' "$post_codex_review_status_count"
   printf 'changed=%s\n' "$(post_codex_review_join_csv post_codex_review_changed)"
   printf 'staged=%s\n' "$(post_codex_review_join_csv post_codex_review_staged)"
   printf 'untracked=%s\n' "$(post_codex_review_join_csv post_codex_review_untracked)"
-  printf 'first_failure=%s\n' "$post_codex_review_first_failure"
-  printf 'log=%s\n' "$post_codex_review_log"
-  printf 'packet=%s\n' "$post_codex_review_packet_path"
+  printf 'first_failure=%s\n' "${post_codex_review_first_failure:-none}"
+  printf 'log=%s\n' "${post_codex_review_log:-none}"
+  printf 'packet=%s\n' "${post_codex_review_packet_path:-none}"
+  if [ -n "$final_summary_before_end_hook" ]; then
+    printf '%s\n' "$(post_codex_review_local_hook_value "$final_summary_before_end_hook")"
+  fi
   printf '===== END =====\n'
+}
+
+post_codex_review_json_array() {
+  local -n items_ref="$1"
+  local item=""
+  local first=1
+
+  printf '['
+  for item in "${items_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(post_codex_review_json_escape "$item")"
+    first=0
+  done
+  printf ']'
+}
+
+post_codex_review_json_nullable_string() {
+  local value="${1:-}"
+
+  if [ -n "$value" ]; then
+    printf '"%s"' "$(post_codex_review_json_escape "$value")"
+  else
+    printf 'null'
+  fi
+}
+
+post_codex_review_print_json() {
+  local status="pass"
+
+  if [ -n "$post_codex_review_first_failure" ]; then
+    status="fail"
+  fi
+
+  printf '{'
+  printf '"script":"post-codex-review",'
+  printf '"status":"%s",' "$status"
+  printf '"branch":"%s",' "$(post_codex_review_json_escape "$post_codex_review_branch")"
+  printf '"status_count":%s,' "$post_codex_review_status_count"
+  printf '"changed":%s,' "$(post_codex_review_json_array post_codex_review_changed)"
+  printf '"staged":%s,' "$(post_codex_review_json_array post_codex_review_staged)"
+  printf '"untracked":%s,' "$(post_codex_review_json_array post_codex_review_untracked)"
+  printf '"first_failure":%s,' "$(post_codex_review_json_nullable_string "$post_codex_review_first_failure")"
+  printf '"log":%s,' "$(post_codex_review_json_nullable_string "$post_codex_review_log")"
+  printf '"packet":%s' "$(post_codex_review_json_nullable_string "$post_codex_review_packet_path")"
+  printf '}\n'
 }
 
 post_codex_review_main() {
@@ -188,6 +276,15 @@ post_codex_review_main() {
       --help)
         post_codex_review_usage
         return 0
+        ;;
+      --quiet)
+        post_codex_review_mode="quiet"
+        ;;
+      --explain)
+        post_codex_review_mode="explain"
+        ;;
+      --json)
+        post_codex_review_mode="json"
         ;;
       --packet)
         post_codex_review_packet=1
@@ -202,6 +299,7 @@ post_codex_review_main() {
 
   post_codex_review_repo_root="$(repo_auto_repo_root)" || return 1
   cd "$post_codex_review_repo_root" || return 1
+  post_codex_review_load_local_hooks || return 1
 
   post_codex_review_collect_repo_state "$post_codex_review_repo_root" || return 1
   post_codex_review_failure_record="$(post_codex_review_find_failure_log 2>/dev/null || true)"
@@ -214,7 +312,17 @@ post_codex_review_main() {
     post_codex_review_packet_path="$(post_codex_review_create_packet)" || return 1
   fi
 
-  post_codex_review_print_summary
+  case "$post_codex_review_mode" in
+    quiet)
+      return 0
+      ;;
+    json)
+      post_codex_review_print_json
+      ;;
+    *)
+      post_codex_review_print_summary
+      ;;
+  esac
 }
 
 post_codex_review_main "$@"

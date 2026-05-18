@@ -17,9 +17,10 @@ review_pack_stage_dir=""
 review_pack_bundle_zip=""
 review_pack_prompt_dir=""
 review_pack_prompt_file=""
+review_pack_target_review="review"
 
 review_pack_usage() {
-  printf 'Usage: repo-automation/bin/review-pack --target=<chatgpt|codex> [--out-dir=<path>] [--label=<text>] [--help]\n'
+  printf 'Usage: repo-automation/bin/review-pack --target=<%s|codex> [--out-dir=<path>] [--label=<text>] [--help]\n' "$review_pack_target_review"
 }
 
 review_pack_value_flag_error() {
@@ -121,20 +122,20 @@ review_pack_main() {
       --target=*)
         review_pack_target="${arg#--target=}"
         if [ -z "$review_pack_target" ]; then
-          repo_auto_flag_error "empty flag value" "--target" "use --target=<chatgpt|codex>" || return 1
+          repo_auto_flag_error "empty flag value" "--target" "use --target=<review|codex>" || return 1
           return 1
         fi
         case "$review_pack_target" in
-          chatgpt|codex)
+          review|codex)
             ;;
           *)
-            repo_auto_flag_error "unsupported flag value" "--target" "use --target=<chatgpt|codex>" || return 1
+            repo_auto_flag_error "unsupported flag value" "--target" "use --target=<review|codex>" || return 1
             return 1
             ;;
         esac
         ;;
       --target)
-        review_pack_value_flag_error "--target" "use --target=<chatgpt|codex>" "${2:-}" || return 1
+        review_pack_value_flag_error "--target" "use --target=<review|codex>" "${2:-}" || return 1
         return 1
         ;;
       --out-dir=*)
@@ -172,14 +173,14 @@ review_pack_main() {
   done
 
   if [ -z "$review_pack_target" ]; then
-    repo_auto_flag_error "missing flag value" "--target" "use --target=<chatgpt|codex>" || return 1
+    repo_auto_flag_error "missing flag value" "--target" "use --target=<review|codex>" || return 1
     return 1
   fi
 
   review_pack_init_paths || return 1
 
   case "$review_pack_target" in
-    chatgpt)
+    review)
       review_pack_stage_dir="$(mktemp -d "$review_pack_output_base/review-pack-${review_pack_timestamp}${review_pack_label_slug:+-$review_pack_label_slug}.XXXXXX")" || return 1
       bundle_log="$(mktemp "${TMPDIR:-$HOME/.cache}/review-pack-bundle.XXXXXX")" || return 1
       if (
