@@ -402,6 +402,95 @@ repo_flow_submit_stage_paths() {
   return 0
 }
 
+repo_flow_submit_path_is_requested() {
+  local requested_path="$1"
+  local status_path="$2"
+
+  case "$status_path" in
+    "$requested_path"|"$requested_path"/*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+repo_flow_submit_check_unrequested_changes() {
+  local paths_csv="$1"
+  local status_line=""
+  local status_path=""
+  local requested_path=""
+  local -a submit_paths=()
+
+  IFS=, read -r -a submit_paths <<< "$paths_csv"
+
+  while IFS= read -r status_line; do
+    [ -n "$status_line" ] || continue
+    case "$status_line" in
+      '?? '*)
+        status_path="${status_line#?? }"
+        ;;
+      *)
+        status_path="${status_line#?? }"
+        status_path="${status_path##* -> }"
+        ;;
+    esac
+
+    for requested_path in "${submit_paths[@]}"; do
+      if repo_flow_submit_path_is_requested "$requested_path" "$status_path"; then
+        continue 2
+      fi
+    done
+
+    repo_flow_submit_stop "unrequested working tree changes remain; commit a clean explicit submit"
+    return 1
+  done <<EOF
+$(git status --porcelain --untracked-files=all)
+EOF
+
+  return 0
+}
+
+repo_flow_submit_remote_alias_resolves_to_github() {
+  local remote_url="$1"
+  local remote_host=""
+
+  case "$remote_url" in
+    git@*:*/*.git)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  if ! command -v ssh >/dev/null 2>&1; then
+    return 1
+  fi
+
+  remote_host="${remote_url#git@}"
+  remote_host="${remote_host%%:*}"
+  remote_host="$(ssh -G "$remote_host" 2>/dev/null | awk '/^hostname / {print $2; exit}')"
+  [ "$remote_host" = "github.com" ]
+}
+
+repo_flow_submit_remote_matches_upstream() {
+  local remote_url="$1"
+  local expected_remote_url="$2"
+  local upstream_repo_full_name="${3:-}"
+
+  [ -n "$expected_remote_url" ] || return 0
+  [ "$remote_url" = "$expected_remote_url" ] && return 0
+
+  case "$remote_url" in
+    git@*:"$upstream_repo_full_name".git)
+      repo_flow_submit_remote_alias_resolves_to_github "$remote_url"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 repo_flow_submit_main() {
   local watch=0
   local diagnose_on_fail=0
@@ -553,8 +642,8 @@ repo_flow_submit_main() {
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
-    repo_flow_submit_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+  if [ "$command_status" -eq 0 ] && ! repo_flow_submit_remote_matches_upstream "$remote_url" "$expected_remote_url" "${UPSTREAM_REPO_FULL_NAME:-}"; then
+    repo_flow_submit_stop "remote URL mismatch for $remote_name: expected $expected_remote_url or GitHub SSH alias for ${UPSTREAM_REPO_FULL_NAME:-unknown}, got $remote_url"
     command_status=1
   fi
 
@@ -575,6 +664,12 @@ repo_flow_submit_main() {
   if [ "$command_status" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
     repo_flow_submit_stop "current branch is default branch; checkout a feature branch"
     command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$paths_csv" ]; then
+    if ! repo_flow_submit_check_unrequested_changes "$paths_csv"; then
+      command_status=1
+    fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ -n "$paths_csv" ]; then

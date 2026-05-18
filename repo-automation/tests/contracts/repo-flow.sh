@@ -120,6 +120,33 @@ EOF
   chmod +x "$gh_stub_dir/gh" || return 1
 }
 
+smoke_write_repo_flow_ssh_stub() {
+  local ssh_stub_dir="$1"
+
+  mkdir -p "$ssh_stub_dir" || return 1
+  cat > "$ssh_stub_dir/ssh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+if [ "${1:-}" = "-G" ]; then
+  case "${2:-}" in
+    github-alias)
+      printf 'hostname github.com\n'
+      ;;
+    gitlab-alias)
+      printf 'hostname gitlab.com\n'
+      ;;
+    *)
+      printf 'hostname example.com\n'
+      ;;
+  esac
+  exit 0
+fi
+printf 'ssh stub unexpected args\n' >&2
+exit 1
+EOF
+  chmod +x "$ssh_stub_dir/ssh" || return 1
+}
+
 smoke_prepare_repo_flow_branch() {
   local branch_name="$1"
 
@@ -148,9 +175,37 @@ text = text.replace('REMOTE_NAME="origin"', 'REMOTE_NAME="localorigin"')
 text = text.replace('EXPECTED_REMOTE_URL="git@github.com:i-schuyler/repo-automation-template.git"', 'EXPECTED_REMOTE_URL=""')
 path.write_text(text, encoding='utf-8')
 PY
-    git add .repo-automation.conf || return 1
-    git commit -m "temp repo flow config" >/dev/null || return 1
+    if ! git diff --quiet -- .repo-automation.conf; then
+      git add .repo-automation.conf || return 1
+      git commit -m "temp repo flow config" >/dev/null || return 1
+    fi
     git fetch localorigin main >/dev/null 2>&1 || return 1
+  ) || return 1
+}
+
+smoke_prepare_repo_flow_submit_remote_validation() {
+  local remote_url="$1"
+  local expected_remote_url="$2"
+
+  (
+    cd "$smoke_test_dir" || return 1
+    git remote set-url origin "$remote_url" >/dev/null 2>&1 || git remote add origin "$remote_url" >/dev/null 2>&1 || return 1
+    python3 - "$smoke_test_dir/.repo-automation.conf" "$expected_remote_url" <<'PY' || return 1
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+expected = sys.argv[2]
+text = path.read_text(encoding='utf-8')
+text = re.sub(r'^EXPECTED_REMOTE_URL=".*"$', f'EXPECTED_REMOTE_URL="{expected}"', text, flags=re.M)
+text = re.sub(r'^REMOTE_NAME=".*"$', 'REMOTE_NAME="origin"', text, flags=re.M)
+path.write_text(text, encoding='utf-8')
+PY
+    if ! git diff --quiet -- .repo-automation.conf; then
+      git add .repo-automation.conf || return 1
+      git commit -m "temp repo flow config" >/dev/null || return 1
+    fi
   ) || return 1
 }
 
@@ -345,7 +400,7 @@ EOF
         GH_STUB_PR_VIEW_STATE='OPEN' \
         GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' \
         repo-automation/bin/repo-flow status-card --json > "$json_out" 2> "$json_stderr_file"
-      ) && [ ! -s "$json_stderr_file" ] && python -m json.tool "$json_out" >/dev/null && smoke_json_assert "$json_out" 'data.get("mode") == "status-card" and data.get("branch") == "feature/repo-flow-status-card-pr" and data.get("pr_number") == 901 and data.get("checks_state") == "pending" and data.get("next_action") == "repo-automation/bin/ci-watch --pr=901 --poll-seconds=5 --timeout=900" and data.get("overall_status") == "pass"'; then
+      ) && [ ! -s "$json_stderr_file" ] && python3 -m json.tool "$json_out" >/dev/null && smoke_json_assert "$json_out" 'data.get("mode") == "status-card" and data.get("branch") == "feature/repo-flow-status-card-pr" and data.get("pr_number") == 901 and data.get("checks_state") == "pending" and data.get("next_action") == "repo-automation/bin/ci-watch --pr=901 --poll-seconds=5 --timeout=900" and data.get("overall_status") == "pass"'; then
       test_pass "repo-flow status-card reports an open PR and parseable JSON"
     else
       test_fail "repo-flow status-card reports an open PR and parseable JSON"
@@ -531,7 +586,7 @@ smoke_check_repo_flow_dry_run_json() {
     EXPECTED_REMOTE_URL="" \
     GH_STUB_PR_STATE_FILE="$smoke_test_base/repo-flow-state.txt" \
     "$local_bash_path" repo-automation/bin/repo-flow --dry-run --json > "$json_file" 2> "$stderr_file"
-  ) && python -m json.tool "$json_file" >/dev/null; then
+  ) && python3 -m json.tool "$json_file" >/dev/null; then
     if smoke_json_assert "$json_file" 'data.get("final_status") == "dry-run" and data.get("pr_status") == "would-create" and data.get("push_status") == "needed"'; then
       if [ ! -f "$smoke_test_base/repo-flow-state.txt" ] && ! git -C "$smoke_test_dir" rev-parse --verify refs/remotes/origin/feature/repo-flow-plan >/dev/null 2>&1; then
         test_pass "repo-flow dry-run/json reports a non-mutating create plan"
@@ -767,7 +822,14 @@ smoke_check_repo_flow_submit_contract() {
   local invalid_dotdot_stderr=""
   local missing_stderr=""
   local staged_guard_stderr=""
+  local unrequested_dirty_stderr=""
+  local canonical_remote_stderr=""
+  local alias_remote_stderr=""
+  local rejected_remote_stderr=""
   local local_bash_path=""
+  local ssh_stub_dir=""
+  local status_before=""
+  local status_after=""
 
   smoke_setup_temp_repo || return 1
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
@@ -777,6 +839,11 @@ smoke_check_repo_flow_submit_contract() {
   invalid_dotdot_stderr="$smoke_test_base/repo-flow-submit-invalid-dotdot.stderr"
   missing_stderr="$smoke_test_base/repo-flow-submit-missing.stderr"
   staged_guard_stderr="$smoke_test_base/repo-flow-submit-staged-guard.stderr"
+  unrequested_dirty_stderr="$smoke_test_base/repo-flow-submit-unrequested-dirty.stderr"
+  canonical_remote_stderr="$smoke_test_base/repo-flow-submit-canonical-remote.stderr"
+  alias_remote_stderr="$smoke_test_base/repo-flow-submit-alias-remote.stderr"
+  rejected_remote_stderr="$smoke_test_base/repo-flow-submit-rejected-remote.stderr"
+  ssh_stub_dir="$smoke_test_base/ssh-stub"
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   local_bash_path="$(command -v bash)" || return 1
 
@@ -792,6 +859,51 @@ smoke_check_repo_flow_submit_contract() {
 
   smoke_prepare_repo_flow_remote || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-submit-validation" || return 1
+
+  smoke_write_repo_flow_ssh_stub "$ssh_stub_dir" || return 1
+  smoke_prepare_repo_flow_submit_remote_validation 'git@github.com:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=missing.txt --message=hi >/dev/null 2> "$canonical_remote_stderr"
+  ); then
+    test_fail "repo-flow submit accepts the exact canonical remote"
+    status=1
+  elif grep -Fq 'STOP: missing untracked path: missing.txt' "$canonical_remote_stderr"; then
+    test_pass "repo-flow submit accepts the exact canonical remote"
+  else
+    test_fail "repo-flow submit accepts the exact canonical remote"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_submit_remote_validation 'git@github-alias:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$ssh_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=missing.txt --message=hi >/dev/null 2> "$alias_remote_stderr"
+  ); then
+    test_fail "repo-flow submit accepts a GitHub SSH alias"
+    status=1
+  elif grep -Fq 'STOP: missing untracked path: missing.txt' "$alias_remote_stderr"; then
+    test_pass "repo-flow submit accepts a GitHub SSH alias"
+  else
+    test_fail "repo-flow submit accepts a GitHub SSH alias"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_submit_remote_validation 'git@gitlab-alias:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$ssh_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=docs/testing.md --message=hi >/dev/null 2> "$rejected_remote_stderr"
+  ); then
+    test_fail "repo-flow submit rejects a non-GitHub SSH alias"
+    status=1
+  elif grep -Fq 'STOP: remote URL mismatch for origin:' "$rejected_remote_stderr" && grep -Fq 'git@gitlab-alias:i-schuyler/repo-automation-template.git' "$rejected_remote_stderr"; then
+    test_pass "repo-flow submit rejects a non-GitHub SSH alias"
+  else
+    test_fail "repo-flow submit rejects a non-GitHub SSH alias"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_submit_remote_validation 'git@github.com:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -838,17 +950,49 @@ smoke_check_repo_flow_submit_contract() {
   git -C "$smoke_test_dir" add docs/testing.md || return 1
   printf '\nrepo-flow submit extra staged line\n' >> "$smoke_test_dir/README.md" || return 1
   git -C "$smoke_test_dir" add README.md || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=docs/testing.md --message=hi >/dev/null 2> "$staged_guard_stderr"
   ); then
-    test_fail "repo-flow submit rejects pre-staged changes when using --paths"
+    test_fail "repo-flow submit rejects unrequested changes before staging when using --paths"
     status=1
-  elif grep -Fxq 'STOP: pre-staged changes are not allowed with --paths' "$staged_guard_stderr"; then
-    test_pass "repo-flow submit rejects pre-staged changes when using --paths"
+  elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$staged_guard_stderr"; then
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    if [ "$status_before" = "$status_after" ]; then
+      test_pass "repo-flow submit rejects unrequested changes before staging when using --paths"
+    else
+      test_fail "repo-flow submit rejects unrequested changes before staging when using --paths"
+      status=1
+    fi
   else
-    test_fail "repo-flow submit rejects pre-staged changes when using --paths"
+    test_fail "repo-flow submit rejects unrequested changes before staging when using --paths"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-unrequested-dirty" || return 1
+  printf '\nrepo-flow submit requested line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  printf '\nrepo-flow submit unrequested line\n' >> "$smoke_test_dir/README.md" || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=docs/testing.md --message=hi >/dev/null 2> "$unrequested_dirty_stderr"
+  ); then
+    test_fail "repo-flow submit rejects unrequested dirty changes before staging"
+    status=1
+  elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$unrequested_dirty_stderr"; then
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    if [ "$status_before" = "$status_after" ] && [ -z "$(git -C "$smoke_test_dir" diff --cached --name-only)" ]; then
+      test_pass "repo-flow submit rejects unrequested dirty changes before staging"
+    else
+      test_fail "repo-flow submit rejects unrequested dirty changes before staging"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit rejects unrequested dirty changes before staging"
     status=1
   fi
 

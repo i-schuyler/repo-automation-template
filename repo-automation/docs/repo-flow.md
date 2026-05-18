@@ -6,7 +6,8 @@ It verifies the branch is not `main`, checks the worktree, reports ahead/behind 
 
 `repo-automation/bin/repo-flow submit` is the guarded phone-first commit entrypoint.
 Use `--paths=<path[,path...]>` to stage only explicit repo-relative paths, or `--staged` to commit the current index.
-It refuses absolute paths, `..`, default-branch submits, and pre-staged changes when `--paths` is used.
+It refuses absolute paths, `..`, default-branch submits, pre-staged changes, and any unrequested dirty or untracked worktree changes before staging when `--paths` is used.
+When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
 `--watch` hands off to the existing PR finish watch path; `--diagnose-on-fail` is only forwarded with `--watch`.
 
 `--watch` hands off to `repo-automation/bin/pr-finish --watch --pr=current` after the branch is pushed and a PR exists.
