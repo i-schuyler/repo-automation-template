@@ -160,7 +160,7 @@ smoke_run() {
 smoke_json_assert() {
   local json_file="$1"
   local check_code="$2"
-  if python - "$json_file" "$check_code" <<'PY'
+  if python3 - "$json_file" "$check_code" <<'PY'
 import json
 import pathlib
 import sys

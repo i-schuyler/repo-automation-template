@@ -460,8 +460,8 @@ pr_finish_main() {
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ -n "$expected_remote_url" ] && [ "$remote_url" != "$expected_remote_url" ]; then
-    pr_finish_stop "remote URL mismatch for $remote_name: expected $expected_remote_url, got $remote_url"
+  if [ "$command_status" -eq 0 ] && ! repo_auto_remote_matches_upstream "$remote_url" "$expected_remote_url" "${UPSTREAM_REPO_FULL_NAME:-}"; then
+    pr_finish_stop "remote URL mismatch for $remote_name: expected $expected_remote_url or GitHub SSH alias for ${UPSTREAM_REPO_FULL_NAME:-unknown}, got $remote_url"
     command_status=1
   fi
 
