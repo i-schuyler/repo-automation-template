@@ -26,6 +26,13 @@ status_count=<n>
 ===== END =====
 ```
 
+Local mark/recap example:
+
+```sh
+FINAL_SUMMARY_AFTER_START_HOOK="mark: local workflow"
+FINAL_SUMMARY_BEFORE_END_HOOK="recap: local workflow"
+```
+
 Examples:
 
     repo-automation/bin/status-packet

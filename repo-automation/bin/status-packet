@@ -328,6 +328,9 @@ status_packet_print_final_summary() {
   local pr_section_lines=1
   local output_lines=0
   local url_or_stop="pass"
+  local final_summary_after_start_hook="${FINAL_SUMMARY_AFTER_START_HOOK:-}"
+  local final_summary_before_end_hook="${FINAL_SUMMARY_BEFORE_END_HOOK:-}"
+  local final_summary_hook_lines=0
 
   status_count="$(status_packet_count_lines "$status_packet_status_short")"
   if [ "$status_count" -gt 0 ]; then
@@ -359,14 +362,27 @@ status_packet_print_final_summary() {
     pr_section_lines=1
   fi
 
-  output_lines=$((1 + 1 + status_section_lines + 1 + tracked_section_lines + 1 + untracked_section_lines + 1 + 2 + 1 + pr_section_lines + warning_section_lines))
+  if [ -n "$final_summary_after_start_hook" ]; then
+    final_summary_hook_lines=$((final_summary_hook_lines + 1))
+  fi
+  if [ -n "$final_summary_before_end_hook" ]; then
+    final_summary_hook_lines=$((final_summary_hook_lines + 1))
+  fi
+
+  output_lines=$((1 + 1 + status_section_lines + 1 + tracked_section_lines + 1 + untracked_section_lines + 1 + 2 + 1 + pr_section_lines + warning_section_lines + final_summary_hook_lines))
 
   printf '===== FINAL SUMMARY =====\n'
+  if [ -n "$final_summary_after_start_hook" ]; then
+    printf '%s\n' "${final_summary_after_start_hook%%$'\n'*}"
+  fi
   printf 'branch=%s\n' "$status_packet_branch"
   printf 'rc=0\n'
   printf 'output_lines=%s\n' "$output_lines"
   printf 'url_or_stop=%s\n' "$url_or_stop"
   printf 'status_count=%s\n' "$status_count"
+  if [ -n "$final_summary_before_end_hook" ]; then
+    printf '%s\n' "${final_summary_before_end_hook%%$'\n'*}"
+  fi
   printf '===== END =====\n'
 }
 
@@ -432,6 +448,7 @@ status_packet_main() {
 
   repo_root="$(repo_auto_repo_root)" || return 1
   cd "$repo_root" || return 1
+  repo_auto_load_config || return 1
 
   status_packet_collect_repo_state || return 1
   temp_root="$(status_packet_temp_root)"
