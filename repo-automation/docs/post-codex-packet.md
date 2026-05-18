@@ -2,6 +2,8 @@
 
 `repo-automation/bin/post-codex-packet` assembles one uploadable review packet for the current repo state.
 
+`repo-automation/bin/post-codex-review --packet` uses this helper to create the packet artifact and then reports the packet path in its default, `--explain`, and `--json` output.
+
 ## Behavior
 
 - defaults to a packet root under `${REPO_AUTOMATION_OUTPUT_DIR:-${TMPDIR:-$HOME/.cache}/repo-automation}/post-codex`

@@ -41,21 +41,21 @@ Every public helper should fit one of these output postures.
 | Posture | Purpose | Success output | Failure output |
 | --- | --- | --- | --- |
 | Default human compact | readable phone-friendly output | `pass`, artifact path, or compact result | first actionable failure plus fix |
-| `--quiet` | least UI and agent-token noise | no output | first actionable failure only |
-| JSON mode | machine-readable output | valid JSON only on stdout | valid JSON only on stdout |
+| `--quiet` | lowest-noise human-readable output | silent | first actionable failure only |
+| `--json` | canonical machine-readable compact result | valid JSON only on stdout | valid JSON only on stdout |
+| `--explain` | detailed human/operator output | details plus required tail summary when the helper supports it | details plus actionable failures |
 
-Do not add `--agents` unless a future need cannot be expressed with `--quiet`, `--json`, or `--machine-json`.
-
-For Codex or other agent checks, prefer `--quiet` for minimal human-readable checks. Use JSON only when structured parsing is needed.
+For Codex or other agent checks, prefer `--quiet` for minimal human-readable checks. Use `--json` only when structured parsing is needed. Use `--explain` when a person needs the full operator view.
 
 ## Stream rules
 
 - Default human success output goes to stdout.
 - Artifact paths go to stdout.
 - Human warnings and failures go to stderr.
-- JSON modes write valid JSON only to stdout.
+- `--json` writes valid JSON only to stdout.
 - Non-JSON diagnostics must not mix into JSON stdout.
 - `--help` writes usage to stdout.
+- `--packet` is an action modifier, not an output mode.
 
 If a script cannot produce valid JSON, it must fail outside JSON mode with a compact human failure instead of printing partial JSON.
 
@@ -122,9 +122,9 @@ Rules:
 
 ## Explain mode
 
-`--explain` is the detailed human escape hatch.
+`--explain` is the detailed human/operator escape hatch.
 
-Use it when a person needs all relevant warnings, failures, summaries, or log paths.
+Use it when a person needs all relevant warnings, failures, summaries, artifact paths, or log paths.
 
 Example:
 
@@ -141,10 +141,14 @@ Rules:
 - `--explain` may include multiple findings.
 - `--explain` still must not dump long raw logs by default.
 - If a long log matters, print the exact log path and the smallest useful excerpt.
+- For operator-facing helpers, `--explain` must end with a `===== FINAL SUMMARY =====` block.
 
-## Final summary handoff
+`repo-automation/bin/post-codex-review` is an operator handoff helper, so its default output is also the compact `===== FINAL SUMMARY =====` block.
+`repo-automation/bin/status-packet --explain` is the operator handoff form for the repo snapshot helper.
 
-Some read-only helpers expose a final-summary mode for operator review.
+## FINAL SUMMARY handoff block
+
+Some operator-facing helpers end `--explain` with a `===== FINAL SUMMARY =====` block.
 It is a compact copy/paste block and must stay within 25 lines.
 Local workflows may add one line immediately after the start marker and one line immediately before the end marker by setting `FINAL_SUMMARY_AFTER_START_HOOK` and `FINAL_SUMMARY_BEFORE_END_HOOK` in `.repo-automation.local.conf`.
 
@@ -168,6 +172,8 @@ Rules:
 
 - stdout must be valid JSON only.
 - stderr may contain fatal wrapper errors only when JSON cannot be produced.
+- default `--json` means a compact actionable result, not verbose diagnostics.
+- deeper JSON levels are opt-in and helper-documented.
 - `--json-level=fail` includes failures only.
 - `--json-level=warn` includes failures and warnings.
 - `--json-level=all` includes all reported checks.
@@ -181,6 +187,8 @@ Minimal failure JSON shape:
 JSON output shape should be documented per helper when that helper has JSON mode.
 
 If JSON shape changes, update docs and tests in the same slice.
+
+JSON output should carry the same core actionable facts as the compact/final summary result, without verbose logs or progress chatter.
 
 ## Logs
 
@@ -587,6 +595,5 @@ This contract does not require:
 - full local audit output on phone;
 - child pass lines from umbrella scripts;
 - log paths on every successful run;
-- an `--agents` mode;
 - dual human and JSON output in the same stream;
 - accepting alternate value-flag syntax.

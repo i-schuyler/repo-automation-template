@@ -30,7 +30,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers; includes read-only `repo-flow status-card` |
 | artifacts | `post-codex-review`, `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | instant / mutating / CI-owned | compact review summaries, uploadable packets, or log artifact helpers |
 | review/repair | `review-pack`, `repair-prompt` | mutating | fallback review bundle / repair prompt helpers; `review-pack --target=codex` and `repair-prompt --target=codex` create local artifacts only |
-| status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers |
+| status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers; `status-packet --explain` is the FINAL SUMMARY handoff form |
 | release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | mutating / network-read | release, reporting, and install helpers |
 
 ## Planned routing/state rows
@@ -98,6 +98,9 @@ The helper contracts use these fixtures only in smoke tests; production helpers 
 | --- | --- | --- |
 | default human | success summary or artifact path | failures and warnings |
 | `--quiet` | success is silent | first actionable failure only |
-| JSON | valid JSON only | fatal wrapper errors only |
+| `--json` | valid JSON only | fatal wrapper errors only |
+| `--explain` | detailed operator output with a required FINAL SUMMARY tail block when supported | details and warnings |
 
 `--help` always writes usage to stdout.
+
+`--packet` is an action modifier; helpers that support it report the packet path through compact output, `--json`, or the `--explain` final summary.

@@ -23,12 +23,12 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-watch` read-only polling, timeout handling, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-log-dump` read-only failed-run discovery, durable log capture, tail excerpts, and machine JSON
-- smoke coverage for `repo-automation/bin/status-packet` human default output, machine JSON, and compact repo state reporting
-- smoke coverage for `repo-automation/bin/post-codex-review` final-summary shape, `--packet` bundle creation, and ≤25-line output contract
+- smoke coverage for `repo-automation/bin/status-packet` human default output, `--explain` FINAL SUMMARY output, machine JSON, and compact repo state reporting
+- smoke coverage for `repo-automation/bin/post-codex-review` default FINAL SUMMARY output, `--quiet`, `--explain`, `--json`, `--packet` bundle creation, and ≤25-line output contract
 - smoke coverage for `repo-automation/bin/post-codex-packet` packet assembly, tracked and staged diff capture, safe untracked file copying, skip rules, and zip output
 - smoke coverage for `repo-automation/bin/repo-zip` repository snapshot assembly, tracked and untracked file inclusion, ignored-file exclusion, `.git/` exclusion, and generated artifact exclusion
 - smoke coverage for `repo-automation/bin/evidence-bundle` bundle assembly, nested subdirectory invocation, optional post-codex and repo-zip coordination, optional CI log capture, and default no-network behavior
-- smoke coverage for `repo-automation/bin/review-pack` fallback review bundle / prompt generation, chatgpt/codex target validation, and no-Codex invocation behavior
+- smoke coverage for `repo-automation/bin/review-pack` fallback review bundle / prompt generation, review-target validation, and no-Codex invocation behavior
 - smoke coverage for `repo-automation/bin/repair-prompt` CI/local evidence gathering, prompt redaction, evidence-file support, and no-Codex invocation behavior
 - smoke coverage for artifact-safety fixtures covering `.env`, ignored cache files, safe dotfiles, safe untracked docs, generated packet/log artifacts, build outputs, and nested dependency/cache directories
 - smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
