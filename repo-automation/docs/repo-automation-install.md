@@ -43,6 +43,7 @@ Optional installation:
 
 - downstream `repo-automation/docs/local-overrides.md` is preserved when already present
 - the file is created only when missing
+- config updates must leave `.repo-automation.local.conf` alone; do not overwrite or clear local override files
 
 ## Generated Installed Context
 

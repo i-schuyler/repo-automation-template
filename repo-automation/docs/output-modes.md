@@ -145,8 +145,8 @@ Rules:
 ## Final summary handoff
 
 Some read-only helpers expose a final-summary mode for operator review.
-It is a compact copy/paste block and must stay within 10 lines.
-Local workflows may add one line immediately after the start marker and one line immediately before the end marker by setting `FINAL_SUMMARY_AFTER_START_HOOK` and `FINAL_SUMMARY_BEFORE_END_HOOK` in `.repo-automation.conf`.
+It is a compact copy/paste block and must stay within 25 lines.
+Local workflows may add one line immediately after the start marker and one line immediately before the end marker by setting `FINAL_SUMMARY_AFTER_START_HOOK` and `FINAL_SUMMARY_BEFORE_END_HOOK` in `.repo-automation.local.conf`.
 
 Example:
 
