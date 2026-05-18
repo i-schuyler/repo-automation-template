@@ -59,21 +59,20 @@ ci_watch_poll() {
   ci_status_err="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-watch-status-stderr.XXXXXX")"
 
   if [ -n "$ci_watch_pr" ]; then
-    if ! "$(dirname "$0")/ci-status" --pr="$ci_watch_pr" --json >"$ci_status_out" 2>"$ci_status_err"; then
-      cat "$ci_status_err" >&2
-      rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
-      return 1
-    fi
+    "$(dirname "$0")/ci-status" --pr="$ci_watch_pr" --json >"$ci_status_out" 2>"$ci_status_err"
   else
-    if ! "$(dirname "$0")/ci-status" --branch="$ci_watch_branch" --json >"$ci_status_out" 2>"$ci_status_err"; then
-      cat "$ci_status_err" >&2
-      rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
-      return 1
-    fi
+    "$(dirname "$0")/ci-status" --branch="$ci_watch_branch" --json >"$ci_status_out" 2>"$ci_status_err"
+  fi
+
+  if [ ! -s "$ci_status_out" ] || ! python3 -m json.tool "$ci_status_out" >/dev/null 2>&1; then
+    cat "$ci_status_err" >&2
+    rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
+    return 1
   fi
 
   ci_watch_summary_json="$(cat "$ci_status_out")"
   rm -f "$ci_status_out" "$ci_status_err" >/dev/null 2>&1 || true
+  return 0
 }
 
 ci_watch_print_human() {
