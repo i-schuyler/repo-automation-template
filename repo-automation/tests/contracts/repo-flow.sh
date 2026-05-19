@@ -1093,7 +1093,9 @@ EOF
     GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
     "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch publish commit' --watch --timeout=30 --explain > "$stdout_file" 2> "$stderr_file"
   ) && [ ! -s "$stdout_file" ]; then
-    if grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
+    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$stderr_file" 2>/dev/null || printf '0')"
+    if [ "$summary_count" = "1" ] &&
+      grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
       grep -Fq 'gh pr create title=' "$create_log_file" &&
       grep -Fq 'gh run list' "$gh_log_file" &&
       grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&

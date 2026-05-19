@@ -723,11 +723,13 @@ PY
         "$delete_branch" \
         "$can_merge" \
         block_reasons
-      repo_auto_print_final_summary \
-        "branch=$current_branch" \
-        "rc=$command_status" \
-        "mode=$mode" \
-        "url_or_stop=${pr_url:-${pr_finish_stop_reason:-$checks_status}}" >&2
+      if [ "${PR_FINISH_SUPPRESS_FINAL_SUMMARY:-0}" != 1 ]; then
+        repo_auto_print_final_summary \
+          "branch=$current_branch" \
+          "rc=$command_status" \
+          "mode=$mode" \
+          "url_or_stop=${pr_url:-${pr_finish_stop_reason:-$checks_status}}" >&2
+      fi
     elif [ "$command_status" -eq 0 ]; then
       if [ "$mode" = "watch" ]; then
         if [ "$checks_status" = "green" ]; then

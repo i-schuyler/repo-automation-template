@@ -898,13 +898,13 @@ EOF
       fi
       if [ "$diagnose_on_fail" -eq 1 ]; then
         if [ "$explain" -eq 1 ]; then
-          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
+          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
         else
           "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
         fi
       else
         if [ "$explain" -eq 1 ]; then
-          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain
+          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain
         else
           "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds"
         fi
