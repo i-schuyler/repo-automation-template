@@ -22,6 +22,25 @@ smoke_check_run_tests_contract() {
   local run_tests_no_log_out="$smoke_test_base/run-tests-no-log-$$.txt"
   local run_tests_failure_log="$smoke_test_base/run-tests-failure-$$.log"
   local run_tests_failure_out="$smoke_test_base/run-tests-failure-$$.txt"
+  local run_tests_clean_temp_tmpdir="$smoke_test_base/run-tests-clean-temp-tmp-$$"
+  local run_tests_clean_temp_out="$smoke_test_base/run-tests-clean-temp-fail-$$.txt"
+  local run_tests_clean_temp_err="$smoke_test_base/run-tests-clean-temp-fail-$$.stderr"
+  local run_tests_no_clean_tmpdir="$smoke_test_base/run-tests-no-clean-tmp-$$"
+  local run_tests_no_clean_out="$smoke_test_base/run-tests-no-clean-$$.txt"
+  local run_tests_no_clean_err="$smoke_test_base/run-tests-no-clean-$$.stderr"
+  local run_tests_explicit_log="$smoke_test_base/run-tests-explicit-$$.log"
+  local run_tests_explicit_out="$smoke_test_base/run-tests-explicit-$$.txt"
+  local run_tests_explicit_err="$smoke_test_base/run-tests-explicit-$$.stderr"
+  local run_tests_stale_tmpdir="$smoke_test_base/run-tests-stale-tmp-$$"
+  local run_tests_stale_root="$run_tests_stale_tmpdir/repo-automation-template"
+  local run_tests_stale_dir="$run_tests_stale_root/run-tests-stale-$$"
+  local run_tests_stale_file="$run_tests_stale_root/run-tests-smoke-stale-$$.log"
+  local run_tests_stale_fresh_dir="$run_tests_stale_root/run-tests-fresh-$$"
+  local run_tests_stale_fresh_file="$run_tests_stale_fresh_dir/fresh.log"
+  local run_tests_low_disk_tmpdir="$smoke_test_base/run-tests-low-disk-tmp-$$"
+  local run_tests_low_disk_stub_dir="$smoke_test_base/run-tests-low-disk-stub-$$"
+  local run_tests_low_disk_out="$smoke_test_base/run-tests-low-disk-$$.txt"
+  local run_tests_low_disk_err="$smoke_test_base/run-tests-low-disk-$$.stderr"
   local run_tests_timeout_format_stderr="$smoke_test_base/run-tests-timeout-format-$$.stderr"
   local run_tests_timeout_missing_stderr="$smoke_test_base/run-tests-timeout-missing-$$.stderr"
   local run_tests_timeout_empty_stderr="$smoke_test_base/run-tests-timeout-empty-$$.stderr"
@@ -72,7 +91,7 @@ smoke_check_run_tests_contract() {
   if (
     cd "$smoke_repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_explain_out"
-  ) && grep -Eq '^PASS: repo-automation/tests/docs-check.sh - passed' "$run_tests_explain_out"; then
+  ) && grep -Eq '^TEST_TEMP_ROOT=' "$run_tests_explain_out" && grep -Eq '^PASS: repo-automation/tests/docs-check.sh - passed' "$run_tests_explain_out"; then
     test_pass "run-tests explain output shows details"
   else
     test_fail "run-tests explain output shows details"
@@ -107,7 +126,7 @@ smoke_check_run_tests_contract() {
 
 Body.
 EOF
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet --log-file="$run_tests_failure_log" > "$run_tests_failure_out"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet --log-file="$run_tests_failure_log" > "$run_tests_failure_out"
   ); then
     test_fail "run-tests quiet failure references the log file"
     status=1
@@ -130,6 +149,151 @@ EOF
   else
     test_fail "run-tests no-log does not create a log"
     status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check fail\n' >&2
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_clean_temp_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet --clean-temp > "$run_tests_clean_temp_out" 2> "$run_tests_clean_temp_err"
+  ); then
+    test_fail "run-tests clean-temp removes run-owned temp output on failure"
+    status=1
+  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_clean_temp_out" && grep -Eq '^log: ' "$run_tests_clean_temp_out"; then
+    clean_temp_log_file="$(awk '/^log: / {print $2; exit}' "$run_tests_clean_temp_out")"
+    if [ -n "$clean_temp_log_file" ] && [ ! -e "$clean_temp_log_file" ] && [ ! -d "$(dirname "$clean_temp_log_file")" ]; then
+      test_pass "run-tests clean-temp removes run-owned temp output on failure"
+    else
+      test_fail "run-tests clean-temp removes run-owned temp output on failure"
+      status=1
+    fi
+  else
+    test_fail "run-tests clean-temp removes run-owned temp output on failure"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check fail\n' >&2
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_no_clean_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet --no-clean-temp > "$run_tests_no_clean_out" 2> "$run_tests_no_clean_err"
+  ); then
+    test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
+    status=1
+  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_no_clean_out" && grep -Eq '^log: ' "$run_tests_no_clean_out"; then
+    no_clean_log_file="$(awk '/^log: / {print $2; exit}' "$run_tests_no_clean_out")"
+    if [ -n "$no_clean_log_file" ] && [ -e "$no_clean_log_file" ] && [ -d "$(dirname "$no_clean_log_file")" ]; then
+      test_pass "run-tests no-clean-temp preserves run-owned temp output on failure"
+    else
+      test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
+      status=1
+    fi
+  else
+    test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    mkdir -p "$run_tests_stale_root" || return 1
+    mkdir -p "$run_tests_stale_dir" || return 1
+    mkdir -p "$run_tests_stale_fresh_dir" || return 1
+    printf 'stale\n' > "$run_tests_stale_file" || return 1
+    printf 'fresh\n' > "$run_tests_stale_fresh_file" || return 1
+    touch -d '13 hours ago' "$run_tests_stale_dir" "$run_tests_stale_file" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+exit 0
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_stale_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet > "$run_tests_default_out" 2> "$run_tests_quiet_err"
+  ); then
+    if [ ! -e "$run_tests_stale_dir" ] && [ ! -e "$run_tests_stale_file" ] && [ -e "$run_tests_stale_fresh_dir" ] && [ -e "$run_tests_stale_fresh_file" ]; then
+      test_pass "run-tests prunes stale repo-owned temp output"
+    else
+      test_fail "run-tests prunes stale repo-owned temp output"
+      status=1
+    fi
+  else
+    test_fail "run-tests prunes stale repo-owned temp output"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet --log-file="$run_tests_explicit_log" > "$run_tests_explicit_out" 2> "$run_tests_explicit_err"
+  ); then
+    test_fail "run-tests preserves an explicit --log-file path"
+    status=1
+  elif [ -f "$run_tests_explicit_log" ] && grep -Eq '^log: ' "$run_tests_explicit_out"; then
+    test_pass "run-tests preserves an explicit --log-file path"
+  else
+    test_fail "run-tests preserves an explicit --log-file path"
+    status=1
+  fi
+
+  mkdir -p "$run_tests_low_disk_stub_dir" || return 1
+  cat > "$run_tests_low_disk_stub_dir/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs 100 90 10 90%% %s\n' "${1:-/}"
+EOF
+  chmod +x "$run_tests_low_disk_stub_dir/df" || return 1
+  # shellcheck disable=SC2030,SC2031,SC2034
+  if (
+    cd "$smoke_repo_root" || return 1
+    defs_file="$run_tests_low_disk_tmpdir/run-tests-defs.sh"
+    mkdir -p "$run_tests_low_disk_tmpdir" || return 1
+    # shellcheck disable=SC2016
+    sed \
+      -e "s#source \"\$(cd \"\$(dirname \"\$0\")\" && pwd)/../lib/common.sh\"#. \"$smoke_repo_root/repo-automation/lib/common.sh\"#" \
+      -e '/^run_tests_main "\$@"$/,$d' \
+      repo-automation/bin/run-tests > "$defs_file" || return 1
+    # shellcheck source=/dev/null
+    . "$defs_file" || return 1
+    run_tests_checks=()
+    TEST_TEMP_ROOT="$run_tests_low_disk_tmpdir/repo-automation-template"
+    mkdir -p "$TEST_TEMP_ROOT" || return 1
+    if RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" run_tests_disk_guard_check "/" > "$run_tests_low_disk_err" 2>&1; then
+      return 1
+    fi
+    printf '%s\n' "${run_tests_checks[0]:-}" > "$run_tests_low_disk_out"
+    if [ "${run_tests_checks[0]:-}" != 'disk space check|fail|0|available disk space below 1.5G (10240 bytes free)' ]; then
+      return 1
+    fi
+  ); then
+    test_fail "run-tests low-disk guard prevents heavy checks"
+    status=1
+  else
+    test_pass "run-tests low-disk guard prevents heavy checks"
   fi
 
   if (

@@ -13,20 +13,161 @@ run_tests_json=0
 run_tests_json_level="warn"
 run_tests_log_enabled=1
 run_tests_log_file=""
+run_tests_log_file_explicit=0
+run_tests_clean_temp=1
+run_tests_disk_diagnostic=0
+run_tests_clean_stale_temp="${REPO_AUTOMATION_CLEAN_STALE_TEMP:-1}"
+run_tests_stale_temp_hours="${REPO_AUTOMATION_STALE_TEMP_HOURS:-12}"
+run_tests_df_bin="${RUN_TESTS_DF_BIN:-${REPO_AUTOMATION_DF_BIN:-df}}"
 run_tests_timeout_seconds=120
 run_tests_timeout_available=""
 run_tests_timeout_warned=0
+TEST_TEMP_ROOT="${TMPDIR:-$HOME/.cache}/repo-automation-template"
+run_tests_temp_root=""
+run_tests_disk_guard_checked=0
+run_tests_disk_guard_used_percent=""
+run_tests_disk_guard_available_percent=""
+run_tests_disk_guard_available_bytes=""
+run_tests_disk_guard_mountpoint=""
+run_tests_disk_guard_filesystem=""
+run_tests_disk_guard_low_bytes=1610612736
+run_tests_temp_root_warn_kib=1048576
 run_tests_start_line="RUNNING repo automation tests..."
 run_tests_next_hint="Next: repo-automation/bin/run-tests --explain"
 run_tests_checks=()
 run_tests_changed_selected_subsets=()
 
 run_tests_usage() {
-  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--smoke] [--docs] [--version] [--changed] [--explain] [--quiet] [--timeout=<seconds>] [--log-file=<path>] [--no-log] [--json] [--json-level=fail|warn|all] [--help]\n'
+  printf 'Usage: repo-automation/bin/run-tests [--summary] [--audit] [--smoke] [--docs] [--version] [--changed] [--explain] [--quiet] [--timeout=<seconds>] [--log-file=<path>] [--no-log] [--clean-temp|--no-clean-temp] [--disk-diagnostic] [--json] [--json-level=fail|warn|all] [--help]\n'
 }
 
 run_tests_timestamp() {
   date '+%Y-%m-%dT%H%M%S'
+}
+
+run_tests_ensure_temp_root() {
+  mkdir -p "$TEST_TEMP_ROOT" >/dev/null 2>&1 || return 1
+  if [ -z "$run_tests_temp_root" ]; then
+    run_tests_temp_root="$TEST_TEMP_ROOT/run-tests-$(run_tests_timestamp)-$$"
+  fi
+  mkdir -p "$run_tests_temp_root" >/dev/null 2>&1
+}
+
+run_tests_path_is_under_root() {
+  local path="$1"
+  local root="$2"
+
+  case "$path" in
+    "$root"|"$root"/*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+run_tests_is_non_negative_integer() {
+  case "${1:-}" in
+    ''|*[!0-9]*)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+run_tests_prune_stale_temp_artifacts() {
+  local path=""
+  local stale_mtime_mins=""
+
+  case "$run_tests_clean_stale_temp" in
+    0)
+      return 0
+      ;;
+  esac
+
+  if ! repo_auto_is_positive_integer "$run_tests_stale_temp_hours"; then
+    run_tests_stale_temp_hours=12
+  fi
+
+  stale_mtime_mins=$((run_tests_stale_temp_hours * 60))
+
+  [ -d "$TEST_TEMP_ROOT" ] || return 0
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    [ "$path" = "$run_tests_temp_root" ] && continue
+    rm -rf -- "$path" >/dev/null 2>&1 || true
+  done <<EOF
+$(
+  find "$TEST_TEMP_ROOT" -mindepth 1 -maxdepth 1 -mmin "+$stale_mtime_mins" 2>/dev/null | LC_ALL=C sort
+)
+EOF
+}
+
+run_tests_cleanup_temp_root() {
+  local path=""
+  local preserved_child=""
+
+  [ "$run_tests_clean_temp" -eq 1 ] || return 0
+  [ -n "$run_tests_temp_root" ] || return 0
+  [ -d "$run_tests_temp_root" ] || return 0
+
+  if [ "$run_tests_log_file_explicit" -eq 1 ] && run_tests_path_is_under_root "$run_tests_log_file" "$run_tests_temp_root"; then
+    preserved_child="${run_tests_log_file#"$run_tests_temp_root"/}"
+    preserved_child="${preserved_child%%/*}"
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      [ "$path" = "$run_tests_temp_root/$preserved_child" ] && continue
+      rm -rf -- "$path" >/dev/null 2>&1 || true
+    done <<EOF
+$(
+      find "$run_tests_temp_root" -mindepth 1 -maxdepth 1 2>/dev/null | LC_ALL=C sort
+)
+EOF
+  else
+    rm -rf -- "$run_tests_temp_root" >/dev/null 2>&1 || true
+  fi
+
+  find "$TEST_TEMP_ROOT" -depth -type d -empty -exec rmdir -- {} + >/dev/null 2>&1 || true
+  run_tests_prune_stale_temp_artifacts
+  run_tests_cleanup_warn_if_large
+}
+
+run_tests_info() {
+  [ "$run_tests_mode" = "explain" ] || [ "$run_tests_disk_diagnostic" -eq 1 ] || return 0
+  printf 'INFO: %s\n' "$*" >&2
+}
+
+run_tests_cleanup_warn_if_large() {
+  local total_kib=""
+
+  [ "$run_tests_clean_temp" -eq 1 ] || return 0
+  [ -d "$TEST_TEMP_ROOT" ] || return 0
+  command -v du >/dev/null 2>&1 || return 0
+
+  total_kib="$(du -sk "$TEST_TEMP_ROOT" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+  [ -n "$total_kib" ] || return 0
+  if [ "$total_kib" -gt "$run_tests_temp_root_warn_kib" ]; then
+    printf 'WARN: TEST_TEMP_ROOT still uses %s KiB after cleanup: %s\n' "$total_kib" "$TEST_TEMP_ROOT" >&2
+  fi
+}
+
+run_tests_disk_guard_print_top_dirs() {
+  local path
+
+  [ -d "$TEST_TEMP_ROOT" ] || return 0
+  command -v du >/dev/null 2>&1 || return 0
+
+  printf 'INFO: top temp/cache dirs under %s\n' "$TEST_TEMP_ROOT" >&2
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    du -sh "$path" 2>/dev/null || true
+  done <<EOF | LC_ALL=C sort -hr | head -n 5 >&2
+$(
+  find "$TEST_TEMP_ROOT" -mindepth 1 -maxdepth 1 2>/dev/null | LC_ALL=C sort
+)
+EOF
 }
 
 run_tests_ensure_log_parent() {
@@ -48,6 +189,79 @@ run_tests_json_escape() {
   input=${input//$'\r'/\\r}
   input=${input//$'\t'/\\t}
   printf '%s' "$input"
+}
+
+run_tests_disk_guard_collect() {
+  local path="$1"
+  local used_percent=""
+  local available_percent=""
+  local available_blocks=""
+  local filesystem=""
+  local use_percent=""
+  local mountpoint=""
+
+  if ! read -r filesystem available_blocks _ _ use_percent mountpoint <<EOF
+$(LC_ALL=C "$run_tests_df_bin" -Pk "$path" 2>/dev/null | sed -n '2p')
+EOF
+  then
+    return 1
+  fi
+
+  run_tests_disk_guard_filesystem="${filesystem:-unknown}"
+  run_tests_disk_guard_available_bytes=""
+  run_tests_disk_guard_used_percent="${use_percent:-}"
+  run_tests_disk_guard_mountpoint="${mountpoint:-$path}"
+
+  available_blocks="${available_blocks:-}"
+  used_percent="${run_tests_disk_guard_used_percent%\%}"
+  if ! run_tests_is_non_negative_integer "$used_percent"; then
+    return 1
+  fi
+  if ! run_tests_is_non_negative_integer "$available_blocks"; then
+    return 1
+  fi
+
+  if [ "$used_percent" -gt 100 ]; then
+    used_percent=100
+  fi
+  available_percent=$((100 - used_percent))
+  run_tests_disk_guard_available_bytes=$((available_blocks * 1024))
+  run_tests_disk_guard_used_percent="$used_percent"
+  run_tests_disk_guard_available_percent="$available_percent"
+  return 0
+}
+
+run_tests_disk_guard_check() {
+  local guard_path="$1"
+
+  run_tests_disk_guard_checked=1
+  if ! run_tests_disk_guard_collect "$guard_path"; then
+    return 0
+  fi
+
+  if [ "$run_tests_disk_guard_available_bytes" -lt "$run_tests_disk_guard_low_bytes" ]; then
+    if [ "$run_tests_disk_diagnostic" -eq 1 ]; then
+      run_tests_info "disk space: filesystem=${run_tests_disk_guard_filesystem:-unknown} mount=${run_tests_disk_guard_mountpoint:-$guard_path} used=${run_tests_disk_guard_used_percent}% available=${run_tests_disk_guard_available_percent}% free_bytes=${run_tests_disk_guard_available_bytes} path=$guard_path"
+    fi
+    run_tests_disk_guard_print_top_dirs
+    run_tests_record_fail "disk space check" "available disk space below 1.5G (${run_tests_disk_guard_available_bytes} bytes free)"
+    return 1
+  fi
+
+  if [ "$run_tests_disk_guard_available_percent" -lt 15 ]; then
+    if [ "$run_tests_disk_diagnostic" -eq 1 ]; then
+      run_tests_info "disk space: filesystem=${run_tests_disk_guard_filesystem:-unknown} mount=${run_tests_disk_guard_mountpoint:-$guard_path} used=${run_tests_disk_guard_used_percent}% available=${run_tests_disk_guard_available_percent}% free_bytes=${run_tests_disk_guard_available_bytes} path=$guard_path"
+    fi
+    run_tests_disk_guard_print_top_dirs
+    run_tests_record_fail "disk space check" "available disk space below 15% (${run_tests_disk_guard_available_percent}% free)"
+    return 1
+  fi
+
+  if [ "$run_tests_disk_diagnostic" -eq 1 ]; then
+    run_tests_info "disk space: filesystem=${run_tests_disk_guard_filesystem:-unknown} mount=${run_tests_disk_guard_mountpoint:-$guard_path} used=${run_tests_disk_guard_used_percent}% available=${run_tests_disk_guard_available_percent}% free_bytes=${run_tests_disk_guard_available_bytes} path=$guard_path"
+  fi
+
+  return 0
 }
 
 run_tests_command_string() {
@@ -86,20 +300,12 @@ run_tests_timeout_warn_once() {
 }
 
 run_tests_init_log() {
-  local temp_root
-
   if [ "$run_tests_log_enabled" -ne 1 ]; then
     return 0
   fi
 
   if [ -z "$run_tests_log_file" ]; then
-    temp_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
-    mkdir -p "$temp_root" >/dev/null 2>&1 || {
-      run_tests_log_enabled=0
-      run_tests_log_file=""
-      return 0
-    }
-    run_tests_log_file="$temp_root/run-tests-$(run_tests_timestamp).log"
+    run_tests_log_file="$run_tests_temp_root/run-tests.log"
   fi
 
   run_tests_ensure_log_parent || {
@@ -291,16 +497,13 @@ run_tests_run_smoke() {
   local label="$1"
   shift
   local command_string
-  local output_root
   local output_file
   local exit_code=0
   local timed_out=0
   local failure_message="failed"
 
   command_string="$(run_tests_command_string "$@")"
-  output_root="${TMPDIR:-$HOME/.cache}/repo-automation-template"
-  mkdir -p "$output_root" >/dev/null 2>&1 || output_root="${TMPDIR:-$HOME/.cache}"
-  output_file="$output_root/run-tests-smoke-$(run_tests_timestamp)-$$.log"
+  output_file="$run_tests_temp_root/run-tests-smoke-$(run_tests_timestamp)-$$.log"
 
   run_tests_log "CHECK START: $label"
   run_tests_log "COMMAND: $command_string"
@@ -384,6 +587,7 @@ run_tests_print_human() {
   local entry name status message timed_out rest first_entry
 
   if [ "$run_tests_mode" = "explain" ]; then
+    printf 'TEST_TEMP_ROOT=%s\n' "$TEST_TEMP_ROOT"
     printf 'pass=%s warn=%s fail=%s skipped=%s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
     if [ "$run_tests_run_mode" = "changed" ]; then
       if [ "${#run_tests_changed_selected_subsets[@]}" -eq 0 ]; then
@@ -672,6 +876,7 @@ run_tests_main() {
           repo_auto_flag_error "empty flag value" "--log-file" "use --log-file=<path>" || return 1
           return 1
         fi
+        run_tests_log_file_explicit=1
         run_tests_log_enabled=1
         ;;
       --log-file)
@@ -685,6 +890,16 @@ run_tests_main() {
       --no-log)
         run_tests_log_enabled=0
         run_tests_log_file=""
+        run_tests_log_file_explicit=0
+        ;;
+      --clean-temp)
+        run_tests_clean_temp=1
+        ;;
+      --no-clean-temp)
+        run_tests_clean_temp=0
+        ;;
+      --disk-diagnostic)
+        run_tests_disk_diagnostic=1
         ;;
       --json)
         run_tests_json=1
@@ -725,6 +940,13 @@ run_tests_main() {
   done
 
   run_tests_timeout_seconds="$timeout_value"
+  run_tests_ensure_temp_root || {
+    run_tests_record_fail "prepare temp root" "failed"
+    run_tests_print_results 1
+    return 1
+  }
+  run_tests_prune_stale_temp_artifacts
+  trap 'run_tests_cleanup_temp_root' EXIT INT TERM
   run_tests_init_log
 
   repo_root="$(repo_auto_repo_root)" || {
@@ -761,6 +983,14 @@ EOF
 
   if [ "$run_tests_timeout_seconds" -gt 0 ] && ! run_tests_timeout_supported; then
     run_tests_timeout_warn_once
+  fi
+
+  if [ "$run_tests_run_mode" = "full" ] && [ "$run_tests_disk_guard_checked" -eq 0 ]; then
+    if ! run_tests_disk_guard_check "/"; then
+      status=1
+      run_tests_print_results "$status"
+      return $?
+    fi
   fi
 
   if [ "$run_tests_run_mode" = "smoke" ]; then
