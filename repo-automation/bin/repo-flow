@@ -495,6 +495,34 @@ EOF
   return 0
 }
 
+repo_flow_submit_print_final_summary() {
+  local branch_before="$1"
+  local branch_after="$2"
+  local pr_number="$3"
+  local pr_url="$4"
+  local commit_sha="$5"
+  local pushed="$6"
+  local merged="$7"
+  local status_count="$8"
+  local rc="$9"
+  local stop_reason="${10}"
+  local pr_summary="unknown"
+
+  [ -n "$pr_number" ] && pr_summary="$pr_number"
+  repo_auto_print_final_summary \
+    "script=repo-flow" \
+    "mode=submit" \
+    "rc=$rc" \
+    "branch_before=$branch_before" \
+    "branch_after=$branch_after" \
+    "pr=$pr_summary" \
+    "commit=$commit_sha" \
+    "pushed=$pushed" \
+    "merged=$merged" \
+    "status_count=$status_count" \
+    "url_or_stop=${pr_url:-${stop_reason:-none}}" >&2
+}
+
 repo_flow_submit_main() {
   local watch=0
   local watch_timeout_seconds=900
@@ -517,6 +545,12 @@ repo_flow_submit_main() {
   local staged_files=""
   local uncommitted_status=""
   local unstaged_or_untracked_status=""
+  local branch_before=""
+  local branch_after=""
+  local commit_sha="none"
+  local pushed="false"
+  local merged="false"
+  local status_count=0
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -698,6 +732,8 @@ repo_flow_submit_main() {
     command_status=1
   fi
 
+  branch_before="$current_branch"
+
   if [ "$command_status" -eq 0 ] && [ "$modified" -eq 1 ] && repo_flow_submit_has_new_files; then
     repo_flow_submit_stop "--modified only accepts tracked modified/deleted/renamed paths; use --paths=<path> or --staged for new files"
     command_status=1
@@ -766,6 +802,17 @@ EOF
     if ! git commit --message="$message" >/dev/null 2>&1; then
       repo_flow_submit_stop "git commit failed"
       command_status=1
+    else
+      commit_sha="$(git rev-parse HEAD 2>/dev/null || printf 'none')"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$watch" -eq 1 ]; then
+    if ! git push -u "$remote_name" "$current_branch" >/dev/null 2>&1; then
+      repo_flow_submit_stop "git push failed for $current_branch"
+      command_status=1
+    else
+      pushed="true"
     fi
   fi
 
@@ -869,11 +916,28 @@ EOF
       else
         action_taken="completed-pr"
         final_status="completed"
+        merged="true"
       fi
     else
       repo_flow_main
       command_status=$?
     fi
+  fi
+
+  branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' "$current_branch")"
+  status_count="$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+  if [ "$repo_flow_explain" -eq 1 ]; then
+    repo_flow_submit_print_final_summary \
+      "$branch_before" \
+      "$branch_after" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "$commit_sha" \
+      "$pushed" \
+      "$merged" \
+      "$status_count" \
+      "$command_status" \
+      "$repo_flow_stop_reason"
   fi
 
   return "$command_status"
@@ -1206,6 +1270,7 @@ EOF
         if "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain; then
           action_taken="completed-pr"
           final_status="completed"
+          merged="true"
         else
           repo_flow_stop "pr-finish completion failed for PR #$pr_number"
           command_status=1
@@ -1214,6 +1279,7 @@ EOF
       elif "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail; then
         action_taken="completed-pr"
         final_status="completed"
+        merged="true"
       else
         repo_flow_stop "pr-finish completion failed for PR #$pr_number"
         command_status=1
@@ -1224,6 +1290,7 @@ EOF
         if "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain; then
           action_taken="completed-pr"
           final_status="completed"
+          merged="true"
         else
           repo_flow_stop "pr-finish completion failed for PR #$pr_number"
           command_status=1
@@ -1232,6 +1299,7 @@ EOF
       elif "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds"; then
         action_taken="completed-pr"
         final_status="completed"
+        merged="true"
       else
         repo_flow_stop "pr-finish completion failed for PR #$pr_number"
         command_status=1
@@ -1239,6 +1307,9 @@ EOF
       fi
     fi
   fi
+
+  branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' "$current_branch")"
+  status_count="$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')"
 
   if [ "$repo_flow_json" -eq 1 ]; then
     repo_flow_print_json \
@@ -1259,11 +1330,25 @@ EOF
     if [ "$command_status" -eq 0 ]; then
       repo_flow_info "final status: $final_status"
     fi
-    repo_auto_print_final_summary \
-      "branch=$current_branch" \
-      "rc=$command_status" \
-      "mode=$mode" \
-      "url_or_stop=${pr_url:-${repo_flow_stop_reason:-$final_status}}" >&2
+    if [ "$mode" = "submit" ]; then
+      repo_flow_submit_print_final_summary \
+        "$branch_before" \
+        "$branch_after" \
+        "${pr_number:-}" \
+        "${pr_url:-}" \
+        "$commit_sha" \
+        "$pushed" \
+        "$merged" \
+        "$status_count" \
+        "$command_status" \
+        "$repo_flow_stop_reason"
+    else
+      repo_auto_print_final_summary \
+        "branch=$current_branch" \
+        "rc=$command_status" \
+        "mode=$mode" \
+        "url_or_stop=${pr_url:-${repo_flow_stop_reason:-$final_status}}" >&2
+    fi
   elif [ "$command_status" -eq 0 ]; then
     if [ "$dry_run" -eq 1 ]; then
       printf 'plan\n'
