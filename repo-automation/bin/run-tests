@@ -199,9 +199,10 @@ run_tests_disk_guard_collect() {
   local filesystem=""
   local use_percent=""
   local mountpoint=""
+  local df_bin="${RUN_TESTS_DF_BIN:-${REPO_AUTOMATION_DF_BIN:-${run_tests_df_bin:-df}}}"
 
-  if ! read -r filesystem available_blocks _ _ use_percent mountpoint <<EOF
-$(LC_ALL=C "$run_tests_df_bin" -Pk "$path" 2>/dev/null | sed -n '2p')
+  if ! read -r filesystem _ _ available_blocks use_percent mountpoint <<EOF
+$(LC_ALL=C "$df_bin" -Pk "$path" 2>/dev/null | sed -n '2p')
 EOF
   then
     return 1

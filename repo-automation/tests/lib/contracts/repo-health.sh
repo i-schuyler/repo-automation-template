@@ -264,7 +264,12 @@ if [ "${1:-}" = "-k" ]; then
   shift
 fi
 printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-printf 'stubfs 100 90 10 90%% %s\n' "${1:-/}"
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${RUN_TESTS_DF_BLOCKS:-100}" \
+  "${RUN_TESTS_DF_USED:-90}" \
+  "${RUN_TESTS_DF_AVAILABLE:-10}" \
+  "${RUN_TESTS_DF_USE_PERCENT:-90}" \
+  "${1:-${RUN_TESTS_DF_MOUNTPOINT:-/}}"
 EOF
   chmod +x "$run_tests_low_disk_stub_dir/df" || return 1
   # shellcheck disable=SC2030,SC2031,SC2034
@@ -279,21 +284,40 @@ EOF
       repo-automation/bin/run-tests > "$defs_file" || return 1
     # shellcheck source=/dev/null
     . "$defs_file" || return 1
-    run_tests_checks=()
     TEST_TEMP_ROOT="$run_tests_low_disk_tmpdir/repo-automation-template"
     mkdir -p "$TEST_TEMP_ROOT" || return 1
-    if RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" run_tests_disk_guard_check "/" > "$run_tests_low_disk_err" 2>&1; then
+
+    run_tests_checks=()
+    if RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" \
+      RUN_TESTS_DF_BLOCKS=1000000 \
+      RUN_TESTS_DF_USED=840000 \
+      RUN_TESTS_DF_AVAILABLE=1024 \
+      RUN_TESTS_DF_USE_PERCENT=84 \
+      run_tests_disk_guard_check "/" > "$run_tests_low_disk_err" 2>&1; then
       return 1
     fi
     printf '%s\n' "${run_tests_checks[0]:-}" > "$run_tests_low_disk_out"
-    if [ "${run_tests_checks[0]:-}" != 'disk space check|fail|0|available disk space below 1.5G (10240 bytes free)' ]; then
+    if [ "${run_tests_checks[0]:-}" != 'disk space check|fail|0|available disk space below 1.5G (1048576 bytes free)' ]; then
+      return 1
+    fi
+
+    run_tests_checks=()
+    if RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" \
+      RUN_TESTS_DF_BLOCKS=1000000 \
+      RUN_TESTS_DF_USED=860000 \
+      RUN_TESTS_DF_AVAILABLE=2000000 \
+      RUN_TESTS_DF_USE_PERCENT=86 \
+      run_tests_disk_guard_check "/" > "$run_tests_low_disk_err" 2>&1; then
+      return 1
+    fi
+    if [ "${run_tests_checks[0]:-}" != 'disk space check|fail|0|available disk space below 15% (14% free)' ]; then
       return 1
     fi
   ); then
+    test_pass "run-tests low-disk guard prevents heavy checks"
+  else
     test_fail "run-tests low-disk guard prevents heavy checks"
     status=1
-  else
-    test_pass "run-tests low-disk guard prevents heavy checks"
   fi
 
   if (

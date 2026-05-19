@@ -383,6 +383,11 @@ preflight_main() {
       command_status=1
     fi
 
+    if [ "${behind_count:-0}" -gt 0 ] && [ "$branch_preexists" -eq 1 ]; then
+      preflight_stop "existing branch is behind $remote_name/$default_branch: $divergence; recreate, reset, or rebase it"
+      command_status=1
+    fi
+
     if [ "${ahead_count:-0}" -gt 0 ] && [ "$branch_preexists" -eq 0 ]; then
       preflight_stop "new branch has unexpected ahead commits before edits: $divergence"
       command_status=1
