@@ -429,6 +429,23 @@ EOF
   printf '%s\n' "${modified_paths[@]}"
 }
 
+repo_flow_submit_has_new_files() {
+  local status_line=""
+
+  while IFS= read -r status_line; do
+    [ -n "$status_line" ] || continue
+    case "$status_line" in
+      A*|' A'*|'?? '*)
+        return 0
+        ;;
+    esac
+  done <<EOF
+$(git status --porcelain --untracked-files=all)
+EOF
+
+  return 1
+}
+
 repo_flow_submit_path_is_requested() {
   local requested_path="$1"
   local status_path="$2"
@@ -678,6 +695,11 @@ repo_flow_submit_main() {
 
   if [ "$command_status" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
     repo_flow_submit_stop "current branch is default branch; checkout a feature branch"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$modified" -eq 1 ] && repo_flow_submit_has_new_files; then
+    repo_flow_submit_stop "--modified only accepts tracked modified/deleted/renamed paths; use --paths=<path> or --staged for new files"
     command_status=1
   fi
 

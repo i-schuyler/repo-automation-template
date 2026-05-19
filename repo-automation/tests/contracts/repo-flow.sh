@@ -872,6 +872,7 @@ smoke_check_repo_flow_submit_contract() {
   local invalid_dotdot_stderr=""
   local missing_stderr=""
   local staged_guard_stderr=""
+  local modified_new_file_stderr=""
   local unrequested_dirty_stderr=""
   local canonical_remote_stderr=""
   local alias_remote_stderr=""
@@ -894,6 +895,7 @@ smoke_check_repo_flow_submit_contract() {
   invalid_dotdot_stderr="$smoke_test_base/repo-flow-submit-invalid-dotdot.stderr"
   missing_stderr="$smoke_test_base/repo-flow-submit-missing.stderr"
   staged_guard_stderr="$smoke_test_base/repo-flow-submit-staged-guard.stderr"
+  modified_new_file_stderr="$smoke_test_base/repo-flow-submit-modified-new-file.stderr"
   unrequested_dirty_stderr="$smoke_test_base/repo-flow-submit-unrequested-dirty.stderr"
   canonical_remote_stderr="$smoke_test_base/repo-flow-submit-canonical-remote.stderr"
   alias_remote_stderr="$smoke_test_base/repo-flow-submit-alias-remote.stderr"
@@ -905,7 +907,7 @@ smoke_check_repo_flow_submit_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
-  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
     test_pass "repo-flow submit help shows strict syntax"
   else
     test_fail "repo-flow submit help shows strict syntax"
@@ -1061,6 +1063,36 @@ smoke_check_repo_flow_submit_contract() {
     fi
   else
     test_fail "repo-flow submit rejects unrequested changes before staging when using --paths"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-modified-new-file" || return 1
+  mkdir -p "$smoke_test_dir/docs" || return 1
+  printf '\nrepo-flow submit modified line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  git -C "$smoke_test_dir" add docs/testing.md || return 1
+  printf 'repo-flow submit new file\n' > "$smoke_test_dir/docs/repo-flow-submit-new-file.md" || return 1
+  git -C "$smoke_test_dir" add docs/repo-flow-submit-new-file.md || return 1
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+  status_before="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --modified --message=hi >/dev/null 2> "$modified_new_file_stderr"
+  ); then
+    test_fail "repo-flow submit rejects pre-staged new files when using --modified"
+    status=1
+  elif grep -Fxq 'STOP: --modified only accepts tracked modified/deleted/renamed paths; use --paths=<path> or --staged for new files' "$modified_new_file_stderr"; then
+    status_after="$(git -C "$smoke_test_dir" status --porcelain --untracked-files=all)" || return 1
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    if [ "$status_before" = "$status_after" ] && [ "$head_before" = "$head_after" ]; then
+      test_pass "repo-flow submit rejects pre-staged new files when using --modified"
+    else
+      test_fail "repo-flow submit rejects pre-staged new files when using --modified"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit rejects pre-staged new files when using --modified"
     status=1
   fi
 
