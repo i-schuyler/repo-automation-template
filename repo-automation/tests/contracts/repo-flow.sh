@@ -864,6 +864,475 @@ smoke_check_repo_flow_submit_staged_watch() {
   return "$status"
 }
 
+smoke_check_repo_flow_submit_watch_publishes_branch() {
+  local status=0
+  local gh_base_dir=""
+  local gh_wrapper_dir=""
+  local git_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+  local git_log_file=""
+  local gh_log_file=""
+  local create_log_file=""
+  local sequence_log_file=""
+  local push_marker_file=""
+  local pr_state_file=""
+  local local_bash_path=""
+  local real_git=""
+  local push_line=""
+  local create_line=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_base_dir="$smoke_test_base/gh-base-stub"
+  gh_wrapper_dir="$smoke_test_base/gh-wrapper-stub"
+  git_stub_dir="$smoke_test_base/git-watch-stub"
+  stdout_file="$smoke_test_base/repo-flow-submit-watch-publish.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-watch-publish.stderr"
+  git_log_file="$smoke_test_base/repo-flow-submit-watch-publish.git-log"
+  gh_log_file="$smoke_test_base/repo-flow-submit-watch-publish.gh-log"
+  create_log_file="$smoke_test_base/repo-flow-submit-watch-publish-create.log"
+  sequence_log_file="$smoke_test_base/repo-flow-submit-watch-publish-sequence.log"
+  push_marker_file="$smoke_test_base/repo-flow-submit-watch-publish.pushed"
+  pr_state_file="$smoke_test_base/repo-flow-submit-watch-publish.pr-state"
+  smoke_write_gh_stub "$gh_base_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
+
+  mkdir -p "$gh_wrapper_dir" "$git_stub_dir" || return 1
+  cat > "$gh_wrapper_dir/gh" <<EOF
+#!/usr/bin/env bash
+set -u
+cmd="\${1:-}"
+sub="\${2:-}"
+shift 2 >/dev/null 2>&1 || true
+
+  log_gh() {
+    if [ -n "\${SMOKE_GH_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_GH_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+  }
+
+require_pushed() {
+  if [ ! -f "\${SMOKE_GIT_PUSH_MARKER_FILE:-}" ]; then
+    printf '%s\n' "gh stub: Head sha can't be blank" >&2
+    exit 1
+  fi
+}
+
+case "\$cmd \$sub" in
+  'pr view')
+    require_pushed
+    if [ ! -f "\${GH_STUB_PR_STATE_FILE:-}" ]; then
+      exit 1
+    fi
+    number="\$(sed -n '1p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    url="\$(sed -n '2p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    title="\$(sed -n '3p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    state="\$(sed -n '4p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    case " \$* " in
+      *' --json number '*|*' --jq .number '*)
+        printf '%s\n' "\$number"
+        ;;
+      *' --json title '*|*' --jq .title '*)
+        printf '%s\n' "\$title"
+        ;;
+      *' --json url '*|*' --jq .url '*)
+        printf '%s\n' "\$url"
+        ;;
+      *' --json state '*|*' --jq .state '*)
+        printf '%s\n' "\$state"
+        ;;
+      *' --json isDraft '*|*' --jq .isDraft '*)
+        printf 'false\n'
+        ;;
+      *' --json mergeable '*|*' --jq .mergeable '*)
+        printf 'MERGEABLE\n'
+        ;;
+      *' --json headRefName '*|*' --jq .headRefName '*)
+        printf '%s\n' "\${SMOKE_REPO_FLOW_BRANCH:-feature/repo-flow-submit-watch-publish}"
+        ;;
+      *' --json headRefOid '*|*' --jq .headRefOid '*)
+        git rev-parse HEAD 2>/dev/null || true
+        ;;
+      *)
+        printf '%s\n' "\$number"
+        ;;
+    esac
+    exit 0
+    ;;
+  'pr create')
+    require_pushed
+    log_gh
+    if [ "${SMOKE_GH_FAIL_PR_CREATE:-0}" = "1" ]; then
+      printf '%s\n' "gh pr create failed" >&2
+      exit 1
+    fi
+    title=""
+    base=""
+    head=""
+    body_file=""
+    prev=""
+    for arg in "\$@"; do
+      if [ -n "\$prev" ]; then
+        case "\$prev" in
+          --title)
+            title="\$arg"
+            ;;
+          --body-file)
+            body_file="\$arg"
+            ;;
+          --base)
+            base="\$arg"
+            ;;
+          --head)
+            head="\$arg"
+            ;;
+        esac
+        prev=""
+        continue
+      fi
+      case "\$arg" in
+        --title|--body-file|--base|--head)
+          prev="\$arg"
+          ;;
+      esac
+    done
+    if [ -n "\${GH_STUB_PR_CREATE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr create title=\$title base=\$base head=\$head body_file=\$body_file" >> "\${GH_STUB_PR_CREATE_LOG_FILE}"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr create title=\$title base=\$base head=\$head body_file=\$body_file" >> "\${SMOKE_SEQUENCE_LOG_FILE}"
+    fi
+    if [ -n "\${GH_STUB_PR_STATE_FILE:-}" ]; then
+      number="\${GH_STUB_PR_CREATE_NUMBER:-401}"
+      url="\${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/\$number}"
+      printf '%s\n%s\n%s\nOPEN\n' "\$number" "\$url" "repo-flow title" > "\${GH_STUB_PR_STATE_FILE}"
+      printf '%s\n' "\$url"
+    else
+      printf '%s\n' "\${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/401}"
+    fi
+    ;;
+  'run list')
+    if [ -n "\${SMOKE_GH_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_GH_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    printf '[{"databaseId":901,"conclusion":"success","createdAt":"2026-05-19T00:00:00Z","event":"pull_request","headBranch":"%s","headSha":"%s","status":"completed","workflowName":"ci"}]\n' "\${SMOKE_REPO_FLOW_BRANCH:-feature/repo-flow-submit-watch-publish}" "\$(git rev-parse HEAD 2>/dev/null || true)"
+    ;;
+  *)
+    exec "\${SMOKE_REAL_GH_STUB:?missing SMOKE_REAL_GH_STUB}" "\$cmd" "\$sub" "\$@"
+    ;;
+esac
+EOF
+  chmod +x "$gh_wrapper_dir/gh" || return 1
+cat > "$git_stub_dir/git" <<EOF
+#!/usr/bin/env bash
+set -u
+case "\${1:-}" in
+  checkout)
+    if [ -n "\${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    exec "\${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "\$@"
+    ;;
+  pull)
+    if [ -n "\${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    exit 0
+    ;;
+esac
+  if [ "\${1:-}" = "push" ]; then
+    if [ -n "\${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    if "\${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "\$@"; then
+      : > "\${SMOKE_GIT_PUSH_MARKER_FILE:?missing SMOKE_GIT_PUSH_MARKER_FILE}"
+      exit 0
+  fi
+  exit \$?
+fi
+exec "\${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "\$@"
+EOF
+  chmod +x "$git_stub_dir/git" || return 1
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-watch-publish" || return 1
+  printf '\nrepo-flow submit watch publish line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  git -C "$smoke_test_dir" add docs/testing.md || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_wrapper_dir:$gh_base_dir:$git_stub_dir:$PATH" \
+    SMOKE_REAL_GH_STUB="$gh_base_dir/gh" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
+    SMOKE_GIT_PUSH_MARKER_FILE="$push_marker_file" \
+    SMOKE_GH_LOG_FILE="$gh_log_file" \
+    SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
+    SMOKE_REPO_FLOW_BRANCH="feature/repo-flow-submit-watch-publish" \
+    GH_STUB_PR_STATE_FILE="$pr_state_file" \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/801' \
+    GH_STUB_PR_CREATE_NUMBER=801 \
+    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch publish commit' --watch --timeout=30 --explain > "$stdout_file" 2> "$stderr_file"
+  ) && [ ! -s "$stdout_file" ]; then
+    if grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
+      grep -Fq 'gh pr create title=' "$create_log_file" &&
+      grep -Fq 'gh run list' "$gh_log_file" &&
+      grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&
+      grep -Fxq 'script=repo-flow' "$stderr_file" &&
+      grep -Fxq 'mode=submit' "$stderr_file" &&
+      grep -Fxq 'rc=0' "$stderr_file" &&
+      grep -Fxq 'branch_before=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
+      grep -Fxq 'branch_after=main' "$stderr_file" &&
+      grep -Fxq 'pr=801' "$stderr_file" &&
+      grep -Eq '^commit=[0-9a-f]{7,40}$' "$stderr_file" &&
+      grep -Fxq 'pushed=true' "$stderr_file" &&
+      grep -Fxq 'merged=true' "$stderr_file" &&
+      grep -Fxq 'status_count=0' "$stderr_file" &&
+      grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/801' "$stderr_file" &&
+      grep -Fxq '===== END =====' "$stderr_file"; then
+      push_line="$(grep -n -F 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$sequence_log_file" | head -n1 | cut -d: -f1)"
+      create_line="$(grep -n -F 'gh pr create title=' "$sequence_log_file" | head -n1 | cut -d: -f1)"
+      if [ -n "$push_line" ] && [ -n "$create_line" ] && [ "$push_line" -le "$create_line" ]; then
+        test_pass "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+      else
+        test_fail "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+        status=1
+      fi
+    else
+      test_fail "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_submit_watch_explain_failure_summary() {
+  local status=0
+  local gh_base_dir=""
+  local gh_wrapper_dir=""
+  local git_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+  local git_log_file=""
+  local gh_log_file=""
+  local create_log_file=""
+  local sequence_log_file=""
+  local push_marker_file=""
+  local local_bash_path=""
+  local real_git=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_base_dir="$smoke_test_base/gh-base-stub"
+  gh_wrapper_dir="$smoke_test_base/gh-wrapper-stub"
+  git_stub_dir="$smoke_test_base/git-watch-stub"
+  stdout_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.stderr"
+  git_log_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.git-log"
+  gh_log_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.gh-log"
+  create_log_file="$smoke_test_base/repo-flow-submit-watch-explain-failure-create.log"
+  sequence_log_file="$smoke_test_base/repo-flow-submit-watch-explain-failure-sequence.log"
+  push_marker_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.pushed"
+  smoke_write_gh_stub "$gh_base_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
+
+  mkdir -p "$gh_wrapper_dir" "$git_stub_dir" || return 1
+  cat > "$gh_wrapper_dir/gh" <<EOF
+#!/usr/bin/env bash
+set -u
+cmd="\${1:-}"
+sub="\${2:-}"
+shift 2 >/dev/null 2>&1 || true
+
+log_gh() {
+  if [ -n "\${SMOKE_GH_LOG_FILE:-}" ]; then
+    printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_GH_LOG_FILE"
+  fi
+  if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+    printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+  fi
+}
+
+require_pushed() {
+  if [ ! -f "\${SMOKE_GIT_PUSH_MARKER_FILE:-}" ]; then
+    printf '%s\n' "gh stub: Head sha can't be blank" >&2
+    exit 1
+  fi
+}
+
+case "\$cmd \$sub" in
+  'pr view')
+    require_pushed
+    if [ ! -f "\${GH_STUB_PR_STATE_FILE:-}" ]; then
+      exit 1
+    fi
+    number="\$(sed -n '1p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    url="\$(sed -n '2p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    title="\$(sed -n '3p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    state="\$(sed -n '4p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    case " \$* " in
+      *' --json number '*|*' --jq .number '*)
+        printf '%s\n' "\$number"
+        ;;
+      *' --json title '*|*' --jq .title '*)
+        printf '%s\n' "\$title"
+        ;;
+      *' --json url '*|*' --jq .url '*)
+        printf '%s\n' "\$url"
+        ;;
+      *' --json state '*|*' --jq .state '*)
+        printf '%s\n' "\$state"
+        ;;
+      *' --json isDraft '*|*' --jq .isDraft '*)
+        printf 'false\n'
+        ;;
+      *' --json mergeable '*|*' --jq .mergeable '*)
+        printf 'MERGEABLE\n'
+        ;;
+      *' --json headRefName '*|*' --jq .headRefName '*)
+        printf '%s\n' "feature/repo-flow-submit-watch-publish"
+        ;;
+      *' --json headRefOid '*|*' --jq .headRefOid '*)
+        git rev-parse HEAD 2>/dev/null || true
+        ;;
+      *)
+        printf '%s\n' "\$number"
+        ;;
+    esac
+    exit 0
+    ;;
+  'pr create')
+    require_pushed
+    log_gh
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr create title=\$*" >> "\${SMOKE_SEQUENCE_LOG_FILE}"
+    fi
+    printf '%s\n' "gh pr create failed" >&2
+    exit 1
+    ;;
+  'run list')
+    if [ -n "\${SMOKE_GH_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_GH_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    printf '[]\n'
+    ;;
+  *)
+    exec "\${SMOKE_REAL_GH_STUB:?missing SMOKE_REAL_GH_STUB}" "\$cmd" "\$sub" "\$@"
+    ;;
+esac
+EOF
+  chmod +x "$gh_wrapper_dir/gh" || return 1
+cat > "$git_stub_dir/git" <<EOF
+#!/usr/bin/env bash
+set -u
+case "\${1:-}" in
+  checkout)
+    if [ -n "\${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    exec "\${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "\$@"
+    ;;
+  pull)
+    if [ -n "\${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    exit 0
+    ;;
+esac
+  if [ "\${1:-}" = "push" ]; then
+    if [ -n "\${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
+      printf '%s\n' "git \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
+    fi
+    if "\${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "\$@"; then
+      : > "\${SMOKE_GIT_PUSH_MARKER_FILE:?missing SMOKE_GIT_PUSH_MARKER_FILE}"
+      exit 0
+    fi
+    exit \$?
+  fi
+exec "\${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "\$@"
+EOF
+  chmod +x "$git_stub_dir/git" || return 1
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-watch-publish" || return 1
+  printf '\nrepo-flow submit watch explain failure line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  git -C "$smoke_test_dir" add docs/testing.md || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_wrapper_dir:$gh_base_dir:$git_stub_dir:$PATH" \
+    SMOKE_REAL_GH_STUB="$gh_base_dir/gh" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
+    SMOKE_GIT_PUSH_MARKER_FILE="$push_marker_file" \
+    SMOKE_GH_LOG_FILE="$gh_log_file" \
+    SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
+    SMOKE_GH_FAIL_PR_CREATE=1 \
+    GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch explain failure commit' --watch --timeout=30 --explain > "$stdout_file" 2> "$stderr_file"
+  ); then
+    test_fail "repo-flow submit --watch explain reports failure summaries"
+    status=1
+  elif grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
+    [ ! -s "$stdout_file" ] &&
+    grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&
+    grep -Fxq 'script=repo-flow' "$stderr_file" &&
+    grep -Fxq 'mode=submit' "$stderr_file" &&
+    grep -Fxq 'rc=1' "$stderr_file" &&
+    grep -Fxq 'branch_before=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
+    grep -Fxq 'branch_after=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
+    grep -Fxq 'pr=unknown' "$stderr_file" &&
+    grep -Eq '^commit=[0-9a-f]{7,40}$' "$stderr_file" &&
+    grep -Fxq 'pushed=true' "$stderr_file" &&
+    grep -Fxq 'merged=false' "$stderr_file" &&
+    grep -Fxq 'status_count=0' "$stderr_file" &&
+    grep -Fxq 'url_or_stop=pr-finish completion failed for PR #' "$stderr_file" &&
+    grep -Fxq '===== END =====' "$stderr_file"; then
+    test_pass "repo-flow submit --watch explain reports failure summaries"
+  else
+    test_fail "repo-flow submit --watch explain reports failure summaries"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_repo_flow_submit_contract() {
   local status=0
   local gh_stub_dir=""
@@ -1150,6 +1619,8 @@ smoke_main() {
     smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
     smoke_run_named_check "smoke:repo-flow-submit-paths" smoke_check_repo_flow_submit_paths || status=1
     smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
     smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
   else
     mkdir -p "$TEST_TEMP_ROOT" || return 1
@@ -1188,6 +1659,12 @@ smoke_main() {
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1

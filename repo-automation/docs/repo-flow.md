@@ -11,6 +11,7 @@ It refuses absolute paths, `..`, default-branch submits, and any unrequested dir
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
 `--watch` hands off to the repo-native PR completion path with a bounded timeout; `--timeout=<seconds>` sets that limit.
+When `--watch` is used, `repo-flow submit` pushes the current branch before PR lookup/create/watch.
 `--diagnose-on-fail` is only forwarded with `--watch`.
 
 `--watch` hands off to `repo-automation/bin/pr-finish --watch --merge --delete-branch --sync-main --pr=current` after the branch is pushed and a PR exists.
