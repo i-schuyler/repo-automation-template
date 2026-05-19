@@ -707,6 +707,9 @@ smoke_check_preflight_json() {
   local preflight_explain_stdout="$smoke_test_dir/preflight-explain.out"
   local preflight_explain_stderr="$smoke_test_dir/preflight-explain.err"
   local preflight_alias_explain_stderr="$smoke_test_dir/preflight-alias-explain.err"
+  local preflight_stale_branch="feature/preflight-stale"
+  local preflight_stale_branch_explain_stderr="$smoke_test_dir/preflight-stale-branch-explain.err"
+  local preflight_stale_repo="$smoke_test_base/preflight-stale-repo-$$"
   local local_bash_path=""
   local shim_dir=""
   local ssh_stub_dir="$smoke_test_base/preflight-ssh-stub"
@@ -751,6 +754,56 @@ smoke_check_preflight_json() {
     test_pass "preflight default human output is compact"
   else
     test_fail "preflight default human output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cp -R "$smoke_test_dir" "$preflight_stale_repo" || return 1
+    cd "$preflight_stale_repo" || return 1
+    git reset --hard >/dev/null 2>&1 || return 1
+    git clean -fd >/dev/null 2>&1 || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    git branch -D "$preflight_stale_branch" >/dev/null 2>&1 || true
+    git switch -c "$preflight_stale_branch" >/dev/null 2>&1 || return 1
+    printf '\nstale branch note\n' >> README.md || return 1
+    git add README.md || return 1
+    git commit -m "test: stale preflight branch" >/dev/null 2>&1 || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    printf '\nmain advances after branch creation\n' >> README.md || return 1
+    git add README.md || return 1
+    git commit -m "test: advance main after stale branch" >/dev/null 2>&1 || return 1
+    git update-index --skip-worktree .repo-automation.conf || return 1
+    python3 - "$smoke_expected_origin_url" .repo-automation.conf <<'PY' || return 1
+import pathlib
+import sys
+
+expected = sys.argv[1]
+config_path = pathlib.Path(sys.argv[2])
+text = config_path.read_text(encoding="utf-8")
+old = f'EXPECTED_REMOTE_URL="{expected}"'
+new = 'EXPECTED_REMOTE_URL=""'
+if old not in text:
+    raise SystemExit(1)
+config_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+PY
+    git remote set-url origin "$smoke_remote_dir" >/dev/null 2>&1 || return 1
+    git push origin main >/dev/null 2>&1 || return 1
+    git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
+    git checkout "$preflight_stale_branch" >/dev/null 2>&1 || return 1
+    repo-automation/bin/codex-slice-preflight --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_explain_stderr"
+  ); then
+    test_fail "preflight stops on an existing branch behind origin/main"
+    status=1
+  elif grep -Fxq '===== FINAL SUMMARY =====' "$preflight_stale_branch_explain_stderr" &&
+    grep -Fxq 'script=codex-slice-preflight' "$preflight_stale_branch_explain_stderr" &&
+    grep -Eq '^rc=1$' "$preflight_stale_branch_explain_stderr" &&
+    grep -Fq 'STOP: existing branch is behind origin/main:' "$preflight_stale_branch_explain_stderr" &&
+    grep -Fq 'recreate, reset, or rebase it' "$preflight_stale_branch_explain_stderr" &&
+    grep -Fxq '===== END =====' "$preflight_stale_branch_explain_stderr"; then
+    test_pass "preflight stops on an existing branch behind origin/main"
+  else
+    test_fail "preflight stops on an existing branch behind origin/main"
     status=1
   fi
 
