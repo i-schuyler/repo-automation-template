@@ -1042,6 +1042,9 @@ smoke_check_preflight_json() {
   local preflight_clean_home="$smoke_test_base/preflight-clean-home"
   local preflight_clean_stdout="$smoke_test_base/preflight-clean.out"
   local preflight_clean_stderr="$smoke_test_base/preflight-clean.err"
+  local preflight_clean_branch="feature/preflight-clean-cache-branch"
+  local preflight_clean_branch_stderr="$smoke_test_base/preflight-clean-branch.err"
+  local preflight_clean_branch_repo="$smoke_test_base/preflight-clean-repo-$$"
   local local_bash_path=""
   local shim_dir=""
   local ssh_stub_dir="$smoke_test_base/preflight-ssh-stub"
@@ -1255,6 +1258,8 @@ EOF
     grep -Eq '^cleanup_free_after_bytes=[0-9]+$' "$preflight_clean_stderr" &&
     grep -Eq '^cleanup_free_after=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_stderr" &&
     ! grep -Fq 'cleanup_command=' "$preflight_clean_stderr" &&
+    ! grep -Eq '^branch_before=' "$preflight_clean_stderr" &&
+    ! grep -Eq '^branch_after=' "$preflight_clean_stderr" &&
     grep -Fxq '===== END =====' "$preflight_clean_stderr" &&
     [ ! -e "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" ] &&
     [ ! -e "$preflight_clean_tmpdir/repo-automation-template/marker.txt" ] &&
@@ -1269,6 +1274,79 @@ EOF
     test_pass "preflight clean-test-cache removes only safe cache roots"
   else
     test_fail "preflight clean-test-cache removes only safe cache roots"
+    status=1
+  fi
+
+  mkdir -p "$preflight_clean_tmpdir/repo-automation-template-tests" \
+    "$preflight_clean_tmpdir/repo-automation-template" \
+    "$preflight_clean_tmpdir/repo-automation" \
+    "$preflight_clean_tmpdir/repo-automation-log-dump" \
+    "$preflight_clean_home/.cache/repo-automation-template-tests" \
+    "$preflight_clean_home/.cache/repo-automation-template" \
+    "$preflight_clean_home/.cache/repo-automation" \
+    "$preflight_clean_home/.cache/repo-automation-log-dump" \
+    "$preflight_clean_home/projects/repo-automation-template" \
+    "$preflight_clean_home/Downloads" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-log-dump/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_home/projects/repo-automation-template/keep.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_home/Downloads/keep.txt" || return 1
+
+  if (
+    cp -R "$smoke_test_dir" "$preflight_clean_branch_repo" || return 1
+    cd "$preflight_clean_branch_repo" || return 1
+    git reset --hard >/dev/null 2>&1 || return 1
+    git clean -fd >/dev/null 2>&1 || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    git update-index --skip-worktree .repo-automation.conf || return 1
+    python3 - "$smoke_expected_origin_url" .repo-automation.conf <<'PY' || return 1
+import pathlib
+import sys
+
+expected = sys.argv[1]
+config_path = pathlib.Path(sys.argv[2])
+text = config_path.read_text(encoding="utf-8")
+old = f'EXPECTED_REMOTE_URL="{expected}"'
+new = 'EXPECTED_REMOTE_URL=""'
+if old not in text:
+    raise SystemExit(1)
+config_path.write_text(text.replace(old, new, 1), encoding="utf-8")
+PY
+    git remote set-url origin "$smoke_remote_dir" >/dev/null 2>&1 || return 1
+    git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
+    git pull --ff-only >/dev/null 2>&1 || return 1
+    git branch -D "$preflight_clean_branch" >/dev/null 2>&1 || true
+    git switch -c "$preflight_clean_branch" >/dev/null 2>&1 || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_branch_stderr" &&
+    grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^mode=clean-test-cache$' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^rc=0$' "$preflight_clean_branch_stderr" &&
+    grep -Fxq 'disk=pass' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^branch_before=main$' "$preflight_clean_branch_stderr" &&
+    grep -Fxq "branch_after=$preflight_clean_branch" "$preflight_clean_branch_stderr" &&
+    grep -Fxq 'default_branch=main' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_clean_branch_stderr" &&
+    grep -Fxq 'status_count=0' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_deleted_count=8$' "$preflight_clean_branch_stderr" &&
+    grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_before_bytes=[0-9]+$' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_before=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_after_bytes=[0-9]+$' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_after=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_branch_stderr" &&
+    grep -Fxq '===== END =====' "$preflight_clean_branch_stderr" &&
+    ( cd "$preflight_clean_branch_repo" && [ "$(git branch --show-current)" = "$preflight_clean_branch" ] ); then
+    test_pass "preflight clean-test-cache can continue into branch setup"
+  else
+    test_fail "preflight clean-test-cache can continue into branch setup"
     status=1
   fi
 
