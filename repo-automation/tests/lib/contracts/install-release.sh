@@ -506,7 +506,7 @@ smoke_check_installer_apply_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
   ) && python3 -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-review" in data.get("files_to_add", []) and "repo-automation/bin/repair-prompt" in data.get("files_to_add", []) and "repo-automation/bin/review-pack" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-review.md" in data.get("files_to_add", []) and "repo-automation/docs/repair-prompt.md" in data.get("files_to_add", []) and "repo-automation/docs/review-pack.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 26 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
+    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-review" in data.get("files_to_add", []) and "repo-automation/bin/repair-prompt" in data.get("files_to_add", []) and "repo-automation/bin/review-pack" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-review.md" in data.get("files_to_add", []) and "repo-automation/docs/repair-prompt.md" in data.get("files_to_add", []) and "repo-automation/docs/review-pack.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 27 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
       test_pass "repo-automation-install plan/json is parseable"
     else
       test_fail "repo-automation-install plan/json is parseable"
@@ -631,6 +631,7 @@ smoke_check_installer_apply_contract() {
     [ -f repo-automation/tests/contracts/post-codex-review.sh ] || return 1
     [ -f repo-automation/tests/contracts/repair-prompt.sh ] || return 1
     [ -f repo-automation/tests/contracts/review-pack.sh ] || return 1
+    [ -f repo-automation/tests/contracts/pr-body-check.sh ] || return 1
     [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
@@ -653,6 +654,7 @@ smoke_check_installer_apply_contract() {
     [ -x repo-automation/tests/contracts/post-codex-review.sh ] || return 1
     [ -x repo-automation/tests/contracts/repair-prompt.sh ] || return 1
     [ -x repo-automation/tests/contracts/review-pack.sh ] || return 1
+    [ -x repo-automation/tests/contracts/pr-body-check.sh ] || return 1
     [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
     [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
     [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
