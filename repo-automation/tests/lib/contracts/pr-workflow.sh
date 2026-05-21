@@ -1325,10 +1325,10 @@ PY
     git switch -c "$preflight_clean_branch" >/dev/null 2>&1 || return 1
     git checkout main >/dev/null 2>&1 || return 1
     TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
-      repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
+    repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
   ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_branch_stderr" &&
-    grep -Eq '^mode=clean-test-cache$' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^mode=(run|preflight)$' "$preflight_clean_branch_stderr" &&
     grep -Eq '^rc=0$' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'disk=pass' "$preflight_clean_branch_stderr" &&
     grep -Eq '^branch_before=main$' "$preflight_clean_branch_stderr" &&
@@ -1336,12 +1336,13 @@ PY
     grep -Fxq 'default_branch=main' "$preflight_clean_branch_stderr" &&
     grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'status_count=0' "$preflight_clean_branch_stderr" &&
+    grep -Fxq 'cleanup=cleaned' "$preflight_clean_branch_stderr" &&
     grep -Eq '^cleanup_deleted_count=8$' "$preflight_clean_branch_stderr" &&
-    grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_branch_stderr" &&
-    grep -Eq '^cleanup_free_before_bytes=[0-9]+$' "$preflight_clean_branch_stderr" &&
-    grep -Eq '^cleanup_free_before=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_branch_stderr" &&
-    grep -Eq '^cleanup_free_after_bytes=[0-9]+$' "$preflight_clean_branch_stderr" &&
-    grep -Eq '^cleanup_free_after=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_branch_stderr" &&
+    ! grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_branch_stderr" &&
+    ! grep -Eq '^cleanup_free_before_bytes=' "$preflight_clean_branch_stderr" &&
+    ! grep -Eq '^cleanup_free_before=' "$preflight_clean_branch_stderr" &&
+    ! grep -Eq '^cleanup_free_after_bytes=' "$preflight_clean_branch_stderr" &&
+    ! grep -Eq '^cleanup_free_after=' "$preflight_clean_branch_stderr" &&
     grep -Fxq '===== END =====' "$preflight_clean_branch_stderr" &&
     ( cd "$preflight_clean_branch_repo" && [ "$(git branch --show-current)" = "$preflight_clean_branch" ] ); then
     test_pass "preflight clean-test-cache can continue into branch setup"
