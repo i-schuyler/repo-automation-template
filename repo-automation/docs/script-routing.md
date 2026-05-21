@@ -16,7 +16,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | CI status check | `ci-status` | yes | no | no | yes | no | `ci-watch` |
 | CI watch | `ci-watch` | no | no | no | yes | no | `failure-log` |
 | CI failure evidence | `ci-log-dump` | no | yes | no | yes | no | `failure-log` |
-| merge and cleanup | `pr-finish` | no | yes | yes | yes | maybe | `branch-cleanup` |
+| review gate and merge | `repo-flow merge`, `pr-finish` | no | yes | yes | yes | maybe | `branch-cleanup` |
 | release prep | `prepare-release` | no | yes | yes | no | yes | `repo-doctor` |
 | downstream install/update | `repo-automation-install` | no | yes | no | no | no | `starter-template-ready` |
 | repo snapshot | `repo-zip` | yes | yes | no | no | no | `evidence-bundle` |
@@ -25,7 +25,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | fallback review-pack | `review-pack --target=review` | yes | yes | no | no | no | `repo-flow status-card` |
 | fallback review-pack for Codex | `review-pack --target=codex` | yes | yes | no | no | no | `repair-prompt` |
 | repair-prompt | `repair-prompt` | yes | yes | no | no | no | `add-doc-pr` |
-| guarded submit | `repo-flow submit` | no | yes | yes | yes | maybe | `pr-finish`; uses `pr-create` for canonical PR body validation |
+| guarded submit | `repo-flow submit` | no | yes | yes | yes | maybe | `repo-flow merge`; uses `pr-create` for canonical PR body validation |
 | autopilot plan-only | `autopilot plan-only` | yes | no | no | no | no | `status-packet` |
 
 `review-pack --target=codex` and `repair-prompt --target=codex` are artifact-only routes; they do not invoke Codex.

@@ -179,6 +179,15 @@ case "${1:-}" in
     fi
     exec "${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "$@"
     ;;
+  push)
+    if [ -n "${SMOKE_GIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "git $*" >> "$SMOKE_GIT_LOG_FILE"
+    fi
+    if [ -n "${SMOKE_GIT_PUSH_MARKER_FILE:-}" ]; then
+      : > "$SMOKE_GIT_PUSH_MARKER_FILE"
+    fi
+    exec "${SMOKE_REAL_GIT:?missing SMOKE_REAL_GIT}" "$@"
+    ;;
   pull)
     if [ -n "${SMOKE_GIT_LOG_FILE:-}" ]; then
       printf '%s\n' "git $*" >> "$SMOKE_GIT_LOG_FILE"
@@ -617,7 +626,7 @@ smoke_check_repo_flow_dry_run_json() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" REMOTE_NAME=localorigin EXPECTED_REMOTE_URL="" "$local_bash_path" repo-automation/bin/repo-flow --dry-run --explain > "$explain_out" 2> "$explain_err"
-  ) && [ ! -s "$explain_out" ] && grep -Fq 'final status:' "$explain_err" && grep -Fxq '===== FINAL SUMMARY =====' "$explain_err" && grep -Fxq '===== END =====' "$explain_err"; then
+  ) && [ ! -s "$explain_out" ] && grep -Fq 'final status:' "$explain_err" && grep -Fxq '===== FINAL SUMMARY =====' "$explain_err" && grep -Fxq '===== END =====' "$explain_err" && grep -Fq 'repo-automation/bin/repo-flow merge' "$help_out"; then
     test_pass "repo-flow explain output is detailed"
   else
     test_fail "repo-flow explain output is detailed"
@@ -828,6 +837,7 @@ smoke_check_repo_flow_submit_staged_watch() {
   local stdout_file=""
   local stderr_file=""
   local git_log_file=""
+  local gh_log_file=""
   local head_before=""
   local head_after=""
   local local_bash_path=""
@@ -840,6 +850,7 @@ smoke_check_repo_flow_submit_staged_watch() {
   stdout_file="$smoke_test_base/repo-flow-submit-staged-watch.out"
   stderr_file="$smoke_test_base/repo-flow-submit-staged-watch.stderr"
   git_log_file="$smoke_test_base/repo-flow-submit-staged-watch.git-log"
+  gh_log_file="$smoke_test_base/repo-flow-submit-staged-watch.gh-log"
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   smoke_write_repo_flow_git_sync_stub "$git_stub_dir" "$git_log_file" >/dev/null || return 1
   local_bash_path="$(command -v bash)" || return 1
@@ -856,27 +867,28 @@ smoke_check_repo_flow_submit_staged_watch() {
     PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
     SMOKE_REAL_GIT="$real_git" \
     SMOKE_GIT_LOG_FILE="$git_log_file" \
+    GH_STUB_PR_MERGE_LOG_FILE="$gh_log_file" \
     GH_STUB_PR_VIEW_NUMBER=702 \
     GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/702' \
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-702' \
-    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":601,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-submit-staged-watch","headSha":"old-sha-702","status":"completed","workflowName":"ci"},{"databaseId":602,"conclusion":"success","createdAt":"2026-05-12T13:05:00Z","event":"pull_request","headBranch":"feature/repo-flow-submit-staged-watch","headSha":"current-sha-702","status":"completed","workflowName":"ci"}]' \
     "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit staged commit' --watch --timeout=30 --diagnose-on-fail > "$stdout_file" 2> "$stderr_file"
-  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/702' ]; then
+  ) && [ "$(cat "$stdout_file")" = 'pass' ]; then
     head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
     if [ "$head_before" != "$head_after" ] &&
       git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit staged commit' &&
-      grep -q 'git checkout main' "$git_log_file" &&
-      grep -q 'git pull --ff-only' "$git_log_file"; then
-      test_pass "repo-flow submit completes the PR on the current head SHA"
+      ! grep -q 'git checkout main' "$git_log_file" &&
+      ! grep -q 'git pull --ff-only' "$git_log_file" &&
+      ! grep -Fq 'gh pr merge' "$gh_log_file"; then
+      test_pass "repo-flow submit watches CI and stops before merge"
     else
-      test_fail "repo-flow submit completes the PR on the current head SHA"
+      test_fail "repo-flow submit watches CI and stops before merge"
       status=1
     fi
   else
-    test_fail "repo-flow submit completes the PR on the current head SHA"
+    test_fail "repo-flow submit watches CI and stops before merge"
     status=1
   fi
 
@@ -1102,48 +1114,48 @@ EOF
     SMOKE_REAL_GIT="$real_git" \
     SMOKE_GIT_LOG_FILE="$git_log_file" \
     SMOKE_GIT_PUSH_MARKER_FILE="$push_marker_file" \
-    SMOKE_GH_LOG_FILE="$gh_log_file" \
     SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
     SMOKE_REPO_FLOW_BRANCH="feature/repo-flow-submit-watch-publish" \
     GH_STUB_PR_STATE_FILE="$pr_state_file" \
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    GH_STUB_PR_MERGE_LOG_FILE="$gh_log_file" \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/801' \
     GH_STUB_PR_CREATE_NUMBER=801 \
-    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
     "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch publish commit' --watch --timeout=30 --explain > "$stdout_file" 2> "$stderr_file"
   ) && [ ! -s "$stdout_file" ]; then
     summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$stderr_file" 2>/dev/null || printf '0')"
     if [ "$summary_count" = "1" ] &&
       grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
       grep -Fq 'gh pr create title=' "$create_log_file" &&
-      grep -Fq 'gh run list' "$gh_log_file" &&
+      ! grep -Fq 'gh pr merge' "$gh_log_file" &&
       grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&
       grep -Fxq 'script=repo-flow' "$stderr_file" &&
       grep -Fxq 'mode=submit' "$stderr_file" &&
       grep -Fxq 'rc=0' "$stderr_file" &&
       grep -Fxq 'branch_before=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
-      grep -Fxq 'branch_after=main' "$stderr_file" &&
+      grep -Fxq 'branch_after=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
       grep -Fxq 'pr=801' "$stderr_file" &&
       grep -Eq '^commit=[0-9a-f]{7,40}$' "$stderr_file" &&
       grep -Fxq 'pushed=true' "$stderr_file" &&
-      grep -Fxq 'merged=true' "$stderr_file" &&
+      grep -Fxq 'merged=false' "$stderr_file" &&
       grep -Fxq 'status_count=0' "$stderr_file" &&
       grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/801' "$stderr_file" &&
-      grep -Fxq '===== END =====' "$stderr_file"; then
+      grep -Fxq '===== END =====' "$stderr_file" &&
+      ! [ -s "$gh_log_file" ]; then
       push_line="$(grep -n -F 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$sequence_log_file" | head -n1 | cut -d: -f1)"
       create_line="$(grep -n -F 'gh pr create title=' "$sequence_log_file" | head -n1 | cut -d: -f1)"
       if [ -n "$push_line" ] && [ -n "$create_line" ] && [ "$push_line" -le "$create_line" ]; then
-        test_pass "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+        test_pass "repo-flow submit --watch stops before merge and prints explain summary"
       else
-        test_fail "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+        test_fail "repo-flow submit --watch stops before merge and prints explain summary"
         status=1
       fi
     else
-      test_fail "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+      test_fail "repo-flow submit --watch stops before merge and prints explain summary"
       status=1
     fi
   else
-    test_fail "repo-flow submit --watch pushes the branch before PR lookup/create and prints explain summary"
+    test_fail "repo-flow submit --watch stops before merge and prints explain summary"
     status=1
   fi
 
@@ -1152,8 +1164,7 @@ EOF
 
 smoke_check_repo_flow_submit_watch_explain_failure_summary() {
   local status=0
-  local gh_base_dir=""
-  local gh_wrapper_dir=""
+  local gh_stub_dir=""
   local git_stub_dir=""
   local stdout_file=""
   local stderr_file=""
@@ -1167,8 +1178,7 @@ smoke_check_repo_flow_submit_watch_explain_failure_summary() {
 
   smoke_setup_temp_repo || return 1
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
-  gh_base_dir="$smoke_test_base/gh-base-stub"
-  gh_wrapper_dir="$smoke_test_base/gh-wrapper-stub"
+  gh_stub_dir="$smoke_test_base/gh-stub"
   git_stub_dir="$smoke_test_base/git-watch-stub"
   stdout_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.out"
   stderr_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.stderr"
@@ -1177,100 +1187,11 @@ smoke_check_repo_flow_submit_watch_explain_failure_summary() {
   create_log_file="$smoke_test_base/repo-flow-submit-watch-explain-failure-create.log"
   sequence_log_file="$smoke_test_base/repo-flow-submit-watch-explain-failure-sequence.log"
   push_marker_file="$smoke_test_base/repo-flow-submit-watch-explain-failure.pushed"
-  smoke_write_gh_stub "$gh_base_dir" || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
   local_bash_path="$(command -v bash)" || return 1
   real_git="$(command -v git)" || return 1
-
-  mkdir -p "$gh_wrapper_dir" "$git_stub_dir" || return 1
-  cat > "$gh_wrapper_dir/gh" <<EOF
-#!/usr/bin/env bash
-set -u
-cmd="\${1:-}"
-sub="\${2:-}"
-shift 2 >/dev/null 2>&1 || true
-
-log_gh() {
-  if [ -n "\${SMOKE_GH_LOG_FILE:-}" ]; then
-    printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_GH_LOG_FILE"
-  fi
-  if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
-    printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
-  fi
-}
-
-require_pushed() {
-  if [ ! -f "\${SMOKE_GIT_PUSH_MARKER_FILE:-}" ]; then
-    printf '%s\n' "gh stub: Head sha can't be blank" >&2
-    exit 1
-  fi
-}
-
-case "\$cmd \$sub" in
-  'pr view')
-    require_pushed
-    if [ ! -f "\${GH_STUB_PR_STATE_FILE:-}" ]; then
-      exit 1
-    fi
-    number="\$(sed -n '1p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
-    url="\$(sed -n '2p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
-    title="\$(sed -n '3p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
-    state="\$(sed -n '4p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
-    case " \$* " in
-      *' --json number '*|*' --jq .number '*)
-        printf '%s\n' "\$number"
-        ;;
-      *' --json title '*|*' --jq .title '*)
-        printf '%s\n' "\$title"
-        ;;
-      *' --json url '*|*' --jq .url '*)
-        printf '%s\n' "\$url"
-        ;;
-      *' --json state '*|*' --jq .state '*)
-        printf '%s\n' "\$state"
-        ;;
-      *' --json isDraft '*|*' --jq .isDraft '*)
-        printf 'false\n'
-        ;;
-      *' --json mergeable '*|*' --jq .mergeable '*)
-        printf 'MERGEABLE\n'
-        ;;
-      *' --json headRefName '*|*' --jq .headRefName '*)
-        printf '%s\n' "feature/repo-flow-submit-watch-publish"
-        ;;
-      *' --json headRefOid '*|*' --jq .headRefOid '*)
-        git rev-parse HEAD 2>/dev/null || true
-        ;;
-      *)
-        printf '%s\n' "\$number"
-        ;;
-    esac
-    exit 0
-    ;;
-  'pr create')
-    require_pushed
-    log_gh
-    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
-      printf '%s\n' "gh pr create title=\$*" >> "\${SMOKE_SEQUENCE_LOG_FILE}"
-    fi
-    printf '%s\n' "gh pr create failed" >&2
-    exit 1
-    ;;
-  'run list')
-    if [ -n "\${SMOKE_GH_LOG_FILE:-}" ]; then
-      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_GH_LOG_FILE"
-    fi
-    if [ -n "\${SMOKE_SEQUENCE_LOG_FILE:-}" ]; then
-      printf '%s\n' "gh \$cmd \$sub \$*" >> "\$SMOKE_SEQUENCE_LOG_FILE"
-    fi
-    printf '[]\n'
-    ;;
-  *)
-    exec "\${SMOKE_REAL_GH_STUB:?missing SMOKE_REAL_GH_STUB}" "\$cmd" "\$sub" "\$@"
-    ;;
-esac
-EOF
-  chmod +x "$gh_wrapper_dir/gh" || return 1
-cat > "$git_stub_dir/git" <<EOF
+  mkdir -p "$git_stub_dir" || return 1
+  cat > "$git_stub_dir/git" <<EOF
 #!/usr/bin/env bash
 set -u
 case "\${1:-}" in
@@ -1311,45 +1232,134 @@ EOF
   chmod +x "$git_stub_dir/git" || return 1
 
   smoke_prepare_repo_flow_remote || return 1
-  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-watch-publish" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-watch-explain-failure" || return 1
   printf '\nrepo-flow submit watch explain failure line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
   git -C "$smoke_test_dir" add docs/testing.md || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_wrapper_dir:$gh_base_dir:$git_stub_dir:$PATH" \
-    SMOKE_REAL_GH_STUB="$gh_base_dir/gh" \
+    PATH="$gh_stub_dir:$git_stub_dir:$PATH" \
     SMOKE_REAL_GIT="$real_git" \
     SMOKE_GIT_LOG_FILE="$git_log_file" \
     SMOKE_GIT_PUSH_MARKER_FILE="$push_marker_file" \
-    SMOKE_GH_LOG_FILE="$gh_log_file" \
     SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
-    SMOKE_GH_FAIL_PR_CREATE=1 \
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
-    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch explain failure commit' --watch --timeout=30 --explain > "$stdout_file" 2> "$stderr_file"
+    GH_STUB_PR_MERGE_LOG_FILE="$gh_log_file" \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/repo-flow-submit-watch-explain-failure' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-902' \
+    GH_STUB_PR_VIEW_NUMBER=902 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/902' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":902,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-submit-watch-explain-failure","headSha":"current-sha-902","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_RUN_VIEW_FAILED_LOG='fail: CI checks failed
+path: repo-automation/tests/contracts/repo-flow.sh
+fix: inspect the failing CI log and rerun the focused test' \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch explain failure commit' --watch --timeout=30 --diagnose-on-fail --explain > "$stdout_file" 2> "$stderr_file"
   ); then
-    test_fail "repo-flow submit --watch explain reports failure summaries"
+    test_fail "repo-flow submit --watch explain diagnoses blocked checks"
     status=1
   elif summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$stderr_file" 2>/dev/null || printf '0')" &&
     [ "$summary_count" = "1" ] &&
-    grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
+    grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-explain-failure' "$git_log_file" &&
     [ ! -s "$stdout_file" ] &&
     grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&
     grep -Fxq 'script=repo-flow' "$stderr_file" &&
     grep -Fxq 'mode=submit' "$stderr_file" &&
     grep -Fxq 'rc=1' "$stderr_file" &&
-    grep -Fxq 'branch_before=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
-    grep -Fxq 'branch_after=feature/repo-flow-submit-watch-publish' "$stderr_file" &&
-    grep -Fxq 'pr=unknown' "$stderr_file" &&
+    grep -Fxq 'branch_before=feature/repo-flow-submit-watch-explain-failure' "$stderr_file" &&
+    grep -Fxq 'branch_after=feature/repo-flow-submit-watch-explain-failure' "$stderr_file" &&
+    grep -Fxq 'pr=902' "$stderr_file" &&
     grep -Eq '^commit=[0-9a-f]{7,40}$' "$stderr_file" &&
     grep -Fxq 'pushed=true' "$stderr_file" &&
     grep -Fxq 'merged=false' "$stderr_file" &&
     grep -Fxq 'status_count=0' "$stderr_file" &&
-    grep -Fxq 'url_or_stop=pr-finish completion failed for PR #' "$stderr_file" &&
-    grep -Fxq '===== END =====' "$stderr_file"; then
-    test_pass "repo-flow submit --watch explain reports failure summaries"
+    grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/902' "$stderr_file" &&
+    grep -Fxq '===== END =====' "$stderr_file" &&
+    grep -Fq 'fail: CI checks failed' "$stderr_file" &&
+    [ ! -s "$create_log_file" ] &&
+    ! [ -s "$gh_log_file" ]; then
+    test_pass "repo-flow submit --watch explain diagnoses blocked checks"
   else
-    test_fail "repo-flow submit --watch explain reports failure summaries"
+    test_fail "repo-flow submit --watch explain diagnoses blocked checks"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_merge_contract() {
+  local status=0
+  local gh_stub_dir=""
+  local git_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+  local git_log_file=""
+  local gh_merge_log_file=""
+  local sequence_log_file=""
+  local local_bash_path=""
+  local real_git=""
+  local head_sha=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  git_stub_dir="$smoke_test_base/git-stub"
+  stdout_file="$smoke_test_base/repo-flow-merge.out"
+  stderr_file="$smoke_test_base/repo-flow-merge.stderr"
+  git_log_file="$smoke_test_base/repo-flow-merge.git-log"
+  gh_merge_log_file="$smoke_test_base/repo-flow-merge-gh.log"
+  sequence_log_file="$smoke_test_base/repo-flow-merge-sequence.log"
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_write_repo_flow_git_sync_stub "$git_stub_dir" "$git_log_file" >/dev/null || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-merge" || return 1
+  printf '\nrepo-flow merge line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
+  git -C "$smoke_test_dir" add docs/testing.md || return 1
+  git -C "$smoke_test_dir" commit -m "repo-flow merge test" >/dev/null || return 1
+  head_sha="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
+    SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
+    GH_STUB_PR_VIEW_HEAD_SHA="$head_sha" \
+    GH_STUB_PR_VIEW_HEAD_REF="feature/repo-flow-merge" \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_NUMBER=903 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/903' \
+    GH_STUB_PR_VIEW_TITLE='repo-flow merge test PR' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_MERGE_LOG_FILE="$gh_merge_log_file" \
+    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":903,"conclusion":"success","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-merge","headSha":"'"$head_sha"'","status":"completed","workflowName":"ci"}]' \
+    "$local_bash_path" repo-automation/bin/repo-flow merge --pr=903 --explain > "$stdout_file" 2> "$stderr_file"
+  ) && [ ! -s "$stdout_file" ]; then
+    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$stderr_file" 2>/dev/null || printf '0')"
+    if [ "$summary_count" = "1" ] &&
+      grep -Fxq 'script=repo-flow' "$stderr_file" &&
+      grep -Fxq 'mode=merge' "$stderr_file" &&
+      grep -Fxq 'rc=0' "$stderr_file" &&
+      grep -Fxq 'branch_before=feature/repo-flow-merge' "$stderr_file" &&
+      grep -Fxq 'branch_after=main' "$stderr_file" &&
+      grep -Fxq 'pr=903' "$stderr_file" &&
+      grep -Fxq 'merged=true' "$stderr_file" &&
+      grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/903' "$stderr_file" &&
+      grep -Fxq '===== END =====' "$stderr_file" &&
+      grep -Fq 'gh pr merge 903 --squash --delete-branch' "$gh_merge_log_file" &&
+      grep -Fq 'git checkout main' "$git_log_file" &&
+      grep -Fq 'git pull --ff-only' "$git_log_file"; then
+      test_pass "repo-flow merge uses the explicit merge/delete/sync path"
+    else
+      test_fail "repo-flow merge uses the explicit merge/delete/sync path"
+      status=1
+    fi
+  else
+    test_fail "repo-flow merge uses the explicit merge/delete/sync path"
     status=1
   fi
 
@@ -1404,7 +1414,12 @@ smoke_check_repo_flow_submit_contract() {
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
   ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
-    test_pass "repo-flow submit help shows strict syntax"
+    if ! grep -Fq 'pr-finish --merge' "$help_out" && ! grep -Fq 'repo-flow merge' "$help_out"; then
+      test_pass "repo-flow submit help shows strict syntax"
+    else
+      test_fail "repo-flow submit help shows strict syntax"
+      status=1
+    fi
   else
     test_fail "repo-flow submit help shows strict syntax"
     status=1
@@ -1693,6 +1708,7 @@ smoke_main() {
     smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
     smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
     smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
+    smoke_run_named_check "smoke:repo-flow-merge-contract" smoke_check_repo_flow_merge_contract || status=1
     smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
   else
     mkdir -p "$TEST_TEMP_ROOT" || return 1
@@ -1731,16 +1747,19 @@ smoke_main() {
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
-    fi
-    if [ "$status" -eq 0 ]; then
-      smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
-    fi
-    if [ "$status" -eq 0 ]; then
-      smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
-    fi
-    if [ "$status" -eq 0 ]; then
-      smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
-    fi
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-merge-contract" smoke_check_repo_flow_merge_contract || status=1
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
+      fi
 
     exec 1>&3 2>&4
     rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
