@@ -47,7 +47,10 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "inventory",
-      "config_keys": []
+      "config_keys": [
+        "REVIEW_PACK_COPY_TO",
+        "REVIEW_PACK_SCP_TO"
+      ]
     },
     {
       "name": "branch-cleanup",

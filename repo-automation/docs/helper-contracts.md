@@ -29,7 +29,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | audit | `repo-doctor`, `run-tests`, `shellcheck-ci-parity` | broad-local / targeted-local | umbrella or broad-check helpers |
 | PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers; includes read-only `repo-flow status-card` |
 | artifacts | `post-codex-review`, `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | instant / mutating / CI-owned | compact review summaries, uploadable packets, or log artifact helpers |
-| review/repair | `review-pack`, `repair-prompt` | mutating | fallback review bundle / repair prompt helpers; `review-pack --target=codex` and `repair-prompt --target=codex` create local artifacts only |
+| review/repair | `review-pack`, `repair-prompt` | mutating | fallback review packet / repair prompt helpers; `review-pack --target=review` is lean by default, `--full` builds the heavier evidence bundle/repo-zip artifact, and `review-pack --target=codex` and `repair-prompt --target=codex` create local artifacts only |
 | status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers; `status-packet --explain` is the FINAL SUMMARY handoff form |
 | release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | mutating / network-read | release, reporting, and install helpers |
 
@@ -41,7 +41,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | `autopilot plan-only` | planned | plan-only | no | placeholder for later autopilot planning flow |
 
 `repo-flow status-card` is the public read-only status screen that lives under the `repo-flow` helper.
-PR-first review remains the normal path; `review-pack` is a fallback artifact helper when you explicitly need a bundle or prompt artifact.
+PR-first review remains the normal path; `review-pack` is a fallback artifact helper when you explicitly need a lean packet, full evidence bundle, or prompt artifact.
 
 ## CI failure taxonomy
 

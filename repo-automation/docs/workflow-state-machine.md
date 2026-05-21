@@ -26,6 +26,6 @@ Rules:
 - `repo-flow status-card` never mutates repo state.
 - `repo-flow status-card` can recommend create branch, commit changes, dry-run `repo-flow`, `ci-watch --poll-seconds=5`, `pr-finish --merge --delete-branch --sync-main`, or inspect CI failure.
 - `repo-flow submit` stages only explicit paths or current staged files, then delegates to the PR create-or-reuse path.
-- `review-pack` is a fallback uploadable review bundle; use the PR-first review path before it.
+- `review-pack` is a fallback uploadable review packet; use the PR-first review path before it. It is lean by default, and `--full` opts into the heavier evidence bundle/repo-zip artifact.
 - `review-pack --target=codex` and `repair-prompt --target=codex` create artifacts only and do not invoke Codex.
 - `repo-flow autopilot --plan-only` is read-only and does not mutate repo state.

@@ -3,6 +3,7 @@
 This doc is the source of truth for the routing matrix. [Helper Contracts](helper-contracts.md) summarizes the public surface.
 
 PR-first review remains the normal path; use `post-codex-review` for the concise operator handoff, `post-codex-packet` when you need the zip packet, and `repo-zip`, `evidence-bundle`, and `repo-flow status-card` before the fallback review artifact helpers.
+`review-pack --target=review` is lean by default; use `--full` only when you need the heavier evidence bundle/repo snapshot.
 
 | Need | Preferred helper | Phone-safe? | Writes files? | Writes git? | Network? | Broad checks? | Next helper |
 | --- | --- | --- | --- | --- | --- | --- | --- |
