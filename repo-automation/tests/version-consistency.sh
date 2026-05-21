@@ -272,8 +272,43 @@ if missing_helper_installer:
     print('Smallest fix: add the missing helper paths to repo-automation/bin/repo-automation-install managed-file coverage, or remove them from repo-automation/helper-metadata.json if they are no longer public.', file=sys.stderr)
     raise SystemExit(1)
 
+all_config_keys = sorted({
+    key
+    for entry in helper_metadata.get('helpers', [])
+    for key in (entry.get('config_keys', []) if isinstance(entry.get('config_keys', []), list) else [])
+    if isinstance(key, str) and key
+})
+
+config_key_drift = []
+for entry in helper_metadata.get('helpers', []):
+    path = entry.get('path')
+    keys = entry.get('config_keys', [])
+    if not isinstance(path, str) or not path or not isinstance(keys, list):
+        continue
+    source_path = repo_root / path
+    try:
+        source_text = source_path.read_text(encoding='utf-8', errors='ignore')
+    except OSError:
+        continue
+    used_keys = [
+        key for key in all_config_keys
+        if re.search(r'(?<![A-Z0-9_])' + re.escape(key) + r'(?![A-Z0-9_])', source_text)
+    ]
+    missing_keys = [key for key in used_keys if key not in keys]
+    if missing_keys:
+        config_key_drift.append((path, missing_keys))
+
+if config_key_drift:
+    print('FAIL: helper-metadata config-key drift detected', file=sys.stderr)
+    print('Helper config keys are listed in repo-automation/helper-metadata.json but not referenced in the matching helper source:', file=sys.stderr)
+    for path, keys in config_key_drift:
+        print(f'- {path}: {", ".join(keys)}', file=sys.stderr)
+    print('Smallest fix: move the keys to the helper that reads them, or remove them from repo-automation/helper-metadata.json if they are no longer used.', file=sys.stderr)
+    raise SystemExit(1)
+
 if explain:
     print('PASS: manifest-vs-installer managed-file coverage matches')
+    print('PASS: helper-metadata config-key coverage matches helper sources')
 PY
 
   if [ "$version_consistency_quiet" -eq 0 ] && [ "$version_consistency_explain" -eq 0 ]; then

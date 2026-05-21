@@ -41,4 +41,4 @@ Success prints the prompt file path.
 ## Example
 
     repo-automation/bin/repair-prompt --source=ci --target=codex --pr=123
-    repo-automation/bin/repair-prompt --source=local --target=codex --out-dir=/tmp/repair-prompt
+    repo-automation/bin/repair-prompt --source=local --target=codex --out-dir="${TMPDIR:-$HOME/.cache}/repair-prompt"

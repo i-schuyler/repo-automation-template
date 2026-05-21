@@ -24,4 +24,4 @@ Success prints the zip path.
 ## Example
 
     repo-automation/bin/repo-zip
-    repo-automation/bin/repo-zip --out-dir=/tmp/repo-automation-output --label=review
+    repo-automation/bin/repo-zip --out-dir="${TMPDIR:-$HOME/.cache}/repo-automation-output" --label=review

@@ -28,7 +28,7 @@ Each managed file entry records:
 
 That is enough for a quick human edit and for the freshness helper to compare the manifest with the working tree, including source-repo files that exist on disk but were not added to the manifest. The version-consistency check also compares `repo-automation/manifest.json` against `repo-automation/bin/repo-automation-install` managed-file coverage so manifest/install drift fails fast instead of surfacing in a downstream install.
 
-The helper-inventory check compares `repo-automation/helper-metadata.json` against the manifest/install coverage for the current public helper surface.
+The helper-inventory check compares `repo-automation/helper-metadata.json` against the manifest/install coverage for the current public helper surface, and `repo-automation/tests/version-consistency.sh` also checks that helper-specific config keys stay listed under the helper source that actually reads them.
 
 ## Freshness Check
 

@@ -58,6 +58,22 @@ skip_dirs = {'.git', '.hg', '.svn', '.tox', '__pycache__'}
 fence_pattern = re.compile(r'^[ \t]{0,3}(`{3,}|~{3,})')
 heading_pattern = re.compile(r'^[ \t]{0,3}#{1,6}\s+\S')
 trailing_whitespace_pattern = re.compile(r'[ \t]+$', re.M)
+portability_allow_marker = 'portability:allow'
+portability_targets = {
+    'README.md',
+    'repo-automation/docs',
+    'examples',
+}
+gnu_flag_checks = [
+    (re.compile(r'\bsed\s+-r\b'), 'use sed -E or a portable equivalent'),
+    (re.compile(r'\bgrep\s+-P\b'), 'use grep -E or a portable equivalent'),
+    (re.compile(r'\bfind\b.*\s-printf\b'), 'use a portable find pipeline without -printf'),
+    (re.compile(r'\bstat\s+-c\b'), 'use a portable stat alternative or shell globbing'),
+    (re.compile(r'\bxargs\s+-r\b'), 'drop -r or guard the pipeline explicitly'),
+    (re.compile(r'\breadlink\s+-f\b'), 'use a repo helper or a portable path resolver'),
+    (re.compile(r'\bdate\s+-I\b'), 'spell out the date format explicitly'),
+    (re.compile(r'\bsort\s+-V\b'), 'use a portable sort key or document the GNU dependency'),
+]
 
 
 def rel(path: Path) -> str:
@@ -236,6 +252,37 @@ def check_markdown_formatting():
         if in_fence:
             fail('markdown formatting', f'{rel_path} has an unbalanced fenced code block')
 
+
+def check_portability_examples():
+    for path in iter_files(text_suffixes):
+        rel_path = rel(path)
+        if rel_path == 'repo-automation/docs/CHANGELOG.md':
+            continue
+        if not (
+            rel_path == 'README.md'
+            or rel_path.startswith('repo-automation/docs/')
+            or rel_path.startswith('examples/')
+        ):
+            continue
+
+        text = path.read_text(encoding='utf-8', errors='ignore')
+        for line in text.splitlines():
+            if portability_allow_marker in line:
+                continue
+            if '/tmp' in line:
+                fail('portability examples', f'path: {rel_path}; fix: replace /tmp with ${{TMPDIR:-$HOME/.cache}}')
+                break
+            if '/var/tmp' in line:
+                fail('portability examples', f'path: {rel_path}; fix: replace /var/tmp with ${{TMPDIR:-$HOME/.cache}}')
+                break
+            for pattern, fix in gnu_flag_checks:
+                if pattern.search(line):
+                    fail('portability examples', f'path: {rel_path}; fix: {fix}')
+                    break
+            else:
+                continue
+            break
+
 check_local_links()
 check_docs_index_coverage()
 check_public_entry_points()
@@ -254,6 +301,7 @@ check_phrase_group('forbidden public phrase', [
     ''.join(['Heartloom ', 'Identity']),
 ])
 check_markdown_formatting()
+check_portability_examples()
 
 if failures:
     for message in failures:

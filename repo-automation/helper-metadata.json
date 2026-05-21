@@ -162,7 +162,10 @@
       "config_keys": [
         "DEFAULT_BRANCH",
         "FEATURE_BRANCH_PREFIX",
-        "PREFLIGHT_REQUIRE_CLEAN_WORKTREE"
+        "REMOTE_NAME",
+        "EXPECTED_REMOTE_URL",
+        "PREFLIGHT_REQUIRE_CLEAN_WORKTREE",
+        "PR_PROVIDER"
       ]
     },
     {
@@ -400,7 +403,8 @@
       "config_keys": [
         "DEFAULT_BRANCH",
         "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL"
+        "EXPECTED_REMOTE_URL",
+        "MERGE_MODE"
       ]
     },
     {
@@ -446,7 +450,9 @@
       "config_keys": [
         "DEFAULT_BRANCH",
         "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL"
+        "EXPECTED_REMOTE_URL",
+        "MERGE_MODE",
+        "PR_PROVIDER"
       ]
     },
     {
@@ -574,7 +580,8 @@
         "REMOTE_NAME",
         "EXPECTED_REMOTE_URL",
         "FEATURE_BRANCH_PREFIX",
-        "FIX_BRANCH_PREFIX"
+        "FIX_BRANCH_PREFIX",
+        "PR_PROVIDER"
       ]
     },
     {

@@ -40,5 +40,5 @@ Success prints the packet zip path.
 
     repo-automation/bin/post-codex-packet
     repo-automation/bin/post-codex-packet --label=review
-    repo-automation/bin/post-codex-packet --out-dir=/tmp/review-packets --keep-dir
+    repo-automation/bin/post-codex-packet --out-dir="${TMPDIR:-$HOME/.cache}/review-packets" --keep-dir
     repo-automation/bin/post-codex-packet --max-bytes=131072
