@@ -144,7 +144,7 @@
       "name": "codex-slice-preflight",
       "path": "repo-automation/bin/codex-slice-preflight",
       "doc_path": "repo-automation/docs/codex-slice-preflight.md",
-      "contract_test_path": "repo-automation/tests/contracts/branch-cleanup-preflight.sh",
+      "contract_test_path": "repo-automation/tests/contracts/codex-slice-preflight.sh",
       "kind": "script",
       "public": true,
       "phone_safe": true,

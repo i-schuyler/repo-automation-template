@@ -66,6 +66,8 @@ Tests do not delete remote branches and do not use force delete for local branch
 It keeps run-owned temp output under `${TMPDIR:-$HOME/.cache}/repo-automation-template/run-tests-*`, recreates `TEST_TEMP_ROOT` when needed, prunes stale children older than `REPO_AUTOMATION_STALE_TEMP_HOURS` (default 12) when `REPO_AUTOMATION_CLEAN_STALE_TEMP=1` (default), and cleans the current run temp root on success and failure by default. Use `--no-clean-temp` to keep run-owned temp output for debugging or `--clean-temp` to reassert the default. Explicit `--log-file=<path>` output is preserved.
 `RUN_TESTS_DF_BIN` or `REPO_AUTOMATION_DF_BIN` can point the low-disk check at a deterministic `df` seam for tests. The guard stops before heavy checks when `/` drops below 1.5G free or the legacy under-15%-free threshold is crossed, and `--disk-diagnostic` prints the current snapshot plus compact top temp/cache dirs.
 
+If `repo-automation/bin/codex-slice-preflight` stops on disk, rerun it with `--clean-test-cache --explain` to clear the recurring repo-automation temp/cache roots, then rerun the normal preflight command.
+
 The freshness helper keeps a smaller contract: human output by default, `--machine-json` for machine output, and `--source-root=/path/to/checkout` when checking a different checkout.
 
 ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs ShellCheck when available and warns when missing.

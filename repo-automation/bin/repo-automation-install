@@ -411,6 +411,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/installer.sh"
     "repo-automation/tests/contracts/starter-template.sh"
     "repo-automation/tests/contracts/branch-cleanup-preflight.sh"
+    "repo-automation/tests/contracts/codex-slice-preflight.sh"
     "repo-automation/tests/contracts/prepare-release.sh"
     "repo-automation/tests/contracts/automation-freshness.sh"
     "repo-automation/tests/version-consistency.sh"
