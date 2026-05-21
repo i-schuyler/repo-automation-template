@@ -625,14 +625,6 @@ preflight_main() {
       "mode=$preflight_mode"
       "rc=$command_status"
       "disk=${preflight_disk_status:-skip}"
-      "disk_free_bytes=${preflight_disk_guard_available_bytes:-}"
-      "disk_threshold_bytes=$preflight_disk_guard_low_bytes"
-      "branch_before=${branch_before:-}"
-      "branch_after=${branch_after:-}"
-      "default_branch=${default_branch:-}"
-      "divergence=${divergence:-unknown}"
-      "status_count=${status_count:-0}"
-      "url_or_stop=${preflight_stop_reason:-pass}"
     )
     if [ -n "${preflight_disk_guard_available_bytes:-}" ]; then
       summary_lines+=("disk_free=$(preflight_human_bytes "$preflight_disk_guard_available_bytes")")
@@ -644,6 +636,28 @@ preflight_main() {
     if [ -n "${preflight_disk_guard_available_percent:-}" ]; then
       summary_lines+=("disk_available=${preflight_disk_guard_available_percent}%")
     fi
+    if [ -n "${preflight_disk_guard_available_bytes:-}" ]; then
+      summary_lines+=("disk_free_bytes=${preflight_disk_guard_available_bytes:-}")
+    fi
+    summary_lines+=("disk_threshold_bytes=$preflight_disk_guard_low_bytes")
+    if [ -n "${default_branch:-}" ]; then
+      summary_lines+=("default_branch=$default_branch")
+    fi
+    if [ "$command_status" -eq 0 ] || [ -n "${branch_before:-}" ]; then
+      if [ -n "${branch_before:-}" ]; then
+        summary_lines+=("branch_before=$branch_before")
+      fi
+      if [ -n "${branch_after:-}" ]; then
+        summary_lines+=("branch_after=$branch_after")
+      fi
+      if [ -n "${divergence:-}" ]; then
+        summary_lines+=("divergence=$divergence")
+      fi
+      if [ -n "${status_count:-}" ]; then
+        summary_lines+=("status_count=$status_count")
+      fi
+    fi
+    summary_lines+=("url_or_stop=${preflight_stop_reason:-pass}")
     repo_auto_print_final_summary "${summary_lines[@]}" >&2
   elif [ "$command_status" -eq 0 ]; then
     printf 'pass\n'

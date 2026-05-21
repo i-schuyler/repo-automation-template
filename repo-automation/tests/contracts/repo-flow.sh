@@ -933,6 +933,80 @@ smoke_check_repo_flow_existing_pr_body_refresh_failure() {
   return "$status"
 }
 
+smoke_check_repo_flow_submit_watch_existing_pr_body_refresh_failure() {
+  local status=0
+  local gh_stub_dir=""
+  local pr_finish_stub_dir=""
+  local pr_finish_log_file=""
+  local state_file=""
+  local edit_log_file=""
+  local stdout_file=""
+  local stderr_file=""
+  local local_bash_path=""
+
+  smoke_setup_temp_repo || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  pr_finish_stub_dir="$smoke_test_base/pr-finish-stub"
+  pr_finish_log_file="$smoke_test_base/repo-flow-submit-watch-existing-refresh-finish.log"
+  state_file="$smoke_test_base/repo-flow-submit-watch-existing-refresh.txt"
+  edit_log_file="$smoke_test_base/repo-flow-submit-watch-existing-refresh-edit.log"
+  stdout_file="$smoke_test_base/repo-flow-submit-watch-existing-refresh.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-watch-existing-refresh.stderr"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-watch-existing-refresh" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  printf '813\nhttps://github.com/i-schuyler/repo-automation-template/pull/813\nrepo-flow submit watch existing refresh\nOPEN\n' > "$state_file" || return 1
+  printf '\nrepo-flow submit watch existing pr refresh fail line\n' >> "$smoke_test_dir/README.md" || return 1
+  git -C "$smoke_test_dir" add README.md || return 1
+
+  mkdir -p "$pr_finish_stub_dir" || return 1
+  cat > "$pr_finish_stub_dir/pr-finish" <<EOF
+#!/usr/bin/env bash
+set -u
+if [ -n "\${SMOKE_PR_FINISH_LOG_FILE:-}" ]; then
+  printf '%s\n' "pr-finish \$*" >> "\$SMOKE_PR_FINISH_LOG_FILE"
+fi
+exit 0
+EOF
+  chmod +x "$pr_finish_stub_dir/pr-finish" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$pr_finish_stub_dir:$gh_stub_dir:$PATH" \
+    REMOTE_NAME=localorigin \
+    EXPECTED_REMOTE_URL="" \
+    GH_STUB_PR_STATE_FILE="$state_file" \
+    GH_STUB_PR_EDIT_LOG_FILE="$edit_log_file" \
+    GH_STUB_PR_EDIT_EXIT=1 \
+    GH_STUB_PR_EDIT_ERROR='gh pr edit failed: permission denied' \
+    SMOKE_PR_FINISH_LOG_FILE="$pr_finish_log_file" \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit watch existing pr refresh fail commit' --watch --explain > "$stdout_file" 2> "$stderr_file"
+  ); then
+    test_fail "repo-flow submit --watch stops when refreshing an existing PR body fails"
+    status=1
+  elif grep -Fxq 'STOP: failed to refresh existing PR #813 body: gh pr edit failed: permission denied' "$stderr_file" &&
+    grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&
+    grep -Fxq 'rc=1' "$stderr_file" &&
+    grep -Fxq 'watched=true' "$stderr_file" &&
+    grep -Fxq 'ci=unknown' "$stderr_file" &&
+    grep -Fxq 'pr=813' "$stderr_file" &&
+    grep -Fxq 'url_or_stop=failed to refresh existing PR #813 body: gh pr edit failed: permission denied' "$stderr_file" &&
+    ! grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/813' "$stderr_file" &&
+    grep -Fxq '===== END =====' "$stderr_file" &&
+    grep -Fq 'gh pr edit number=813 body_file=' "$edit_log_file" &&
+    [ ! -s "$pr_finish_log_file" ]; then
+    test_pass "repo-flow submit --watch stops when refreshing an existing PR body fails"
+  else
+    test_fail "repo-flow submit --watch stops when refreshing an existing PR body fails"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_repo_flow_create_pr() {
   local status=0
   local gh_stub_dir=""
@@ -2317,8 +2391,11 @@ smoke_main() {
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
       fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
+      fi
       if [ "$status" -eq 0 ]; then
-        smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
+        smoke_run_named_check "smoke:repo-flow-submit-watch-existing-pr-body-refresh-failure" smoke_check_repo_flow_submit_watch_existing_pr_body_refresh_failure || status=1
       fi
       if [ "$status" -eq 0 ]; then
         smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1

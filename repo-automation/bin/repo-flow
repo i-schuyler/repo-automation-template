@@ -1108,7 +1108,7 @@ EOF
           fi
         fi
       fi
-      if [ -z "$pr_number" ]; then
+      if [ "$command_status" -eq 0 ] && [ -z "$pr_number" ]; then
         pr_create_title=$(git log -1 --pretty=%s 2>/dev/null || true)
         [ -n "$pr_create_title" ] || pr_create_title="$current_branch"
         pr_create_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-body.XXXXXX")" || {
@@ -1160,39 +1160,41 @@ EOF
           rm -f "$pr_create_stderr"
         fi
       fi
-      if [ "$explain" -eq 1 ]; then
-        repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
-      fi
-      if [ "$diagnose_on_fail" -eq 1 ]; then
+      if [ "$command_status" -eq 0 ]; then
         if [ "$explain" -eq 1 ]; then
-          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
-        else
-          "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+          repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
         fi
-      else
-        if [ "$explain" -eq 1 ]; then
-          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
+        if [ "$diagnose_on_fail" -eq 1 ]; then
+          if [ "$explain" -eq 1 ]; then
+            PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
+          else
+            "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+          fi
         else
-          "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
+          if [ "$explain" -eq 1 ]; then
+            PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
+          else
+            "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
+          fi
         fi
-      fi
-      command_status=$?
-      if [ "$command_status" -ne 0 ]; then
-        repo_flow_stop "pr-finish completion failed for PR #$pr_number"
-        final_status="blocked"
-        case "${repo_flow_stop_reason:-}" in
-          *timeout*|*timed\ out*|*TIMEOUT*)
-            ci_state="timeout"
-            ;;
-          *)
-            ci_state="fail"
-            ;;
-        esac
-      else
-        action_taken="watched-pr"
-        final_status="ready-for-review"
-        merged="false"
-        ci_state="pass"
+        command_status=$?
+        if [ "$command_status" -ne 0 ]; then
+          repo_flow_stop "pr-finish completion failed for PR #$pr_number"
+          final_status="blocked"
+          case "${repo_flow_stop_reason:-}" in
+            *timeout*|*timed\ out*|*TIMEOUT*)
+              ci_state="timeout"
+              ;;
+            *)
+              ci_state="fail"
+              ;;
+          esac
+        else
+          action_taken="watched-pr"
+          final_status="ready-for-review"
+          merged="false"
+          ci_state="pass"
+        fi
       fi
     else
       if repo_flow_submit_run_child_repo_flow_main; then
