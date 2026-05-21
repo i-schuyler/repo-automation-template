@@ -1285,11 +1285,13 @@ repo_flow_merge_main() {
   local pr_status="merged"
   local pr_number=""
   local pr_url=""
+  local ci_state="unknown"
   local final_status="blocked"
   local action_taken="none"
   local merged="false"
   local mode="merge"
   local pr_finish_args=()
+  local pr_lookup_selector=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -1426,8 +1428,19 @@ repo_flow_merge_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    pr_number="$(gh pr view "$pr_selector" --json number --jq '.number' 2>/dev/null || true)"
-    pr_url="$(gh pr view "$pr_selector" --json url --jq '.url' 2>/dev/null || true)"
+    pr_lookup_selector="$pr_selector"
+    case "$pr_lookup_selector" in
+      current)
+        pr_lookup_selector="$current_branch"
+        ;;
+      latest)
+        pr_lookup_selector="$(gh pr list --state open --limit 1 --json number --jq 'if length == 0 then empty else .[0].number end' 2>/dev/null || true)"
+        ;;
+    esac
+    if [ -n "$pr_lookup_selector" ]; then
+      pr_number="$(gh pr view "$pr_lookup_selector" --json number --jq '.number' 2>/dev/null || true)"
+      pr_url="$(gh pr view "$pr_lookup_selector" --json url --jq '.url' 2>/dev/null || true)"
+    fi
     pr_finish_args=(--watch --merge --delete-branch --sync-main --pr="$pr_selector" --timeout="$watch_timeout_seconds")
     if [ "$diagnose_on_fail" -eq 1 ]; then
       pr_finish_args+=(--diagnose-on-fail)
@@ -1438,6 +1451,7 @@ repo_flow_merge_main() {
         merged="true"
         action_taken="merged-pr"
         final_status="completed"
+        ci_state="pass"
       else
         repo_flow_stop "pr-finish completion failed for PR $pr_selector"
         command_status=1
@@ -1448,6 +1462,7 @@ repo_flow_merge_main() {
         merged="true"
         action_taken="merged-pr"
         final_status="completed"
+        ci_state="pass"
       else
         repo_flow_stop "pr-finish completion failed for PR $pr_selector"
         command_status=1
@@ -1457,6 +1472,7 @@ repo_flow_merge_main() {
       merged="true"
       action_taken="merged-pr"
       final_status="completed"
+      ci_state="pass"
     else
       repo_flow_stop "pr-finish completion failed for PR $pr_selector"
       command_status=1
@@ -1496,7 +1512,7 @@ repo_flow_merge_main() {
       "$merged" \
       "$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')" \
       "false" \
-      "unknown" \
+      "$ci_state" \
       "$command_status" \
       "$repo_flow_stop_reason"
   elif [ "$command_status" -eq 0 ]; then

@@ -16,6 +16,7 @@ When `repo-flow submit` creates a PR, it generates the canonical PR body heading
 When `--watch` is used, `repo-flow submit` pushes the current branch before PR lookup/create/watch.
 `--diagnose-on-fail` is only forwarded with `--watch`.
 `repo-automation/bin/repo-flow merge` is the explicit merge/delete/sync step after review. It uses the current PR by default, waits for the current head to be green, then merges, deletes the branch, and syncs `main`.
+Successful merge explain summaries include the resolved `pr=<number>` and, when available, `url_or_stop=<pr_url>`. `pr=unknown` is reserved for cases where PR identity could not be resolved.
 `pr-finish` is current-head-aware: missing or not-yet-attached checks stay pending until timeout, stale checks from older SHAs are ignored, and merges/deletes/syncs only happen after the current head is green.
 Use `--explain` for the full human flow report; default success is compact `plan`, PR URL, or `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
