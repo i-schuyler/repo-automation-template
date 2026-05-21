@@ -1297,6 +1297,8 @@ smoke_check_repo_flow_merge_contract() {
   local git_log_file=""
   local gh_merge_log_file=""
   local sequence_log_file=""
+  local help_out=""
+  local watch_stderr="$smoke_test_base/repo-flow-merge-watch.stderr"
   local local_bash_path=""
   local real_git=""
   local head_sha=""
@@ -1320,6 +1322,70 @@ smoke_check_repo_flow_merge_contract() {
   git -C "$smoke_test_dir" add docs/testing.md || return 1
   git -C "$smoke_test_dir" commit -m "repo-flow merge test" >/dev/null || return 1
   head_sha="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+
+  # shellcheck disable=SC2154 # smoke_repo_root is provided by the smoke harness.
+  if python3 - "$smoke_repo_root/repo-automation/helper-metadata.json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+planned = {entry.get('name') for entry in data.get('planned_routes', []) if isinstance(entry, dict)}
+raise SystemExit(0 if 'merge' in planned else 1)
+PY
+  then
+    test_pass "repo-flow helper metadata includes merge planned route"
+  else
+    test_fail "repo-flow helper metadata includes merge planned route"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    "$local_bash_path" repo-automation/bin/repo-flow merge --watch >/dev/null 2> "$watch_stderr"
+  ); then
+    test_fail "repo-flow merge rejects --watch"
+    status=1
+  elif smoke_assert_flag_error_shape "$watch_stderr" "unknown flag" "--watch" "run repo-automation/bin/repo-flow merge --help"; then
+    test_pass "repo-flow merge rejects --watch"
+  else
+    test_fail "repo-flow merge rejects --watch"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
+    SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
+    GH_STUB_PR_VIEW_HEAD_SHA="$head_sha" \
+    GH_STUB_PR_VIEW_HEAD_REF="feature/repo-flow-merge" \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_NUMBER=903 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/903' \
+    GH_STUB_PR_VIEW_TITLE='repo-flow merge test PR' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_MERGE_LOG_FILE="$gh_merge_log_file" \
+    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":903,"conclusion":"success","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-merge","headSha":"'"$head_sha"'","status":"completed","workflowName":"ci"}]' \
+    "$local_bash_path" repo-automation/bin/repo-flow merge --pr=903 --json > "$stdout_file" 2> "$stderr_file"
+  ) && [ -s "$stdout_file" ] && python3 -m json.tool "$stdout_file" >/dev/null && [ ! -s "$stderr_file" ]; then
+    if grep -Fq 'merged-pr' "$stdout_file" && grep -Fq '"mode":"merge"' "$stdout_file"; then
+      test_pass "repo-flow merge --json emits parseable JSON only"
+    else
+      test_fail "repo-flow merge --json emits parseable JSON only"
+      status=1
+    fi
+  else
+    test_fail "repo-flow merge --json emits parseable JSON only"
+    status=1
+  fi
+
+  git -C "$smoke_test_dir" checkout -B feature/repo-flow-merge "$head_sha" >/dev/null || return 1
+  : > "$git_log_file"
+  : > "$gh_merge_log_file"
+  : > "$sequence_log_file"
 
   if (
     cd "$smoke_test_dir" || return 1

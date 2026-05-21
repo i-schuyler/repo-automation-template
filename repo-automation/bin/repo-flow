@@ -634,6 +634,27 @@ repo_flow_submit_run_child_explain() {
   return "$child_status"
 }
 
+repo_flow_run_child_quiet() {
+  local child_stdout_file=""
+  local child_stderr_file=""
+  local child_status=0
+
+  child_stdout_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stdout")" || return 1
+  child_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stderr")" || {
+    rm -f "$child_stdout_file" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  if "$@" >"$child_stdout_file" 2>"$child_stderr_file"; then
+    child_status=0
+  else
+    child_status=$?
+  fi
+
+  rm -f "$child_stdout_file" "$child_stderr_file" >/dev/null 2>&1 || true
+  return "$child_status"
+}
+
 repo_flow_submit_extract_child_summary_value() {
   local stderr_file="$1"
 
@@ -1162,7 +1183,7 @@ repo_flow_merge_main() {
         return 0
         ;;
       --watch)
-        :
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-flow merge --help" || command_status=1
         ;;
       --timeout=*)
         watch_timeout_seconds="${arg#--timeout=}"
@@ -1298,6 +1319,16 @@ repo_flow_merge_main() {
 
     if [ "$explain" -eq 1 ]; then
       if repo_flow_submit_run_child_explain "$script_dir/pr-finish" "${pr_finish_args[@]}" --explain; then
+        merged="true"
+        action_taken="merged-pr"
+        final_status="completed"
+      else
+        repo_flow_stop "pr-finish completion failed for PR $pr_selector"
+        command_status=1
+        final_status="blocked"
+      fi
+    elif [ "$json" -eq 1 ]; then
+      if repo_flow_run_child_quiet "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
         merged="true"
         action_taken="merged-pr"
         final_status="completed"

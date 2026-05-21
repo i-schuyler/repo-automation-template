@@ -723,6 +723,13 @@
       "workflow_role": "workflow"
     },
     {
+      "name": "merge",
+      "state": "implemented",
+      "route": "repo-flow merge",
+      "public": false,
+      "workflow_role": "workflow"
+    },
+    {
       "name": "autopilot plan-only",
       "state": "planned",
       "route": "plan-only",
