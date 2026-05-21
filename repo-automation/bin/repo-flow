@@ -558,7 +558,7 @@ body = "\n".join([
     "",
     "## Re-entry hint",
     "",
-    "Use the PR URL, watch CI, and finish with pr-finish after checks pass.",
+    "Review the PR, then run `repo-automation/bin/repo-flow merge --explain`.",
     "",
 ])
 body_file.write_text(body, encoding="utf-8")
@@ -575,8 +575,10 @@ repo_flow_submit_print_final_summary() {
   local pushed="$7"
   local merged="$8"
   local status_count="$9"
-  local rc="${10}"
-  local stop_reason="${11}"
+  local watched="${10}"
+  local ci_state="${11}"
+  local rc="${12}"
+  local stop_reason="${13}"
   local pr_summary="unknown"
   local url_or_stop="pass"
 
@@ -597,6 +599,8 @@ repo_flow_submit_print_final_summary() {
     "pushed=$pushed" \
     "merged=$merged" \
     "status_count=$status_count" \
+    "watched=$watched" \
+    "ci=$ci_state" \
     "url_or_stop=$url_or_stop" >&2
 }
 
@@ -731,6 +735,8 @@ repo_flow_submit_main() {
   local repo_flow_submit_child_summary_value=""
   local repo_flow_submit_child_pr_url=""
   local repo_flow_submit_child_pr_number=""
+  local watched="false"
+  local ci_state="unknown"
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -988,6 +994,7 @@ EOF
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$watch" -eq 1 ]; then
+    watched="true"
     if ! git push -u "$remote_name" "$current_branch" >/dev/null 2>&1; then
       repo_flow_submit_stop "git push failed for $current_branch"
       command_status=1
@@ -1089,10 +1096,19 @@ EOF
       if [ "$command_status" -ne 0 ]; then
         repo_flow_stop "pr-finish completion failed for PR #$pr_number"
         final_status="blocked"
+        case "${repo_flow_stop_reason:-}" in
+          *timeout*|*timed\ out*|*TIMEOUT*)
+            ci_state="timeout"
+            ;;
+          *)
+            ci_state="fail"
+            ;;
+        esac
       else
         action_taken="watched-pr"
         final_status="ready-for-review"
         merged="false"
+        ci_state="pass"
       fi
     else
       if repo_flow_submit_run_child_repo_flow_main; then
@@ -1143,6 +1159,8 @@ EOF
       "$pushed" \
       "$merged" \
       "$status_count" \
+      "$watched" \
+      "$ci_state" \
       "$command_status" \
       "$repo_flow_stop_reason"
   fi
@@ -1379,6 +1397,8 @@ repo_flow_merge_main() {
       "false" \
       "$merged" \
       "$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')" \
+      "false" \
+      "unknown" \
       "$command_status" \
       "$repo_flow_stop_reason"
   elif [ "$command_status" -eq 0 ]; then
@@ -1792,6 +1812,8 @@ repo_flow_main() {
         "$pushed" \
         "$merged" \
         "$status_count" \
+        "false" \
+        "unknown" \
         "$command_status" \
         "$repo_flow_stop_reason"
     else

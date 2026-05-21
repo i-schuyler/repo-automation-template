@@ -95,10 +95,18 @@ test_render_first_failure() {
   message="${TEST_EVENT_MESSAGE[$fail_index]}"
   check_name="${TEST_EVENT_CHECK[$fail_index]}"
 
+  if [ -n "$check_name" ] && [ -n "$message" ]; then
+    printf 'fail: %s: %s\n' "$check_name" "$message" >&2
+    return 0
+  fi
+
+  if [ -n "$check_name" ]; then
+    printf 'fail: %s\n' "$check_name" >&2
+    return 0
+  fi
+
   if [ -n "$message" ]; then
     printf 'fail: %s\n' "$message" >&2
-  elif [ -n "$check_name" ]; then
-    printf 'fail: %s\n' "$check_name" >&2
   else
     printf 'fail\n' >&2
   fi

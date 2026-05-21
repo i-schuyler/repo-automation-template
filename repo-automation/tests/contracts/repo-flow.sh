@@ -816,7 +816,8 @@ smoke_check_repo_flow_submit_paths() {
       grep -Fq "repo-flow submit for branch \`feature/repo-flow-submit-paths\` against \`main\`." "$body_copy_file" && \
       grep -Fq 'Commit subject: repo-flow submit paths commit' "$body_copy_file" && \
       grep -Fq 'README.md' "$body_copy_file" && \
-      grep -Fxq '## Re-entry hint' "$body_copy_file"; then
+      grep -Fxq '## Re-entry hint' "$body_copy_file" && \
+      grep -Fq "Review the PR, then run \`repo-automation/bin/repo-flow merge --explain\`." "$body_copy_file"; then
       test_pass "repo-flow submit stages explicit paths and creates a PR"
     else
       test_fail "repo-flow submit stages explicit paths and creates a PR"
@@ -1139,6 +1140,8 @@ EOF
       grep -Fxq 'pushed=true' "$stderr_file" &&
       grep -Fxq 'merged=false' "$stderr_file" &&
       grep -Fxq 'status_count=0' "$stderr_file" &&
+      grep -Fxq 'watched=true' "$stderr_file" &&
+      grep -Fxq 'ci=pass' "$stderr_file" &&
       grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/801' "$stderr_file" &&
       grep -Fxq '===== END =====' "$stderr_file" &&
       ! [ -s "$gh_log_file" ]; then
@@ -1274,6 +1277,8 @@ fix: inspect the failing CI log and rerun the focused test' \
     grep -Fxq 'pushed=true' "$stderr_file" &&
     grep -Fxq 'merged=false' "$stderr_file" &&
     grep -Fxq 'status_count=0' "$stderr_file" &&
+    grep -Fxq 'watched=true' "$stderr_file" &&
+    grep -Fxq 'ci=fail' "$stderr_file" &&
     grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/902' "$stderr_file" &&
     grep -Fxq '===== END =====' "$stderr_file" &&
     grep -Fq 'fail: CI checks failed' "$stderr_file" &&
@@ -1283,6 +1288,100 @@ fix: inspect the failing CI log and rerun the focused test' \
   else
     test_fail "repo-flow submit --watch explain diagnoses blocked checks"
     status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_docs_check_quiet_details() {
+  local status=0
+  local quiet_out=""
+  local quiet_err=""
+  local fail_out=""
+  local fail_err=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  quiet_out="$smoke_test_base/docs-check-quiet.out"
+  quiet_err="$smoke_test_base/docs-check-quiet.stderr"
+  fail_out="$smoke_test_base/docs-check-fail.out"
+  fail_err="$smoke_test_base/docs-check-fail.stderr"
+
+  if (
+    # shellcheck disable=SC2154 # smoke_repo_root is provided by the smoke harness.
+    cd "$smoke_repo_root" || return 1
+    repo-automation/tests/docs-check.sh --quiet > "$quiet_out" 2> "$quiet_err"
+  ) && [ ! -s "$quiet_out" ] && [ ! -s "$quiet_err" ]; then
+    test_pass "docs-check quiet success is silent"
+  else
+    test_fail "docs-check quiet success is silent"
+    status=1
+  fi
+
+  printf '\n[broken](does-not-exist.md)\n' >> "$smoke_test_dir/repo-automation/docs/testing.md" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/tests/docs-check.sh --quiet > "$fail_out" 2> "$fail_err"
+  ); then
+    test_fail "docs-check quiet failure reports actionable details"
+    status=1
+  elif [ -s "$fail_err" ] || \
+    ! grep -Fq 'FAIL: docs-check: local links:' "$fail_out" || \
+    ! grep -Fq 'repo-automation/docs/testing.md -> does-not-exist.md -> missing' "$fail_out" || \
+    grep -Fq 'PASS:' "$fail_out"; then
+    test_fail "docs-check quiet failure reports actionable details"
+    status=1
+  else
+    test_pass "docs-check quiet failure reports actionable details"
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_version_consistency_quiet_details() {
+  local status=0
+  local quiet_out=""
+  local quiet_err=""
+  local fail_out=""
+  local fail_err=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  quiet_out="$smoke_test_base/version-consistency-quiet.out"
+  quiet_err="$smoke_test_base/version-consistency-quiet.stderr"
+  fail_out="$smoke_test_base/version-consistency-fail.out"
+  fail_err="$smoke_test_base/version-consistency-fail.stderr"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/tests/version-consistency.sh --quiet > "$quiet_out" 2> "$quiet_err"
+  ) && [ ! -s "$quiet_out" ] && [ ! -s "$quiet_err" ]; then
+    test_pass "version-consistency quiet success is silent"
+  else
+    test_fail "version-consistency quiet success is silent"
+    status=1
+  fi
+
+  (
+    cd "$smoke_test_dir" || return 1
+    chmod -x repo-automation/bin/prepare-release >/dev/null 2>&1 || true
+    printf '9.9.9\n' > VERSION || return 1
+  ) || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/tests/version-consistency.sh --quiet > "$fail_out" 2> "$fail_err"
+  ); then
+    test_fail "version-consistency quiet failure reports actionable details"
+    status=1
+  elif [ -s "$fail_out" ] || \
+    ! grep -Fq 'FAIL: version-consistency: installed automation config REPO_AUTOMATION_VERSION matches VERSION' "$fail_err" || \
+    grep -Fq 'PASS:' "$fail_err"; then
+    test_fail "version-consistency quiet failure reports actionable details"
+    status=1
+  else
+    test_pass "version-consistency quiet failure reports actionable details"
   fi
 
   return "$status"
@@ -1774,6 +1873,8 @@ smoke_main() {
     smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
     smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
     smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
+    smoke_run_named_check "smoke:repo-flow-docs-check-quiet-details" smoke_check_repo_flow_docs_check_quiet_details || status=1
+    smoke_run_named_check "smoke:repo-flow-version-consistency-quiet-details" smoke_check_repo_flow_version_consistency_quiet_details || status=1
     smoke_run_named_check "smoke:repo-flow-merge-contract" smoke_check_repo_flow_merge_contract || status=1
     smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
   else
@@ -1819,6 +1920,12 @@ smoke_main() {
       fi
       if [ "$status" -eq 0 ]; then
         smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-docs-check-quiet-details" smoke_check_repo_flow_docs_check_quiet_details || status=1
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-version-consistency-quiet-details" smoke_check_repo_flow_version_consistency_quiet_details || status=1
       fi
       if [ "$status" -eq 0 ]; then
         smoke_run_named_check "smoke:repo-flow-merge-contract" smoke_check_repo_flow_merge_contract || status=1
