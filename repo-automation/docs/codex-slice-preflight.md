@@ -6,9 +6,13 @@ The script requires `--branch=<name>`. It validates branch safety and rejects th
 
 Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
 
+Before branch setup, preflight checks disk space with the same 1.5G guard used by `run-tests`. If the guard fails, the stop report includes the available bytes, the threshold, and the exact cleanup command. Rerun with `--clean-test-cache --explain`, then rerun normal preflight.
+
 `--check-only` validates config, remote expectations, current worktree status, and branch-cleanup planning without checking out or creating the requested branch.
 Use `--explain` for the detailed preflight report; default success is compact `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
+
+`--clean-test-cache` removes the recurring repo-automation test/cache roots under `${TMPDIR:-$HOME/.cache}` and `$HOME/.cache`, plus the repo-automation artifact temp root when present. With `--explain`, it reports what it deleted and free space before/after.
 
 `--delete-safe-stale` allows local safe stale deletion by calling `repo-automation/bin/branch-cleanup --apply`. Without this flag, branch cleanup stays in plan mode.
 
@@ -29,6 +33,7 @@ Usage examples:
     repo-automation/bin/codex-slice-preflight --branch=feature/my-slice
     repo-automation/bin/codex-slice-preflight --check-only --branch=feature/my-slice
     repo-automation/bin/codex-slice-preflight --branch=feature/my-slice --delete-safe-stale
+    repo-automation/bin/codex-slice-preflight --clean-test-cache --explain
 
 Test coverage:
 

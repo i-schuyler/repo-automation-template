@@ -91,6 +91,7 @@ smoke_contract_names=(
   "smoke:installer-contract"
   "smoke:starter-template-contract"
   "smoke:branch-cleanup-preflight"
+  "smoke:codex-slice-preflight"
   "smoke:prepare-release-contract"
   "smoke:automation-freshness-contract"
 )
@@ -119,6 +120,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/installer.sh"
   "repo-automation/tests/contracts/starter-template.sh"
   "repo-automation/tests/contracts/branch-cleanup-preflight.sh"
+  "repo-automation/tests/contracts/codex-slice-preflight.sh"
   "repo-automation/tests/contracts/prepare-release.sh"
   "repo-automation/tests/contracts/automation-freshness.sh"
 )

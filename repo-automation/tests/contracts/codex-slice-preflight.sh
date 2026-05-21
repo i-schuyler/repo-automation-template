@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# repo-automation/tests/contracts/branch-cleanup-preflight.sh
+# repo-automation/tests/contracts/codex-slice-preflight.sh
 
 set -u
 set -o pipefail
@@ -16,10 +16,10 @@ smoke_main() {
 
   smoke_setup_temp_repo || return 1
 
-  smoke_run_named_check "smoke:branch-cleanup-json" smoke_check_branch_cleanup_json || status=1
+  smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
 
   return "$status"
 }
 
 smoke_main "$@"
-# repo-automation/tests/contracts/branch-cleanup-preflight.sh EOF
+# repo-automation/tests/contracts/codex-slice-preflight.sh EOF

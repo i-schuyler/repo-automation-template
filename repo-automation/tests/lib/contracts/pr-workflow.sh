@@ -1036,6 +1036,12 @@ smoke_check_preflight_json() {
   local preflight_stale_branch="feature/preflight-stale"
   local preflight_stale_branch_explain_stderr="$smoke_test_dir/preflight-stale-branch-explain.err"
   local preflight_stale_repo="$smoke_test_base/preflight-stale-repo-$$"
+  local preflight_low_disk_stub_dir="$smoke_test_base/preflight-low-disk-stub"
+  local preflight_low_disk_explain_stderr="$smoke_test_base/preflight-low-disk.err"
+  local preflight_clean_tmpdir="$smoke_test_base/preflight-clean-tmp"
+  local preflight_clean_home="$smoke_test_base/preflight-clean-home"
+  local preflight_clean_stdout="$smoke_test_base/preflight-clean.out"
+  local preflight_clean_stderr="$smoke_test_base/preflight-clean.err"
   local local_bash_path=""
   local shim_dir=""
   local ssh_stub_dir="$smoke_test_base/preflight-ssh-stub"
@@ -1138,10 +1144,111 @@ PY
     cd "$smoke_test_dir" || return 1
     git remote set-url origin 'git@github-alias:i-schuyler/repo-automation-template.git' >/dev/null 2>&1 || return 1
     PATH="$ssh_stub_dir:$PATH" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_alias_explain_stderr"
-  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_alias_explain_stderr" && grep -Fxq 'script=codex-slice-preflight' "$preflight_alias_explain_stderr" && grep -Eq '^mode=check-only$' "$preflight_alias_explain_stderr" && grep -Eq '^rc=0$' "$preflight_alias_explain_stderr" && grep -Eq '^branch_before=main$' "$preflight_alias_explain_stderr" && grep -Eq '^branch_after=main$' "$preflight_alias_explain_stderr" && grep -Eq '^default_branch=main$' "$preflight_alias_explain_stderr" && grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_alias_explain_stderr" && grep -Eq '^status_count=[0-9]+$' "$preflight_alias_explain_stderr" && grep -Eq '^url_or_stop=pass$' "$preflight_alias_explain_stderr" && grep -Fxq '===== END =====' "$preflight_alias_explain_stderr"; then
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_alias_explain_stderr" && grep -Fxq 'script=codex-slice-preflight' "$preflight_alias_explain_stderr" && grep -Eq '^mode=check-only$' "$preflight_alias_explain_stderr" && grep -Eq '^rc=0$' "$preflight_alias_explain_stderr" && grep -Fxq 'disk=pass' "$preflight_alias_explain_stderr" && grep -Eq '^branch_before=main$' "$preflight_alias_explain_stderr" && grep -Eq '^branch_after=main$' "$preflight_alias_explain_stderr" && grep -Eq '^default_branch=main$' "$preflight_alias_explain_stderr" && grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_alias_explain_stderr" && grep -Eq '^status_count=[0-9]+$' "$preflight_alias_explain_stderr" && grep -Eq '^url_or_stop=pass$' "$preflight_alias_explain_stderr" && grep -Fxq '===== END =====' "$preflight_alias_explain_stderr"; then
     test_pass "preflight explain output ends with FINAL SUMMARY"
   else
     test_fail "preflight explain output ends with FINAL SUMMARY"
+    status=1
+  fi
+
+  mkdir -p "$preflight_low_disk_stub_dir" || return 1
+  cat > "$preflight_low_disk_stub_dir/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${PREFLIGHT_DF_BLOCKS:-1000000}" \
+  "${PREFLIGHT_DF_USED:-840000}" \
+  "${PREFLIGHT_DF_AVAILABLE:-1024}" \
+  "${PREFLIGHT_DF_USE_PERCENT:-84}" \
+  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$preflight_low_disk_stub_dir/df" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_low_disk_stub_dir/df" \
+      PREFLIGHT_DF_BLOCKS=1000000 \
+      PREFLIGHT_DF_USED=840000 \
+      PREFLIGHT_DF_AVAILABLE=1024 \
+      PREFLIGHT_DF_USE_PERCENT=84 \
+      repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_low_disk_explain_stderr"
+  ); then
+    test_fail "preflight stops before branch setup on low disk"
+    status=1
+  elif grep -Fxq '===== FINAL SUMMARY =====' "$preflight_low_disk_explain_stderr" &&
+    grep -Fxq 'script=codex-slice-preflight' "$preflight_low_disk_explain_stderr" &&
+    grep -Eq '^mode=check-only$' "$preflight_low_disk_explain_stderr" &&
+    grep -Eq '^rc=1$' "$preflight_low_disk_explain_stderr" &&
+    grep -Eq '^disk=fail$' "$preflight_low_disk_explain_stderr" &&
+    grep -Eq '^disk_free_bytes=[0-9]+$' "$preflight_low_disk_explain_stderr" &&
+    grep -Fxq 'disk_threshold_bytes=1610612736' "$preflight_low_disk_explain_stderr" &&
+    grep -Fq 'cleanup_command=rm -rf --' "$preflight_low_disk_explain_stderr" &&
+    grep -Fq 'available disk space below 1.5G (' "$preflight_low_disk_explain_stderr" &&
+    grep -Fxq '===== END =====' "$preflight_low_disk_explain_stderr" &&
+    ( cd "$smoke_test_dir" && [ "$(git branch --show-current)" = "main" ] ); then
+    test_pass "preflight stops before branch setup on low disk"
+  else
+    test_fail "preflight stops before branch setup on low disk"
+    status=1
+  fi
+
+  mkdir -p "$preflight_clean_tmpdir/repo-automation-template-tests" \
+    "$preflight_clean_tmpdir/repo-automation-template" \
+    "$preflight_clean_tmpdir/repo-automation" \
+    "$preflight_clean_tmpdir/repo-automation-log-dump" \
+    "$preflight_clean_home/.cache/repo-automation-template-tests" \
+    "$preflight_clean_home/.cache/repo-automation-template" \
+    "$preflight_clean_home/.cache/repo-automation" \
+    "$preflight_clean_home/.cache/repo-automation-log-dump" \
+    "$preflight_clean_home/projects/repo-automation-template" \
+    "$preflight_clean_home/Downloads" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-log-dump/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_home/projects/repo-automation-template/keep.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_home/Downloads/keep.txt" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --explain > "$preflight_clean_stdout" 2> "$preflight_clean_stderr"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_stderr" &&
+    grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_stderr" &&
+    grep -Eq '^mode=clean-test-cache$' "$preflight_clean_stderr" &&
+    grep -Eq '^rc=0$' "$preflight_clean_stderr" &&
+    grep -Fxq 'disk=pass' "$preflight_clean_stderr" &&
+    grep -Fq 'clean-test-cache removed:' "$preflight_clean_stderr" &&
+    grep -Fq 'repo-automation-template-tests' "$preflight_clean_stderr" &&
+    grep -Fq 'repo-automation-template' "$preflight_clean_stderr" &&
+    grep -Fq 'repo-automation-log-dump' "$preflight_clean_stderr" &&
+    grep -Eq '^cleanup_free_before_bytes=[0-9]+$' "$preflight_clean_stderr" &&
+    grep -Eq '^cleanup_free_after_bytes=[0-9]+$' "$preflight_clean_stderr" &&
+    grep -Fxq '===== END =====' "$preflight_clean_stderr" &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" ] &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation-template/marker.txt" ] &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation/marker.txt" ] &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation-template/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation-log-dump/marker.txt" ] &&
+    [ -e "$preflight_clean_home/projects/repo-automation-template/keep.txt" ] &&
+    [ -e "$preflight_clean_home/Downloads/keep.txt" ]; then
+    test_pass "preflight clean-test-cache removes only safe cache roots"
+  else
+    test_fail "preflight clean-test-cache removes only safe cache roots"
     status=1
   fi
 
