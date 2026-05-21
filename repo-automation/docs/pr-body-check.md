@@ -21,4 +21,4 @@ Default success output is `pass`. `--quiet` makes success silent.
 Usage examples:
 
     repo-automation/bin/pr-body-check --body-file=.github/pull_request_template.md
-    repo-automation/bin/pr-body-check --quiet --body-file=/tmp/pr-body.md
+    repo-automation/bin/pr-body-check --quiet --body-file=${TMPDIR:-$HOME/.cache}/pr-body.md

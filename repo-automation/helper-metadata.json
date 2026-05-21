@@ -47,10 +47,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "inventory",
-      "config_keys": [
-        "REVIEW_PACK_COPY_TO",
-        "REVIEW_PACK_SCP_TO"
-      ]
+      "config_keys": []
     },
     {
       "name": "branch-cleanup",
@@ -355,7 +352,10 @@
       "artifact_helper": true,
       "umbrella_helper": true,
       "workflow_role": "artifact",
-      "config_keys": []
+      "config_keys": [
+        "REVIEW_PACK_COPY_TO",
+        "REVIEW_PACK_SCP_TO"
+      ]
     },
     {
       "name": "prepare-release",
