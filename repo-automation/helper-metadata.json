@@ -352,7 +352,10 @@
       "artifact_helper": true,
       "umbrella_helper": true,
       "workflow_role": "artifact",
-      "config_keys": []
+      "config_keys": [
+        "REVIEW_PACK_COPY_TO",
+        "REVIEW_PACK_SCP_TO"
+      ]
     },
     {
       "name": "prepare-release",
@@ -399,6 +402,27 @@
         "REMOTE_NAME",
         "EXPECTED_REMOTE_URL"
       ]
+    },
+    {
+      "name": "pr-body-check",
+      "path": "repo-automation/bin/pr-body-check",
+      "doc_path": "repo-automation/docs/pr-body-check.md",
+      "contract_test_path": "repo-automation/tests/contracts/pr-body-check.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "instant",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": false,
+      "artifact_helper": false,
+      "umbrella_helper": false,
+      "workflow_role": "audit",
+      "config_keys": []
     },
     {
       "name": "pr-finish",

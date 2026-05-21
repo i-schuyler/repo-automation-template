@@ -86,3 +86,11 @@ Future workflow scripts must load configuration through `repo-automation/lib/com
 For behavior-changing scripts such as branch cleanup and preflight, invalid config, secret-scan failure, or source failure must stop execution instead of silently falling back.
 
 Loading order is tracked config first, then `.repo-automation.local.conf` when present, so local values override tracked defaults without editing the tracked file. Config updates must not overwrite or clear local override files.
+
+The local override layer may also carry review-pack transfer defaults:
+
+- `REVIEW_PACK_COPY_TO`
+- `REVIEW_PACK_SCP_TO`
+
+These are local-only override keys; do not install them into the public tracked downstream config by default.
+Set only one of those values when you want `repo-automation/bin/review-pack --target=review` to copy or scp the final bundle automatically.

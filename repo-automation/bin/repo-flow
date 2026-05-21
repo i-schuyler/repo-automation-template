@@ -495,6 +495,71 @@ EOF
   return 0
 }
 
+repo_flow_submit_write_pr_body() {
+  local body_file="$1"
+  local branch_name="$2"
+  local default_branch="$3"
+  local commit_subject="$4"
+  local staged_files="$5"
+  local stop_reason="${6:-None}"
+
+  REPO_FLOW_SUBMIT_BODY_FILE="$body_file" \
+  REPO_FLOW_SUBMIT_BRANCH="$branch_name" \
+  REPO_FLOW_SUBMIT_DEFAULT_BRANCH="$default_branch" \
+  REPO_FLOW_SUBMIT_COMMIT_SUBJECT="$commit_subject" \
+  REPO_FLOW_SUBMIT_STAGED_FILES="$staged_files" \
+  REPO_FLOW_SUBMIT_STOP_REASON="$stop_reason" \
+  python3 - <<'PY'
+from pathlib import Path
+import os
+
+body_file = Path(os.environ["REPO_FLOW_SUBMIT_BODY_FILE"])
+branch_name = os.environ["REPO_FLOW_SUBMIT_BRANCH"]
+default_branch = os.environ["REPO_FLOW_SUBMIT_DEFAULT_BRANCH"]
+commit_subject = os.environ["REPO_FLOW_SUBMIT_COMMIT_SUBJECT"]
+staged_files = [line for line in os.environ.get("REPO_FLOW_SUBMIT_STAGED_FILES", "").splitlines() if line.strip()]
+stop_reason = os.environ.get("REPO_FLOW_SUBMIT_STOP_REASON", "None").strip() or "None"
+
+staged_lines = "\n".join(f"- {path}" for path in staged_files) if staged_files else "- none"
+body = "\n".join([
+    "## Scope",
+    "",
+    f"repo-flow submit for branch `{branch_name}` against `{default_branch}`.",
+    "",
+    "## What changed",
+    "",
+    f"- Commit subject: {commit_subject}",
+    "- Staged paths:",
+    staged_lines,
+    "",
+    "## What did not change",
+    "",
+    "- No unrelated files were changed.",
+    "",
+    "## Verification status",
+    "",
+    "- branch and remote validation",
+    "- staged file selection and worktree checks",
+    "- git diff --cached --check",
+    "- git commit --message",
+    "",
+    "## User-visible behavior changes",
+    "",
+    "See changed files and the commit message.",
+    "",
+    "## Stop conditions encountered",
+    "",
+    stop_reason,
+    "",
+    "## Re-entry hint",
+    "",
+    "Use the PR URL, watch CI, and finish with pr-finish after checks pass.",
+    "",
+])
+body_file.write_text(body, encoding="utf-8")
+PY
+}
+
 repo_flow_submit_print_final_summary() {
   local branch_before="$1"
   local branch_after="$2"
@@ -507,8 +572,14 @@ repo_flow_submit_print_final_summary() {
   local rc="$9"
   local stop_reason="${10}"
   local pr_summary="unknown"
+  local url_or_stop="pass"
 
   [ -n "$pr_number" ] && pr_summary="$pr_number"
+  if [ -n "$pr_url" ]; then
+    url_or_stop="$pr_url"
+  elif [ -n "$stop_reason" ]; then
+    url_or_stop="$stop_reason"
+  fi
   repo_auto_print_final_summary \
     "script=repo-flow" \
     "mode=submit" \
@@ -520,7 +591,86 @@ repo_flow_submit_print_final_summary() {
     "pushed=$pushed" \
     "merged=$merged" \
     "status_count=$status_count" \
-    "url_or_stop=${pr_url:-${stop_reason:-none}}" >&2
+    "url_or_stop=$url_or_stop" >&2
+}
+
+repo_flow_submit_filter_child_explain_summary() {
+  local stderr_file="$1"
+
+  awk '
+    $0 == "===== FINAL SUMMARY =====" { in_summary = 1; next }
+    in_summary && $0 == "===== END =====" { in_summary = 0; next }
+    !in_summary { print }
+  ' "$stderr_file"
+}
+
+repo_flow_submit_run_child_explain() {
+  local child_stdout_file=""
+  local child_stderr_file=""
+  local child_status=0
+
+  child_stdout_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stdout")" || return 1
+  child_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stderr")" || {
+    rm -f "$child_stdout_file" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  if "$@" >"$child_stdout_file" 2>"$child_stderr_file"; then
+    child_status=0
+  else
+    child_status=$?
+  fi
+
+  cat "$child_stdout_file"
+  repo_flow_submit_filter_child_explain_summary "$child_stderr_file" >&2
+
+  rm -f "$child_stdout_file" "$child_stderr_file" >/dev/null 2>&1 || true
+  return "$child_status"
+}
+
+repo_flow_submit_extract_child_summary_value() {
+  local stderr_file="$1"
+
+  awk -F= '/^url_or_stop=/{sub(/^url_or_stop=/, "", $0); print $0; exit}' "$stderr_file"
+}
+
+repo_flow_submit_extract_child_state_value() {
+  local state_file="$1"
+  local key="$2"
+
+  awk -F= -v key="$key" '$1 == key {sub("^[^=]*=", "", $0); print $0; exit}' "$state_file"
+}
+
+repo_flow_submit_run_child_repo_flow_main() {
+  local child_stdout_file=""
+  local child_stderr_file=""
+  local child_state_file=""
+  local child_status=0
+
+  child_stdout_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stdout")" || return 1
+  child_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stderr")" || {
+    rm -f "$child_stdout_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  child_state_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.state")" || {
+    rm -f "$child_stdout_file" "$child_stderr_file" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  if REPO_FLOW_CHILD_STATE_FILE="$child_state_file" repo_flow_main >"$child_stdout_file" 2>"$child_stderr_file"; then
+    child_status=0
+  else
+    child_status=$?
+  fi
+
+  cat "$child_stdout_file"
+  repo_flow_submit_filter_child_explain_summary "$child_stderr_file" >&2
+  repo_flow_submit_child_summary_value="$(repo_flow_submit_extract_child_state_value "$child_state_file" push_status)"
+  repo_flow_submit_child_pr_url="$(repo_flow_submit_extract_child_state_value "$child_state_file" pr_url)"
+  repo_flow_submit_child_pr_number="$(repo_flow_submit_extract_child_state_value "$child_state_file" pr_number)"
+
+  rm -f "$child_stdout_file" "$child_stderr_file" "$child_state_file" >/dev/null 2>&1 || true
+  return "$child_status"
 }
 
 repo_flow_submit_main() {
@@ -551,6 +701,9 @@ repo_flow_submit_main() {
   local pushed="false"
   local merged="false"
   local status_count=0
+  local repo_flow_submit_child_summary_value=""
+  local repo_flow_submit_child_pr_url=""
+  local repo_flow_submit_child_pr_number=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -845,14 +998,10 @@ EOF
           command_status=1
         }
         if [ "$command_status" -eq 0 ]; then
-          cat > "$pr_create_body_file" <<EOF
-repo-flow integration for $current_branch
-
-Branch: $current_branch
-Base: $default_branch
-Ahead of $remote_name/$default_branch: $ahead_count
-Behind of $remote_name/$default_branch: $behind_count
-EOF
+          repo_flow_submit_write_pr_body "$pr_create_body_file" "$current_branch" "$default_branch" "$pr_create_title" "$staged_files" "None" || {
+            repo_flow_stop "failed to write PR body"
+            command_status=1
+          }
         fi
         if [ "$command_status" -eq 0 ]; then
           pr_create_json_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-create.XXXXXX.json")" || {
@@ -919,8 +1068,38 @@ EOF
         merged="true"
       fi
     else
-      repo_flow_main
-      command_status=$?
+      if repo_flow_submit_run_child_repo_flow_main; then
+        command_status=0
+      else
+        command_status=$?
+      fi
+      if [ -n "$repo_flow_submit_child_pr_url" ]; then
+        pr_url="$repo_flow_submit_child_pr_url"
+      fi
+      if [ -n "$repo_flow_submit_child_pr_number" ]; then
+        pr_number="$repo_flow_submit_child_pr_number"
+      fi
+      if [ -n "$repo_flow_submit_child_summary_value" ]; then
+        case "$repo_flow_submit_child_summary_value" in
+          pushed)
+            pushed="true"
+            ;;
+          up-to-date)
+            pushed="false"
+            ;;
+          '')
+            if [ "$command_status" -eq 0 ]; then
+              pushed="unknown"
+            fi
+            ;;
+          *)
+            [ "$command_status" -ne 0 ] && repo_flow_stop_reason="$repo_flow_submit_child_summary_value"
+            [ "$command_status" -eq 0 ] && pushed="unknown"
+            ;;
+        esac
+      elif [ "$command_status" -eq 0 ]; then
+        pushed="unknown"
+      fi
     fi
   fi
 
@@ -970,6 +1149,7 @@ repo_flow_main() {
   local branch_head=""
   local remote_head=""
   local branch_ahead_behind=""
+  local staged_files=""
   local pr_create_json_file=""
   local pr_create_body_file=""
   local pr_create_title=""
@@ -1137,6 +1317,7 @@ repo_flow_main() {
     set -- $branch_ahead_behind
     behind_count="${1:-0}"
     ahead_count="${2:-0}"
+    staged_files="$(git diff --name-only "$default_branch...HEAD" 2>/dev/null || true)"
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$json" -eq 0 ]; then
@@ -1210,14 +1391,10 @@ repo_flow_main() {
           command_status=1
         }
         if [ "$command_status" -eq 0 ]; then
-          cat > "$pr_create_body_file" <<EOF
-repo-flow integration for $current_branch
-
-Branch: $current_branch
-Base: $default_branch
-Ahead of $remote_name/$default_branch: $ahead_count
-Behind of $remote_name/$default_branch: $behind_count
-EOF
+          repo_flow_submit_write_pr_body "$pr_create_body_file" "$current_branch" "$default_branch" "$pr_create_title" "$staged_files" "None" || {
+            repo_flow_stop "failed to write PR body"
+            command_status=1
+          }
         fi
         if [ "$command_status" -eq 0 ]; then
           pr_create_json_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-create.XXXXXX.json")" || {
@@ -1267,7 +1444,7 @@ EOF
     fi
     if [ "$diagnose_on_fail" -eq 1 ]; then
       if [ "$repo_flow_explain" -eq 1 ]; then
-        if "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain; then
+        if repo_flow_submit_run_child_explain "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain; then
           action_taken="completed-pr"
           final_status="completed"
           merged="true"
@@ -1287,7 +1464,7 @@ EOF
       fi
     else
       if [ "$repo_flow_explain" -eq 1 ]; then
-        if "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain; then
+        if repo_flow_submit_run_child_explain "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain; then
           action_taken="completed-pr"
           final_status="completed"
           merged="true"
@@ -1357,6 +1534,16 @@ EOF
     else
       printf 'pass\n'
     fi
+  fi
+
+  if [ -n "${REPO_FLOW_CHILD_STATE_FILE:-}" ]; then
+    cat > "$REPO_FLOW_CHILD_STATE_FILE" <<EOF
+push_status=$push_status
+pr_url=$pr_url
+pr_number=$pr_number
+final_status=$final_status
+rc=$command_status
+EOF
   fi
 
   return "$command_status"

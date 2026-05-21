@@ -22,6 +22,34 @@ ci_log_dump_first_failure_label=""
 ci_log_dump_first_failure_excerpt=""
 ci_log_dump_first_failure_recommended_fix=""
 ci_log_dump_gh_failure_message=""
+ci_log_dump_stop_reason=""
+ci_log_dump_log_path=""
+
+ci_log_dump_print_final_summary() {
+  local rc="${1:-0}"
+
+  if [ "$ci_log_dump_explain" -ne 1 ] || [ "$ci_log_dump_machine_json" -eq 1 ]; then
+    return 0
+  fi
+
+  repo_auto_print_final_summary \
+    "script=ci-log-dump" \
+    "rc=$rc" \
+    "repo=${ci_log_dump_repo:-unknown}" \
+    "pr=${ci_log_dump_pr:-none}" \
+    "run_id=${ci_log_dump_run_id:-none}" \
+    "log_path=${ci_log_dump_log_path:-none}" \
+    "first_failure=${ci_log_dump_first_failure_label:-none}" \
+    "url_or_stop=$(
+      if [ -n "$ci_log_dump_stop_reason" ]; then
+        printf 'STOP: %s' "$ci_log_dump_stop_reason"
+      elif [ -n "$ci_log_dump_log_path" ]; then
+        printf '%s' "$ci_log_dump_log_path"
+      else
+        printf 'none'
+      fi
+    )"
+}
 
 ci_log_dump_usage() {
   printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|current|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--quiet] [--explain] [--help]\n'
@@ -49,6 +77,7 @@ ci_log_dump_json_escape() {
 
 ci_log_dump_stop() {
   local message="$1"
+  ci_log_dump_stop_reason="$message"
 
   if [ "$ci_log_dump_machine_json" -eq 1 ]; then
     printf '{'
@@ -358,6 +387,8 @@ ci_log_dump_main() {
   local size_bytes
   local gh_log_file
 
+  trap 'ci_log_dump_print_final_summary "$?"' EXIT
+
   while [ "$#" -gt 0 ]; do
     arg="$1"
     case "$arg" in
@@ -552,6 +583,7 @@ ci_log_dump_main() {
       return 1
     }
   fi
+  ci_log_dump_run_id="$run_id"
 
   gh_log_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   if [ "$ci_log_dump_failed_only" -eq 1 ]; then
@@ -579,6 +611,7 @@ ci_log_dump_main() {
   }
 
   log_path="$ci_log_dump_out_dir/actions_run_${run_id}_$(date +%Y%m%d-%H%M%S).log"
+  ci_log_dump_log_path="$log_path"
   cat "$gh_log_file" >"$log_path"
   size_bytes="$(wc -c <"$log_path" | tr -d '[:space:]')"
   rm -f "$gh_log_file" >/dev/null 2>&1 || true

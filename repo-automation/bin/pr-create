@@ -343,6 +343,13 @@ pr_create_main() {
     command_status=1
   fi
 
+  if [ "$command_status" -eq 0 ]; then
+    if ! "$script_dir/pr-body-check" --quiet --body-file="$body_file"; then
+      pr_create_stop "PR body failed validation"
+      command_status=1
+    fi
+  fi
+
   if [ "$command_status" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
     worktree_status=$(git status --porcelain)
     if [ -n "$worktree_status" ]; then

@@ -1,11 +1,21 @@
 # Config Schema
 
-This doc is the source of truth for config key/schema coverage. [Repo Automation Config](config.md) remains the public loading and behavior guide.
+This doc is the source of truth for config key/schema coverage. [Repo Automation Config](config.md) remains the public loading and behavior guide for tracked downstream config, while local-only overrides live in `.repo-automation.local.conf`.
 
 ## Supported keys
 
-The public schema supports the config keys listed in `repo-automation/docs/config.md` and
+The public schema supports the tracked config keys listed in `repo-automation/docs/config.md` and
 `examples/downstream/.repo-automation.conf.example`.
+
+## Local-only override keys
+
+These keys are valid only in `.repo-automation.local.conf`:
+
+- `REVIEW_PACK_COPY_TO`
+- `REVIEW_PACK_SCP_TO`
+
+These review-pack overrides may point at machine-local paths or scp destinations.
+They must not be installed into public tracked downstream config by default.
 
 ## Required and defaulted keys
 

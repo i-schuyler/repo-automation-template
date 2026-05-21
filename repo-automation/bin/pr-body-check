@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# repo-automation/bin/pr-body-check
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+pr_body_check_quiet=0
+pr_body_check_body_file=""
+
+pr_body_check_usage() {
+  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--body-file=<path>]\n'
+}
+
+pr_body_check_fail() {
+  printf 'fail: %s\n' "$1" >&2
+  printf 'fix: %s\n' "$2" >&2
+}
+
+pr_body_check_validate() {
+  python3 - "$1" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+required = [
+    "## Scope",
+    "## What changed",
+    "## What did not change",
+    "## Verification status",
+    "## User-visible behavior changes",
+    "## Stop conditions encountered",
+    "## Re-entry hint",
+]
+forbidden = "## Passive monetization angle"
+
+try:
+    text = path.read_text(encoding="utf-8")
+except FileNotFoundError:
+    print(f"missing body file: {path}")
+    print("provide an existing PR body file")
+    raise SystemExit(1)
+
+lines = text.splitlines()
+counts = {heading: 0 for heading in required}
+positions = {}
+
+for index, line in enumerate(lines):
+    if line == forbidden:
+        print("forbidden heading present: ## Passive monetization angle")
+        print("remove the passive monetization section")
+        raise SystemExit(1)
+    if line in counts:
+        counts[line] += 1
+        positions.setdefault(line, index)
+
+for heading in required:
+    count = counts[heading]
+    if count == 0:
+        print(f"missing required heading: {heading}")
+        print("add the canonical PR body headings in order")
+        raise SystemExit(1)
+    if count > 1:
+        print(f"heading appears more than once: {heading}")
+        print("keep each required heading exactly once")
+        raise SystemExit(1)
+
+ordered_positions = [positions[heading] for heading in required]
+if ordered_positions != sorted(ordered_positions):
+    print("required headings are out of order")
+    print("reorder the headings to match the canonical contract")
+    raise SystemExit(1)
+
+content_lines = [
+    line.strip()
+    for line in lines
+    if line.strip() and line not in required and line != forbidden
+]
+if not content_lines:
+    print("body is placeholder-only")
+    print("replace the scaffolding with real scope, change, and verification details")
+    raise SystemExit(1)
+
+scaffold_patterns = (
+    re.compile(r"^(Branch|Base|Ahead|Behind):\s*(.*)$", re.IGNORECASE),
+    re.compile(r"^<[^>]+>$"),
+)
+if all(any(pattern.match(line) for pattern in scaffold_patterns) for line in content_lines):
+    print("body is placeholder-only")
+    print("replace branch/base/ahead/behind scaffolding with real PR body content")
+    raise SystemExit(1)
+
+print("pass")
+PY
+}
+
+pr_body_check_main() {
+  local arg=""
+  local command_status=0
+  local validation_output=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        pr_body_check_usage
+        return 0
+        ;;
+      --quiet)
+        pr_body_check_quiet=1
+        ;;
+      --body-file=*)
+        pr_body_check_body_file="${arg#--body-file=}"
+        if [ -z "$pr_body_check_body_file" ]; then
+          pr_body_check_fail "empty flag value: --body-file" "use --body-file=<path>"
+          return 1
+        fi
+        ;;
+      --body-file)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          pr_body_check_fail "flag format not accepted: --body-file" "use --body-file=<path>"
+        else
+          pr_body_check_fail "missing flag value: --body-file" "use --body-file=<path>"
+        fi
+        return 1
+        ;;
+      --*)
+        pr_body_check_fail "unknown flag: $arg" "run repo-automation/bin/pr-body-check --help"
+        return 1
+        ;;
+      *)
+        pr_body_check_fail "unknown argument: $arg" "run repo-automation/bin/pr-body-check --help"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$pr_body_check_body_file" ]; then
+    pr_body_check_fail "missing required --body-file" "use --body-file=<path>"
+    return 1
+  fi
+
+  if [ ! -f "$pr_body_check_body_file" ]; then
+    pr_body_check_fail "body file does not exist: $pr_body_check_body_file" "provide an existing PR body file"
+    return 1
+  fi
+
+  validation_output="$(pr_body_check_validate "$pr_body_check_body_file" 2>/dev/null)" || command_status=$?
+  if [ "$command_status" -ne 0 ]; then
+    if [ -n "$validation_output" ]; then
+      pr_body_check_fail "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
+    else
+      pr_body_check_fail "PR body validation failed" "run repo-automation/bin/pr-body-check --help"
+    fi
+    return 1
+  fi
+
+  if [ "$pr_body_check_quiet" -eq 0 ]; then
+    printf 'pass\n'
+  fi
+
+  return 0
+}
+
+pr_body_check_main "$@"
+pr_body_check_status=$?
+return "$pr_body_check_status" 2>/dev/null || exit "$pr_body_check_status"
+# repo-automation/bin/pr-body-check EOF

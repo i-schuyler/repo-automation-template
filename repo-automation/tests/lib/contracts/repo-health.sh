@@ -139,6 +139,34 @@ EOF
     test_fail "run-tests quiet failure references the log file"
     status=1
   fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs > "$run_tests_default_out" 2>&1
+  ); then
+    test_fail "run-tests default failure recommends explain"
+    status=1
+  elif grep -Fq 'fix: Next: repo-automation/bin/run-tests --explain' "$run_tests_default_out"; then
+    test_pass "run-tests default failure recommends explain"
+  else
+    test_fail "run-tests default failure recommends explain"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_explain_out" 2>&1
+  ); then
+    test_fail "run-tests explain failure recommends a better next step"
+    status=1
+  elif grep -Fq 'fix: inspect log: ' "$run_tests_explain_out" &&
+    ! grep -Fq 'fix: Next: repo-automation/bin/run-tests --explain' "$run_tests_explain_out"; then
+    test_pass "run-tests explain failure recommends a better next step"
+  else
+    test_fail "run-tests explain failure recommends a better next step"
+    status=1
+  fi
+
   rm -f "$smoke_test_dir/docs/run-tests-diagnostic.md" >/dev/null 2>&1 || true
 
   if (

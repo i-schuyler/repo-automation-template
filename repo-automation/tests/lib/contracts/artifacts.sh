@@ -308,6 +308,8 @@ smoke_check_review_pack_contract() {
   local output_root=""
   local codex_stub_dir=""
   local codex_called_file=""
+  local codex_no_transfer_output_file=""
+  local codex_no_transfer_stderr_file=""
   local help_file=""
   local target_format_stderr=""
   local target_missing_stderr=""
@@ -319,15 +321,43 @@ smoke_check_review_pack_contract() {
   local label_format_stderr=""
   local label_missing_stderr=""
   local label_empty_stderr=""
+  local copy_format_stderr=""
+  local copy_missing_stderr=""
+  local copy_empty_stderr=""
+  local scp_format_stderr=""
+  local scp_missing_stderr=""
+  local scp_empty_stderr=""
+  local codex_copy_stderr=""
+  local local_config_both_stderr=""
   local review_pack_target_name="review"
   local review_pack_output_file=""
   local review_pack_stderr_file=""
-  local review_pack_bundle_zip=""
-  local review_pack_bundle_dir=""
-  local review_pack_post_codex_output=""
-  local review_pack_post_codex_path=""
-  local review_pack_repo_zip_output=""
-  local review_pack_repo_zip_path=""
+  local review_pack_explain_file=""
+  local review_pack_full_explain_file=""
+  local review_pack_lean_path=""
+  local review_pack_full_output_file=""
+  local review_pack_full_path=""
+  local review_pack_full_dir=""
+  local review_pack_full_summary_file=""
+  local review_pack_full_post_codex_output=""
+  local review_pack_full_post_codex_path=""
+  local review_pack_full_repo_zip_output=""
+  local review_pack_full_repo_zip_path=""
+  local review_pack_copy_output_file=""
+  local review_pack_copy_path=""
+  local review_pack_full_copy_output_file=""
+  local review_pack_full_copy_path=""
+  local review_pack_scp_output_file=""
+  local review_pack_scp_path=""
+  local review_pack_no_transfer_output_file=""
+  local review_pack_no_transfer_path=""
+  local review_pack_local_copy_dir=""
+  local review_pack_explicit_copy_dir=""
+  local review_pack_local_scp_target=""
+  local review_pack_explicit_scp_target=""
+  local review_pack_scp_called_file=""
+  local review_pack_scp_stub_dir=""
+  local review_pack_local_config=""
   local codex_output_file=""
   local codex_stderr_file=""
   local codex_prompt_file=""
@@ -337,6 +367,8 @@ smoke_check_review_pack_contract() {
   output_root="$smoke_test_base/review-pack-output"
   codex_stub_dir="$smoke_test_base/review-pack-codex-stub"
   codex_called_file="$smoke_test_base/review-pack-codex-called.txt"
+  codex_no_transfer_output_file="$smoke_test_base/review-pack-codex-no-transfer.out"
+  codex_no_transfer_stderr_file="$smoke_test_base/review-pack-codex-no-transfer.err"
   help_file="$smoke_test_base/review-pack-help.txt"
   target_format_stderr="$smoke_test_base/review-pack-target-format.stderr"
   target_missing_stderr="$smoke_test_base/review-pack-target-missing.stderr"
@@ -348,10 +380,32 @@ smoke_check_review_pack_contract() {
   label_format_stderr="$smoke_test_base/review-pack-label-format.stderr"
   label_missing_stderr="$smoke_test_base/review-pack-label-missing.stderr"
   label_empty_stderr="$smoke_test_base/review-pack-label-empty.stderr"
+  copy_format_stderr="$smoke_test_base/review-pack-copy-format.stderr"
+  copy_missing_stderr="$smoke_test_base/review-pack-copy-missing.stderr"
+  copy_empty_stderr="$smoke_test_base/review-pack-copy-empty.stderr"
+  scp_format_stderr="$smoke_test_base/review-pack-scp-format.stderr"
+  scp_missing_stderr="$smoke_test_base/review-pack-scp-missing.stderr"
+  scp_empty_stderr="$smoke_test_base/review-pack-scp-empty.stderr"
+  codex_copy_stderr="$smoke_test_base/review-pack-codex-copy.stderr"
+  local_config_both_stderr="$smoke_test_base/review-pack-local-config-both.stderr"
   review_pack_output_file="$smoke_test_base/review-pack-output.out"
   review_pack_stderr_file="$smoke_test_base/review-pack-output.err"
+  review_pack_explain_file="$smoke_test_base/review-pack-explain.out"
+  review_pack_full_explain_file="$smoke_test_base/review-pack-full-explain.out"
+  review_pack_full_output_file="$smoke_test_base/review-pack-full.out"
+  review_pack_copy_output_file="$smoke_test_base/review-pack-copy.out"
+  review_pack_full_copy_output_file="$smoke_test_base/review-pack-full-copy.out"
+  review_pack_scp_output_file="$smoke_test_base/review-pack-scp.out"
+  review_pack_no_transfer_output_file="$smoke_test_base/review-pack-no-transfer.out"
   codex_output_file="$smoke_test_base/review-pack-codex.out"
   codex_stderr_file="$smoke_test_base/review-pack-codex.err"
+  review_pack_local_copy_dir="$smoke_test_base/review-pack-local-copy/delivery"
+  review_pack_explicit_copy_dir="$smoke_test_base/review-pack-explicit-copy/delivery"
+  review_pack_local_scp_target="review-bundle@example.org:/path/to/review-packets/local-scp.zip"
+  review_pack_explicit_scp_target="review-bundle@example.org:/path/to/review-packets/explicit-scp.zip"
+  review_pack_scp_called_file="$smoke_test_base/review-pack-scp-called.txt"
+  review_pack_scp_stub_dir="$smoke_test_base/review-pack-scp-stub"
+  review_pack_local_config="$smoke_test_dir/.repo-automation.local.conf"
 
   mkdir -p "$codex_stub_dir" || return 1
   cat > "$codex_stub_dir/codex" <<'EOF'
@@ -363,13 +417,30 @@ exit 99
 EOF
   chmod +x "$codex_stub_dir/codex" || return 1
 
+  mkdir -p "$review_pack_scp_stub_dir" || return 1
+  cat > "$review_pack_scp_stub_dir/scp" <<'EOF'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$1" >> "${SMOKE_SCP_CALLED_FILE:-/dev/null}"
+printf '%s\n' "$2" >> "${SMOKE_SCP_CALLED_FILE:-/dev/null}"
+exit 0
+EOF
+  chmod +x "$review_pack_scp_stub_dir/scp" || return 1
+
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/review-pack --help > "$help_file"
-  ) && grep -Fq -- "--target=<${review_pack_target_name}|codex>" "$help_file" && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<text>' "$help_file"; then
+  ) && grep -Fq -- "--target=<${review_pack_target_name}|codex>" "$help_file" && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--label=<text>' "$help_file" && grep -Fq -- '--full' "$help_file" && grep -Fq -- '--copy-to=<dir>' "$help_file" && grep -Fq -- '--scp-to=<target>' "$help_file" && grep -Fq -- '--no-transfer' "$help_file" && grep -Fq -- '--explain' "$help_file"; then
     test_pass "review-pack help shows strict value syntax"
   else
     test_fail "review-pack help shows strict value syntax"
+    status=1
+  fi
+
+  if ! grep -Eq '/tmp|/var/tmp' "$smoke_repo_root/repo-automation/docs/review-pack.md"; then
+    test_pass "review-pack docs avoid private temp paths"
+  else
+    test_fail "review-pack docs avoid private temp paths"
     status=1
   fi
 
@@ -505,29 +576,138 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --copy-to review-pack-output --target="$review_pack_target_name" >/dev/null 2> "$copy_format_stderr"
+  ); then
+    test_fail "review-pack rejects --copy-to <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$copy_format_stderr" "flag format not accepted" "--copy-to" "use --copy-to=<dir>"; then
+    test_pass "review-pack rejects --copy-to <value>"
+  else
+    test_fail "review-pack rejects --copy-to <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --copy-to --target="$review_pack_target_name" >/dev/null 2> "$copy_missing_stderr"
+  ); then
+    test_fail "review-pack rejects missing --copy-to value"
+    status=1
+  elif smoke_assert_flag_error_shape "$copy_missing_stderr" "missing flag value" "--copy-to" "use --copy-to=<dir>"; then
+    test_pass "review-pack rejects missing --copy-to value"
+  else
+    test_fail "review-pack rejects missing --copy-to value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --copy-to= --target="$review_pack_target_name" >/dev/null 2> "$copy_empty_stderr"
+  ); then
+    test_fail "review-pack rejects empty --copy-to value"
+    status=1
+  elif smoke_assert_flag_error_shape "$copy_empty_stderr" "empty flag value" "--copy-to" "use --copy-to=<dir>"; then
+    test_pass "review-pack rejects empty --copy-to value"
+  else
+    test_fail "review-pack rejects empty --copy-to value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --scp-to review-pack-output --target="$review_pack_target_name" >/dev/null 2> "$scp_format_stderr"
+  ); then
+    test_fail "review-pack rejects --scp-to <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$scp_format_stderr" "flag format not accepted" "--scp-to" "use --scp-to=<target>"; then
+    test_pass "review-pack rejects --scp-to <value>"
+  else
+    test_fail "review-pack rejects --scp-to <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --scp-to --target="$review_pack_target_name" >/dev/null 2> "$scp_missing_stderr"
+  ); then
+    test_fail "review-pack rejects missing --scp-to value"
+    status=1
+  elif smoke_assert_flag_error_shape "$scp_missing_stderr" "missing flag value" "--scp-to" "use --scp-to=<target>"; then
+    test_pass "review-pack rejects missing --scp-to value"
+  else
+    test_fail "review-pack rejects missing --scp-to value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --scp-to= --target="$review_pack_target_name" >/dev/null 2> "$scp_empty_stderr"
+  ); then
+    test_fail "review-pack rejects empty --scp-to value"
+    status=1
+  elif smoke_assert_flag_error_shape "$scp_empty_stderr" "empty flag value" "--scp-to" "use --scp-to=<target>"; then
+    test_pass "review-pack rejects empty --scp-to value"
+  else
+    test_fail "review-pack rejects empty --scp-to value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --target="$review_pack_target_name" --no-transfer --scp-to="$review_pack_explicit_scp_target" >/dev/null 2> "$copy_empty_stderr"
+  ); then
+    test_fail "review-pack rejects --no-transfer with scp transfer"
+    status=1
+  elif grep -Fxq 'fail: --no-transfer is mutually exclusive with transfer flags' "$copy_empty_stderr" && grep -Fxq 'fix: use either --no-transfer or --copy-to/--scp-to' "$copy_empty_stderr"; then
+    test_pass "review-pack rejects --no-transfer with scp transfer"
+  else
+    test_fail "review-pack rejects --no-transfer with scp transfer"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/review-pack --target=codex --copy-to="$review_pack_explicit_copy_dir" >/dev/null 2> "$codex_copy_stderr"
+  ); then
+    test_fail "review-pack rejects transfer flags for codex target"
+    status=1
+  elif grep -Fxq 'fail: transfer flags require --target=review' "$codex_copy_stderr" && grep -Fxq 'fix: rerun with --target=review or drop transfer flags' "$codex_copy_stderr"; then
+    test_pass "review-pack rejects transfer flags for codex target"
+  else
+    test_fail "review-pack rejects transfer flags for codex target"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target=codex --no-transfer
+  ) > "$codex_no_transfer_output_file" 2> "$codex_no_transfer_stderr_file"; then
+    :
+  else
+    test_fail "review-pack codex no-transfer run succeeds"
+    status=1
+  fi
+
+  codex_no_transfer_path="$(sed -n '1p' "$codex_no_transfer_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$codex_no_transfer_output_file" && [ -f "$codex_no_transfer_path" ] && [ ! -e "$smoke_test_dir/review-pack" ] && grep -Fq 'Task' "$codex_no_transfer_path"; then
+    test_pass "review-pack codex target allows no-transfer and creates prompt artifact"
+  else
+    test_fail "review-pack codex target allows no-transfer and creates prompt artifact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     SMOKE_CODEX_CALLED_FILE="$codex_called_file" PATH="$codex_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review
   ) > "$review_pack_output_file" 2> "$review_pack_stderr_file"; then
     :
   else
-    test_fail "review-pack target bundle run succeeds"
+    test_fail "review-pack lean target run succeeds"
     status=1
   fi
 
-  review_pack_bundle_zip="$(grep -E '^/' "$review_pack_output_file" | tail -n 1 | tr -d '\r')"
-  review_pack_bundle_dir="${review_pack_bundle_zip%.zip}"
-  review_pack_post_codex_output="$review_pack_bundle_dir/post-codex/output.txt"
-  review_pack_repo_zip_output="$review_pack_bundle_dir/repo-zip/output.txt"
-  review_pack_post_codex_path="$(grep -E '^/' "$review_pack_post_codex_output" | tail -n 1 | tr -d '\r')"
-  review_pack_repo_zip_path="$(grep -E '^/' "$review_pack_repo_zip_output" | tail -n 1 | tr -d '\r')"
-
-  if smoke_assert_single_path_output "$review_pack_output_file" && [ -f "$review_pack_bundle_zip" ] && [ -d "$review_pack_bundle_dir" ] && [ -f "$review_pack_bundle_dir/summary.txt" ] && [ -f "$review_pack_post_codex_output" ] && [ -n "$review_pack_post_codex_path" ] && [ -f "$review_pack_post_codex_path" ] && [ -f "$review_pack_repo_zip_output" ] && [ -n "$review_pack_repo_zip_path" ] && [ -f "$review_pack_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ]; then
-    test_pass "review-pack target creates a staged review bundle"
-  else
-    test_fail "review-pack target creates a staged review bundle"
-    status=1
-  fi
-
-  if python3 - "$review_pack_repo_zip_path" <<'PY'
+  review_pack_lean_path="$(sed -n '1p' "$review_pack_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_output_file" && [ -f "$review_pack_lean_path" ] && grep -Fq '/post-codex/' "$review_pack_lean_path" && ! grep -Fq '/evidence-bundle/' "$review_pack_output_file" && [ ! -e "$smoke_test_dir/review-pack" ] && python3 - "$review_pack_lean_path" <<'PY'
 import pathlib
 import sys
 import zipfile
@@ -535,18 +715,14 @@ import zipfile
 zip_path = pathlib.Path(sys.argv[1])
 with zipfile.ZipFile(zip_path) as archive:
     names = set(archive.namelist())
-    assert any(name.endswith('/.editorconfig') for name in names)
-    assert any(name.endswith('/docs/safe-untracked.md') for name in names)
-    assert not any('build/output.bin' in name for name in names)
-    assert not any('node_modules/pkg/cache.txt' in name for name in names)
-    assert not any('vendor/cache/tool.bin' in name for name in names)
-    assert not any('repo-automation-output/review-pack/output.txt' in name for name in names)
-    assert not any(name.endswith('/.env') or '/.env.' in name for name in names)
+    assert 'summary.txt' in names
+    assert not any('repo-zip/' in name for name in names)
+    assert not any('evidence-bundle/' in name for name in names)
 PY
   then
-    test_pass "review-pack target bundle includes only safe repository snapshot files"
+    test_pass "review-pack lean target creates a post-codex packet"
   else
-    test_fail "review-pack target bundle includes only safe repository snapshot files"
+    test_fail "review-pack lean target creates a post-codex packet"
     status=1
   fi
 
@@ -557,6 +733,212 @@ PY
     test_pass "review-pack target does not invoke Codex"
   fi
 
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review --explain
+  ) > "$review_pack_explain_file"; then
+    :
+  else
+    test_fail "review-pack lean explain summary runs successfully"
+    status=1
+  fi
+
+  review_pack_lean_path="$(sed -n '1p' "$review_pack_explain_file" 2>/dev/null || true)"
+  if [ "$(wc -l < "$review_pack_explain_file" | tr -d '[:space:]')" -eq 10 ] && [ "$(sed -n '2p' "$review_pack_explain_file")" = '===== FINAL SUMMARY =====' ] && grep -Fxq "artifact=$review_pack_lean_path" "$review_pack_explain_file" && grep -Fxq 'packet_mode=lean' "$review_pack_explain_file" && grep -Fxq 'transfer=none' "$review_pack_explain_file" && grep -Fxq 'destination=none' "$review_pack_explain_file" && grep -Fxq "output=$review_pack_lean_path" "$review_pack_explain_file" && grep -Eq '^size_bytes=[1-9][0-9]*$' "$review_pack_explain_file" && grep -Eq '^status_count=0$' "$review_pack_explain_file" && grep -Fxq '===== END =====' "$review_pack_explain_file"; then
+    test_pass "review-pack explain summary includes lean packet mode"
+  else
+    test_fail "review-pack explain summary includes lean packet mode"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --full --label=review
+  ) > "$review_pack_full_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack full target run succeeds"
+    status=1
+  fi
+
+  review_pack_full_path="$(sed -n '1p' "$review_pack_full_output_file" 2>/dev/null || true)"
+  review_pack_full_dir="${review_pack_full_path%.zip}"
+  review_pack_full_summary_file="$review_pack_full_dir/summary.txt"
+  review_pack_full_post_codex_output="$review_pack_full_dir/post-codex/output.txt"
+  review_pack_full_repo_zip_output="$review_pack_full_dir/repo-zip/output.txt"
+  review_pack_full_post_codex_path="$(sed -n '1p' "$review_pack_full_post_codex_output" 2>/dev/null | tr -d '
+')"
+  review_pack_full_repo_zip_path="$(sed -n '1p' "$review_pack_full_repo_zip_output" 2>/dev/null | tr -d '
+')"
+
+  if smoke_assert_single_path_output "$review_pack_full_output_file" && [ -f "$review_pack_full_path" ] && [ -d "$review_pack_full_dir" ] && [ -f "$review_pack_full_summary_file" ] && [ -f "$review_pack_full_post_codex_output" ] && [ -n "$review_pack_full_post_codex_path" ] && [ -f "$review_pack_full_post_codex_path" ] && [ -f "$review_pack_full_repo_zip_output" ] && [ -n "$review_pack_full_repo_zip_path" ] && [ -f "$review_pack_full_repo_zip_path" ] && [ ! -e "$smoke_test_dir/review-pack" ] && grep -Fq '/evidence-bundle/' "$review_pack_full_path"; then
+    test_pass "review-pack full target creates a staged evidence bundle"
+  else
+    test_fail "review-pack full target creates a staged evidence bundle"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --full --label=review --explain
+  ) > "$review_pack_full_explain_file"; then
+    :
+  else
+    test_fail "review-pack full explain summary runs successfully"
+    status=1
+  fi
+
+  review_pack_full_path="$(sed -n '1p' "$review_pack_full_explain_file" 2>/dev/null || true)"
+  if [ "$(wc -l < "$review_pack_full_explain_file" | tr -d '[:space:]')" -eq 10 ] && [ "$(sed -n '2p' "$review_pack_full_explain_file")" = '===== FINAL SUMMARY =====' ] && grep -Fxq "artifact=$review_pack_full_path" "$review_pack_full_explain_file" && grep -Fxq 'packet_mode=full' "$review_pack_full_explain_file" && grep -Fxq 'transfer=none' "$review_pack_full_explain_file" && grep -Fxq 'destination=none' "$review_pack_full_explain_file" && grep -Fxq "output=$review_pack_full_path" "$review_pack_full_explain_file" && grep -Eq '^size_bytes=[1-9][0-9]*$' "$review_pack_full_explain_file" && grep -Eq '^status_count=0$' "$review_pack_full_explain_file" && grep -Fxq '===== END =====' "$review_pack_full_explain_file"; then
+    test_pass "review-pack explain summary includes full packet mode"
+  else
+    test_fail "review-pack explain summary includes full packet mode"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --copy-to="$review_pack_explicit_copy_dir"
+  ) > "$review_pack_copy_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack lean copy transfer runs successfully"
+    status=1
+  fi
+
+  review_pack_copy_path="$(sed -n '1p' "$review_pack_copy_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_copy_output_file" && [ -f "$review_pack_copy_path" ] && case "$review_pack_copy_path" in "$review_pack_explicit_copy_dir/"*) true ;; *) false ;; esac; then
+    test_pass "review-pack lean copy transfer copies the packet"
+  else
+    test_fail "review-pack lean copy transfer copies the packet"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --full --copy-to="$review_pack_explicit_copy_dir"
+  ) > "$review_pack_full_copy_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack full copy transfer runs successfully"
+    status=1
+  fi
+
+  review_pack_full_copy_path="$(sed -n '1p' "$review_pack_full_copy_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_full_copy_output_file" && [ -f "$review_pack_full_copy_path" ] && case "$review_pack_full_copy_path" in "$review_pack_explicit_copy_dir/"*) true ;; *) false ;; esac; then
+    test_pass "review-pack full copy transfer copies the evidence bundle"
+  else
+    test_fail "review-pack full copy transfer copies the evidence bundle"
+    status=1
+  fi
+
+  if [ -f "$codex_called_file" ]; then
+    test_fail "review-pack target does not invoke Codex"
+    status=1
+  else
+    test_pass "review-pack target does not invoke Codex"
+  fi
+
+  cat > "$review_pack_local_config" <<EOF
+REVIEW_PACK_COPY_TO="$review_pack_local_copy_dir"
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_SCP_CALLED_FILE="$review_pack_scp_called_file" PATH="$review_pack_scp_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review --scp-to="$review_pack_explicit_scp_target"
+  ) > "$review_pack_scp_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack explicit scp transfer runs successfully"
+    status=1
+  fi
+
+  review_pack_scp_path="$(sed -n '1p' "$review_pack_scp_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_scp_output_file" && [ "$review_pack_scp_path" = "$review_pack_explicit_scp_target" ] && [ -f "$review_pack_scp_called_file" ] && [ -f "$(sed -n '1p' "$review_pack_scp_called_file")" ] && [ "$(sed -n '2p' "$review_pack_scp_called_file")" = "$review_pack_explicit_scp_target" ]; then
+    test_pass "review-pack explicit scp transfer targets the supplied destination"
+  else
+    test_fail "review-pack explicit scp transfer targets the supplied destination"
+    status=1
+  fi
+
+  rm -f "$review_pack_scp_called_file" >/dev/null 2>&1 || true
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review
+  ) > "$review_pack_copy_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack local copy default runs successfully"
+    status=1
+  fi
+
+  review_pack_copy_path="$(sed -n '1p' "$review_pack_copy_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_copy_output_file" && [ -f "$review_pack_copy_path" ] && case "$review_pack_copy_path" in "$review_pack_local_copy_dir/"*) true ;; *) false ;; esac; then
+    test_pass "review-pack local copy default copies the bundle"
+  else
+    test_fail "review-pack local copy default copies the bundle"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review --no-transfer
+  ) > "$review_pack_no_transfer_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack no-transfer overrides local config"
+    status=1
+  fi
+
+  review_pack_no_transfer_path="$(sed -n '1p' "$review_pack_no_transfer_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_no_transfer_output_file" && [ -f "$review_pack_no_transfer_path" ] && [ ! -e "$review_pack_local_copy_dir/$(basename "$review_pack_no_transfer_path")" ]; then
+    test_pass "review-pack no-transfer keeps the local bundle"
+  else
+    test_fail "review-pack no-transfer keeps the local bundle"
+    status=1
+  fi
+
+  rm -f "$review_pack_scp_called_file" >/dev/null 2>&1 || true
+  if (
+    cd "$smoke_test_dir" || return 1
+    SMOKE_SCP_CALLED_FILE="$review_pack_scp_called_file" PATH="$review_pack_scp_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review --scp-to="$review_pack_explicit_scp_target"
+  ) > "$review_pack_scp_output_file" 2> "$review_pack_stderr_file"; then
+    :
+  else
+    test_fail "review-pack explicit scp overrides local copy config"
+    status=1
+  fi
+
+  review_pack_scp_path="$(sed -n '1p' "$review_pack_scp_output_file" 2>/dev/null || true)"
+  if smoke_assert_single_path_output "$review_pack_scp_output_file" && [ "$review_pack_scp_path" = "$review_pack_explicit_scp_target" ] && [ -f "$review_pack_scp_called_file" ] && [ -f "$(sed -n '1p' "$review_pack_scp_called_file")" ] && [ "$(sed -n '2p' "$review_pack_scp_called_file")" = "$review_pack_explicit_scp_target" ] && [ ! -e "$review_pack_local_copy_dir/$(basename "$review_pack_scp_path")" ]; then
+    test_pass "review-pack explicit scp overrides local copy config"
+  else
+    test_fail "review-pack explicit scp overrides local copy config"
+    status=1
+  fi
+
+  rm -f "$review_pack_scp_called_file" >/dev/null 2>&1 || true
+  cat > "$review_pack_local_config" <<EOF
+REVIEW_PACK_COPY_TO="$review_pack_local_copy_dir"
+REVIEW_PACK_SCP_TO="$review_pack_local_scp_target"
+EOF
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target="$review_pack_target_name" --label=review
+  ) >/dev/null 2> "$local_config_both_stderr"; then
+    test_fail "review-pack rejects conflicting local transfer defaults"
+    status=1
+  elif grep -Fxq 'fail: REVIEW_PACK_COPY_TO and REVIEW_PACK_SCP_TO are mutually exclusive' "$local_config_both_stderr" && grep -Fxq 'fix: set only one review-pack transfer default in .repo-automation.local.conf' "$local_config_both_stderr"; then
+    test_pass "review-pack rejects conflicting local transfer defaults"
+  else
+    test_fail "review-pack rejects conflicting local transfer defaults"
+    status=1
+  fi
+
+  cat > "$review_pack_local_config" <<EOF
+REVIEW_PACK_COPY_TO="$review_pack_local_copy_dir"
+EOF
+  rm -f "$review_pack_scp_called_file" >/dev/null 2>&1 || true
   if (
     cd "$smoke_test_dir" || return 1
     SMOKE_CODEX_CALLED_FILE="$codex_called_file" PATH="$codex_stub_dir:$PATH" REPO_AUTOMATION_OUTPUT_DIR="$output_root" repo-automation/bin/review-pack --target=codex --label=review
@@ -582,6 +964,8 @@ PY
   else
     test_pass "review-pack codex target does not invoke Codex"
   fi
+
+  rm -f "$review_pack_local_config" >/dev/null 2>&1 || true
 
   return "$status"
 }

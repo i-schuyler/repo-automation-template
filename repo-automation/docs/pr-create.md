@@ -17,6 +17,8 @@ The helper expects the current repo automation GitHub workflow conventions alrea
 - `DEFAULT_BRANCH` / `REMOTE_NAME` / `EXPECTED_REMOTE_URL` from `.repo-automation.conf`
 - a committed, clean worktree on the target branch
 
+It validates the final PR body with `repo-automation/bin/pr-body-check --quiet` before it calls `gh pr create`.
+
 ## Title and Body
 
 `--title=<text>` is required.

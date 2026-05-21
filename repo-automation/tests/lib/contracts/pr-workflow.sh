@@ -421,7 +421,7 @@ smoke_check_pr_create_body_file() {
   local pr_create_plan_stderr="$smoke_test_base/pr-create-plan.err"
   local pr_create_explain_stderr="$smoke_test_base/pr-create-explain.err"
   local gh_stub_dir="$smoke_test_base/gh-pr-create-stub"
-  local body_text="Mixed PR body from file"
+  local body_text=$'## Scope\n\nMixed change body-file scope.\n\n## What changed\n\n- Updated the tracked fixture.\n\n## What did not change\n\n- No unrelated files.\n\n## Verification status\n\n- pr-create contract smoke check\n\n## User-visible behavior changes\n\nNone\n\n## Stop conditions encountered\n\nNone\n\n## Re-entry hint\n\nUse the PR URL, watch CI, and finish with pr-finish after checks pass.\n'
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -445,7 +445,7 @@ smoke_check_pr_create_body_file() {
   fi
 
   smoke_pr_create_prepare_branch "$branch_name" repo-automation/tests/pr-create-body-file.txt "body file fixture" || return 1
-  printf '%s\n' "$body_text" > "$helper_body" || return 1
+  printf '%s' "$body_text" > "$helper_body" || return 1
   smoke_write_gh_stub "$gh_stub_dir" || return 1
 
   if (
@@ -458,7 +458,7 @@ smoke_check_pr_create_body_file() {
     repo-automation/bin/pr-create --json --branch="$branch_name" --base=main --title="Mixed change body file" --body-file="$helper_body" > "$helper_json"
   ) && python3 -m json.tool "$helper_json" >/dev/null && \
     smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "321" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/321" and data.get("branch") == "feature/pr-create-body-file" and data.get("base_branch") == "main"'; then
-    if grep -Fq 'gh pr create title=Mixed change body file base=main head=feature/pr-create-body-file body_file=' "$helper_log" && cmp -s "$helper_body" "$helper_body_copy"; then
+    if grep -Fq 'gh pr create title=Mixed change body file base=main head=feature/pr-create-body-file body_file=' "$helper_log" && cmp -s "$helper_body" "$helper_body_copy" && repo-automation/bin/pr-body-check --quiet --body-file="$helper_body" >/dev/null; then
       test_pass "pr-create body-file PR creation succeeds"
     else
       test_fail "pr-create body-file PR creation succeeds"
@@ -561,7 +561,7 @@ smoke_check_pr_create_body_text() {
   local helper_log="$smoke_test_base/pr-create-body-text.log"
   local helper_body_copy="$smoke_test_base/pr-create-body-text-body-copy.md"
   local gh_stub_dir="$smoke_test_base/gh-pr-create-stub-text"
-  local body_text='Mixed PR body from inline text'
+  local body_text=$'## Scope\n\nMixed inline body scope.\n\n## What changed\n\n- Updated the tracked fixture.\n\n## What did not change\n\n- No unrelated files.\n\n## Verification status\n\n- pr-create contract smoke check\n\n## User-visible behavior changes\n\nNone\n\n## Stop conditions encountered\n\nNone\n\n## Re-entry hint\n\nUse the PR URL, watch CI, and finish with pr-finish after checks pass.\n'
 
   smoke_pr_create_prepare_branch "$branch_name" repo-automation/tests/pr-create-body-text.txt "body text fixture" || return 1
   smoke_write_gh_stub "$gh_stub_dir" || return 1
@@ -576,7 +576,7 @@ smoke_check_pr_create_body_text() {
     repo-automation/bin/pr-create --json --branch="$branch_name" --base=main --title="Mixed change body text" --body="$body_text" > "$helper_json"
   ) && python3 -m json.tool "$helper_json" >/dev/null && \
     smoke_json_assert "$helper_json" 'data.get("action_taken") == "created-pr" and data.get("pr_number") == "322" and data.get("pr_url") == "https://github.com/i-schuyler/repo-automation-template/pull/322" and data.get("branch") == "feature/pr-create-body-text" and data.get("base_branch") == "main"'; then
-    if grep -Fq 'gh pr create title=Mixed change body text base=main head=feature/pr-create-body-text body_file=' "$helper_log" && printf '%s\n' "$body_text" | cmp -s - "$helper_body_copy"; then
+    if grep -Fq 'gh pr create title=Mixed change body text base=main head=feature/pr-create-body-text body_file=' "$helper_log" && printf '%s\n' "$body_text" | cmp -s - "$helper_body_copy" && repo-automation/bin/pr-body-check --quiet --body-file="$helper_body_copy" >/dev/null; then
       test_pass "pr-create body-text PR creation succeeds"
     else
       test_fail "pr-create body-text PR creation succeeds"
@@ -597,6 +597,332 @@ smoke_check_pr_create_body_text() {
 
   rm -f "$helper_json" "$helper_log" "$helper_body_copy" >/dev/null 2>&1 || true
   rm -rf "$gh_stub_dir" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+smoke_check_pr_body_check_contract() {
+  local status=0
+  local valid_body="$smoke_test_base/pr-body-check-valid.md"
+  local scaffold_body="$smoke_test_base/pr-body-check-scaffold.md"
+  local duplicate_body="$smoke_test_base/pr-body-check-duplicate.md"
+  local order_body="$smoke_test_base/pr-body-check-order.md"
+  local passive_body="$smoke_test_base/pr-body-check-passive.md"
+  local missing_body="$smoke_test_base/pr-body-check-missing.md"
+  local helper_help="$smoke_test_base/pr-body-check-help-$$.txt"
+  local helper_stdout="$smoke_test_base/pr-body-check.out"
+  local helper_stderr="$smoke_test_base/pr-body-check.err"
+
+  cat > "$valid_body" <<'EOF'
+## Scope
+
+Mixed change scope.
+
+## What changed
+
+- Updated the tracked fixture.
+
+## What did not change
+
+- No unrelated files.
+
+## Verification status
+
+- pr-body-check contract smoke check
+
+## User-visible behavior changes
+
+None
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+EOF
+
+  cat > "$scaffold_body" <<'EOF'
+## Scope
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## What changed
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## What did not change
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## Verification status
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## User-visible behavior changes
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## Stop conditions encountered
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## Re-entry hint
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+EOF
+
+  cat > "$duplicate_body" <<'EOF'
+## Scope
+
+Duplicate scope.
+
+## Scope
+
+Duplicate scope again.
+
+## What changed
+
+- Duplicate heading fixture.
+
+## What did not change
+
+- No unrelated files.
+
+## Verification status
+
+- pr-body-check contract smoke check
+
+## User-visible behavior changes
+
+None
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+EOF
+
+  cat > "$order_body" <<'EOF'
+## What changed
+
+- Out of order fixture.
+
+## Scope
+
+Out of order scope.
+
+## What did not change
+
+- No unrelated files.
+
+## Verification status
+
+- pr-body-check contract smoke check
+
+## User-visible behavior changes
+
+None
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+EOF
+
+  cat > "$passive_body" <<'EOF'
+## Scope
+
+Mixed change scope.
+
+## What changed
+
+- Updated the tracked fixture.
+
+## What did not change
+
+- No unrelated files.
+
+## Verification status
+
+- pr-body-check contract smoke check
+
+## User-visible behavior changes
+
+None
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+
+## Passive monetization angle
+
+None
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --help > "$helper_help"
+  ) && grep -Fq -- '--body-file=<path>' "$helper_help" && grep -Fq -- '--quiet' "$helper_help"; then
+    test_pass "pr-body-check help shows strict syntax"
+  else
+    test_fail "pr-body-check help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$valid_body" > "$helper_stdout" 2> "$helper_stderr"
+  ) && [ "$(cat "$helper_stdout")" = "pass" ] && [ ! -s "$helper_stderr" ]; then
+    test_pass "pr-body-check default output is compact"
+  else
+    test_fail "pr-body-check default output is compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --quiet --body-file="$valid_body" > "$helper_stdout" 2> "$helper_stderr"
+  ) && [ ! -s "$helper_stdout" ] && [ ! -s "$helper_stderr" ]; then
+    test_pass "pr-body-check quiet success is silent"
+  else
+    test_fail "pr-body-check quiet success is silent"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file "$valid_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects space-separated body-file syntax"
+    status=1
+  elif grep -Fxq 'fail: flag format not accepted: --body-file' "$helper_stderr" && grep -Fxq 'fix: use --body-file=<path>' "$helper_stderr"; then
+    test_pass "pr-body-check rejects space-separated body-file syntax"
+  else
+    test_fail "pr-body-check rejects space-separated body-file syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file= > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects empty body-file values"
+    status=1
+  elif grep -Fxq 'fail: empty flag value: --body-file' "$helper_stderr" && grep -Fxq 'fix: use --body-file=<path>' "$helper_stderr"; then
+    test_pass "pr-body-check rejects empty body-file values"
+  else
+    test_fail "pr-body-check rejects empty body-file values"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$missing_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects missing body files"
+    status=1
+  elif grep -Fxq "fail: body file does not exist: $missing_body" "$helper_stderr" && grep -Fxq 'fix: provide an existing PR body file' "$helper_stderr"; then
+    test_pass "pr-body-check rejects missing body files"
+  else
+    test_fail "pr-body-check rejects missing body files"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$scaffold_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects placeholder-only bodies"
+    status=1
+  elif grep -Fxq 'fail: body is placeholder-only' "$helper_stderr" && grep -Fxq 'fix: replace branch/base/ahead/behind scaffolding with real PR body content' "$helper_stderr"; then
+    test_pass "pr-body-check rejects placeholder-only bodies"
+  else
+    test_fail "pr-body-check rejects placeholder-only bodies"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$duplicate_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects duplicate headings"
+    status=1
+  elif grep -Fxq 'fail: heading appears more than once: ## Scope' "$helper_stderr" && grep -Fxq 'fix: keep each required heading exactly once' "$helper_stderr"; then
+    test_pass "pr-body-check rejects duplicate headings"
+  else
+    test_fail "pr-body-check rejects duplicate headings"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$order_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects out-of-order headings"
+    status=1
+  elif grep -Fxq 'fail: required headings are out of order' "$helper_stderr" && grep -Fxq 'fix: reorder the headings to match the canonical contract' "$helper_stderr"; then
+    test_pass "pr-body-check rejects out-of-order headings"
+  else
+    test_fail "pr-body-check rejects out-of-order headings"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$passive_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects passive monetization headings"
+    status=1
+  elif grep -Fxq 'fail: forbidden heading present: ## Passive monetization angle' "$helper_stderr" && grep -Fxq 'fix: remove the passive monetization section' "$helper_stderr"; then
+    test_pass "pr-body-check rejects passive monetization headings"
+  else
+    test_fail "pr-body-check rejects passive monetization headings"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --quiet --body-file=.github/pull_request_template.md > "$helper_stdout" 2> "$helper_stderr"
+  ) && [ ! -s "$helper_stdout" ] && [ ! -s "$helper_stderr" ]; then
+    test_pass "pr-body-check accepts the committed PR template"
+  else
+    test_fail "pr-body-check accepts the committed PR template"
+    status=1
+  fi
+
+  rm -f "$valid_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_body" "$helper_help" "$helper_stdout" "$helper_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

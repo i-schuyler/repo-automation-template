@@ -107,6 +107,9 @@ case "$cmd $sub" in
     if [ -n "${GH_STUB_PR_CREATE_LOG_FILE:-}" ]; then
       printf '%s\n' "gh pr create title=$title base=$base head=$head body_file=$body_file" >> "$GH_STUB_PR_CREATE_LOG_FILE"
     fi
+    if [ -n "${GH_STUB_PR_CREATE_BODY_COPY_FILE:-}" ] && [ -n "$body_file" ] && [ -f "$body_file" ]; then
+      cp "$body_file" "$GH_STUB_PR_CREATE_BODY_COPY_FILE"
+    fi
     if [ -n "${GH_STUB_PR_STATE_FILE:-}" ]; then
       number="${GH_STUB_PR_CREATE_NUMBER:-401}"
       url="${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/$number}"
@@ -124,6 +127,14 @@ case "$cmd $sub" in
 esac
 EOF
   chmod +x "$gh_stub_dir/gh" || return 1
+}
+
+smoke_assert_single_final_summary_block() {
+  local summary_file="$1"
+
+  [ "$(grep -Fc '===== FINAL SUMMARY =====' "$summary_file" 2>/dev/null || printf '0')" = "1" ] &&
+    grep -Fxq '===== FINAL SUMMARY =====' "$summary_file" &&
+    grep -Fxq '===== END =====' "$summary_file"
 }
 
 smoke_write_repo_flow_ssh_stub() {
@@ -765,6 +776,7 @@ smoke_check_repo_flow_submit_paths() {
   local stderr_file=""
   local head_before=""
   local head_after=""
+  local body_copy_file=""
 
   smoke_setup_temp_repo || return 1
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
@@ -772,6 +784,7 @@ smoke_check_repo_flow_submit_paths() {
   stdout_file="$smoke_test_base/repo-flow-submit-paths.out"
   stderr_file="$smoke_test_base/repo-flow-submit-paths.stderr"
   create_log_file="$smoke_test_base/repo-flow-submit-paths-create.log"
+  body_copy_file="$smoke_test_base/repo-flow-submit-paths-body.md"
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_remote || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-submit-paths" || return 1
@@ -783,12 +796,18 @@ smoke_check_repo_flow_submit_paths() {
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" \
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    GH_STUB_PR_CREATE_BODY_COPY_FILE="$body_copy_file" \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/701' \
     GH_STUB_PR_VIEW_EMPTY=1 \
     repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit paths commit' > "$stdout_file" 2> "$stderr_file"
-  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/701' ] && [ -f "$create_log_file" ]; then
+  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/701' ] && [ -f "$create_log_file" ] && [ -f "$body_copy_file" ]; then
     head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
-    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit paths commit'; then
+    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit paths commit' && \
+      grep -Fxq '## Scope' "$body_copy_file" && \
+      grep -Fq "repo-flow submit for branch \`feature/repo-flow-submit-paths\` against \`main\`." "$body_copy_file" && \
+      grep -Fq 'Commit subject: repo-flow submit paths commit' "$body_copy_file" && \
+      grep -Fq 'README.md' "$body_copy_file" && \
+      grep -Fxq '## Re-entry hint' "$body_copy_file"; then
       test_pass "repo-flow submit stages explicit paths and creates a PR"
     else
       test_fail "repo-flow submit stages explicit paths and creates a PR"
@@ -1311,7 +1330,9 @@ EOF
   ); then
     test_fail "repo-flow submit --watch explain reports failure summaries"
     status=1
-  elif grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
+  elif summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$stderr_file" 2>/dev/null || printf '0')" &&
+    [ "$summary_count" = "1" ] &&
+    grep -Fq 'git push -u localorigin feature/repo-flow-submit-watch-publish' "$git_log_file" &&
     [ ! -s "$stdout_file" ] &&
     grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" &&
     grep -Fxq 'script=repo-flow' "$stderr_file" &&
@@ -1353,6 +1374,8 @@ smoke_check_repo_flow_submit_contract() {
   local alias_create_log_file=""
   local alias_reuse_stdout=""
   local alias_reuse_stderr=""
+  local review_pack_contract_explain_stdout=""
+  local review_pack_contract_explain_stderr=""
   local local_bash_path=""
   local ssh_stub_dir=""
   local status_before=""
@@ -1371,6 +1394,8 @@ smoke_check_repo_flow_submit_contract() {
   canonical_remote_stderr="$smoke_test_base/repo-flow-submit-canonical-remote.stderr"
   alias_remote_stderr="$smoke_test_base/repo-flow-submit-alias-remote.stderr"
   rejected_remote_stderr="$smoke_test_base/repo-flow-submit-rejected-remote.stderr"
+  review_pack_contract_explain_stdout="$smoke_test_base/review-pack-contract-explain.out"
+  review_pack_contract_explain_stderr="$smoke_test_base/review-pack-contract-explain.stderr"
   ssh_stub_dir="$smoke_test_base/ssh-stub"
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   local_bash_path="$(command -v bash)" || return 1
@@ -1382,6 +1407,21 @@ smoke_check_repo_flow_submit_contract() {
     test_pass "repo-flow submit help shows strict syntax"
   else
     test_fail "repo-flow submit help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    "$local_bash_path" repo-automation/tests/contracts/review-pack.sh --explain > "$review_pack_contract_explain_stdout" 2> "$review_pack_contract_explain_stderr"
+  ) && smoke_assert_single_final_summary_block "$review_pack_contract_explain_stderr" &&
+    grep -Fxq 'script=review-pack-contract' "$review_pack_contract_explain_stderr" &&
+    grep -Fxq 'rc=0' "$review_pack_contract_explain_stderr" &&
+    grep -Fxq 'mode=explain' "$review_pack_contract_explain_stderr" &&
+    grep -Eq '^status_count=[0-9]+$' "$review_pack_contract_explain_stderr" &&
+    grep -Fxq 'url_or_stop=pass' "$review_pack_contract_explain_stderr"; then
+    test_pass "review-pack contract explain output ends with one final summary block"
+  else
+    test_fail "review-pack contract explain output ends with one final summary block"
     status=1
   fi
 
@@ -1413,10 +1453,26 @@ smoke_check_repo_flow_submit_contract() {
     git remote set-url --push origin "$smoke_remote_dir" >/dev/null 2>&1 || return 1
     PATH="$ssh_stub_dir:$gh_stub_dir:$PATH" \
     GH_STUB_PR_VIEW_FAIL_ONCE_FILE="$smoke_test_base/repo-flow-submit-alias-create-view.fail" \
+    GH_STUB_PR_VIEW_NUMBER=703 \
     GH_STUB_PR_CREATE_LOG_FILE="$alias_create_log_file" \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/703' \
-    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias commit' > "$alias_create_stdout" 2> "$alias_create_stderr"
-  ) && grep -Eq '^https://github\.com/i-schuyler/repo-automation-template/pull/[0-9]+$' "$alias_create_stdout" && grep -Fq 'gh pr create title=' "$alias_create_log_file"; then
+    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias commit' --explain > "$alias_create_stdout" 2> "$alias_create_stderr"
+  ) && [ ! -s "$alias_create_stdout" ] &&
+    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$alias_create_stderr" 2>/dev/null || printf '0')" &&
+    [ "$summary_count" = "1" ] &&
+    smoke_assert_single_final_summary_block "$alias_create_stderr" &&
+    grep -Fxq 'script=repo-flow' "$alias_create_stderr" &&
+    grep -Fxq 'mode=submit' "$alias_create_stderr" &&
+    grep -Fxq 'rc=0' "$alias_create_stderr" &&
+    grep -Fxq 'branch_before=feature/repo-flow-submit-validation' "$alias_create_stderr" &&
+    grep -Fxq 'branch_after=feature/repo-flow-submit-validation' "$alias_create_stderr" &&
+    grep -Fxq 'pr=703' "$alias_create_stderr" &&
+    grep -Eq '^commit=[0-9a-f]{7,40}$' "$alias_create_stderr" &&
+    grep -Fxq 'pushed=true' "$alias_create_stderr" &&
+    grep -Fxq 'merged=false' "$alias_create_stderr" &&
+    grep -Eq '^status_count=[0-9]+$' "$alias_create_stderr" &&
+    grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/703' "$alias_create_stderr" &&
+    grep -Fq 'gh pr create title=' "$alias_create_log_file"; then
     test_pass "repo-flow submit accepts a GitHub SSH alias through the delegated PR create path"
   else
     test_fail "repo-flow submit accepts a GitHub SSH alias through the delegated PR create path"
@@ -1434,8 +1490,22 @@ smoke_check_repo_flow_submit_contract() {
     GH_STUB_PR_VIEW_NUMBER=904 \
     GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/904' \
     GH_STUB_PR_VIEW_STATE='OPEN' \
-    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias reuse commit' > "$alias_reuse_stdout" 2> "$alias_reuse_stderr"
-  ) && [ "$(cat "$alias_reuse_stdout")" = 'https://github.com/i-schuyler/repo-automation-template/pull/904' ]; then
+    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias reuse commit' --explain > "$alias_reuse_stdout" 2> "$alias_reuse_stderr"
+  ) && [ ! -s "$alias_reuse_stdout" ] &&
+    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$alias_reuse_stderr" 2>/dev/null || printf '0')" &&
+    [ "$summary_count" = "1" ] &&
+    smoke_assert_single_final_summary_block "$alias_reuse_stderr" &&
+    grep -Fxq 'script=repo-flow' "$alias_reuse_stderr" &&
+    grep -Fxq 'mode=submit' "$alias_reuse_stderr" &&
+    grep -Fxq 'rc=0' "$alias_reuse_stderr" &&
+    grep -Fxq 'branch_before=feature/repo-flow-submit-validation' "$alias_reuse_stderr" &&
+    grep -Fxq 'branch_after=feature/repo-flow-submit-validation' "$alias_reuse_stderr" &&
+    grep -Fxq 'pr=904' "$alias_reuse_stderr" &&
+    grep -Eq '^commit=[0-9a-f]{7,40}$' "$alias_reuse_stderr" &&
+    grep -Fxq 'pushed=true' "$alias_reuse_stderr" &&
+    grep -Fxq 'merged=false' "$alias_reuse_stderr" &&
+    grep -Eq '^status_count=[0-9]+$' "$alias_reuse_stderr" &&
+    grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/904' "$alias_reuse_stderr"; then
     test_pass "repo-flow submit accepts a GitHub SSH alias through the delegated PR reuse path"
   else
     test_fail "repo-flow submit accepts a GitHub SSH alias through the delegated PR reuse path"

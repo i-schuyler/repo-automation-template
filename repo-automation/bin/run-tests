@@ -474,6 +474,40 @@ run_tests_print_log_reference() {
   fi
 }
 
+run_tests_print_failure_fix() {
+  local first_entry=""
+  local name=""
+  local rest=""
+  local message=""
+
+  if [ "$run_tests_mode" != "explain" ]; then
+    printf 'fix: %s\n' "$run_tests_next_hint"
+    return 0
+  fi
+
+  if [ -n "$run_tests_log_file" ]; then
+    printf 'fix: inspect log: %s\n' "$run_tests_log_file"
+    return 0
+  fi
+
+  first_entry="$(run_tests_first_entry_by_status fail 2>/dev/null || true)"
+  if [ -n "$first_entry" ]; then
+    name="${first_entry%%|*}"
+    rest="${first_entry#*|}"
+    rest="${rest#*|}"
+    rest="${rest#*|}"
+    message="$rest"
+    if [ -n "$message" ] && [ "$message" != "failed" ]; then
+      printf 'fix: rerun %s directly after inspecting the failure details\n' "$name"
+    else
+      printf 'fix: rerun %s directly\n' "$name"
+    fi
+    return 0
+  fi
+
+  printf 'fix: inspect the failing test details above\n'
+}
+
 run_tests_first_entry_by_status() {
   local want_status="$1"
   local entry name status rest timed_out message
@@ -626,7 +660,7 @@ run_tests_print_human() {
     fi
     run_tests_print_log_reference "$run_tests_log_file"
     if [ "$run_tests_mode" != "quiet" ]; then
-      printf 'fix: %s\n' "$run_tests_next_hint"
+      run_tests_print_failure_fix
     fi
     return 0
   fi
