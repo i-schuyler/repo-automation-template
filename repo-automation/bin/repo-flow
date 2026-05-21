@@ -464,12 +464,46 @@ repo_flow_submit_path_is_requested() {
   return 1
 }
 
+repo_flow_submit_format_unrequested_paths() {
+  local max_paths="$1"
+  shift
+  local -a paths=("$@")
+  local shown_count=0
+  local remaining_count=0
+  local output=""
+  local path=""
+
+  if [ "${#paths[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  shown_count="${#paths[@]}"
+  if [ "$shown_count" -gt "$max_paths" ]; then
+    shown_count="$max_paths"
+    remaining_count=$(( ${#paths[@]} - max_paths ))
+  fi
+
+  for path in "${paths[@]:0:shown_count}"; do
+    if [ -n "$output" ]; then
+      output="$output,"
+    fi
+    output="$output$path"
+  done
+
+  if [ "$remaining_count" -gt 0 ]; then
+    output="$output (+$remaining_count more)"
+  fi
+
+  printf '%s\n' "$output"
+}
+
 repo_flow_submit_check_unrequested_changes() {
   local paths_csv="$1"
   local status_line=""
   local status_path=""
   local requested_path=""
   local -a submit_paths=()
+  local -a unrequested_paths=()
 
   IFS=, read -r -a submit_paths <<< "$paths_csv"
 
@@ -491,11 +525,16 @@ repo_flow_submit_check_unrequested_changes() {
       fi
     done
 
-    repo_flow_submit_stop "unrequested working tree changes remain; commit a clean explicit submit"
-    return 1
+    unrequested_paths+=("$status_path")
   done <<EOF
 $(git status --porcelain --untracked-files=all)
 EOF
+
+  if [ "${#unrequested_paths[@]}" -gt 0 ]; then
+    printf 'unrequested_paths=%s\n' "$(repo_flow_submit_format_unrequested_paths 3 "${unrequested_paths[@]}")" >&2
+    repo_flow_submit_stop "unrequested working tree changes remain; commit a clean explicit submit"
+    return 1
+  fi
 
   return 0
 }
@@ -724,8 +763,7 @@ repo_flow_submit_main() {
   local command_status=0
   local arg=""
   local staged_files=""
-  local uncommitted_status=""
-  local unstaged_or_untracked_status=""
+  local requested_paths_csv=""
   local branch_before=""
   local branch_after=""
   local commit_sha="none"
@@ -957,10 +995,14 @@ repo_flow_submit_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    uncommitted_status="$(git status --porcelain)"
-    unstaged_or_untracked_status="$(printf '%s\n' "$uncommitted_status" | grep -Ev '^[MADRC][[:space:]]' || true)"
-    if [ -n "$unstaged_or_untracked_status" ]; then
-      repo_flow_submit_stop "unrequested working tree changes remain; commit a clean explicit submit"
+    if [ -n "$paths_csv" ]; then
+      requested_paths_csv="$paths_csv"
+    elif [ "$modified" -eq 1 ] && [ "${#modified_paths[@]}" -gt 0 ]; then
+      requested_paths_csv="$modified_paths_csv"
+    else
+      requested_paths_csv="$(printf '%s\n' "$staged_files" | sed '/^$/d' | paste -sd, -)"
+    fi
+    if [ -n "$requested_paths_csv" ] && ! repo_flow_submit_check_unrequested_changes "$requested_paths_csv"; then
       command_status=1
     fi
   fi
