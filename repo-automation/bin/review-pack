@@ -10,6 +10,16 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 review_pack_target=""
 review_pack_output_base=""
 review_pack_label=""
+review_pack_copy_to=""
+review_pack_scp_to=""
+review_pack_no_transfer=0
+review_pack_explain=0
+review_pack_full=0
+review_pack_transfer_mode="none"
+review_pack_transfer_destination=""
+review_pack_output_result=""
+review_pack_packet_mode="lean"
+review_pack_status_count=0
 review_pack_repo_root=""
 review_pack_timestamp=""
 review_pack_label_slug=""
@@ -20,7 +30,7 @@ review_pack_prompt_file=""
 review_pack_target_review="review"
 
 review_pack_usage() {
-  printf 'Usage: repo-automation/bin/review-pack --target=<%s|codex> [--out-dir=<path>] [--label=<text>] [--help]\n' "$review_pack_target_review"
+  printf 'Usage: repo-automation/bin/review-pack --target=<%s|codex> [--out-dir=<path>] [--label=<text>] [--full] [--copy-to=<dir>|--scp-to=<target>|--no-transfer] [--explain] [--help]\n' "$review_pack_target_review"
 }
 
 review_pack_value_flag_error() {
@@ -55,6 +65,134 @@ review_pack_fail() {
   printf 'fail: %s\n' "$reason" >&2
   printf 'fix: %s\n' "$fix" >&2
   return 1
+}
+
+review_pack_transfer_fail() {
+  local reason="$1"
+  local artifact="$2"
+  local fix="$3"
+
+  printf 'fail: %s\n' "$reason" >&2
+  printf 'artifact: %s\n' "$artifact" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  return 1
+}
+
+review_pack_load_config_if_present() {
+  local config_path=""
+
+  config_path="$(repo_auto_config_path)" || return 1
+  if [ -f "$config_path" ]; then
+    repo_auto_load_config || return 1
+  fi
+}
+
+review_pack_transfer_configured() {
+  [ -n "${REVIEW_PACK_COPY_TO:-}" ] || [ -n "${REVIEW_PACK_SCP_TO:-}" ]
+}
+
+review_pack_transfer_config_error() {
+  review_pack_fail \
+    "transfer defaults require --target=review" \
+  "use --target=review or remove REVIEW_PACK_COPY_TO/REVIEW_PACK_SCP_TO"
+}
+
+review_pack_transfer_requested() {
+  [ -n "$review_pack_copy_to" ] || [ -n "$review_pack_scp_to" ] || [ "$review_pack_no_transfer" -eq 1 ]
+}
+
+review_pack_prepare_transfer() {
+  if [ -n "$review_pack_copy_to" ] && [ -n "$review_pack_scp_to" ]; then
+    review_pack_fail "copy and scp transfer flags are mutually exclusive" "use only one of --copy-to or --scp-to" || return 1
+    return 1
+  fi
+  if [ "$review_pack_no_transfer" -eq 1 ] && { [ -n "$review_pack_copy_to" ] || [ -n "$review_pack_scp_to" ]; }; then
+    review_pack_fail "--no-transfer is mutually exclusive with transfer flags" "use either --no-transfer or --copy-to/--scp-to" || return 1
+    return 1
+  fi
+
+  case "$review_pack_target" in
+    review)
+      if [ -n "$review_pack_copy_to" ]; then
+        review_pack_transfer_mode="copy"
+        review_pack_transfer_destination="$review_pack_copy_to"
+      elif [ -n "$review_pack_scp_to" ]; then
+        review_pack_transfer_mode="scp"
+        review_pack_transfer_destination="$review_pack_scp_to"
+      fi
+      ;;
+    codex)
+      if [ -n "$review_pack_copy_to" ] || [ -n "$review_pack_scp_to" ]; then
+        review_pack_fail \
+          "transfer flags require --target=review" \
+          "rerun with --target=review or drop transfer flags" || return 1
+        return 1
+      fi
+      ;;
+  esac
+}
+
+review_pack_apply_transfer_defaults() {
+  if [ "$review_pack_no_transfer" -eq 1 ]; then
+    return 0
+  fi
+
+  review_pack_load_config_if_present || return 1
+  if [ -n "${REVIEW_PACK_COPY_TO:-}" ] && [ -n "${REVIEW_PACK_SCP_TO:-}" ]; then
+    review_pack_fail \
+      "REVIEW_PACK_COPY_TO and REVIEW_PACK_SCP_TO are mutually exclusive" \
+      "set only one review-pack transfer default in .repo-automation.local.conf" || return 1
+    return 1
+  fi
+  if [ -n "${REVIEW_PACK_COPY_TO:-}" ]; then
+    review_pack_transfer_mode="copy"
+    review_pack_transfer_destination="$REVIEW_PACK_COPY_TO"
+  elif [ -n "${REVIEW_PACK_SCP_TO:-}" ]; then
+    review_pack_transfer_mode="scp"
+    review_pack_transfer_destination="$REVIEW_PACK_SCP_TO"
+  fi
+}
+
+review_pack_transfer_result() {
+  local bundle_zip="$1"
+
+  review_pack_output_result="$bundle_zip"
+  case "$review_pack_transfer_mode" in
+    copy)
+      mkdir -p "$review_pack_transfer_destination" || {
+        review_pack_transfer_fail \
+          "failed to copy review artifact" \
+          "$bundle_zip" \
+          "check the destination directory and rerun review-pack" || return 1
+        return 1
+      }
+      cp -- "$bundle_zip" "$review_pack_transfer_destination/$(basename "$bundle_zip")" || {
+        review_pack_transfer_fail \
+          "failed to copy review artifact" \
+          "$bundle_zip" \
+          "check the destination directory and rerun review-pack" || return 1
+        return 1
+      }
+      review_pack_output_result="$review_pack_transfer_destination/$(basename "$bundle_zip")"
+      ;;
+    scp)
+      if ! command -v scp >/dev/null 2>&1; then
+        review_pack_transfer_fail \
+          "required command not found: scp" \
+          "$bundle_zip" \
+          "install scp or use --copy-to instead" || return 1
+        return 1
+      fi
+      scp "$bundle_zip" "$review_pack_transfer_destination" || {
+        review_pack_transfer_fail \
+          "failed to scp review artifact" \
+          "$bundle_zip" \
+          "check the scp target and rerun review-pack" || return 1
+        return 1
+      }
+      review_pack_output_result="$review_pack_transfer_destination"
+      ;;
+  esac
 }
 
 review_pack_init_paths() {
@@ -107,9 +245,39 @@ Output contract
 EOF
 }
 
+review_pack_run_lean_review() {
+  local packet_path=""
+
+  packet_path="$(
+    cd "$review_pack_repo_root" || return 1
+    REPO_AUTOMATION_OUTPUT_DIR="$review_pack_stage_dir" repo-automation/bin/post-codex-packet --label="${review_pack_label:-review}"
+  )" || return 1
+  review_pack_bundle_zip="$packet_path"
+}
+
+review_pack_run_full_review() {
+  local bundle_log=""
+
+  bundle_log="$(mktemp "${TMPDIR:-$HOME/.cache}/review-pack-bundle.XXXXXX")" || return 1
+  if (
+    cd "$review_pack_repo_root" || exit 1
+    REPO_AUTOMATION_OUTPUT_DIR="$review_pack_stage_dir" repo-automation/bin/evidence-bundle --label="${review_pack_label:-review}" --post-codex --include-repo-zip
+  ) > "$bundle_log" 2>&1; then
+    review_pack_bundle_zip="$(grep -E '^/' "$bundle_log" | tail -n 1 | tr -d '\r')"
+    if [ -z "$review_pack_bundle_zip" ] || [ ! -f "$review_pack_bundle_zip" ]; then
+      review_pack_fail "failed to locate review artifact zip" "inspect $bundle_log and rerun review-pack" || return 1
+      return 1
+    fi
+    rm -f "$bundle_log" >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  review_pack_fail "failed to create review artifact" "inspect $bundle_log and rerun review-pack" || return 1
+  return 1
+}
+
 review_pack_main() {
   local arg=""
-  local bundle_log=""
   local prompt_status_file=""
 
   while [ "$#" -gt 0 ]; do
@@ -160,6 +328,37 @@ review_pack_main() {
         review_pack_value_flag_error "--label" "use --label=<text>" "${2:-}" || return 1
         return 1
         ;;
+      --full)
+        review_pack_full=1
+        ;;
+      --copy-to=*)
+        review_pack_copy_to="${arg#--copy-to=}"
+        if [ -z "$review_pack_copy_to" ]; then
+          repo_auto_flag_error "empty flag value" "--copy-to" "use --copy-to=<dir>" || return 1
+          return 1
+        fi
+        ;;
+      --copy-to)
+        review_pack_value_flag_error "--copy-to" "use --copy-to=<dir>" "${2:-}" || return 1
+        return 1
+        ;;
+      --scp-to=*)
+        review_pack_scp_to="${arg#--scp-to=}"
+        if [ -z "$review_pack_scp_to" ]; then
+          repo_auto_flag_error "empty flag value" "--scp-to" "use --scp-to=<target>" || return 1
+          return 1
+        fi
+        ;;
+      --scp-to)
+        review_pack_value_flag_error "--scp-to" "use --scp-to=<target>" "${2:-}" || return 1
+        return 1
+        ;;
+      --no-transfer)
+        review_pack_no_transfer=1
+        ;;
+      --explain)
+        review_pack_explain=1
+        ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then
           repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/review-pack --help" || return 1
@@ -178,27 +377,37 @@ review_pack_main() {
   fi
 
   review_pack_init_paths || return 1
+  review_pack_prepare_transfer || return 1
 
   case "$review_pack_target" in
     review)
       review_pack_stage_dir="$(mktemp -d "$review_pack_output_base/review-pack-${review_pack_timestamp}${review_pack_label_slug:+-$review_pack_label_slug}.XXXXXX")" || return 1
-      bundle_log="$(mktemp "${TMPDIR:-$HOME/.cache}/review-pack-bundle.XXXXXX")" || return 1
-      if (
-        cd "$review_pack_repo_root" || exit 1
-        REPO_AUTOMATION_OUTPUT_DIR="$review_pack_stage_dir" repo-automation/bin/evidence-bundle --label="${review_pack_label:-review}" --post-codex --include-repo-zip
-      ) > "$bundle_log" 2>&1; then
-        review_pack_bundle_zip="$(grep -E '^/' "$bundle_log" | tail -n 1 | tr -d '\r')"
-        if [ -z "$review_pack_bundle_zip" ] || [ ! -f "$review_pack_bundle_zip" ]; then
-          review_pack_fail "failed to locate review bundle zip" "inspect $bundle_log and rerun review-pack" || return 1
-          return 1
-        fi
-        rm -f "$bundle_log" >/dev/null 2>&1 || true
-        printf '%s\n' "$review_pack_bundle_zip"
-        return 0
+      if [ -z "$review_pack_copy_to" ] && [ -z "$review_pack_scp_to" ] && [ "$review_pack_no_transfer" -eq 0 ]; then
+        review_pack_apply_transfer_defaults || return 1
       fi
-
-      review_pack_fail "failed to create review bundle" "inspect $bundle_log and rerun review-pack" || return 1
-      return 1
+      if [ "$review_pack_full" -eq 1 ]; then
+        review_pack_packet_mode="full"
+        review_pack_run_full_review || return 1
+      else
+        review_pack_packet_mode="lean"
+        review_pack_run_lean_review || return 1
+      fi
+      review_pack_transfer_result "$review_pack_bundle_zip" || return 1
+      review_pack_status_count=0
+      if [ "$review_pack_explain" -eq 1 ]; then
+        printf '%s\n' "$review_pack_output_result"
+        repo_auto_print_final_summary \
+          "artifact=$review_pack_bundle_zip" \
+          "packet_mode=$review_pack_packet_mode" \
+          "transfer=$review_pack_transfer_mode" \
+          "destination=${review_pack_transfer_destination:-none}" \
+          "output=$review_pack_output_result" \
+          "size_bytes=$(wc -c < "$review_pack_bundle_zip" | tr -d '[:space:]')" \
+          "status_count=${review_pack_status_count:-0}"
+      else
+        printf '%s\n' "$review_pack_output_result"
+      fi
+      return 0
       ;;
     codex)
       review_pack_prompt_dir="$(mktemp -d "$review_pack_output_base/review-pack-codex-${review_pack_timestamp}${review_pack_label_slug:+-$review_pack_label_slug}.XXXXXX")" || return 1
