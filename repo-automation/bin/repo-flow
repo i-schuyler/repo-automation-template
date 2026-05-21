@@ -1000,7 +1000,7 @@ repo_flow_submit_main() {
     elif [ "$modified" -eq 1 ] && [ "${#modified_paths[@]}" -gt 0 ]; then
       requested_paths_csv="$modified_paths_csv"
     else
-      requested_paths_csv="$staged_files"
+      requested_paths_csv="$(printf '%s\n' "$staged_files" | sed '/^$/d' | paste -sd, -)"
     fi
     if [ -n "$requested_paths_csv" ] && ! repo_flow_submit_check_unrequested_changes "$requested_paths_csv"; then
       command_status=1

@@ -1849,47 +1849,147 @@ smoke_check_repo_flow_submit_contract() {
 smoke_check_repo_flow_submit_unrequested_paths_contract() {
   local status=0
   local gh_stub_dir=""
+  local clean_stdout=""
+  local clean_stderr=""
+  local paths_stderr=""
   local explain_stderr=""
   local cap_stderr=""
   local local_bash_path=""
   local isolated_repo_dir=""
+  local status_before=""
+  local status_after=""
+  local cached_before=""
+  local cached_after=""
+  local head_before=""
+  local head_after=""
 
   smoke_setup_temp_repo || return 1
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
+  clean_stdout="$smoke_test_base/repo-flow-submit-unrequested-paths-clean.out"
+  clean_stderr="$smoke_test_base/repo-flow-submit-unrequested-paths-clean.stderr"
+  paths_stderr="$smoke_test_base/repo-flow-submit-unrequested-paths-paths.stderr"
   explain_stderr="$smoke_test_base/repo-flow-submit-unrequested-paths-explain.stderr"
   cap_stderr="$smoke_test_base/repo-flow-submit-unrequested-paths-cap.stderr"
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   local_bash_path="$(command -v bash)" || return 1
 
-  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-unrequested-paths" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-unrequested-paths-clean" || return 1
   isolated_repo_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-flow-submit-isolated.XXXXXX")" || return 1
   git clone --quiet "$smoke_test_dir" "$isolated_repo_dir" || return 1
-  git -C "$isolated_repo_dir" checkout feature/repo-flow-submit-unrequested-paths >/dev/null 2>&1 || return 1
-  smoke_test_dir="$isolated_repo_dir" smoke_prepare_repo_flow_submit_remote_validation 'git@github.com:i-schuyler/repo-automation-template.git' 'git@github.com:i-schuyler/repo-automation-template.git' || return 1
-  printf 'tracked requested baseline\n' > "$isolated_repo_dir/tracked-requested.md" || return 1
-  printf 'tracked dirty baseline\n' > "$isolated_repo_dir/unrequested-dirty.md" || return 1
-  git -C "$isolated_repo_dir" add tracked-requested.md unrequested-dirty.md || return 1
+  git -C "$isolated_repo_dir" checkout feature/repo-flow-submit-unrequested-paths-clean >/dev/null 2>&1 || return 1
+  smoke_test_dir="$isolated_repo_dir" smoke_prepare_repo_flow_remote || return 1
+  printf 'repo-flow submit clean requested a\n' > "$isolated_repo_dir/tracked-requested-a.md" || return 1
+  printf 'repo-flow submit clean requested b\n' > "$isolated_repo_dir/tracked-requested-b.md" || return 1
+  git -C "$isolated_repo_dir" add tracked-requested-a.md tracked-requested-b.md || return 1
   git -C "$isolated_repo_dir" commit -m "repo-flow submit unrequested path fixtures" >/dev/null || return 1
 
-  printf '\nrepo-flow submit requested line\n' >> "$isolated_repo_dir/tracked-requested.md" || return 1
-  git -C "$isolated_repo_dir" add tracked-requested.md || return 1
-  printf '\nrepo-flow submit unrequested dirty line\n' >> "$isolated_repo_dir/unrequested-dirty.md" || return 1
-  printf 'repo-flow submit unrequested new file\n' > "$isolated_repo_dir/unrequested-new.md" || return 1
+  printf '\nrepo-flow submit clean requested change a\n' >> "$isolated_repo_dir/tracked-requested-a.md" || return 1
+  printf '\nrepo-flow submit clean requested change b\n' >> "$isolated_repo_dir/tracked-requested-b.md" || return 1
+  git -C "$isolated_repo_dir" add tracked-requested-a.md tracked-requested-b.md || return 1
+
+  if (
+    cd "$isolated_repo_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_VIEW_FAIL_ONCE_FILE="$smoke_test_base/repo-flow-submit-unrequested-paths-clean-view.fail" \
+    GH_STUB_PR_VIEW_FAIL_ONCE_STDERR='net/http: TLS handshake timeout' \
+    GH_STUB_PR_CREATE_NUMBER=905 \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/905' \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message=hi --explain > "$clean_stdout" 2> "$clean_stderr"
+  ); then
+    if [ ! -s "$clean_stdout" ] &&
+      grep -Fxq '===== FINAL SUMMARY =====' "$clean_stderr" &&
+      grep -Fxq 'status_count=0' "$clean_stderr" &&
+      grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/905' "$clean_stderr" &&
+      ! grep -Fq 'unrequested_paths=' "$clean_stderr"; then
+      test_pass "repo-flow submit --staged with multiple staged requested files succeeds without unrequested paths"
+    else
+      test_fail "repo-flow submit --staged with multiple staged requested files succeeds without unrequested paths"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit --staged with multiple staged requested files succeeds without unrequested paths"
+    status=1
+  fi
+
+  rm -rf "$isolated_repo_dir" >/dev/null 2>&1 || true
+
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-unrequested-paths-dirty" || return 1
+  isolated_repo_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-flow-submit-isolated.XXXXXX")" || return 1
+  git clone --quiet "$smoke_test_dir" "$isolated_repo_dir" || return 1
+  git -C "$isolated_repo_dir" checkout feature/repo-flow-submit-unrequested-paths-dirty >/dev/null 2>&1 || return 1
+  smoke_test_dir="$isolated_repo_dir" smoke_prepare_repo_flow_remote || return 1
+  printf 'repo-flow submit dirty requested a\n' > "$isolated_repo_dir/tracked-requested-a.md" || return 1
+  printf 'repo-flow submit dirty requested b\n' > "$isolated_repo_dir/tracked-requested-b.md" || return 1
+  git -C "$isolated_repo_dir" add tracked-requested-a.md tracked-requested-b.md || return 1
+  git -C "$isolated_repo_dir" commit -m "repo-flow submit unrequested path dirty fixtures" >/dev/null || return 1
+  printf '\nrepo-flow submit dirty requested change a\n' >> "$isolated_repo_dir/tracked-requested-a.md" || return 1
+  printf '\nrepo-flow submit dirty requested change b\n' >> "$isolated_repo_dir/tracked-requested-b.md" || return 1
+  git -C "$isolated_repo_dir" add tracked-requested-a.md tracked-requested-b.md || return 1
+  printf '\nrepo-flow submit dirty unrelated change\n' >> "$isolated_repo_dir/README.md" || return 1
+  printf 'repo-flow submit dirty unrelated new file\n' > "$isolated_repo_dir/unrequested-new.md" || return 1
+  status_before="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
+  cached_before="$(git -C "$isolated_repo_dir" diff --cached --name-only)" || return 1
+  head_before="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
 
   if (
     cd "$isolated_repo_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message=hi --explain >/dev/null 2> "$explain_stderr"
   ); then
-    test_fail "repo-flow submit --staged --explain reports unrequested paths"
+    test_fail "repo-flow submit --staged reports only unrelated dirty paths"
     status=1
   elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$explain_stderr" &&
-    grep -Fxq 'unrequested_paths=unrequested-dirty.md,unrequested-new.md' "$explain_stderr" &&
-    grep -Fxq 'status_count=3' "$explain_stderr" &&
+    grep -Fxq 'unrequested_paths=README.md,unrequested-new.md' "$explain_stderr" &&
+    grep -Fxq 'status_count=4' "$explain_stderr" &&
     grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$explain_stderr"; then
-    test_pass "repo-flow submit --staged --explain reports unrequested paths"
+    status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
+    cached_after="$(git -C "$isolated_repo_dir" diff --cached --name-only)" || return 1
+    head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
+    if [ "$status_before" = "$status_after" ] && [ "$cached_before" = "$cached_after" ] && [ "$head_before" = "$head_after" ]; then
+      test_pass "repo-flow submit --staged reports only unrelated dirty paths"
+    else
+      test_fail "repo-flow submit --staged reports only unrelated dirty paths"
+      status=1
+    fi
   else
-    test_fail "repo-flow submit --staged --explain reports unrequested paths"
+    test_fail "repo-flow submit --staged reports only unrelated dirty paths"
+    status=1
+  fi
+
+  rm -rf "$isolated_repo_dir" >/dev/null 2>&1 || true
+
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-unrequested-paths-paths" || return 1
+  isolated_repo_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-flow-submit-isolated.XXXXXX")" || return 1
+  git clone --quiet "$smoke_test_dir" "$isolated_repo_dir" || return 1
+  git -C "$isolated_repo_dir" checkout feature/repo-flow-submit-unrequested-paths-paths >/dev/null 2>&1 || return 1
+  smoke_test_dir="$isolated_repo_dir" smoke_prepare_repo_flow_remote || return 1
+  printf '\nrepo-flow submit paths requested line\n' >> "$isolated_repo_dir/docs/testing.md" || return 1
+  printf '\nrepo-flow submit paths dirty line\n' >> "$isolated_repo_dir/README.md" || return 1
+  printf 'repo-flow submit paths unrequested new file\n' > "$isolated_repo_dir/unrequested-new.md" || return 1
+  status_before="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
+  cached_before="$(git -C "$isolated_repo_dir" diff --cached --name-only)" || return 1
+  head_before="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$isolated_repo_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --paths=docs/testing.md --message=hi --explain >/dev/null 2> "$paths_stderr"
+  ); then
+    test_fail "repo-flow submit --paths --explain reports and preserves unrequested paths"
+    status=1
+  elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$paths_stderr" &&
+    grep -Fxq 'unrequested_paths=README.md,unrequested-new.md' "$paths_stderr" &&
+    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$paths_stderr"; then
+    status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
+    cached_after="$(git -C "$isolated_repo_dir" diff --cached --name-only)" || return 1
+    head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
+    if [ "$status_before" = "$status_after" ] && [ "$cached_before" = "$cached_after" ] && [ "$head_before" = "$head_after" ]; then
+      test_pass "repo-flow submit --paths --explain reports and preserves unrequested paths"
+    else
+      test_fail "repo-flow submit --paths --explain reports and preserves unrequested paths"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit --paths --explain reports and preserves unrequested paths"
     status=1
   fi
 
@@ -1930,6 +2030,7 @@ smoke_check_repo_flow_submit_unrequested_paths_contract() {
 
   return "$status"
 }
+
 
 smoke_main() {
   local status=0
