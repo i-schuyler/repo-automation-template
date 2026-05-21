@@ -42,6 +42,8 @@ done
 version_main() {
   local repo_root
   local expected_version
+  local prepare_release_output=""
+  local prepare_release_status=0
 
   repo_root="$(cd "$script_dir/../.." && pwd)"
   cd "$repo_root" || return 1
@@ -50,19 +52,27 @@ version_main() {
     if [ "$version_consistency_explain" -eq 1 ]; then
       repo-automation/bin/prepare-release --check --explain || return $?
     elif [ "$version_consistency_quiet" -eq 1 ]; then
-      repo-automation/bin/prepare-release --check >/dev/null 2>/dev/null || return $?
+      prepare_release_output="$(repo-automation/bin/prepare-release --check 2>&1)"
+      prepare_release_status=$?
+      if [ "$prepare_release_status" -ne 0 ]; then
+        printf 'FAIL: version-consistency: prepare-release --check failed\n' >&2
+        if [ -n "$prepare_release_output" ]; then
+          printf '%s\n' "$prepare_release_output" >&2
+        fi
+        return "$prepare_release_status"
+      fi
     else
       repo-automation/bin/prepare-release --check >/dev/null || return $?
     fi
   else
     if [ ! -f VERSION ]; then
-      printf 'FAIL: VERSION exists\n' >&2
+      printf 'FAIL: version-consistency: VERSION file is missing\n' >&2
       return 1
     fi
 
     expected_version="$(tr -d '[:space:]' < VERSION)"
     if [ -z "$expected_version" ]; then
-      printf 'FAIL: VERSION is non-empty\n' >&2
+      printf 'FAIL: version-consistency: VERSION file is empty\n' >&2
       return 1
     fi
 
@@ -71,7 +81,7 @@ version_main() {
         printf 'PASS: installed automation config REPO_AUTOMATION_VERSION matches VERSION\n'
       fi
     else
-      printf 'FAIL: installed automation config REPO_AUTOMATION_VERSION matches VERSION\n' >&2
+      printf 'FAIL: version-consistency: installed automation config REPO_AUTOMATION_VERSION matches VERSION\n' >&2
       return 1
     fi
 
@@ -80,7 +90,7 @@ version_main() {
         printf 'PASS: automation README current version matches VERSION\n'
       fi
     else
-      printf 'FAIL: automation README current version matches VERSION\n' >&2
+      printf 'FAIL: version-consistency: automation README current version matches VERSION\n' >&2
       return 1
     fi
 
@@ -89,7 +99,7 @@ version_main() {
         printf 'PASS: automation CHANGELOG has unreleased heading for VERSION\n'
       fi
     else
-      printf 'FAIL: automation CHANGELOG has unreleased heading for VERSION\n' >&2
+      printf 'FAIL: version-consistency: automation CHANGELOG has unreleased heading for VERSION\n' >&2
       return 1
     fi
 
@@ -98,7 +108,7 @@ version_main() {
         printf 'PASS: automation DECISIONS current version line matches VERSION\n'
       fi
     else
-      printf 'FAIL: automation DECISIONS current version line matches VERSION\n' >&2
+      printf 'FAIL: version-consistency: automation DECISIONS current version line matches VERSION\n' >&2
       return 1
     fi
 
@@ -107,7 +117,7 @@ version_main() {
         printf 'PASS: VERSIONING documents automation version modes and guard\n'
       fi
     else
-      printf 'FAIL: VERSIONING documents automation version modes and guard\n' >&2
+      printf 'FAIL: version-consistency: VERSIONING documents automation version modes and guard\n' >&2
       return 1
     fi
 
@@ -116,7 +126,7 @@ version_main() {
         printf 'PASS: downstream example installed automation ref is aligned or explicit EXAMPLE suffix\n'
       fi
     else
-      printf 'FAIL: downstream example installed automation ref is aligned or explicit EXAMPLE suffix\n' >&2
+      printf 'FAIL: version-consistency: downstream example installed automation ref is aligned or explicit EXAMPLE suffix\n' >&2
       return 1
     fi
   fi
@@ -137,7 +147,7 @@ helper_metadata_path = repo_root / 'repo-automation' / 'helper-metadata.json'
 
 
 def fail(message: str) -> None:
-    print(f'FAIL: {message}', file=sys.stderr)
+    print(f'FAIL: version-consistency: {message}', file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -247,7 +257,7 @@ for raw_line in installer_path.read_text(encoding='utf-8', errors='ignore').spli
 
 missing = sorted(set(manifest_paths) - installer_paths)
 if missing:
-    print('FAIL: manifest-vs-installer drift detected', file=sys.stderr)
+    print('FAIL: version-consistency: manifest-vs-installer drift detected', file=sys.stderr)
     print('Managed paths are present in repo-automation/manifest.json but missing from repo-automation/bin/repo-automation-install managed-file coverage:', file=sys.stderr)
     for path in missing:
         print(f'- {path}', file=sys.stderr)
@@ -256,7 +266,7 @@ if missing:
 
 missing_helpers = sorted(set(helper_paths) - set(manifest_paths))
 if missing_helpers:
-    print('FAIL: helper-inventory drift detected', file=sys.stderr)
+    print('FAIL: version-consistency: helper-inventory drift detected', file=sys.stderr)
     print('Public helper paths are present in repo-automation/helper-metadata.json but missing from repo-automation/manifest.json:', file=sys.stderr)
     for path in missing_helpers:
         print(f'- {path}', file=sys.stderr)

@@ -113,7 +113,7 @@ failures = []
 
 
 def fail(category: str, message: str):
-    failures.append(f'FAIL: {category}: {message}')
+    failures.append((category, message))
 
 
 def collect_link_targets(source_path: Path):
@@ -304,8 +304,12 @@ check_markdown_formatting()
 check_portability_examples()
 
 if failures:
-    for message in failures:
-        print(message)
+    if quiet:
+        category, message = failures[0]
+        print(f'FAIL: docs-check: {category}: {message}')
+    else:
+        for category, message in failures:
+            print(f'FAIL: docs-check: {category}: {message}')
     sys.exit(1)
 
 if explain:

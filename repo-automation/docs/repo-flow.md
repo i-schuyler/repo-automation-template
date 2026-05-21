@@ -10,7 +10,7 @@ Prefer `--modified` instead of shell-building a `--paths` CSV for tracked edits.
 It refuses absolute paths, `..`, default-branch submits, and any unrequested dirty or untracked worktree changes before staging when `--paths` is used.
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
-When `repo-flow submit` creates a PR, it generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`.
+When `repo-flow submit` creates a PR, it generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`. The generated PR body re-entry hint is: `Review the PR, then run repo-automation/bin/repo-flow merge --explain`.
 `--watch` hands off to the repo-native PR completion path with a bounded timeout and stops after CI is green; `--timeout=<seconds>` sets that limit.
 When `--watch` is used, `repo-flow submit` pushes the current branch before PR lookup/create/watch.
 `--diagnose-on-fail` is only forwarded with `--watch`.
@@ -18,6 +18,7 @@ When `--watch` is used, `repo-flow submit` pushes the current branch before PR l
 `pr-finish` is current-head-aware: missing or not-yet-attached checks stay pending until timeout, stale checks from older SHAs are ignored, and merges/deletes/syncs only happen after the current head is green.
 Use `--explain` for the full human flow report; default success is compact `plan`, PR URL, or `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
+For `submit --watch`, that handoff includes explicit `watched=` and `ci=` keys so the review step can see whether CI completed, failed, timed out, or is unknown.
 
 `--dry-run` / `--plan` reports the flow without pushing or creating a PR.
 `status-card` is a read-only state screen. It never pushes, creates a PR, watches CI, or mutates the repo.

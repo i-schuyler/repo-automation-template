@@ -429,7 +429,14 @@ run_tests_extract_smoke_failure() {
     return 0
   fi
 
-  fail_line="$(sed -n 's/^FAIL: //p' "$output_file" | head -n 1)"
+  fail_line="$(
+    awk '
+      match($0, /^(fail|FAIL): /) {
+        print substr($0, RLENGTH + 1)
+        exit
+      }
+    ' "$output_file"
+  )"
   if [ -n "$fail_line" ]; then
     printf '%s\n' "$fail_line"
     return 0
@@ -454,7 +461,7 @@ run_tests_print_smoke_failure_excerpt() {
     return 0
   fi
 
-  fail_line="$(grep -n '^FAIL: ' "$output_file" | head -n 1 | cut -d: -f1)"
+  fail_line="$(grep -n -m 1 -E '^(fail|FAIL): ' "$output_file" | cut -d: -f1)"
   if [ -z "$fail_line" ]; then
     return 0
   fi
@@ -466,11 +473,94 @@ run_tests_print_smoke_failure_excerpt() {
   sed -n "${start_line},${end_line}p" "$output_file"
 }
 
+run_tests_extract_log_first_failure() {
+  local log_file="$1"
+  local first_failure=""
+
+  if [ -z "$log_file" ] || [ ! -f "$log_file" ]; then
+    return 1
+  fi
+
+  first_failure="$(sed -n -E 's/^(fail|FAIL): //p' "$log_file" | head -n 1)"
+  [ -n "$first_failure" ] || return 1
+
+  printf '%s\n' "$first_failure"
+}
+
+run_tests_extract_log_command() {
+  local log_file="$1"
+  local command_line=""
+
+  if [ -z "$log_file" ] || [ ! -f "$log_file" ]; then
+    return 1
+  fi
+
+  command_line="$(sed -n 's/^COMMAND: //p' "$log_file" | head -n 1)"
+  [ -n "$command_line" ] || return 1
+
+  printf '%s\n' "$command_line"
+}
+
+run_tests_focus_command_from_log() {
+  local first_failure="$1"
+  local command_line="$2"
+
+  case "$first_failure" in
+    smoke:installer-contract*)
+      printf 'repo-automation/tests/contracts/installer.sh --quiet\n'
+      return 0
+      ;;
+    smoke:run-tests-contract*)
+      printf 'repo-automation/tests/contracts/run-tests.sh --quiet\n'
+      return 0
+      ;;
+  esac
+
+  case "$command_line" in
+    *repo-automation/tests/docs-check.sh*)
+      printf 'repo-automation/tests/docs-check.sh --quiet\n'
+      return 0
+      ;;
+    *repo-automation/tests/version-consistency.sh*)
+      printf 'repo-automation/tests/version-consistency.sh --quiet\n'
+      return 0
+      ;;
+    *repo-automation/tests/smoke.sh*)
+      printf 'repo-automation/tests/smoke.sh --quiet\n'
+      return 0
+      ;;
+  esac
+
+  [ -n "$command_line" ] || return 1
+  printf '%s\n' "$command_line"
+}
+
 run_tests_print_log_reference() {
   local log_file="$1"
 
   if [ -n "$log_file" ]; then
     printf 'log: %s\n' "$log_file"
+  fi
+}
+
+run_tests_print_failure_fix_from_log() {
+  local log_file="$1"
+  local first_failure=""
+  local command_line=""
+  local focused_command=""
+
+  first_failure="$(run_tests_extract_log_first_failure "$log_file" 2>/dev/null || true)"
+  command_line="$(run_tests_extract_log_command "$log_file" 2>/dev/null || true)"
+  focused_command="$(run_tests_focus_command_from_log "$first_failure" "$command_line" 2>/dev/null || true)"
+
+  if [ -n "$first_failure" ]; then
+    printf 'first failure: %s\n' "$first_failure"
+  fi
+
+  if [ -n "$focused_command" ]; then
+    printf 'fix: inspect log and run focused check: %s\n' "$focused_command"
+  else
+    printf 'fix: inspect log: %s\n' "$log_file"
   fi
 }
 
@@ -659,7 +749,9 @@ run_tests_print_human() {
       printf 'fail: %s\n' "$name"
     fi
     run_tests_print_log_reference "$run_tests_log_file"
-    if [ "$run_tests_mode" != "quiet" ]; then
+    if [ -n "$run_tests_log_file" ] && [ "$run_tests_mode" != "explain" ]; then
+      run_tests_print_failure_fix_from_log "$run_tests_log_file"
+    elif [ "$run_tests_mode" != "quiet" ]; then
       run_tests_print_failure_fix
     fi
     return 0

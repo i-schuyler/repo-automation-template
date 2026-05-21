@@ -132,8 +132,10 @@ EOF
     status=1
   elif grep -Fq "log: $run_tests_failure_log" "$run_tests_failure_out" &&
     grep -Fq 'fail: repo-automation/tests/docs-check.sh' "$run_tests_failure_out" &&
+    grep -Fq 'first failure: docs-check: docs index coverage' "$run_tests_failure_out" &&
+    grep -Fq 'fix: inspect log and run focused check: repo-automation/tests/docs-check.sh --quiet' "$run_tests_failure_out" &&
     grep -Fq 'COMMAND: repo-automation/tests/docs-check.sh' "$run_tests_failure_log" &&
-    grep -Fq 'FAIL: docs index coverage:' "$run_tests_failure_log"; then
+    grep -Fq 'FAIL: docs-check: docs index coverage:' "$run_tests_failure_log"; then
     test_pass "run-tests quiet failure references the log file"
   else
     test_fail "run-tests quiet failure references the log file"
@@ -142,14 +144,18 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs > "$run_tests_default_out" 2>&1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --log-file="$run_tests_failure_log" > "$run_tests_default_out" 2>&1
   ); then
-    test_fail "run-tests default failure recommends explain"
+    test_fail "run-tests default failure with log file reports first failure"
     status=1
-  elif grep -Fq 'fix: Next: repo-automation/bin/run-tests --explain' "$run_tests_default_out"; then
-    test_pass "run-tests default failure recommends explain"
+  elif grep -Fq 'fail: repo-automation/tests/docs-check.sh' "$run_tests_default_out" &&
+    grep -Fq 'first failure: docs-check: docs index coverage' "$run_tests_default_out" &&
+    grep -Fq 'log: '"$run_tests_failure_log" "$run_tests_default_out" &&
+    grep -Fq 'fix: inspect log and run focused check: repo-automation/tests/docs-check.sh --quiet' "$run_tests_default_out" &&
+    ! grep -Fq 'fix: Next: repo-automation/bin/run-tests --explain' "$run_tests_default_out"; then
+    test_pass "run-tests default failure with log file reports first failure"
   else
-    test_fail "run-tests default failure recommends explain"
+    test_fail "run-tests default failure with log file reports first failure"
     status=1
   fi
 
