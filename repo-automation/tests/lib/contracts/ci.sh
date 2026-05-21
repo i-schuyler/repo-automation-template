@@ -24,6 +24,9 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_unknown_stderr="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
   local ci_log_first_failure_human="$smoke_test_base/ci-log-dump-first-failure-$$.txt"
   local ci_log_quiet="$smoke_test_base/ci-log-dump-quiet-$$.txt"
+  local ci_log_infer_stop="$smoke_test_base/ci-log-dump-infer-stop-$$.txt"
+  local ci_log_infer_json="$smoke_test_base/ci-log-dump-infer-json-$$.json"
+  local ci_log_infer_json_err="$smoke_test_base/ci-log-dump-infer-json-$$.stderr"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$ci_log_out_dir" || return 1
@@ -231,10 +234,38 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     ]' GH_STUB_RUN_VIEW_FAILED_LOG='shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
 tail one
 tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --first-failure --tail=2 --out-dir="$ci_log_out_dir" --explain > "$ci_log_first_failure_human"
-  ) && grep -Eq '^Target repo: i-schuyler/repo-automation-template$' "$ci_log_first_failure_human" && grep -Eq '^Run id: 111$' "$ci_log_first_failure_human" && grep -Eq '^Saved log path: '"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Eq '^First failure label: fail: shellcheck$' "$ci_log_first_failure_human" && grep -Eq '^First failure excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.$' "$ci_log_first_failure_human" && grep -Eq '^Recommended fix: run shellcheck on the reported file and line$' "$ci_log_first_failure_human" && ! grep -Eq '^Tail excerpt:$' "$ci_log_first_failure_human"; then
+  ) && grep -Eq '^Target repo: i-schuyler/repo-automation-template$' "$ci_log_first_failure_human" && grep -Eq '^Run id: 111$' "$ci_log_first_failure_human" && grep -Eq '^Saved log path: '"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Eq '^First failure label: fail: shellcheck$' "$ci_log_first_failure_human" && grep -Eq '^First failure excerpt: shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting\.$' "$ci_log_first_failure_human" && grep -Eq '^Recommended fix: run shellcheck on the reported file and line$' "$ci_log_first_failure_human" && ! grep -Eq '^Tail excerpt:$' "$ci_log_first_failure_human" && [ "$(grep -Fc '===== FINAL SUMMARY =====' "$ci_log_first_failure_human")" -eq 1 ] && grep -Fxq 'script=ci-log-dump' "$ci_log_first_failure_human" && grep -Eq '^rc=0$' "$ci_log_first_failure_human" && grep -Fxq 'repo=i-schuyler/repo-automation-template' "$ci_log_first_failure_human" && grep -Fxq 'pr=none' "$ci_log_first_failure_human" && grep -Fxq 'run_id=111' "$ci_log_first_failure_human" && grep -Eq '^log_path='"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Fxq 'first_failure=fail: shellcheck' "$ci_log_first_failure_human" && grep -Eq '^url_or_stop='"$ci_log_out_dir"'/actions_run_111_[0-9]{8}-[0-9]{6}\.log$' "$ci_log_first_failure_human" && grep -Fxq '===== END =====' "$ci_log_first_failure_human"; then
     test_pass "ci-log-dump explain output is detailed"
   else
     test_fail "ci-log-dump explain output is detailed"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git remote remove origin >/dev/null 2>&1 || true
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --explain > "$ci_log_infer_stop" 2>&1
+  ); then
+    test_fail "ci-log-dump explain early STOP ends with one final summary"
+    status=1
+  elif [ "$(grep -Fc '===== FINAL SUMMARY =====' "$ci_log_infer_stop")" -eq 1 ] && [ "$(grep -Fc '===== END =====' "$ci_log_infer_stop")" -eq 1 ] && grep -Fxq 'script=ci-log-dump' "$ci_log_infer_stop" && grep -Eq '^rc=1$' "$ci_log_infer_stop" && grep -Fxq 'repo=unknown' "$ci_log_infer_stop" && grep -Fxq 'pr=none' "$ci_log_infer_stop" && grep -Fxq 'run_id=none' "$ci_log_infer_stop" && grep -Fxq 'log_path=none' "$ci_log_infer_stop" && grep -Fxq 'first_failure=none' "$ci_log_infer_stop" && grep -Fxq 'url_or_stop=STOP: unable to infer --repo from origin remote; pass --repo=<owner/repo>' "$ci_log_infer_stop"; then
+    test_pass "ci-log-dump explain early STOP ends with one final summary"
+  else
+    test_fail "ci-log-dump explain early STOP ends with one final summary"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git remote remove origin >/dev/null 2>&1 || true
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --machine-json > "$ci_log_infer_json" 2> "$ci_log_infer_json_err"
+  ); then
+    test_fail "ci-log-dump machine-json early STOP stays JSON-only"
+    status=1
+  elif [ ! -s "$ci_log_infer_json_err" ] && python3 -m json.tool "$ci_log_infer_json" >/dev/null && grep -Fq '"stop_reason":"unable to infer --repo from origin remote; pass --repo=<owner/repo>"' "$ci_log_infer_json" && ! grep -Fq 'FINAL SUMMARY' "$ci_log_infer_json"; then
+    test_pass "ci-log-dump machine-json early STOP stays JSON-only"
+  else
+    test_fail "ci-log-dump machine-json early STOP stays JSON-only"
     status=1
   fi
 
