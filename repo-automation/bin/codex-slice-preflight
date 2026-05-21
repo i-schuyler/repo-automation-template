@@ -22,10 +22,8 @@ preflight_disk_guard_available_percent=""
 preflight_disk_guard_available_bytes=""
 preflight_disk_guard_mountpoint=""
 preflight_disk_guard_filesystem=""
-preflight_disk_guard_available_kib=""
 preflight_cleanup_deleted_count=0
 preflight_cleanup_deleted_paths=""
-preflight_cleanup_command=""
 preflight_cleanup_free_before_bytes=""
 preflight_cleanup_free_after_bytes=""
 
@@ -67,6 +65,27 @@ preflight_json_escape() {
   printf '%s' "$value"
 }
 
+preflight_human_bytes() {
+  local bytes="${1:-}"
+
+  [ -n "$bytes" ] || return 0
+  python3 - "$bytes" <<'PY'
+import sys
+
+bytes_value = int(sys.argv[1])
+units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"]
+value = float(bytes_value)
+for unit in units:
+    if abs(value) < 1024.0 or unit == units[-1]:
+        if unit == "B":
+            print(f"{int(value)}B")
+        else:
+            print(f"{value:.1f}{unit}")
+        break
+    value /= 1024.0
+PY
+}
+
 preflight_is_non_negative_integer() {
   case "${1:-}" in
     ''|*[!0-9]*)
@@ -86,25 +105,6 @@ preflight_command_string() {
   done
 
   printf '%s' "${quoted% }"
-}
-
-preflight_build_cleanup_command() {
-  local path=""
-  local seen=""
-
-  preflight_cleanup_command="rm -rf --"
-  while IFS= read -r path; do
-    [ -n "$path" ] || continue
-    case "$seen" in
-      *"$path"$'\n'*)
-        continue
-        ;;
-    esac
-    seen="${seen}${path}"$'\n'
-    preflight_cleanup_command+=" $(preflight_command_string "$path")"
-  done <<EOF
-$(preflight_cleanup_root_candidates)
-EOF
 }
 
 preflight_disk_guard_collect() {
@@ -134,7 +134,6 @@ EOF
   preflight_disk_guard_filesystem="${filesystem:-unknown}"
   preflight_disk_guard_mountpoint="${mountpoint:-$path}"
   preflight_disk_guard_used_percent="$use_percent"
-  preflight_disk_guard_available_kib="$available_blocks"
   preflight_disk_guard_available_bytes=$((available_blocks * 1024))
   preflight_disk_guard_available_percent=$((100 - use_percent))
   if [ "$preflight_disk_guard_available_percent" -lt 0 ]; then
@@ -146,8 +145,13 @@ EOF
 
 preflight_disk_guard_print() {
   local guard_path="${1:-/}"
+  local human_free=""
+  local human_threshold=""
 
-  preflight_info "disk space: filesystem=${preflight_disk_guard_filesystem:-unknown} mount=${preflight_disk_guard_mountpoint:-$guard_path} used=${preflight_disk_guard_used_percent}% available=${preflight_disk_guard_available_percent}% free_kib=${preflight_disk_guard_available_kib} free_bytes=${preflight_disk_guard_available_bytes} path=$guard_path"
+  human_free="$(preflight_human_bytes "$preflight_disk_guard_available_bytes")"
+  human_threshold="$(preflight_human_bytes "$preflight_disk_guard_low_bytes")"
+
+  preflight_info "disk space: filesystem=${preflight_disk_guard_filesystem:-unknown} mount=${preflight_disk_guard_mountpoint:-$guard_path} used=${preflight_disk_guard_used_percent}% available=${preflight_disk_guard_available_percent}% free=${human_free:-unknown} threshold=${human_threshold:-unknown} free_bytes=${preflight_disk_guard_available_bytes} threshold_bytes=${preflight_disk_guard_low_bytes} path=$guard_path"
 }
 
 preflight_disk_guard_check() {
@@ -162,7 +166,8 @@ preflight_disk_guard_check() {
   if [ "$preflight_disk_guard_available_bytes" -lt "$preflight_disk_guard_low_bytes" ]; then
     preflight_disk_status="fail"
     [ "$preflight_explain" -eq 1 ] && preflight_disk_guard_print "$guard_path"
-    preflight_stop "available disk space below 1.5G (${preflight_disk_guard_available_bytes} bytes free; threshold=${preflight_disk_guard_low_bytes} bytes); run: ${preflight_cleanup_command}"
+    preflight_info "fix: repo-automation/bin/codex-slice-preflight --clean-test-cache --explain"
+    preflight_stop "available disk space below threshold"
     return 1
   fi
 
@@ -190,7 +195,6 @@ preflight_clean_test_cache() {
   preflight_cleanup_deleted_count=0
   preflight_cleanup_deleted_paths=""
   preflight_disk_status="pass"
-  preflight_build_cleanup_command
 
   if preflight_disk_guard_collect "$root"; then
     preflight_cleanup_free_before_bytes="$preflight_disk_guard_available_bytes"
@@ -352,18 +356,27 @@ preflight_main() {
     preflight_clean_test_cache || command_status=1
     if [ "$preflight_explain" -eq 1 ]; then
       preflight_info "clean-test-cache removed: ${preflight_cleanup_deleted_paths:-none}"
-      preflight_info "clean-test-cache free bytes: before=${preflight_cleanup_free_before_bytes:-unknown} after=${preflight_cleanup_free_after_bytes:-unknown}"
-      repo_auto_print_final_summary \
-        "script=codex-slice-preflight" \
-        "mode=$preflight_mode" \
-        "rc=$command_status" \
-        "disk=${preflight_disk_status:-pass}" \
-        "cleanup_command=${preflight_cleanup_command:-}" \
-        "cleanup_deleted_count=${preflight_cleanup_deleted_count:-0}" \
-        "cleanup_deleted_paths=${preflight_cleanup_deleted_paths:-}" \
-        "cleanup_free_before_bytes=${preflight_cleanup_free_before_bytes:-}" \
-        "cleanup_free_after_bytes=${preflight_cleanup_free_after_bytes:-}" \
-        "url_or_stop=${preflight_stop_reason:-pass}" >&2
+      if [ -n "${preflight_cleanup_free_before_bytes:-}" ] && [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
+        preflight_info "clean-test-cache free: before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes") after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")"
+      fi
+      local -a summary_lines=(
+        "script=codex-slice-preflight"
+        "mode=$preflight_mode"
+        "rc=$command_status"
+        "disk=${preflight_disk_status:-pass}"
+        "cleanup_deleted_count=${preflight_cleanup_deleted_count:-0}"
+        "cleanup_deleted_paths=${preflight_cleanup_deleted_paths:-none}"
+        "url_or_stop=${preflight_stop_reason:-pass}"
+      )
+      if [ -n "${preflight_cleanup_free_before_bytes:-}" ]; then
+        summary_lines+=("cleanup_free_before_bytes=${preflight_cleanup_free_before_bytes:-}")
+        summary_lines+=("cleanup_free_before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes")")
+      fi
+      if [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
+        summary_lines+=("cleanup_free_after_bytes=${preflight_cleanup_free_after_bytes:-}")
+        summary_lines+=("cleanup_free_after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")")
+      fi
+      repo_auto_print_final_summary "${summary_lines[@]}" >&2
     elif [ "$command_status" -eq 0 ]; then
       printf 'pass\n'
     fi
@@ -421,7 +434,6 @@ preflight_main() {
     if [ "$delete_safe_stale" -eq 1 ]; then
       active_cleanup_mode="apply"
     fi
-    preflight_build_cleanup_command
   fi
 
   if [ "$command_status" -eq 0 ] && ! preflight_disk_guard_check "/"; then
@@ -608,24 +620,45 @@ preflight_main() {
       "${cleanup_json:-null}" \
       "$preflight_stop_reason"
   elif [ "$preflight_explain" -eq 1 ]; then
-    repo_auto_print_final_summary \
-      "script=codex-slice-preflight" \
-      "mode=$preflight_mode" \
-      "rc=$command_status" \
-      "disk=${preflight_disk_status:-skip}" \
-      "disk_free_bytes=${preflight_disk_guard_available_bytes:-}" \
-      "disk_threshold_bytes=$preflight_disk_guard_low_bytes" \
-      "branch_before=${branch_before:-}" \
-      "branch_after=${branch_after:-}" \
-      "default_branch=${default_branch:-}" \
-      "divergence=${divergence:-unknown}" \
-      "status_count=${status_count:-0}" \
-      "cleanup_command=${preflight_cleanup_command:-}" \
-      "cleanup_deleted_count=${preflight_cleanup_deleted_count:-0}" \
-      "cleanup_deleted_paths=${preflight_cleanup_deleted_paths:-}" \
-      "cleanup_free_before_bytes=${preflight_cleanup_free_before_bytes:-}" \
-      "cleanup_free_after_bytes=${preflight_cleanup_free_after_bytes:-}" \
-      "url_or_stop=${preflight_stop_reason:-pass}" >&2
+    local -a summary_lines=(
+      "script=codex-slice-preflight"
+      "mode=$preflight_mode"
+      "rc=$command_status"
+      "disk=${preflight_disk_status:-skip}"
+    )
+    if [ -n "${preflight_disk_guard_available_bytes:-}" ]; then
+      summary_lines+=("disk_free=$(preflight_human_bytes "$preflight_disk_guard_available_bytes")")
+    fi
+    summary_lines+=("disk_threshold=$(preflight_human_bytes "$preflight_disk_guard_low_bytes")")
+    if [ -n "${preflight_disk_guard_used_percent:-}" ]; then
+      summary_lines+=("disk_used=${preflight_disk_guard_used_percent}%")
+    fi
+    if [ -n "${preflight_disk_guard_available_percent:-}" ]; then
+      summary_lines+=("disk_available=${preflight_disk_guard_available_percent}%")
+    fi
+    if [ -n "${preflight_disk_guard_available_bytes:-}" ]; then
+      summary_lines+=("disk_free_bytes=${preflight_disk_guard_available_bytes:-}")
+    fi
+    summary_lines+=("disk_threshold_bytes=$preflight_disk_guard_low_bytes")
+    if [ -n "${default_branch:-}" ]; then
+      summary_lines+=("default_branch=$default_branch")
+    fi
+    if [ "$command_status" -eq 0 ] || [ -n "${branch_before:-}" ]; then
+      if [ -n "${branch_before:-}" ]; then
+        summary_lines+=("branch_before=$branch_before")
+      fi
+      if [ -n "${branch_after:-}" ]; then
+        summary_lines+=("branch_after=$branch_after")
+      fi
+      if [ -n "${divergence:-}" ]; then
+        summary_lines+=("divergence=$divergence")
+      fi
+      if [ -n "${status_count:-}" ]; then
+        summary_lines+=("status_count=$status_count")
+      fi
+    fi
+    summary_lines+=("url_or_stop=${preflight_stop_reason:-pass}")
+    repo_auto_print_final_summary "${summary_lines[@]}" >&2
   elif [ "$command_status" -eq 0 ]; then
     printf 'pass\n'
   fi

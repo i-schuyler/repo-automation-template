@@ -604,6 +604,39 @@ body_file.write_text(body, encoding="utf-8")
 PY
 }
 
+repo_flow_submit_refresh_existing_pr_body() {
+  local stop_fn="$1"
+  local pr_number="$2"
+  local branch_name="$3"
+  local default_branch="$4"
+  local commit_subject="$5"
+  local staged_files="$6"
+  local stop_reason="${7:-None}"
+  local body_file=""
+  local pr_edit_output=""
+
+  body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-body.XXXXXX")" || {
+    "$stop_fn" "failed to create temporary body file"
+    return 1
+  }
+
+  if ! repo_flow_submit_write_pr_body "$body_file" "$branch_name" "$default_branch" "$commit_subject" "$staged_files" "$stop_reason"; then
+    rm -f "$body_file" >/dev/null 2>&1 || true
+    "$stop_fn" "failed to write PR body"
+    return 1
+  fi
+
+  if ! pr_edit_output="$(gh pr edit "$pr_number" --body-file="$body_file" 2>&1)"; then
+    pr_edit_output="${pr_edit_output//$'\n'/ }"
+    pr_edit_output="${pr_edit_output//$'\r'/ }"
+    rm -f "$body_file" >/dev/null 2>&1 || true
+    "$stop_fn" "failed to refresh existing PR #$pr_number body: $pr_edit_output"
+    return 1
+  fi
+
+  rm -f "$body_file" >/dev/null 2>&1 || true
+}
+
 repo_flow_submit_print_final_summary() {
   local mode="$1"
   local branch_before="$2"
@@ -733,9 +766,10 @@ repo_flow_submit_run_child_repo_flow_main() {
     child_status=$?
   fi
 
-  cat "$child_stdout_file"
+  repo_flow_submit_child_stdout="$(cat "$child_stdout_file")"
   repo_flow_submit_filter_child_explain_summary "$child_stderr_file" >&2
   repo_flow_submit_child_summary_value="$(repo_flow_submit_extract_child_state_value "$child_state_file" push_status)"
+  repo_flow_submit_child_pr_status="$(repo_flow_submit_extract_child_state_value "$child_state_file" pr_status)"
   repo_flow_submit_child_pr_url="$(repo_flow_submit_extract_child_state_value "$child_state_file" pr_url)"
   repo_flow_submit_child_pr_number="$(repo_flow_submit_extract_child_state_value "$child_state_file" pr_number)"
 
@@ -770,7 +804,9 @@ repo_flow_submit_main() {
   local pushed="false"
   local merged="false"
   local status_count=0
+  local repo_flow_submit_child_stdout=""
   local repo_flow_submit_child_summary_value=""
+  local repo_flow_submit_child_pr_status=""
   local repo_flow_submit_child_pr_url=""
   local repo_flow_submit_child_pr_number=""
   local watched="false"
@@ -1061,12 +1097,18 @@ EOF
           pr_status="existing"
           pr_number="$existing_pr_number"
           pr_url=$(gh pr view "$current_branch" --json url --jq '.url' 2>/dev/null || true)
+          if ! repo_flow_submit_refresh_existing_pr_body repo_flow_submit_stop "$pr_number" "$current_branch" "$default_branch" "$message" "$staged_files" "None"; then
+            pr_url=""
+            command_status=1
+          elif [ "$explain" -eq 1 ] && [ "$json" -eq 0 ]; then
+            repo_flow_info "PR body refreshed: existing #$pr_number"
+          fi
           if [ "$explain" -eq 1 ] && [ "$json" -eq 0 ]; then
             repo_flow_info "PR status: existing #$pr_number ${pr_url:-}"
           fi
         fi
       fi
-      if [ -z "$pr_number" ]; then
+      if [ "$command_status" -eq 0 ] && [ -z "$pr_number" ]; then
         pr_create_title=$(git log -1 --pretty=%s 2>/dev/null || true)
         [ -n "$pr_create_title" ] || pr_create_title="$current_branch"
         pr_create_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-body.XXXXXX")" || {
@@ -1118,39 +1160,41 @@ EOF
           rm -f "$pr_create_stderr"
         fi
       fi
-      if [ "$explain" -eq 1 ]; then
-        repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
-      fi
-      if [ "$diagnose_on_fail" -eq 1 ]; then
+      if [ "$command_status" -eq 0 ]; then
         if [ "$explain" -eq 1 ]; then
-          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
-        else
-          "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+          repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
         fi
-      else
-        if [ "$explain" -eq 1 ]; then
-          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
+        if [ "$diagnose_on_fail" -eq 1 ]; then
+          if [ "$explain" -eq 1 ]; then
+            PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
+          else
+            "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+          fi
         else
-          "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
+          if [ "$explain" -eq 1 ]; then
+            PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
+          else
+            "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
+          fi
         fi
-      fi
-      command_status=$?
-      if [ "$command_status" -ne 0 ]; then
-        repo_flow_stop "pr-finish completion failed for PR #$pr_number"
-        final_status="blocked"
-        case "${repo_flow_stop_reason:-}" in
-          *timeout*|*timed\ out*|*TIMEOUT*)
-            ci_state="timeout"
-            ;;
-          *)
-            ci_state="fail"
-            ;;
-        esac
-      else
-        action_taken="watched-pr"
-        final_status="ready-for-review"
-        merged="false"
-        ci_state="pass"
+        command_status=$?
+        if [ "$command_status" -ne 0 ]; then
+          repo_flow_stop "pr-finish completion failed for PR #$pr_number"
+          final_status="blocked"
+          case "${repo_flow_stop_reason:-}" in
+            *timeout*|*timed\ out*|*TIMEOUT*)
+              ci_state="timeout"
+              ;;
+            *)
+              ci_state="fail"
+              ;;
+          esac
+        else
+          action_taken="watched-pr"
+          final_status="ready-for-review"
+          merged="false"
+          ci_state="pass"
+        fi
       fi
     else
       if repo_flow_submit_run_child_repo_flow_main; then
@@ -1163,6 +1207,14 @@ EOF
       fi
       if [ -n "$repo_flow_submit_child_pr_number" ]; then
         pr_number="$repo_flow_submit_child_pr_number"
+      fi
+      if [ "$command_status" -eq 0 ] && [ "$repo_flow_submit_child_pr_status" = "existing" ] && [ -n "$repo_flow_submit_child_pr_number" ]; then
+        if ! repo_flow_submit_refresh_existing_pr_body repo_flow_submit_stop "$repo_flow_submit_child_pr_number" "$current_branch" "$default_branch" "$message" "$staged_files" "None"; then
+          pr_url=""
+          command_status=1
+        elif [ "$explain" -eq 1 ] && [ "$json" -eq 0 ]; then
+          repo_flow_info "PR body refreshed: existing #$repo_flow_submit_child_pr_number"
+        fi
       fi
       if [ -n "$repo_flow_submit_child_summary_value" ]; then
         case "$repo_flow_submit_child_summary_value" in
@@ -1205,6 +1257,10 @@ EOF
       "$ci_state" \
       "$command_status" \
       "$repo_flow_stop_reason"
+  fi
+
+  if [ "$repo_flow_explain" -eq 0 ] && [ "$command_status" -eq 0 ] && [ -n "$repo_flow_submit_child_stdout" ]; then
+    printf '%s\n' "$repo_flow_submit_child_stdout"
   fi
 
   return "$command_status"
@@ -1878,6 +1934,7 @@ repo_flow_main() {
   if [ -n "${REPO_FLOW_CHILD_STATE_FILE:-}" ]; then
     cat > "$REPO_FLOW_CHILD_STATE_FILE" <<EOF
 push_status=$push_status
+pr_status=$pr_status
 pr_url=$pr_url
 pr_number=$pr_number
 final_status=$final_status
