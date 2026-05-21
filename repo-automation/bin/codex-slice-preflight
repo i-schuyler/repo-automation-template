@@ -228,16 +228,30 @@ EOF
 
 preflight_append_cleanup_summary_lines() {
   local -n summary_lines_ref="$1"
+  local include_details="${2:-1}"
 
   summary_lines_ref+=("cleanup_deleted_count=${preflight_cleanup_deleted_count:-0}")
-  summary_lines_ref+=("cleanup_deleted_paths=${preflight_cleanup_deleted_paths:-none}")
-  if [ -n "${preflight_cleanup_free_before_bytes:-}" ]; then
-    summary_lines_ref+=("cleanup_free_before_bytes=${preflight_cleanup_free_before_bytes:-}")
-    summary_lines_ref+=("cleanup_free_before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes")")
+  if [ "$include_details" -eq 1 ]; then
+    summary_lines_ref+=("cleanup_deleted_paths=${preflight_cleanup_deleted_paths:-none}")
+    if [ -n "${preflight_cleanup_free_before_bytes:-}" ]; then
+      summary_lines_ref+=("cleanup_free_before_bytes=${preflight_cleanup_free_before_bytes:-}")
+      summary_lines_ref+=("cleanup_free_before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes")")
+    fi
+    if [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
+      summary_lines_ref+=("cleanup_free_after_bytes=${preflight_cleanup_free_after_bytes:-}")
+      summary_lines_ref+=("cleanup_free_after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")")
+    fi
   fi
-  if [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
-    summary_lines_ref+=("cleanup_free_after_bytes=${preflight_cleanup_free_after_bytes:-}")
-    summary_lines_ref+=("cleanup_free_after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")")
+}
+
+preflight_print_cleanup_info() {
+  if [ "$preflight_explain" -ne 1 ]; then
+    return 0
+  fi
+
+  preflight_info "clean-test-cache removed: ${preflight_cleanup_deleted_paths:-none}"
+  if [ -n "${preflight_cleanup_free_before_bytes:-}" ] && [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
+    preflight_info "clean-test-cache free: before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes") after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")"
   fi
 }
 
@@ -371,10 +385,7 @@ preflight_main() {
     preflight_clean_test_cache || command_status=1
     if [ "$branch_value_set" -eq 0 ]; then
       if [ "$preflight_explain" -eq 1 ]; then
-        preflight_info "clean-test-cache removed: ${preflight_cleanup_deleted_paths:-none}"
-        if [ -n "${preflight_cleanup_free_before_bytes:-}" ] && [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
-          preflight_info "clean-test-cache free: before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes") after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")"
-        fi
+        preflight_print_cleanup_info
         local -a summary_lines=(
           "script=codex-slice-preflight"
           "mode=$preflight_mode"
@@ -389,6 +400,7 @@ preflight_main() {
       fi
       return "$command_status"
     fi
+    preflight_print_cleanup_info
   fi
 
   [ "$branch_value_set" -eq 1 ] || {
@@ -628,9 +640,13 @@ preflight_main() {
       "${cleanup_json:-null}" \
       "$preflight_stop_reason"
   elif [ "$preflight_explain" -eq 1 ]; then
+    local explain_mode="$preflight_mode"
+    if [ "$clean_test_cache" -eq 1 ] && [ "$branch_value_set" -eq 1 ]; then
+      explain_mode="preflight"
+    fi
     local -a summary_lines=(
       "script=codex-slice-preflight"
-      "mode=$preflight_mode"
+      "mode=$explain_mode"
       "rc=$command_status"
       "disk=${preflight_disk_status:-skip}"
     )
@@ -666,7 +682,8 @@ preflight_main() {
       fi
     fi
     if [ "$clean_test_cache" -eq 1 ]; then
-      preflight_append_cleanup_summary_lines summary_lines
+      summary_lines+=("cleanup=cleaned")
+      preflight_append_cleanup_summary_lines summary_lines 0
     fi
     summary_lines+=("url_or_stop=${preflight_stop_reason:-pass}")
     repo_auto_print_final_summary "${summary_lines[@]}" >&2
