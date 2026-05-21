@@ -107,6 +107,9 @@ case "$cmd $sub" in
     if [ -n "${GH_STUB_PR_CREATE_LOG_FILE:-}" ]; then
       printf '%s\n' "gh pr create title=$title base=$base head=$head body_file=$body_file" >> "$GH_STUB_PR_CREATE_LOG_FILE"
     fi
+    if [ -n "${GH_STUB_PR_CREATE_BODY_COPY_FILE:-}" ] && [ -n "$body_file" ] && [ -f "$body_file" ]; then
+      cp "$body_file" "$GH_STUB_PR_CREATE_BODY_COPY_FILE"
+    fi
     if [ -n "${GH_STUB_PR_STATE_FILE:-}" ]; then
       number="${GH_STUB_PR_CREATE_NUMBER:-401}"
       url="${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/$number}"
@@ -773,6 +776,7 @@ smoke_check_repo_flow_submit_paths() {
   local stderr_file=""
   local head_before=""
   local head_after=""
+  local body_copy_file=""
 
   smoke_setup_temp_repo || return 1
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
@@ -780,6 +784,7 @@ smoke_check_repo_flow_submit_paths() {
   stdout_file="$smoke_test_base/repo-flow-submit-paths.out"
   stderr_file="$smoke_test_base/repo-flow-submit-paths.stderr"
   create_log_file="$smoke_test_base/repo-flow-submit-paths-create.log"
+  body_copy_file="$smoke_test_base/repo-flow-submit-paths-body.md"
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_remote || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-submit-paths" || return 1
@@ -791,12 +796,18 @@ smoke_check_repo_flow_submit_paths() {
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" \
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file" \
+    GH_STUB_PR_CREATE_BODY_COPY_FILE="$body_copy_file" \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/701' \
     GH_STUB_PR_VIEW_EMPTY=1 \
     repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit paths commit' > "$stdout_file" 2> "$stderr_file"
-  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/701' ] && [ -f "$create_log_file" ]; then
+  ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/701' ] && [ -f "$create_log_file" ] && [ -f "$body_copy_file" ]; then
     head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
-    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit paths commit'; then
+    if [ "$head_before" != "$head_after" ] && git -C "$smoke_test_dir" log -1 --pretty=%s | grep -Fxq 'repo-flow submit paths commit' && \
+      grep -Fxq '## Scope' "$body_copy_file" && \
+      grep -Fq "repo-flow submit for branch \`feature/repo-flow-submit-paths\` against \`main\`." "$body_copy_file" && \
+      grep -Fq 'Commit subject: repo-flow submit paths commit' "$body_copy_file" && \
+      grep -Fq 'README.md' "$body_copy_file" && \
+      grep -Fxq '## Re-entry hint' "$body_copy_file"; then
       test_pass "repo-flow submit stages explicit paths and creates a PR"
     else
       test_fail "repo-flow submit stages explicit paths and creates a PR"

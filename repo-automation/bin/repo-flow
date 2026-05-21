@@ -495,6 +495,71 @@ EOF
   return 0
 }
 
+repo_flow_submit_write_pr_body() {
+  local body_file="$1"
+  local branch_name="$2"
+  local default_branch="$3"
+  local commit_subject="$4"
+  local staged_files="$5"
+  local stop_reason="${6:-None}"
+
+  REPO_FLOW_SUBMIT_BODY_FILE="$body_file" \
+  REPO_FLOW_SUBMIT_BRANCH="$branch_name" \
+  REPO_FLOW_SUBMIT_DEFAULT_BRANCH="$default_branch" \
+  REPO_FLOW_SUBMIT_COMMIT_SUBJECT="$commit_subject" \
+  REPO_FLOW_SUBMIT_STAGED_FILES="$staged_files" \
+  REPO_FLOW_SUBMIT_STOP_REASON="$stop_reason" \
+  python3 - <<'PY'
+from pathlib import Path
+import os
+
+body_file = Path(os.environ["REPO_FLOW_SUBMIT_BODY_FILE"])
+branch_name = os.environ["REPO_FLOW_SUBMIT_BRANCH"]
+default_branch = os.environ["REPO_FLOW_SUBMIT_DEFAULT_BRANCH"]
+commit_subject = os.environ["REPO_FLOW_SUBMIT_COMMIT_SUBJECT"]
+staged_files = [line for line in os.environ.get("REPO_FLOW_SUBMIT_STAGED_FILES", "").splitlines() if line.strip()]
+stop_reason = os.environ.get("REPO_FLOW_SUBMIT_STOP_REASON", "None").strip() or "None"
+
+staged_lines = "\n".join(f"- {path}" for path in staged_files) if staged_files else "- none"
+body = "\n".join([
+    "## Scope",
+    "",
+    f"repo-flow submit for branch `{branch_name}` against `{default_branch}`.",
+    "",
+    "## What changed",
+    "",
+    f"- Commit subject: {commit_subject}",
+    "- Staged paths:",
+    staged_lines,
+    "",
+    "## What did not change",
+    "",
+    "- No unrelated files were changed.",
+    "",
+    "## Verification status",
+    "",
+    "- branch and remote validation",
+    "- staged file selection and worktree checks",
+    "- git diff --cached --check",
+    "- git commit --message",
+    "",
+    "## User-visible behavior changes",
+    "",
+    "See changed files and the commit message.",
+    "",
+    "## Stop conditions encountered",
+    "",
+    stop_reason,
+    "",
+    "## Re-entry hint",
+    "",
+    "Use the PR URL, watch CI, and finish with pr-finish after checks pass.",
+    "",
+])
+body_file.write_text(body, encoding="utf-8")
+PY
+}
+
 repo_flow_submit_print_final_summary() {
   local branch_before="$1"
   local branch_after="$2"
@@ -933,14 +998,10 @@ EOF
           command_status=1
         }
         if [ "$command_status" -eq 0 ]; then
-          cat > "$pr_create_body_file" <<EOF
-repo-flow integration for $current_branch
-
-Branch: $current_branch
-Base: $default_branch
-Ahead of $remote_name/$default_branch: $ahead_count
-Behind of $remote_name/$default_branch: $behind_count
-EOF
+          repo_flow_submit_write_pr_body "$pr_create_body_file" "$current_branch" "$default_branch" "$pr_create_title" "$staged_files" "None" || {
+            repo_flow_stop "failed to write PR body"
+            command_status=1
+          }
         fi
         if [ "$command_status" -eq 0 ]; then
           pr_create_json_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-create.XXXXXX.json")" || {
@@ -1088,6 +1149,7 @@ repo_flow_main() {
   local branch_head=""
   local remote_head=""
   local branch_ahead_behind=""
+  local staged_files=""
   local pr_create_json_file=""
   local pr_create_body_file=""
   local pr_create_title=""
@@ -1255,6 +1317,7 @@ repo_flow_main() {
     set -- $branch_ahead_behind
     behind_count="${1:-0}"
     ahead_count="${2:-0}"
+    staged_files="$(git diff --name-only "$default_branch...HEAD" 2>/dev/null || true)"
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$json" -eq 0 ]; then
@@ -1328,14 +1391,10 @@ repo_flow_main() {
           command_status=1
         }
         if [ "$command_status" -eq 0 ]; then
-          cat > "$pr_create_body_file" <<EOF
-repo-flow integration for $current_branch
-
-Branch: $current_branch
-Base: $default_branch
-Ahead of $remote_name/$default_branch: $ahead_count
-Behind of $remote_name/$default_branch: $behind_count
-EOF
+          repo_flow_submit_write_pr_body "$pr_create_body_file" "$current_branch" "$default_branch" "$pr_create_title" "$staged_files" "None" || {
+            repo_flow_stop "failed to write PR body"
+            command_status=1
+          }
         fi
         if [ "$command_status" -eq 0 ]; then
           pr_create_json_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-create.XXXXXX.json")" || {

@@ -404,6 +404,27 @@
       ]
     },
     {
+      "name": "pr-body-check",
+      "path": "repo-automation/bin/pr-body-check",
+      "doc_path": "repo-automation/docs/pr-body-check.md",
+      "contract_test_path": "repo-automation/tests/contracts/pr-body-check.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "instant",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": false,
+      "artifact_helper": false,
+      "umbrella_helper": false,
+      "workflow_role": "audit",
+      "config_keys": []
+    },
+    {
       "name": "pr-finish",
       "path": "repo-automation/bin/pr-finish",
       "doc_path": "repo-automation/docs/pr-finish.md",
