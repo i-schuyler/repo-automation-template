@@ -6,6 +6,113 @@
 # globals initialized by repo-automation/tests/lib/smoke-common.sh before
 # contract checks run.
 
+smoke_install_release_manifest_paths() {
+  local include_tests="${1:-0}"
+
+  python3 - "$smoke_repo_root" "$include_tests" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+repo_root = Path(sys.argv[1])
+include_tests = sys.argv[2] == "1"
+manifest = json.loads((repo_root / "repo-automation" / "manifest.json").read_text(encoding="utf-8"))
+skip_paths = {
+    "repo-automation/bin/automation-freshness",
+    "repo-automation/bin/starter-template-ready",
+    "repo-automation/manifest.json",
+}
+
+paths = []
+for entry in manifest.get("managed_files", []):
+    path = entry.get("path")
+    if not isinstance(path, str) or not path:
+        continue
+    if path in skip_paths:
+        continue
+    if path == "repo-automation/bin/run-tests":
+        if include_tests:
+            paths.append(path)
+        continue
+    if path.startswith("repo-automation/tests/"):
+        if include_tests:
+            paths.append(path)
+        continue
+    paths.append(path)
+
+for path in paths:
+    print(path)
+PY
+}
+
+smoke_install_release_executable_paths() {
+  local include_tests="${1:-0}"
+
+  python3 - "$smoke_repo_root" "$include_tests" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+repo_root = Path(sys.argv[1])
+include_tests = sys.argv[2] == "1"
+manifest = json.loads((repo_root / "repo-automation" / "manifest.json").read_text(encoding="utf-8"))
+skip_paths = {
+    "repo-automation/bin/automation-freshness",
+    "repo-automation/bin/starter-template-ready",
+}
+
+for entry in manifest.get("managed_files", []):
+    path = entry.get("path")
+    if not isinstance(path, str) or not path:
+        continue
+    if path in skip_paths:
+        continue
+    if path == "repo-automation/bin/run-tests":
+        if include_tests:
+            print(path)
+        continue
+    if path.startswith("repo-automation/bin/"):
+        print(path)
+        continue
+    if include_tests and path.startswith("repo-automation/tests/") and path.endswith(".sh"):
+        print(path)
+PY
+}
+
+smoke_install_release_test_paths() {
+  python3 - "$smoke_repo_root" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+repo_root = Path(sys.argv[1])
+manifest = json.loads((repo_root / "repo-automation" / "manifest.json").read_text(encoding="utf-8"))
+
+for entry in manifest.get("managed_files", []):
+    path = entry.get("path")
+    if not isinstance(path, str) or not path:
+        continue
+    if path == "repo-automation/bin/run-tests" or path.startswith("repo-automation/tests/"):
+        print(path)
+PY
+}
+
+smoke_install_release_contract_test_paths() {
+  python3 - "$smoke_repo_root" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+repo_root = Path(sys.argv[1])
+manifest = json.loads((repo_root / "repo-automation" / "manifest.json").read_text(encoding="utf-8"))
+
+for entry in manifest.get("managed_files", []):
+    path = entry.get("path")
+    if isinstance(path, str) and path.startswith("repo-automation/tests/contracts/"):
+        print(path)
+PY
+}
+
 
 
 smoke_check_prepare_release_contract() {
@@ -501,19 +608,94 @@ smoke_check_installer_apply_contract() {
   ) || status=1
   install_commit_count_before="$(git -C "$install_target" rev-list --count HEAD)"
   install_remote_head_before="$(git -C "$install_target_remote" rev-parse refs/heads/main)"
+  local -a install_default_expected_paths=()
+  local -a install_default_expected_execs=()
+  local -a install_test_paths=()
+
+  mapfile -t install_default_expected_paths < <(smoke_install_release_manifest_paths 0)
+  mapfile -t install_default_expected_execs < <(smoke_install_release_executable_paths 0)
+  mapfile -t install_test_paths < <(smoke_install_release_test_paths)
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target="$install_target" --json > "$install_plan_json"
+  ) && python3 - "$install_plan_json" "${install_default_expected_paths[@]}" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+plan = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+wanted = sys.argv[2:]
+files = set(plan.get("files_to_add", []))
+missing = [path for path in wanted if path not in files]
+unexpected = sorted(path for path in files if path == "repo-automation/bin/run-tests" or path.startswith("repo-automation/tests/"))
+if plan.get("mode") == "install" and plan.get("target_remote_status") == "unsupported" and ".github/pull_request_template.md" not in files and not missing and not unexpected:
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    test_pass "repo-automation-install default plan/json is manifest-driven"
+  else
+    test_fail "repo-automation-install default plan/json is manifest-driven"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-automation-install --target="$install_target" --apply >/dev/null
+  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
+    test_pass "repo-automation-install default apply creates core scaffolding"
+  else
+    test_fail "repo-automation-install default apply creates core scaffolding"
+    status=1
+  fi
+
+  if (
+    cd "$install_target" || return 1
+    for path in "${install_default_expected_paths[@]}"; do
+      [ -e "$path" ] || return 1
+    done
+    for path in "${install_default_expected_execs[@]}"; do
+      [ -x "$path" ] || return 1
+    done
+  ); then
+    test_pass "repo-automation-install default apply installs manifest-managed files"
+  else
+    test_fail "repo-automation-install default apply installs manifest-managed files"
+    status=1
+  fi
+
+  if (
+    cd "$install_target" || return 1
+    [ -x repo-automation/bin/repo-doctor ] || return 1
+    ! [ -e repo-automation/bin/run-tests ] || return 1
+  ); then
+    test_pass "repo-automation-install default profile excludes run-tests"
+  else
+    test_fail "repo-automation-install default profile excludes run-tests"
+    status=1
+  fi
 
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --json --include-tests > "$install_plan_json"
-  ) && python3 -m json.tool "$install_plan_json" >/dev/null; then
-    if smoke_json_assert "$install_plan_json" 'data.get("profile") == "default" and "repo-automation/bin/branch-cleanup" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-packet" in data.get("files_to_add", []) and "repo-automation/bin/post-codex-review" in data.get("files_to_add", []) and "repo-automation/bin/repair-prompt" in data.get("files_to_add", []) and "repo-automation/bin/review-pack" in data.get("files_to_add", []) and "repo-automation/bin/repo-zip" in data.get("files_to_add", []) and "repo-automation/bin/evidence-bundle" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-packet.md" in data.get("files_to_add", []) and "repo-automation/docs/post-codex-review.md" in data.get("files_to_add", []) and "repo-automation/docs/repair-prompt.md" in data.get("files_to_add", []) and "repo-automation/docs/review-pack.md" in data.get("files_to_add", []) and "repo-automation/docs/repo-zip.md" in data.get("files_to_add", []) and "repo-automation/docs/evidence-bundle.md" in data.get("files_to_add", []) and "repo-automation/tests/lib/test-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/lib/smoke-common.sh" in data.get("files_to_add", []) and "repo-automation/tests/smoke.sh" in data.get("files_to_add", []) and len([path for path in data.get("files_to_add", []) if path.startswith("repo-automation/tests/contracts/")]) == 27 and ".github/pull_request_template.md" not in data.get("files_to_add", []) and data.get("target_remote_status") == "unsupported"'; then
-      test_pass "repo-automation-install plan/json is parseable"
-    else
-      test_fail "repo-automation-install plan/json is parseable"
-      status=1
-    fi
+  ) && python3 -m json.tool "$install_plan_json" >/dev/null && python3 - "$install_plan_json" "${install_test_paths[@]}" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+plan = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+wanted = sys.argv[2:]
+files = set(plan.get("files_to_add", []))
+missing = [path for path in wanted if path not in files]
+if plan.get("mode") == "update" and plan.get("target_remote_status") == "unsupported" and ".github/pull_request_template.md" not in files and not missing:
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    test_pass "repo-automation-install include-tests plan/json is manifest-driven"
   else
-    test_fail "repo-automation-install plan/json is parseable"
+    test_fail "repo-automation-install include-tests plan/json is manifest-driven"
     status=1
   fi
 
@@ -586,11 +768,20 @@ smoke_check_installer_apply_contract() {
     test_pass "repo-automation-install JSON does not leak raw target origin"
   fi
 
+  local install_status_before_dry_run
+  local install_status_after_dry_run
+  install_status_before_dry_run="$(git -C "$install_target" status --porcelain)"
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --apply --dry-run >/dev/null
-  ) && [ ! -f "$install_target/.repo-automation.conf" ]; then
-    test_pass "repo-automation-install dry-run does not write files"
+  ); then
+    install_status_after_dry_run="$(git -C "$install_target" status --porcelain)"
+    if [ "$install_status_before_dry_run" = "$install_status_after_dry_run" ]; then
+      test_pass "repo-automation-install dry-run does not write files"
+    else
+      test_fail "repo-automation-install dry-run does not write files"
+      status=1
+    fi
   else
     test_fail "repo-automation-install dry-run does not write files"
     status=1
@@ -599,7 +790,11 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-automation-install --target="$install_target" --apply --include-tests >/dev/null
-  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-packet.md" ] && [ -f "$install_target/repo-automation/docs/post-codex-review.md" ] && [ -f "$install_target/repo-automation/docs/repair-prompt.md" ] && [ -f "$install_target/repo-automation/docs/review-pack.md" ] && [ -f "$install_target/repo-automation/docs/repo-zip.md" ] && [ -f "$install_target/repo-automation/docs/evidence-bundle.md" ] && [ -f "$install_target/repo-automation/bin/repo-doctor" ] && [ -f "$install_target/repo-automation/bin/failure-log" ] && [ -f "$install_target/repo-automation/bin/status-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-packet" ] && [ -f "$install_target/repo-automation/bin/post-codex-review" ] && [ -f "$install_target/repo-automation/bin/repair-prompt" ] && [ -f "$install_target/repo-automation/bin/review-pack" ] && [ -f "$install_target/repo-automation/bin/repo-zip" ] && [ -f "$install_target/repo-automation/bin/evidence-bundle" ] && [ -f "$install_target/repo-automation/bin/run-tests" ] && [ -f "$install_target/repo-automation/tests/lib/test-common.sh" ] && [ -f "$install_target/repo-automation/tests/smoke.sh" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/failure-log" ] && [ -x "$install_target/repo-automation/bin/status-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-packet" ] && [ -x "$install_target/repo-automation/bin/post-codex-review" ] && [ -x "$install_target/repo-automation/bin/repair-prompt" ] && [ -x "$install_target/repo-automation/bin/review-pack" ] && [ -x "$install_target/repo-automation/bin/repo-zip" ] && [ -x "$install_target/repo-automation/bin/evidence-bundle" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
+  ) && [ -f "$install_target/AGENTS.md" ] && [ -f "$install_target/.repo-automation.conf" ] && [ -f "$install_target/repo-automation/docs/README.md" ] && [ -f "$install_target/repo-automation/docs/local-overrides.md" ] && [ -x "$install_target/repo-automation/bin/repo-doctor" ] && [ -x "$install_target/repo-automation/bin/run-tests" ] && [ -x "$install_target/repo-automation/tests/smoke.sh" ] && cmp -s "$smoke_repo_root/AGENTS.md" "$install_target/AGENTS.md"; then
+    for path in "${install_test_paths[@]}"; do
+      [ -e "$install_target/$path" ] || return 1
+      [ -x "$install_target/$path" ] || return 1
+    done
     test_pass "repo-automation-install apply creates managed files"
   else
     test_fail "repo-automation-install apply creates managed files"
@@ -619,52 +814,16 @@ smoke_check_installer_apply_contract() {
   if (
     cd "$install_target" || return 1
     [ -f repo-automation/tests/lib/smoke-common.sh ] || return 1
-    [ -f repo-automation/tests/contracts/add-doc-pr.sh ] || return 1
-    [ -f repo-automation/tests/contracts/report-upstream.sh ] || return 1
-    [ -f repo-automation/tests/contracts/failure-log.sh ] || return 1
-    [ -f repo-automation/tests/contracts/run-tests.sh ] || return 1
-    [ -f repo-automation/tests/contracts/touched-files.sh ] || return 1
-    [ -f repo-automation/tests/contracts/ci-log-dump.sh ] || return 1
-    [ -f repo-automation/tests/contracts/repo-doctor.sh ] || return 1
-    [ -f repo-automation/tests/contracts/status-packet.sh ] || return 1
-    [ -f repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
-    [ -f repo-automation/tests/contracts/post-codex-review.sh ] || return 1
-    [ -f repo-automation/tests/contracts/repair-prompt.sh ] || return 1
-    [ -f repo-automation/tests/contracts/review-pack.sh ] || return 1
-    [ -f repo-automation/tests/contracts/pr-body-check.sh ] || return 1
-    [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
-    [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
-    [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
-    [ -f repo-automation/tests/contracts/managed-file-tools.sh ] || return 1
-    [ -f repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
+    [ -f repo-automation/tests/smoke.sh ] || return 1
+    [ -x repo-automation/tests/smoke.sh ] || return 1
     [ -f repo-automation/tests/contracts/installer.sh ] || return 1
-    [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
-    [ -f repo-automation/tests/contracts/branch-cleanup-preflight.sh ] || return 1
-    [ -f repo-automation/tests/contracts/prepare-release.sh ] || return 1
-    [ -f repo-automation/tests/contracts/automation-freshness.sh ] || return 1
-    [ -x repo-automation/tests/contracts/add-doc-pr.sh ] || return 1
-    [ -x repo-automation/tests/contracts/report-upstream.sh ] || return 1
-    [ -x repo-automation/tests/contracts/failure-log.sh ] || return 1
-    [ -x repo-automation/tests/contracts/run-tests.sh ] || return 1
-    [ -x repo-automation/tests/contracts/touched-files.sh ] || return 1
-    [ -x repo-automation/tests/contracts/ci-log-dump.sh ] || return 1
-    [ -x repo-automation/tests/contracts/repo-doctor.sh ] || return 1
-    [ -x repo-automation/tests/contracts/status-packet.sh ] || return 1
-    [ -x repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
-    [ -x repo-automation/tests/contracts/post-codex-review.sh ] || return 1
-    [ -x repo-automation/tests/contracts/repair-prompt.sh ] || return 1
-    [ -x repo-automation/tests/contracts/review-pack.sh ] || return 1
-    [ -x repo-automation/tests/contracts/pr-body-check.sh ] || return 1
-    [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
-    [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
-    [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
-    [ -x repo-automation/tests/contracts/managed-file-tools.sh ] || return 1
-    [ -x repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
     [ -x repo-automation/tests/contracts/installer.sh ] || return 1
+    [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
     [ -x repo-automation/tests/contracts/starter-template.sh ] || return 1
-    [ -x repo-automation/tests/contracts/branch-cleanup-preflight.sh ] || return 1
-    [ -x repo-automation/tests/contracts/prepare-release.sh ] || return 1
-    [ -x repo-automation/tests/contracts/automation-freshness.sh ] || return 1
+    while IFS= read -r path; do
+      [ -f "$path" ] || return 1
+      [ -x "$path" ] || return 1
+    done < <(smoke_install_release_contract_test_paths)
   ); then
     test_pass "repo-automation-install include-tests bundle installs smoke contracts"
   else
