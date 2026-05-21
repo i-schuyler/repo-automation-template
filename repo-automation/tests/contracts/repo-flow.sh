@@ -1447,15 +1447,17 @@ smoke_check_repo_flow_submit_contract() {
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/703' \
     repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias commit' --explain > "$alias_create_stdout" 2> "$alias_create_stderr"
   ) && [ ! -s "$alias_create_stdout" ] &&
+    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$alias_create_stderr" 2>/dev/null || printf '0')" &&
+    [ "$summary_count" = "1" ] &&
     smoke_assert_single_final_summary_block "$alias_create_stderr" &&
     grep -Fxq 'script=repo-flow' "$alias_create_stderr" &&
     grep -Fxq 'mode=submit' "$alias_create_stderr" &&
     grep -Fxq 'rc=0' "$alias_create_stderr" &&
     grep -Fxq 'branch_before=feature/repo-flow-submit-validation' "$alias_create_stderr" &&
     grep -Fxq 'branch_after=feature/repo-flow-submit-validation' "$alias_create_stderr" &&
-    grep -Fxq 'pr=unknown' "$alias_create_stderr" &&
+    grep -Fxq 'pr=703' "$alias_create_stderr" &&
     grep -Eq '^commit=[0-9a-f]{7,40}$' "$alias_create_stderr" &&
-    grep -Fxq 'pushed=false' "$alias_create_stderr" &&
+    grep -Fxq 'pushed=true' "$alias_create_stderr" &&
     grep -Fxq 'merged=false' "$alias_create_stderr" &&
     grep -Eq '^status_count=[0-9]+$' "$alias_create_stderr" &&
     grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/703' "$alias_create_stderr" &&
@@ -1479,15 +1481,17 @@ smoke_check_repo_flow_submit_contract() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias reuse commit' --explain > "$alias_reuse_stdout" 2> "$alias_reuse_stderr"
   ) && [ ! -s "$alias_reuse_stdout" ] &&
+    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$alias_reuse_stderr" 2>/dev/null || printf '0')" &&
+    [ "$summary_count" = "1" ] &&
     smoke_assert_single_final_summary_block "$alias_reuse_stderr" &&
     grep -Fxq 'script=repo-flow' "$alias_reuse_stderr" &&
     grep -Fxq 'mode=submit' "$alias_reuse_stderr" &&
     grep -Fxq 'rc=0' "$alias_reuse_stderr" &&
     grep -Fxq 'branch_before=feature/repo-flow-submit-validation' "$alias_reuse_stderr" &&
     grep -Fxq 'branch_after=feature/repo-flow-submit-validation' "$alias_reuse_stderr" &&
-    grep -Fxq 'pr=unknown' "$alias_reuse_stderr" &&
+    grep -Fxq 'pr=904' "$alias_reuse_stderr" &&
     grep -Eq '^commit=[0-9a-f]{7,40}$' "$alias_reuse_stderr" &&
-    grep -Fxq 'pushed=false' "$alias_reuse_stderr" &&
+    grep -Fxq 'pushed=true' "$alias_reuse_stderr" &&
     grep -Fxq 'merged=false' "$alias_reuse_stderr" &&
     grep -Eq '^status_count=[0-9]+$' "$alias_reuse_stderr" &&
     grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/904' "$alias_reuse_stderr"; then
