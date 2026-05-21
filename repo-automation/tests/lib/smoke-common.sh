@@ -213,7 +213,7 @@ set -u
 cmd="${1:-}"
 sub="${2:-}"
 shift 2 >/dev/null 2>&1 || true
-case "$cmd $sub" in
+  case "$cmd $sub" in
   'auth status')
     exit 0
     ;;
@@ -232,11 +232,51 @@ case "$cmd $sub" in
     fi
     ;;
   'pr view')
+    if [ -n "${GH_STUB_PR_VIEW_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr view $*" >> "$GH_STUB_PR_VIEW_LOG_FILE"
+    fi
     if [ -n "${GH_STUB_PR_VIEW_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_PR_VIEW_FAIL_ONCE_FILE}" ]; then
       : > "$GH_STUB_PR_VIEW_FAIL_ONCE_FILE"
       printf '%s\n' "${GH_STUB_PR_VIEW_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
       exit 1
     fi
+    case " $* " in
+      *' --json '*)
+        if [[ " $* " != *' --jq '* ]]; then
+          GH_STUB_PR_VIEW_NUMBER_VALUE="${GH_STUB_PR_VIEW_NUMBER:-123}" \
+          GH_STUB_PR_VIEW_TITLE_VALUE="${GH_STUB_PR_VIEW_TITLE:-demo title}" \
+          GH_STUB_PR_VIEW_URL_VALUE="${GH_STUB_PR_VIEW_URL:-https://github.com/i-schuyler/repo-automation-template/pull/123}" \
+          GH_STUB_PR_VIEW_STATE_VALUE="${GH_STUB_PR_VIEW_STATE:-OPEN}" \
+          GH_STUB_PR_VIEW_IS_DRAFT_VALUE="${GH_STUB_PR_VIEW_IS_DRAFT:-false}" \
+          GH_STUB_PR_VIEW_MERGEABLE_VALUE="${GH_STUB_PR_VIEW_MERGEABLE:-MERGEABLE}" \
+          GH_STUB_PR_VIEW_HEAD_SHA_VALUE="${GH_STUB_PR_VIEW_HEAD_SHA:-}" \
+          GH_STUB_PR_VIEW_HEAD_REF_VALUE="${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}" \
+          python3 - <<'PY'
+import json
+import os
+
+number_value = os.environ.get('GH_STUB_PR_VIEW_NUMBER_VALUE', '123')
+try:
+    number_value = int(number_value)
+except Exception:
+    pass
+
+data = {
+    'number': number_value,
+    'title': os.environ.get('GH_STUB_PR_VIEW_TITLE_VALUE', 'demo title'),
+    'url': os.environ.get('GH_STUB_PR_VIEW_URL_VALUE', 'https://github.com/i-schuyler/repo-automation-template/pull/123'),
+    'state': os.environ.get('GH_STUB_PR_VIEW_STATE_VALUE', 'OPEN'),
+    'isDraft': os.environ.get('GH_STUB_PR_VIEW_IS_DRAFT_VALUE', 'false').lower() == 'true',
+    'mergeable': os.environ.get('GH_STUB_PR_VIEW_MERGEABLE_VALUE', 'MERGEABLE'),
+    'headRefOid': os.environ.get('GH_STUB_PR_VIEW_HEAD_SHA_VALUE', ''),
+    'headRefName': os.environ.get('GH_STUB_PR_VIEW_HEAD_REF_VALUE', 'feature/demo'),
+}
+print(json.dumps(data))
+PY
+          exit 0
+        fi
+        ;;
+    esac
     case " $* " in
       *' --json number '*|*' --jq .number '*)
         printf '%s\n' "${GH_STUB_PR_VIEW_NUMBER:-123}"
@@ -372,6 +412,9 @@ case "$cmd $sub" in
     esac
     ;;
   'run list')
+    if [ -n "${GH_STUB_RUN_LIST_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh run list $*" >> "$GH_STUB_RUN_LIST_LOG_FILE"
+    fi
     if [ -n "${GH_STUB_RUN_LIST_SEQUENCE_FILE:-}" ] && [ -f "$GH_STUB_RUN_LIST_SEQUENCE_FILE" ]; then
       first_line="$(sed -n '1p' "$GH_STUB_RUN_LIST_SEQUENCE_FILE" 2>/dev/null || true)"
       rest_lines="$(sed -n '2,$p' "$GH_STUB_RUN_LIST_SEQUENCE_FILE" 2>/dev/null || true)"

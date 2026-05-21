@@ -11,6 +11,7 @@ Default behavior is plan/status-only. It does not merge unless `--merge` is expl
 `--watch` waits on the current PR head SHA with a bounded timeout and does not merge by itself.
 `--timeout=<seconds>` sets the overall watch limit.
 `--watch --diagnose-on-fail` also runs `repo-automation/bin/ci-log-dump --run-id=<id> --first-failure --machine-json` when the final checks status is blocked/red and prints a short diagnosis label/path/excerpt/fix hint.
+When `PR_FINISH_STATE_FILE=<path>` is set, `pr-finish` writes compact `key=value` state for handoff, including PR identity, checks status, merge outcome, head SHA, elapsed seconds, and timing fields.
 Use `--explain` to print the full human status report; default success is compact `pass`.
 
 `--watch --merge` still re-reads PR state and checks before merge and only proceeds when all gates are green for the current head SHA.

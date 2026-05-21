@@ -67,26 +67,33 @@ pr_finish_json_array_strings() {
   done
 }
 
+pr_finish_now_seconds() {
+  date +%s
+}
+
 pr_finish_resolve_latest_pr_number() {
   gh pr list --state open --limit 1 --json number --jq 'if length == 0 then empty else .[0].number end' 2>/dev/null
 }
 
-pr_finish_resolve_current_pr_number() {
-  gh pr view --json number --jq '.number' 2>/dev/null
-}
+pr_finish_write_state_file() {
+  local state_file="${PR_FINISH_STATE_FILE:-}"
 
-pr_finish_resolve_current_head_sha() {
-  gh pr view --json headRefOid --jq '.headRefOid' 2>/dev/null
-}
+  [ -n "$state_file" ] || return 0
 
-pr_finish_head_sha_for_pr() {
-  local pr_number="$1"
-  local head_sha=""
-
-  head_sha="$(pr_finish_resolve_current_head_sha)"
-  if [ -n "$head_sha" ]; then
-    printf '%s' "$head_sha"
-  fi
+  {
+    printf 'pr_number=%s\n' "${pr_number:-}"
+    printf 'pr_url=%s\n' "${pr_url:-}"
+    printf 'checks_status=%s\n' "${checks_status:-}"
+    printf 'action_taken=%s\n' "${action_taken:-}"
+    printf 'head_sha=%s\n' "${pr_head_sha:-}"
+    printf 'merged=%s\n' "${merged:-false}"
+    printf 'elapsed_seconds=%s\n' "${pr_finish_elapsed_seconds:-0}"
+    printf 'timing_pr_lookup_seconds=%s\n' "${pr_finish_timing_pr_lookup_seconds:-0}"
+    printf 'timing_ci_watch_seconds=%s\n' "${pr_finish_timing_ci_watch_seconds:-0}"
+    printf 'timing_checks_reuse_seconds=%s\n' "${pr_finish_timing_checks_reuse_seconds:-0}"
+    printf 'timing_merge_seconds=%s\n' "${pr_finish_timing_merge_seconds:-0}"
+    printf 'timing_sync_main_seconds=%s\n' "${pr_finish_timing_sync_main_seconds:-0}"
+  } >"$state_file" 2>/dev/null || true
 }
 
 pr_finish_checks_collect() {
@@ -290,11 +297,12 @@ pr_finish_main() {
   local pr_state=""
   local is_draft=""
   local mergeable=""
-  local checks_status=""
-  local checks_summary=""
+  local checks_status="unknown"
+  local checks_summary="no checks returned"
   local checks_json="[]"
   local can_merge="false"
   local action_taken="none"
+  local merged="false"
   local worktree_status=""
   local merge_flag=""
   local arg
@@ -303,6 +311,22 @@ pr_finish_main() {
   local pr_head_sha=""
   local watch_output=""
   local -a block_reasons=()
+  local pr_finish_started_at=""
+  local pr_finish_lookup_started_at=""
+  local pr_finish_watch_started_at=""
+  local pr_finish_merge_started_at=""
+  local pr_finish_sync_started_at=""
+  local pr_finish_elapsed_seconds=0
+  local pr_finish_timing_pr_lookup_seconds=0
+  local pr_finish_timing_ci_watch_seconds=0
+  local pr_finish_timing_checks_reuse_seconds=0
+  local pr_finish_timing_merge_seconds=0
+  local pr_finish_timing_sync_main_seconds=0
+  local pr_view_json=""
+  local pr_view_assignments=""
+  local pr_view_selector=""
+
+  pr_finish_started_at="$(pr_finish_now_seconds)"
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -487,6 +511,7 @@ pr_finish_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
+    pr_finish_lookup_started_at="$(pr_finish_now_seconds)"
     case "$pr_selector" in
       "")
         if [ "$current_branch" = "$default_branch" ]; then
@@ -494,16 +519,18 @@ pr_finish_main() {
           command_status=1
         else
           pr_target="$current_branch"
-          pr_number=$(pr_finish_resolve_current_pr_number "$current_branch") || pr_number=""
         fi
         ;;
       latest)
         pr_target="latest open PR"
         pr_number=$(pr_finish_resolve_latest_pr_number) || pr_number=""
+        if ! repo_auto_is_positive_integer "$pr_number"; then
+          pr_finish_stop "unable to find latest open PR"
+          command_status=1
+        fi
         ;;
       current)
         pr_target="$current_branch"
-        pr_number=$(pr_finish_resolve_current_pr_number "$current_branch") || pr_number=""
         ;;
       *)
         repo_auto_is_positive_integer "$pr_selector" || {
@@ -516,28 +543,60 @@ pr_finish_main() {
     esac
   fi
 
-  if [ "$command_status" -eq 0 ] && ! repo_auto_is_positive_integer "$pr_number"; then
-    case "$pr_selector" in
-      latest)
-        pr_finish_stop "unable to find latest open PR"
-        ;;
-      current|"")
-        pr_finish_stop "unable to find PR for target: ${pr_target:-$current_branch}"
-        ;;
-      *)
-        pr_finish_stop "unable to find PR for target: $pr_target"
-        ;;
-    esac
-    command_status=1
+  if [ "$command_status" -eq 0 ]; then
+    pr_view_selector=""
+    if [ -n "$pr_number" ]; then
+      pr_view_selector="$pr_number"
+    fi
+
+    if [ -n "$pr_view_selector" ]; then
+      pr_view_json="$(gh pr view "$pr_view_selector" --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName 2>/dev/null)" || pr_view_json=""
+    else
+      pr_view_json="$(gh pr view --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName 2>/dev/null)" || pr_view_json=""
+    fi
+
+    if [ -z "$pr_view_json" ]; then
+      pr_finish_stop "failed to load PR metadata for ${pr_target:-$current_branch}"
+      command_status=1
+    else
+      pr_view_assignments="$(python3 - "$pr_view_json" <<'PY'
+import json
+import shlex
+import sys
+
+data = json.loads(sys.argv[1])
+fields = [
+    ("pr_number", data.get("number", "")),
+    ("pr_title", data.get("title", "")),
+    ("pr_url", data.get("url", "")),
+    ("pr_state", data.get("state", "")),
+    ("is_draft", "true" if data.get("isDraft", False) else "false"),
+    ("mergeable", data.get("mergeable", "")),
+    ("pr_head_sha", data.get("headRefOid", "")),
+]
+for name, value in fields:
+    if value is None:
+        value = ""
+    print(f"{name}={shlex.quote(str(value))}")
+PY
+)"
+      if [ -z "$pr_view_assignments" ]; then
+        pr_finish_stop "failed to parse PR metadata for ${pr_target:-$current_branch}"
+        command_status=1
+      else
+        eval "$pr_view_assignments"
+        pr_finish_timing_pr_lookup_seconds="$(( $(pr_finish_now_seconds) - pr_finish_lookup_started_at ))"
+        if [ -z "$pr_number" ] || ! repo_auto_is_positive_integer "$pr_number"; then
+          pr_finish_stop "unable to find PR for target: ${pr_target:-$current_branch}"
+          command_status=1
+        fi
+      fi
+    fi
   fi
 
-  if [ "$command_status" -eq 0 ]; then
-    pr_title=$(gh pr view "$pr_number" --json title --jq '.title' 2>/dev/null) || pr_title=""
-    pr_url=$(gh pr view "$pr_number" --json url --jq '.url' 2>/dev/null) || pr_url=""
-    pr_state=$(gh pr view "$pr_number" --json state --jq '.state' 2>/dev/null) || pr_state=""
-    is_draft=$(gh pr view "$pr_number" --json isDraft --jq '.isDraft' 2>/dev/null) || is_draft=""
-    mergeable=$(gh pr view "$pr_number" --json mergeable --jq '.mergeable' 2>/dev/null) || mergeable=""
-    pr_head_sha=$(gh pr view "$pr_number" --json headRefOid --jq '.headRefOid' 2>/dev/null) || pr_head_sha=""
+  if [ "$command_status" -eq 0 ] && [ -z "$pr_head_sha" ]; then
+    pr_finish_stop "unable to determine current PR head SHA"
+    command_status=1
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$do_watch" -eq 1 ]; then
@@ -545,24 +604,37 @@ pr_finish_main() {
       pr_finish_stop "failed to create temporary watch output file"
       command_status=1
     }
-    if [ -z "$pr_head_sha" ]; then
-      pr_finish_stop "unable to determine current PR head SHA"
-      command_status=1
-    elif ! CI_STATUS_EXPECTED_HEAD_SHA="$pr_head_sha" "$script_dir/ci-watch" --pr="$pr_number" --poll-seconds=5 --timeout="$watch_timeout_seconds" >"$watch_output_file" 2>&1; then
+    if [ "$command_status" -eq 0 ]; then
+      pr_finish_watch_started_at="$(pr_finish_now_seconds)"
+    fi
+    if [ "$command_status" -eq 0 ] && ! CI_STATUS_EXPECTED_HEAD_SHA="$pr_head_sha" "$script_dir/ci-watch" --pr="$pr_number" --poll-seconds=5 --timeout="$watch_timeout_seconds" >"$watch_output_file" 2>&1; then
+      pr_finish_timing_ci_watch_seconds="$(( $(pr_finish_now_seconds) - pr_finish_watch_started_at ))"
       watch_output="$(cat "$watch_output_file" 2>/dev/null || true)"
       if printf '%s' "$watch_output" | grep -Eq 'timed out after [0-9]+s while waiting for CI'; then
+        checks_status="pending"
+        checks_summary="timed out after ${watch_timeout_seconds}s while waiting for CI"
         pr_finish_stop "timed out after ${watch_timeout_seconds}s while waiting for CI"
       else
+        checks_status="blocked"
+        checks_summary="CI failed during watch"
         pr_finish_stop "CI failed for PR #$pr_number"
       fi
       command_status=1
     else
+      pr_finish_timing_ci_watch_seconds="$(( $(pr_finish_now_seconds) - pr_finish_watch_started_at ))"
+      pr_finish_timing_checks_reuse_seconds=0
+      checks_status="green"
+      checks_summary="watch confirmed current head green"
       action_taken="watched"
     fi
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    if [ "$do_watch" -eq 1 ] && [ "$checks_status" = "green" ]; then
+      :
+    else
+      pr_finish_checks_collect "$pr_number" checks_json checks_status checks_summary || true
+    fi
   fi
 
   if [ "$command_status" -eq 0 ]; then
@@ -652,26 +724,32 @@ PY
           ;;
       esac
 
+      pr_finish_merge_started_at="$(pr_finish_now_seconds)"
       if [ "$delete_branch" -eq 1 ]; then
         merge_output=$(gh pr merge "$pr_number" "$merge_flag" --delete-branch 2>&1) || {
+          pr_finish_timing_merge_seconds="$(( $(pr_finish_now_seconds) - pr_finish_merge_started_at ))"
           pr_finish_stop "gh pr merge failed: $merge_output"
           command_status=1
         }
       else
         merge_output=$(gh pr merge "$pr_number" "$merge_flag" 2>&1) || {
+          pr_finish_timing_merge_seconds="$(( $(pr_finish_now_seconds) - pr_finish_merge_started_at ))"
           pr_finish_stop "gh pr merge failed: $merge_output"
           command_status=1
         }
       fi
 
       if [ "$command_status" -eq 0 ]; then
+        pr_finish_timing_merge_seconds="$(( $(pr_finish_now_seconds) - pr_finish_merge_started_at ))"
         action_taken="merged"
+        merged="true"
         [ "$json" -eq 1 ] || pr_finish_info "merge completed for PR #$pr_number"
       fi
     fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$do_merge" -eq 1 ] && [ "$sync_main" -eq 1 ]; then
+    pr_finish_sync_started_at="$(pr_finish_now_seconds)"
     git checkout "$default_branch" >/dev/null 2>&1 || {
       pr_finish_stop "failed to checkout $default_branch"
       command_status=1
@@ -686,8 +764,12 @@ PY
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$do_merge" -eq 1 ] && [ "$sync_main" -eq 1 ]; then
+    pr_finish_timing_sync_main_seconds="$(( $(pr_finish_now_seconds) - pr_finish_sync_started_at ))"
     [ "$json" -eq 1 ] || pr_finish_info "synced $default_branch with git pull --ff-only"
   fi
+
+  pr_finish_elapsed_seconds="$(( $(pr_finish_now_seconds) - pr_finish_started_at ))"
+  pr_finish_write_state_file
 
   if [ "$pr_finish_json" -eq 1 ]; then
     pr_finish_print_json \
@@ -708,6 +790,7 @@ PY
       block_reasons
   elif [ "$json" -eq 0 ]; then
     if [ "$pr_finish_explain" -eq 1 ]; then
+      pr_finish_info "timing: pr_lookup=${pr_finish_timing_pr_lookup_seconds}s ci_watch=${pr_finish_timing_ci_watch_seconds}s checks_reuse=${pr_finish_timing_checks_reuse_seconds}s merge=${pr_finish_timing_merge_seconds}s sync_main=${pr_finish_timing_sync_main_seconds}s total=${pr_finish_elapsed_seconds}s"
       pr_finish_print_human_status \
         "$mode" \
         "$current_branch" \
