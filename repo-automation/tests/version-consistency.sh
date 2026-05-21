@@ -300,10 +300,10 @@ for entry in helper_metadata.get('helpers', []):
 
 if config_key_drift:
     print('FAIL: helper-metadata config-key drift detected', file=sys.stderr)
-    print('Helper config keys are listed in repo-automation/helper-metadata.json but not referenced in the matching helper source:', file=sys.stderr)
+    print("Helper source references config keys missing from that helper's config_keys in repo-automation/helper-metadata.json:", file=sys.stderr)
     for path, keys in config_key_drift:
         print(f'- {path}: {", ".join(keys)}', file=sys.stderr)
-    print('Smallest fix: move the keys to the helper that reads them, or remove them from repo-automation/helper-metadata.json if they are no longer used.', file=sys.stderr)
+    print('Smallest fix: add the missing keys to the matching helper entry, or stop referencing them in the helper source if they are no longer used.', file=sys.stderr)
     raise SystemExit(1)
 
 if explain:

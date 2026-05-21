@@ -814,52 +814,16 @@ PY
   if (
     cd "$install_target" || return 1
     [ -f repo-automation/tests/lib/smoke-common.sh ] || return 1
-    [ -f repo-automation/tests/contracts/add-doc-pr.sh ] || return 1
-    [ -f repo-automation/tests/contracts/report-upstream.sh ] || return 1
-    [ -f repo-automation/tests/contracts/failure-log.sh ] || return 1
-    [ -f repo-automation/tests/contracts/run-tests.sh ] || return 1
-    [ -f repo-automation/tests/contracts/touched-files.sh ] || return 1
-    [ -f repo-automation/tests/contracts/ci-log-dump.sh ] || return 1
-    [ -f repo-automation/tests/contracts/repo-doctor.sh ] || return 1
-    [ -f repo-automation/tests/contracts/status-packet.sh ] || return 1
-    [ -f repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
-    [ -f repo-automation/tests/contracts/post-codex-review.sh ] || return 1
-    [ -f repo-automation/tests/contracts/repair-prompt.sh ] || return 1
-    [ -f repo-automation/tests/contracts/review-pack.sh ] || return 1
-    [ -f repo-automation/tests/contracts/pr-body-check.sh ] || return 1
-    [ -f repo-automation/tests/contracts/repo-zip.sh ] || return 1
-    [ -f repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
-    [ -f repo-automation/tests/contracts/github-settings-check.sh ] || return 1
-    [ -f repo-automation/tests/contracts/managed-file-tools.sh ] || return 1
-    [ -f repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
+    [ -f repo-automation/tests/smoke.sh ] || return 1
+    [ -x repo-automation/tests/smoke.sh ] || return 1
     [ -f repo-automation/tests/contracts/installer.sh ] || return 1
-    [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
-    [ -f repo-automation/tests/contracts/branch-cleanup-preflight.sh ] || return 1
-    [ -f repo-automation/tests/contracts/prepare-release.sh ] || return 1
-    [ -f repo-automation/tests/contracts/automation-freshness.sh ] || return 1
-    [ -x repo-automation/tests/contracts/add-doc-pr.sh ] || return 1
-    [ -x repo-automation/tests/contracts/report-upstream.sh ] || return 1
-    [ -x repo-automation/tests/contracts/failure-log.sh ] || return 1
-    [ -x repo-automation/tests/contracts/run-tests.sh ] || return 1
-    [ -x repo-automation/tests/contracts/touched-files.sh ] || return 1
-    [ -x repo-automation/tests/contracts/ci-log-dump.sh ] || return 1
-    [ -x repo-automation/tests/contracts/repo-doctor.sh ] || return 1
-    [ -x repo-automation/tests/contracts/status-packet.sh ] || return 1
-    [ -x repo-automation/tests/contracts/post-codex-packet.sh ] || return 1
-    [ -x repo-automation/tests/contracts/post-codex-review.sh ] || return 1
-    [ -x repo-automation/tests/contracts/repair-prompt.sh ] || return 1
-    [ -x repo-automation/tests/contracts/review-pack.sh ] || return 1
-    [ -x repo-automation/tests/contracts/pr-body-check.sh ] || return 1
-    [ -x repo-automation/tests/contracts/repo-zip.sh ] || return 1
-    [ -x repo-automation/tests/contracts/evidence-bundle.sh ] || return 1
-    [ -x repo-automation/tests/contracts/github-settings-check.sh ] || return 1
-    [ -x repo-automation/tests/contracts/managed-file-tools.sh ] || return 1
-    [ -x repo-automation/tests/contracts/shellcheck-ci-parity.sh ] || return 1
     [ -x repo-automation/tests/contracts/installer.sh ] || return 1
+    [ -f repo-automation/tests/contracts/starter-template.sh ] || return 1
     [ -x repo-automation/tests/contracts/starter-template.sh ] || return 1
-    [ -x repo-automation/tests/contracts/branch-cleanup-preflight.sh ] || return 1
-    [ -x repo-automation/tests/contracts/prepare-release.sh ] || return 1
-    [ -x repo-automation/tests/contracts/automation-freshness.sh ] || return 1
+    while IFS= read -r path; do
+      [ -f "$path" ] || return 1
+      [ -x "$path" ] || return 1
+    done < <(smoke_install_release_contract_test_paths)
   ); then
     test_pass "repo-automation-install include-tests bundle installs smoke contracts"
   else
