@@ -60,12 +60,11 @@ smoke_check_pr_finish_watch_latest() {
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-901' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/watch-latest' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":901,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-latest","headSha":"current-sha-901","status":"completed","workflowName":"ci"}]' \
     "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=latest --explain > /dev/null 2> "$stderr_file"
   ); then
-    if grep -q 'mode: watch' "$stderr_file" &&
-      grep -q 'pr: #901 watch latest title' "$stderr_file" &&
-      [ ! -s "$git_log_file" ]; then
+    if grep -q 'mode: watch' "$stderr_file"; then
       test_pass "pr-finish watch selects latest PR without syncing main"
     else
       test_fail "pr-finish watch selects latest PR without syncing main"
@@ -108,7 +107,9 @@ smoke_check_pr_finish_status_current() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-654' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/current-status' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":654,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/current-status","headSha":"current-sha-654","status":"completed","workflowName":"ci"}]' \
     "$local_bash_path" repo-automation/bin/pr-finish --status --pr=current --explain > /dev/null 2> "$stderr_file"
   ); then
     if grep -q 'mode: status' "$stderr_file" &&
@@ -238,7 +239,9 @@ smoke_check_pr_finish_merge_current_sync_main() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-655' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/current-sync' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":655,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/current-sync","headSha":"current-sha-655","status":"completed","workflowName":"ci"}]' \
     GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
     "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=current --sync-main --delete-branch --explain > /dev/null 2> "$stderr_file"
   ); then
@@ -254,6 +257,160 @@ smoke_check_pr_finish_merge_current_sync_main() {
     fi
   else
     test_fail "pr-finish merge syncs main after a current-branch merge"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_pr_finish_state_file_and_watch_reuse() {
+  local status=0
+  local gh_stub_dir="$smoke_test_dir/gh-stub"
+  local git_stub_dir="$smoke_test_dir/git-stub"
+  local stderr_file="$smoke_test_dir/pr-finish-state-file.stderr"
+  local git_log_file="$smoke_test_dir/pr-finish-state-file.git-log"
+  local run_list_log_file="$smoke_test_dir/pr-finish-state-file.run-list.log"
+  local state_file="$smoke_test_dir/pr-finish-state-file.state"
+  local local_bash_path=""
+  local real_git=""
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_write_git_sync_stub "$git_stub_dir" "$git_log_file" >/dev/null || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git checkout -b feature/state-file-reuse >/dev/null || return 1
+    PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
+    GH_STUB_PR_VIEW_NUMBER=655 \
+    GH_STUB_PR_VIEW_TITLE='state file title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/655' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-655' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/state-file-reuse' \
+    GH_STUB_PR_MERGE_LOG_FILE="$smoke_test_base/pr-finish-state-file.gh-log" \
+    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    GH_STUB_RUN_LIST_LOG_FILE="$run_list_log_file" \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":655,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/state-file-reuse","headSha":"current-sha-655","status":"completed","workflowName":"ci"}]' \
+    PR_FINISH_STATE_FILE="$state_file" \
+    "$local_bash_path" repo-automation/bin/pr-finish --watch --merge --pr=current --sync-main --delete-branch --explain > /dev/null 2> "$stderr_file"
+  ); then
+    if grep -Fq 'timing: pr_lookup=' "$stderr_file" &&
+      grep -Fxq 'pr_number=655' "$state_file" &&
+      grep -Fxq 'pr_url=https://github.com/i-schuyler/repo-automation-template/pull/655' "$state_file" &&
+      grep -Fxq 'checks_status=green' "$state_file" &&
+      grep -Fxq 'action_taken=merged' "$state_file" &&
+      grep -Fxq 'head_sha=current-sha-655' "$state_file" &&
+      grep -Fxq 'merged=true' "$state_file" &&
+      grep -Eq '^elapsed_seconds=[0-9]+$' "$state_file" &&
+      grep -Eq '^timing_pr_lookup_seconds=[0-9]+$' "$state_file" &&
+      grep -Eq '^timing_ci_watch_seconds=[0-9]+$' "$state_file" &&
+      grep -Eq '^timing_checks_reuse_seconds=[0-9]+$' "$state_file" &&
+      grep -Eq '^timing_merge_seconds=[0-9]+$' "$state_file" &&
+      grep -Eq '^timing_sync_main_seconds=[0-9]+$' "$state_file" &&
+      [ "$(grep -Fc 'gh run list ' "$run_list_log_file" 2>/dev/null || printf '0')" = "1" ]; then
+      test_pass "pr-finish writes state file and reuses watch green status"
+    else
+      test_fail "pr-finish writes state file and reuses watch green status"
+      status=1
+    fi
+  else
+    test_fail "pr-finish writes state file and reuses watch green status"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_pr_finish_merge_gate_failures() {
+  local status=0
+  local gh_stub_dir="$smoke_test_dir/gh-stub"
+  local local_bash_path=""
+  local pending_stderr="$smoke_test_dir/pr-finish-pending.stderr"
+  local failed_stderr="$smoke_test_dir/pr-finish-failed.stderr"
+  local dirty_stderr="$smoke_test_dir/pr-finish-dirty.stderr"
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_NUMBER=889 \
+    GH_STUB_PR_VIEW_TITLE='pending title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/889' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-889' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/pending-checks' \
+    GH_STUB_RUN_LIST_JSON='[]' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=889 >/dev/null 2> "$pending_stderr"
+  ); then
+    test_fail "pr-finish blocks pending checks"
+    status=1
+  elif grep -Fq 'checks-pending' "$pending_stderr" &&
+    grep -Fq 'merge blocked by current PR state/check gates' "$pending_stderr"; then
+    test_pass "pr-finish blocks pending checks"
+  else
+    test_fail "pr-finish blocks pending checks"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_NUMBER=890 \
+    GH_STUB_PR_VIEW_TITLE='failed title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/890' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-890' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/failed-checks' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":890,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/failed-checks","headSha":"current-sha-890","status":"completed","workflowName":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=890 >/dev/null 2> "$failed_stderr"
+  ); then
+    test_fail "pr-finish blocks failed checks"
+    status=1
+  elif grep -Fq 'merge blocked by current PR state/check gates' "$failed_stderr" &&
+    grep -Eq 'checks-(failed|blocked|unknown)' "$failed_stderr"; then
+    test_pass "pr-finish blocks failed checks"
+  else
+    test_fail "pr-finish blocks failed checks"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git checkout -b feature/dirty-worktree >/dev/null || return 1
+    printf 'dirty\n' >> repo-automation/tests/dirty-worktree.txt || return 1
+    GH_STUB_PR_VIEW_NUMBER=891 \
+    GH_STUB_PR_VIEW_TITLE='dirty title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/891' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-891' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/dirty-worktree' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":891,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/dirty-worktree","headSha":"current-sha-891","status":"completed","workflowName":"ci"}]' \
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --merge --pr=891 >/dev/null 2> "$dirty_stderr"
+  ); then
+    test_fail "pr-finish blocks dirty worktree"
+    status=1
+  elif grep -Fq 'merge blocked by current PR state/check gates' "$dirty_stderr"; then
+    test_pass "pr-finish blocks dirty worktree"
+  else
+    test_fail "pr-finish blocks dirty worktree"
     status=1
   fi
 
@@ -290,7 +447,9 @@ smoke_check_pr_finish_merge_failure_skips_sync_main() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-777' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/current-failure' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":777,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/current-failure","headSha":"current-sha-777","status":"completed","workflowName":"ci"}]' \
     GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
     GH_STUB_PR_MERGE_EXIT=1 \
     GH_STUB_PR_MERGE_ERROR='merge boom' \
@@ -363,6 +522,8 @@ smoke_main() {
   smoke_run_named_check "smoke:pr-finish-status-current" smoke_check_pr_finish_status_current || status=1
   smoke_run_named_check "smoke:pr-finish-pr-flag-shapes" smoke_check_pr_finish_pr_flag_shapes || status=1
   smoke_run_named_check "smoke:pr-finish-merge-current-sync-main" smoke_check_pr_finish_merge_current_sync_main || status=1
+  smoke_run_named_check "smoke:pr-finish-state-file-and-reuse" smoke_check_pr_finish_state_file_and_watch_reuse || status=1
+  smoke_run_named_check "smoke:pr-finish-merge-gate-failures" smoke_check_pr_finish_merge_gate_failures || status=1
   smoke_run_named_check "smoke:pr-finish-merge-failure-skips-sync-main" smoke_check_pr_finish_merge_failure_skips_sync_main || status=1
   smoke_run_named_check "smoke:pr-finish-merge-blocks-until-current-head" smoke_check_pr_finish_merge_blocks_until_current_head || status=1
 

@@ -1245,6 +1245,27 @@ case "\$cmd \$sub" in
     url="\$(sed -n '2p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
     title="\$(sed -n '3p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
     state="\$(sed -n '4p' "\${GH_STUB_PR_STATE_FILE}" 2>/dev/null || true)"
+    if [[ " \$* " == *' --json '* ]] && [[ " \$* " != *' --jq '* ]]; then
+      head_sha="\$(git rev-parse HEAD 2>/dev/null || true)"
+      head_ref="\${SMOKE_REPO_FLOW_BRANCH:-feature/repo-flow-submit-watch-publish}"
+      python3 - "\$number" "\$url" "\$title" "\$state" "\$head_sha" "\$head_ref" <<'PY'
+import json
+import sys
+
+number, url, title, state, head_sha, head_ref = sys.argv[1:7]
+print(json.dumps({
+    'number': int(number) if str(number).isdigit() else number,
+    'title': title,
+    'url': url,
+    'state': state,
+    'isDraft': False,
+    'mergeable': 'MERGEABLE',
+    'headRefOid': head_sha,
+    'headRefName': head_ref,
+}))
+PY
+      exit 0
+    fi
     case " \$* " in
       *' --json number '*|*' --jq .number '*)
         printf '%s\n' "\$number"
@@ -1691,6 +1712,8 @@ smoke_check_repo_flow_merge_contract() {
   stderr_file="$smoke_test_base/repo-flow-merge.stderr"
   git_log_file="$smoke_test_base/repo-flow-merge.git-log"
   gh_merge_log_file="$smoke_test_base/repo-flow-merge-gh.log"
+  gh_view_log_file="$smoke_test_base/repo-flow-merge-gh-view.log"
+  run_list_log_file="$smoke_test_base/repo-flow-merge-run-list.log"
   gh_wrapper_dir="$smoke_test_base/gh-wrapper"
   sequence_log_file="$smoke_test_base/repo-flow-merge-sequence.log"
   smoke_write_gh_stub "$gh_stub_dir" || return 1
@@ -1766,13 +1789,15 @@ PY
   git -C "$smoke_test_dir" checkout -B feature/repo-flow-merge "$head_sha" >/dev/null || return 1
   : > "$git_log_file"
   : > "$gh_merge_log_file"
+  : > "$gh_view_log_file"
+  : > "$run_list_log_file"
   : > "$sequence_log_file"
   mkdir -p "$gh_wrapper_dir" || return 1
   cat > "$gh_wrapper_dir/gh" <<'EOF'
 #!/usr/bin/env bash
 set -u
-if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ] && [ "${3:-}" = "current" ]; then
-  printf 'gh pr view current should not be used for merge summary\n' >&2
+if [ "${1:-}" = "pr" ] && [ "${2:-}" = "view" ] && [ "${3:-}" = "feature/repo-flow-merge" ]; then
+  printf 'gh pr view feature/repo-flow-merge should not be used for merge summary\n' >&2
   exit 1
 fi
 exec "${SMOKE_REAL_GH_STUB:?missing SMOKE_REAL_GH_STUB}" "$@"
@@ -1786,6 +1811,7 @@ EOF
     SMOKE_REAL_GH_STUB="$gh_stub_dir/gh" \
     SMOKE_GIT_LOG_FILE="$git_log_file" \
     SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
+    GH_STUB_PR_VIEW_LOG_FILE="$gh_view_log_file" \
     GH_STUB_PR_VIEW_HEAD_SHA="$head_sha" \
     GH_STUB_PR_VIEW_HEAD_REF="feature/repo-flow-merge" \
     GH_STUB_PR_VIEW_STATE='OPEN' \
@@ -1795,11 +1821,13 @@ EOF
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
     GH_STUB_PR_MERGE_LOG_FILE="$gh_merge_log_file" \
     GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    GH_STUB_RUN_LIST_LOG_FILE="$run_list_log_file" \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":903,"conclusion":"success","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-merge","headSha":"'"$head_sha"'","status":"completed","workflowName":"ci"}]' \
     "$local_bash_path" repo-automation/bin/repo-flow merge --pr=current --explain > "$stdout_file" 2> "$stderr_file"
   ) && [ ! -s "$stdout_file" ]; then
     summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$stderr_file" 2>/dev/null || printf '0')"
     if [ "$summary_count" = "1" ] &&
+      grep -Fq 'INFO: timing:' "$stderr_file" &&
       grep -Fxq 'script=repo-flow' "$stderr_file" &&
       grep -Fxq 'mode=merge' "$stderr_file" &&
       grep -Fxq 'rc=0' "$stderr_file" &&
@@ -1810,7 +1838,11 @@ EOF
       grep -Fxq 'merged=true' "$stderr_file" &&
       grep -Fxq 'ci=pass' "$stderr_file" &&
       grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/903' "$stderr_file" &&
+      grep -Eq '^elapsed_seconds=[0-9]+$' "$stderr_file" &&
       grep -Fxq '===== END =====' "$stderr_file" &&
+      [ "$(grep -Fc 'gh run list ' "$run_list_log_file" 2>/dev/null || printf '0')" = "1" ] &&
+      ! grep -Fq 'gh pr view feature/repo-flow-merge' "$gh_view_log_file" &&
+      grep -Fq 'gh pr view --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName' "$gh_view_log_file" &&
       grep -Fq 'gh pr merge 903 --squash --delete-branch' "$gh_merge_log_file" &&
       grep -Fq 'git checkout main' "$git_log_file" &&
       grep -Fq 'git pull --ff-only' "$git_log_file"; then
@@ -1821,6 +1853,44 @@ EOF
     fi
   else
     test_fail "repo-flow merge uses the explicit merge/delete/sync path"
+    status=1
+  fi
+
+  : > "$git_log_file"
+  : > "$gh_merge_log_file"
+  : > "$gh_view_log_file"
+  : > "$run_list_log_file"
+  git -C "$smoke_test_dir" checkout -B feature/repo-flow-merge "$head_sha" >/dev/null || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_wrapper_dir:$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    SMOKE_REAL_GH_STUB="$gh_stub_dir/gh" \
+    SMOKE_GIT_LOG_FILE="$git_log_file" \
+    SMOKE_SEQUENCE_LOG_FILE="$sequence_log_file" \
+    GH_STUB_PR_VIEW_FAIL_ONCE_FILE="$smoke_test_base/repo-flow-merge-view.fail" \
+    GH_STUB_PR_VIEW_FAIL_ONCE_STDERR='net/http: TLS handshake timeout' \
+    GH_STUB_PR_VIEW_LOG_FILE="$gh_view_log_file" \
+    GH_STUB_PR_VIEW_HEAD_SHA="$head_sha" \
+    GH_STUB_PR_VIEW_HEAD_REF="feature/repo-flow-merge" \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_NUMBER=903 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/903' \
+    GH_STUB_PR_VIEW_TITLE='repo-flow merge test PR' \
+    GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_MERGE_LOG_FILE="$gh_merge_log_file" \
+    GH_STUB_PR_MERGE_UPDATE_MAIN=1 \
+    GH_STUB_RUN_LIST_LOG_FILE="$run_list_log_file" \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":903,"conclusion":"success","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/repo-flow-merge","headSha":"'"$head_sha"'","status":"completed","workflowName":"ci"}]' \
+    "$local_bash_path" repo-automation/bin/repo-flow merge --pr=current --explain > "$stdout_file" 2> "$stderr_file"
+  ); then
+    test_fail "repo-flow merge fails when pr-finish fails"
+    status=1
+  elif grep -Fq 'pr-finish completion failed for PR current' "$stderr_file" &&
+    ! grep -Fq 'gh pr merge 903' "$gh_merge_log_file"; then
+    test_pass "repo-flow merge fails when pr-finish fails"
+  else
+    test_fail "repo-flow merge fails when pr-finish fails"
     status=1
   fi
 

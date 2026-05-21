@@ -651,6 +651,7 @@ repo_flow_submit_print_final_summary() {
   local ci_state="${11}"
   local rc="${12}"
   local stop_reason="${13}"
+  local elapsed_seconds="${14:-}"
   local pr_summary="unknown"
   local url_or_stop="pass"
 
@@ -660,7 +661,7 @@ repo_flow_submit_print_final_summary() {
   elif [ -n "$stop_reason" ]; then
     url_or_stop="$stop_reason"
   fi
-  repo_auto_print_final_summary \
+  local -a summary_args=(
     "script=repo-flow" \
     "mode=$mode" \
     "rc=$rc" \
@@ -673,7 +674,12 @@ repo_flow_submit_print_final_summary() {
     "status_count=$status_count" \
     "watched=$watched" \
     "ci=$ci_state" \
-    "url_or_stop=$url_or_stop" >&2
+    "url_or_stop=$url_or_stop"
+  )
+  if [ -n "$elapsed_seconds" ]; then
+    summary_args+=("elapsed_seconds=$elapsed_seconds")
+  fi
+  repo_auto_print_final_summary "${summary_args[@]}" >&2
 }
 
 repo_flow_submit_filter_child_explain_summary() {
@@ -1291,7 +1297,11 @@ repo_flow_merge_main() {
   local merged="false"
   local mode="merge"
   local pr_finish_args=()
-  local pr_lookup_selector=""
+  local pr_finish_state_file=""
+  local pr_finish_state_pr_number=""
+  local pr_finish_state_pr_url=""
+  local pr_finish_state_merged=""
+  local pr_finish_state_elapsed_seconds=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -1428,55 +1438,72 @@ repo_flow_merge_main() {
   fi
 
   if [ "$command_status" -eq 0 ]; then
-    pr_lookup_selector="$pr_selector"
-    case "$pr_lookup_selector" in
-      current)
-        pr_lookup_selector="$current_branch"
-        ;;
-      latest)
-        pr_lookup_selector="$(gh pr list --state open --limit 1 --json number --jq 'if length == 0 then empty else .[0].number end' 2>/dev/null || true)"
-        ;;
-    esac
-    if [ -n "$pr_lookup_selector" ]; then
-      pr_number="$(gh pr view "$pr_lookup_selector" --json number --jq '.number' 2>/dev/null || true)"
-      pr_url="$(gh pr view "$pr_lookup_selector" --json url --jq '.url' 2>/dev/null || true)"
-    fi
     pr_finish_args=(--watch --merge --delete-branch --sync-main --pr="$pr_selector" --timeout="$watch_timeout_seconds")
     if [ "$diagnose_on_fail" -eq 1 ]; then
       pr_finish_args+=(--diagnose-on-fail)
     fi
 
-    if [ "$explain" -eq 1 ]; then
-      if repo_flow_submit_run_child_explain "$script_dir/pr-finish" "${pr_finish_args[@]}" --explain; then
-        merged="true"
-        action_taken="merged-pr"
-        final_status="completed"
-        ci_state="pass"
-      else
-        repo_flow_stop "pr-finish completion failed for PR $pr_selector"
-        command_status=1
-        final_status="blocked"
-      fi
-    elif [ "$json" -eq 1 ]; then
-      if repo_flow_run_child_quiet "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
-        merged="true"
-        action_taken="merged-pr"
-        final_status="completed"
-        ci_state="pass"
-      else
-        repo_flow_stop "pr-finish completion failed for PR $pr_selector"
-        command_status=1
-        final_status="blocked"
-      fi
-    elif "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
-      merged="true"
+    pr_finish_state_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-finish.XXXXXX.state")" || {
+      repo_flow_stop "failed to create temporary PR finish state file"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$explain" -eq 1 ]; then
+    if PR_FINISH_STATE_FILE="$pr_finish_state_file" repo_flow_submit_run_child_explain "$script_dir/pr-finish" "${pr_finish_args[@]}" --explain; then
+      merged="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" merged)"
+      pr_number="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_number)"
+      pr_url="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_url)"
+      ci_state="pass"
       action_taken="merged-pr"
       final_status="completed"
-      ci_state="pass"
     else
       repo_flow_stop "pr-finish completion failed for PR $pr_selector"
       command_status=1
       final_status="blocked"
+    fi
+  elif [ "$command_status" -eq 0 ] && [ "$json" -eq 1 ]; then
+    if PR_FINISH_STATE_FILE="$pr_finish_state_file" repo_flow_run_child_quiet "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
+      merged="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" merged)"
+      pr_number="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_number)"
+      pr_url="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_url)"
+      ci_state="pass"
+      action_taken="merged-pr"
+      final_status="completed"
+    else
+      repo_flow_stop "pr-finish completion failed for PR $pr_selector"
+      command_status=1
+      final_status="blocked"
+    fi
+  elif [ "$command_status" -eq 0 ]; then
+    if PR_FINISH_STATE_FILE="$pr_finish_state_file" "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
+      merged="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" merged)"
+      pr_number="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_number)"
+      pr_url="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_url)"
+      ci_state="pass"
+      action_taken="merged-pr"
+      final_status="completed"
+    else
+      repo_flow_stop "pr-finish completion failed for PR $pr_selector"
+      command_status=1
+      final_status="blocked"
+    fi
+  fi
+
+  if [ -n "$pr_finish_state_file" ] && [ -f "$pr_finish_state_file" ]; then
+    pr_finish_state_pr_number="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_number)"
+    pr_finish_state_pr_url="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" pr_url)"
+    pr_finish_state_merged="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" merged)"
+    pr_finish_state_elapsed_seconds="$(repo_flow_submit_extract_child_state_value "$pr_finish_state_file" elapsed_seconds)"
+
+    if [ -n "$pr_finish_state_pr_number" ] && [ -z "$pr_number" ]; then
+      pr_number="$pr_finish_state_pr_number"
+    fi
+    if [ -n "$pr_finish_state_pr_url" ] && [ -z "$pr_url" ]; then
+      pr_url="$pr_finish_state_pr_url"
+    fi
+    if [ -n "$pr_finish_state_merged" ]; then
+      merged="$pr_finish_state_merged"
     fi
   fi
 
@@ -1514,13 +1541,18 @@ repo_flow_merge_main() {
       "false" \
       "$ci_state" \
       "$command_status" \
-      "$repo_flow_stop_reason"
+      "$repo_flow_stop_reason" \
+      "${pr_finish_state_elapsed_seconds:-}"
   elif [ "$command_status" -eq 0 ]; then
     if [ -n "$pr_url" ]; then
       printf '%s\n' "$pr_url"
     else
       printf 'pass\n'
     fi
+  fi
+
+  if [ -n "$pr_finish_state_file" ] && [ -f "$pr_finish_state_file" ]; then
+    rm -f "$pr_finish_state_file" >/dev/null 2>&1 || true
   fi
 
   return "$command_status"
