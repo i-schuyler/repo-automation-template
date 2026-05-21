@@ -1144,7 +1144,7 @@ PY
     cd "$smoke_test_dir" || return 1
     git remote set-url origin 'git@github-alias:i-schuyler/repo-automation-template.git' >/dev/null 2>&1 || return 1
     PATH="$ssh_stub_dir:$PATH" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_alias_explain_stderr"
-  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_alias_explain_stderr" && grep -Fxq 'script=codex-slice-preflight' "$preflight_alias_explain_stderr" && grep -Eq '^mode=check-only$' "$preflight_alias_explain_stderr" && grep -Eq '^rc=0$' "$preflight_alias_explain_stderr" && grep -Fxq 'disk=pass' "$preflight_alias_explain_stderr" && grep -Eq '^branch_before=main$' "$preflight_alias_explain_stderr" && grep -Eq '^branch_after=main$' "$preflight_alias_explain_stderr" && grep -Eq '^default_branch=main$' "$preflight_alias_explain_stderr" && grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_alias_explain_stderr" && grep -Eq '^status_count=[0-9]+$' "$preflight_alias_explain_stderr" && grep -Eq '^url_or_stop=pass$' "$preflight_alias_explain_stderr" && grep -Fxq '===== END =====' "$preflight_alias_explain_stderr"; then
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_alias_explain_stderr" && grep -Fxq 'script=codex-slice-preflight' "$preflight_alias_explain_stderr" && grep -Eq '^mode=check-only$' "$preflight_alias_explain_stderr" && grep -Eq '^rc=0$' "$preflight_alias_explain_stderr" && grep -Fxq 'disk=pass' "$preflight_alias_explain_stderr" && grep -Eq '^disk_free=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_alias_explain_stderr" && grep -Fxq 'disk_threshold=1.5GiB' "$preflight_alias_explain_stderr" && grep -Eq '^disk_used=[0-9]+%$' "$preflight_alias_explain_stderr" && grep -Eq '^disk_available=[0-9]+%$' "$preflight_alias_explain_stderr" && ! grep -Fq 'cleanup_command=' "$preflight_alias_explain_stderr" && grep -Eq '^branch_before=main$' "$preflight_alias_explain_stderr" && grep -Eq '^branch_after=main$' "$preflight_alias_explain_stderr" && grep -Eq '^default_branch=main$' "$preflight_alias_explain_stderr" && grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_alias_explain_stderr" && grep -Eq '^status_count=[0-9]+$' "$preflight_alias_explain_stderr" && grep -Eq '^url_or_stop=pass$' "$preflight_alias_explain_stderr" && grep -Fxq '===== END =====' "$preflight_alias_explain_stderr"; then
     test_pass "preflight explain output ends with FINAL SUMMARY"
   else
     test_fail "preflight explain output ends with FINAL SUMMARY"
@@ -1176,7 +1176,7 @@ EOF
     REPO_AUTOMATION_DF_BIN="$preflight_low_disk_stub_dir/df" \
       PREFLIGHT_DF_BLOCKS=1000000 \
       PREFLIGHT_DF_USED=840000 \
-      PREFLIGHT_DF_AVAILABLE=1024 \
+      PREFLIGHT_DF_AVAILABLE=1048576 \
       PREFLIGHT_DF_USE_PERCENT=84 \
       repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_low_disk_explain_stderr"
   ); then
@@ -1189,8 +1189,14 @@ EOF
     grep -Eq '^disk=fail$' "$preflight_low_disk_explain_stderr" &&
     grep -Eq '^disk_free_bytes=[0-9]+$' "$preflight_low_disk_explain_stderr" &&
     grep -Fxq 'disk_threshold_bytes=1610612736' "$preflight_low_disk_explain_stderr" &&
-    grep -Fq 'cleanup_command=rm -rf --' "$preflight_low_disk_explain_stderr" &&
-    grep -Fq 'available disk space below 1.5G (' "$preflight_low_disk_explain_stderr" &&
+    grep -Fxq 'disk_free=1.0GiB' "$preflight_low_disk_explain_stderr" &&
+    grep -Fxq 'disk_threshold=1.5GiB' "$preflight_low_disk_explain_stderr" &&
+    grep -Eq '^disk_used=84%$' "$preflight_low_disk_explain_stderr" &&
+    grep -Eq '^disk_available=16%$' "$preflight_low_disk_explain_stderr" &&
+    grep -Fq 'fix: repo-automation/bin/codex-slice-preflight --clean-test-cache --explain' "$preflight_low_disk_explain_stderr" &&
+    grep -Fq 'STOP: available disk space below threshold' "$preflight_low_disk_explain_stderr" &&
+    ! grep -Fq 'cleanup_command=' "$preflight_low_disk_explain_stderr" &&
+    grep -Fxq 'url_or_stop=available disk space below threshold' "$preflight_low_disk_explain_stderr" &&
     grep -Fxq '===== END =====' "$preflight_low_disk_explain_stderr" &&
     ( cd "$smoke_test_dir" && [ "$(git branch --show-current)" = "main" ] ); then
     test_pass "preflight stops before branch setup on low disk"
@@ -1230,11 +1236,15 @@ EOF
     grep -Eq '^rc=0$' "$preflight_clean_stderr" &&
     grep -Fxq 'disk=pass' "$preflight_clean_stderr" &&
     grep -Fq 'clean-test-cache removed:' "$preflight_clean_stderr" &&
+    grep -Fq 'clean-test-cache free: before=' "$preflight_clean_stderr" &&
     grep -Fq 'repo-automation-template-tests' "$preflight_clean_stderr" &&
     grep -Fq 'repo-automation-template' "$preflight_clean_stderr" &&
     grep -Fq 'repo-automation-log-dump' "$preflight_clean_stderr" &&
     grep -Eq '^cleanup_free_before_bytes=[0-9]+$' "$preflight_clean_stderr" &&
+    grep -Eq '^cleanup_free_before=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_stderr" &&
     grep -Eq '^cleanup_free_after_bytes=[0-9]+$' "$preflight_clean_stderr" &&
+    grep -Eq '^cleanup_free_after=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_stderr" &&
+    ! grep -Fq 'cleanup_command=' "$preflight_clean_stderr" &&
     grep -Fxq '===== END =====' "$preflight_clean_stderr" &&
     [ ! -e "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" ] &&
     [ ! -e "$preflight_clean_tmpdir/repo-automation-template/marker.txt" ] &&

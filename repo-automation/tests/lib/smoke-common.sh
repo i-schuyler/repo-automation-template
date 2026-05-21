@@ -324,6 +324,43 @@ case "$cmd $sub" in
     fi
     printf '%s\n' "${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
     ;;
+  'pr edit')
+    body_file=""
+    number="${1:-}"
+    prev=""
+    for arg in "$@"; do
+      if [ -n "$prev" ]; then
+        case "$prev" in
+          --body-file)
+            body_file="$arg"
+            ;;
+        esac
+        prev=""
+        continue
+      fi
+      case "$arg" in
+        --body-file=*)
+          body_file="${arg#--body-file=}"
+          ;;
+        --body-file)
+          prev="$arg"
+          ;;
+      esac
+    done
+    if [ -n "${GH_STUB_PR_EDIT_LOG_FILE:-}" ]; then
+      printf '%s\n' "gh pr edit number=$number body_file=$body_file" >> "$GH_STUB_PR_EDIT_LOG_FILE"
+    fi
+    if [ "${GH_STUB_PR_EDIT_EXIT:-0}" -ne 0 ] 2>/dev/null; then
+      printf '%s\n' "${GH_STUB_PR_EDIT_ERROR:-gh pr edit failed}" >&2
+      exit "${GH_STUB_PR_EDIT_EXIT}"
+    fi
+    if [ -n "$body_file" ] && [ -f "$body_file" ] && [ -n "${GH_STUB_PR_EDIT_BODY_COPY_FILE:-}" ]; then
+      cat "$body_file" > "$GH_STUB_PR_EDIT_BODY_COPY_FILE"
+    fi
+    if [ -n "$body_file" ] && [ -f "$body_file" ] && [ -n "${GH_STUB_PR_EDIT_BODY_CONTENT_FILE:-}" ]; then
+      cat "$body_file" > "$GH_STUB_PR_EDIT_BODY_CONTENT_FILE"
+    fi
+    ;;
   'pr list')
     case " $* " in
       *' --jq '*)

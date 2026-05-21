@@ -6,7 +6,8 @@ The script requires `--branch=<name>`. It validates branch safety and rejects th
 
 Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
 
-Before branch setup, preflight checks disk space with the same 1.5G guard used by `run-tests`. If the guard fails, the stop report includes the available bytes, the threshold, and the exact cleanup command. Rerun with `--clean-test-cache --explain`, then rerun normal preflight.
+Before branch setup, preflight checks disk space with the same 1.5G guard used by `run-tests`. If the guard fails, the stop report includes the available bytes, the threshold, and a compact cleanup hint. Rerun with `--clean-test-cache --explain`, then rerun normal preflight.
+The explain summary also prints human-friendly `disk_free`, `disk_threshold`, `disk_used`, and `disk_available` fields alongside the byte fields for scripts.
 
 `--check-only` validates config, remote expectations, current worktree status, and branch-cleanup planning without checking out or creating the requested branch.
 Use `--explain` for the detailed preflight report; default success is compact `pass`.
