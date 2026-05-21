@@ -11,11 +11,10 @@ It refuses absolute paths, `..`, default-branch submits, and any unrequested dir
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
 When `repo-flow submit` creates a PR, it generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`.
-`--watch` hands off to the repo-native PR completion path with a bounded timeout; `--timeout=<seconds>` sets that limit.
+`--watch` hands off to the repo-native PR completion path with a bounded timeout and stops after CI is green; `--timeout=<seconds>` sets that limit.
 When `--watch` is used, `repo-flow submit` pushes the current branch before PR lookup/create/watch.
 `--diagnose-on-fail` is only forwarded with `--watch`.
-
-`--watch` hands off to `repo-automation/bin/pr-finish --watch --merge --delete-branch --sync-main --pr=current` after the branch is pushed and a PR exists.
+`repo-automation/bin/repo-flow merge` is the explicit merge/delete/sync step after review. It uses the current PR by default, waits for the current head to be green, then merges, deletes the branch, and syncs `main`.
 `pr-finish` is current-head-aware: missing or not-yet-attached checks stay pending until timeout, stale checks from older SHAs are ignored, and merges/deletes/syncs only happen after the current head is green.
 Use `--explain` for the full human flow report; default success is compact `plan`, PR URL, or `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
@@ -47,6 +46,10 @@ Usage examples:
     repo-automation/bin/repo-flow --json
     repo-automation/bin/repo-flow submit --modified --message="update repo-flow docs"
     repo-automation/bin/repo-flow submit --staged --message="commit staged work"
+    repo-automation/bin/repo-flow submit --staged --message="commit staged work" --watch --timeout=900 --diagnose-on-fail --explain
     repo-automation/bin/repo-flow submit --paths=docs/repo-flow.md --message="update repo-flow docs"
+    repo-automation/bin/repo-flow merge --explain
     repo-automation/bin/repo-flow status-card
     repo-automation/bin/repo-flow status-card --json
+
+Recommended review flow: submit/watch, review the PR, then run `repo-automation/bin/repo-flow merge --explain`.

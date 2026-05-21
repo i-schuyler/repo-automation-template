@@ -18,6 +18,7 @@ repo_flow_stop_reason=""
 repo_flow_usage() {
   printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
   printf '       repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow merge [--pr=<number|current|latest>] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
 }
 
 repo_flow_status_card_usage() {
@@ -26,6 +27,10 @@ repo_flow_status_card_usage() {
 
 repo_flow_submit_usage() {
   printf 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+}
+
+repo_flow_merge_usage() {
+  printf 'Usage: repo-automation/bin/repo-flow merge [--pr=<number|current|latest>] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
 }
 
 repo_flow_info() {
@@ -271,7 +276,7 @@ EOF
         next_action="repo-automation/bin/ci-watch --pr=$pr_number --poll-seconds=5 --timeout=900"
         ;;
       green)
-        next_action="repo-automation/bin/pr-finish --merge --delete-branch --sync-main --pr=$pr_number"
+        next_action="repo-automation/bin/repo-flow merge --pr=$pr_number"
         ;;
       blocked)
         next_action="inspect CI failure"
@@ -561,16 +566,17 @@ PY
 }
 
 repo_flow_submit_print_final_summary() {
-  local branch_before="$1"
-  local branch_after="$2"
-  local pr_number="$3"
-  local pr_url="$4"
-  local commit_sha="$5"
-  local pushed="$6"
-  local merged="$7"
-  local status_count="$8"
-  local rc="$9"
-  local stop_reason="${10}"
+  local mode="$1"
+  local branch_before="$2"
+  local branch_after="$3"
+  local pr_number="$4"
+  local pr_url="$5"
+  local commit_sha="$6"
+  local pushed="$7"
+  local merged="$8"
+  local status_count="$9"
+  local rc="${10}"
+  local stop_reason="${11}"
   local pr_summary="unknown"
   local url_or_stop="pass"
 
@@ -582,7 +588,7 @@ repo_flow_submit_print_final_summary() {
   fi
   repo_auto_print_final_summary \
     "script=repo-flow" \
-    "mode=submit" \
+    "mode=$mode" \
     "rc=$rc" \
     "branch_before=$branch_before" \
     "branch_after=$branch_after" \
@@ -623,6 +629,27 @@ repo_flow_submit_run_child_explain() {
 
   cat "$child_stdout_file"
   repo_flow_submit_filter_child_explain_summary "$child_stderr_file" >&2
+
+  rm -f "$child_stdout_file" "$child_stderr_file" >/dev/null 2>&1 || true
+  return "$child_status"
+}
+
+repo_flow_run_child_quiet() {
+  local child_stdout_file=""
+  local child_stderr_file=""
+  local child_status=0
+
+  child_stdout_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stdout")" || return 1
+  child_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-child.XXXXXX.stderr")" || {
+    rm -f "$child_stdout_file" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  if "$@" >"$child_stdout_file" 2>"$child_stderr_file"; then
+    child_status=0
+  else
+    child_status=$?
+  fi
 
   rm -f "$child_stdout_file" "$child_stderr_file" >/dev/null 2>&1 || true
   return "$child_status"
@@ -1047,15 +1074,15 @@ EOF
       fi
       if [ "$diagnose_on_fail" -eq 1 ]; then
         if [ "$explain" -eq 1 ]; then
-          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
+          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
         else
-          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+          "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
         fi
       else
         if [ "$explain" -eq 1 ]; then
-          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds" --explain
+          PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
         else
-          "$script_dir/pr-finish" --watch --merge --delete-branch --sync-main --pr=current --timeout="$watch_timeout_seconds"
+          "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
         fi
       fi
       command_status=$?
@@ -1063,9 +1090,9 @@ EOF
         repo_flow_stop "pr-finish completion failed for PR #$pr_number"
         final_status="blocked"
       else
-        action_taken="completed-pr"
-        final_status="completed"
-        merged="true"
+        action_taken="watched-pr"
+        final_status="ready-for-review"
+        merged="false"
       fi
     else
       if repo_flow_submit_run_child_repo_flow_main; then
@@ -1107,6 +1134,7 @@ EOF
   status_count="$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')"
   if [ "$repo_flow_explain" -eq 1 ]; then
     repo_flow_submit_print_final_summary \
+      submit \
       "$branch_before" \
       "$branch_after" \
       "${pr_number:-}" \
@@ -1117,6 +1145,248 @@ EOF
       "$status_count" \
       "$command_status" \
       "$repo_flow_stop_reason"
+  fi
+
+  return "$command_status"
+}
+
+repo_flow_merge_main() {
+  local watch_timeout_seconds=900
+  local diagnose_on_fail=0
+  local explain=0
+  local json=0
+  local pr_selector="current"
+  local repo_root=""
+  local current_branch=""
+  local default_branch=""
+  local remote_name=""
+  local expected_remote_url=""
+  local remote_url=""
+  local command_status=0
+  local arg=""
+  local branch_before=""
+  local branch_after=""
+  local pr_status="merged"
+  local pr_number=""
+  local pr_url=""
+  local final_status="blocked"
+  local action_taken="none"
+  local merged="false"
+  local mode="merge"
+  local pr_finish_args=()
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        repo_flow_merge_usage
+        return 0
+        ;;
+      --watch)
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-flow merge --help" || command_status=1
+        ;;
+      --timeout=*)
+        watch_timeout_seconds="${arg#--timeout=}"
+        if [ -z "$watch_timeout_seconds" ]; then
+          repo_auto_flag_error "empty flag value" "--timeout" "use --timeout=<seconds>" || command_status=1
+        elif ! repo_auto_is_positive_integer "$watch_timeout_seconds"; then
+          repo_auto_stop "invalid --timeout value: $watch_timeout_seconds"
+          command_status=1
+        fi
+        ;;
+      --timeout)
+        repo_auto_flag_error "flag format not accepted" "--timeout" "use --timeout=<seconds>" || command_status=1
+        ;;
+      --diagnose-on-fail)
+        diagnose_on_fail=1
+        ;;
+      --explain)
+        explain=1
+        repo_flow_explain=1
+        ;;
+      --json)
+        json=1
+        repo_flow_json=1
+        ;;
+      --pr=*)
+        pr_selector="${arg#--pr=}"
+        if [ -z "$pr_selector" ]; then
+          repo_auto_flag_error "empty flag value" "--pr" "use --pr=<number|current|latest>" || command_status=1
+        fi
+        ;;
+      --pr)
+        repo_auto_flag_error "flag format not accepted" "--pr" "use --pr=<number|current|latest>" || command_status=1
+        ;;
+      *)
+        if [ "${arg#--}" != "$arg" ]; then
+          repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-flow merge --help" || command_status=1
+        else
+          repo_flow_stop "unknown argument: $arg"
+          command_status=1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  repo_auto_require_command git || {
+    repo_flow_stop "git is required"
+    command_status=1
+  }
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_root=$(repo_auto_repo_root) || {
+      repo_flow_stop "failed to determine repo root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    cd "$repo_root" || {
+      repo_flow_stop "failed to enter repo root: $repo_root"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_load_config || {
+      repo_flow_stop "failed to load .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_validate_required_config || {
+      repo_flow_stop "invalid .repo-automation.conf"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    default_branch="${DEFAULT_BRANCH:-main}"
+    remote_name="${REMOTE_NAME:-origin}"
+    expected_remote_url="${EXPECTED_REMOTE_URL:-}"
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "${PR_PROVIDER:-none}" != "github" ]; then
+    repo_flow_stop "PR_PROVIDER must be github for repo-automation/bin/repo-flow merge"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    repo_auto_require_command gh || {
+      repo_flow_stop "gh is required for repo-flow merge"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    remote_url=$(git remote get-url "$remote_name" 2>/dev/null) || {
+      repo_flow_stop "failed to read remote URL for $remote_name"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && ! repo_auto_remote_matches_upstream "$remote_url" "$expected_remote_url" "${UPSTREAM_REPO_FULL_NAME:-}"; then
+    repo_flow_stop "remote URL mismatch for $remote_name: expected $expected_remote_url or GitHub SSH alias for ${UPSTREAM_REPO_FULL_NAME:-unknown}, got $remote_url"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+      repo_flow_stop "failed to determine current branch"
+      command_status=1
+    }
+  fi
+
+  branch_before="$current_branch"
+
+  if [ "$command_status" -eq 0 ] && [ "$explain" -eq 1 ]; then
+    repo_flow_info "mode: merge"
+    repo_flow_info "branch: $current_branch"
+    repo_flow_info "default branch: $default_branch"
+    repo_flow_info "pr selector: $pr_selector"
+    repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
+  fi
+
+  if [ "$command_status" -eq 0 ]; then
+    pr_number="$(gh pr view "$pr_selector" --json number --jq '.number' 2>/dev/null || true)"
+    pr_url="$(gh pr view "$pr_selector" --json url --jq '.url' 2>/dev/null || true)"
+    pr_finish_args=(--watch --merge --delete-branch --sync-main --pr="$pr_selector" --timeout="$watch_timeout_seconds")
+    if [ "$diagnose_on_fail" -eq 1 ]; then
+      pr_finish_args+=(--diagnose-on-fail)
+    fi
+
+    if [ "$explain" -eq 1 ]; then
+      if repo_flow_submit_run_child_explain "$script_dir/pr-finish" "${pr_finish_args[@]}" --explain; then
+        merged="true"
+        action_taken="merged-pr"
+        final_status="completed"
+      else
+        repo_flow_stop "pr-finish completion failed for PR $pr_selector"
+        command_status=1
+        final_status="blocked"
+      fi
+    elif [ "$json" -eq 1 ]; then
+      if repo_flow_run_child_quiet "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
+        merged="true"
+        action_taken="merged-pr"
+        final_status="completed"
+      else
+        repo_flow_stop "pr-finish completion failed for PR $pr_selector"
+        command_status=1
+        final_status="blocked"
+      fi
+    elif "$script_dir/pr-finish" "${pr_finish_args[@]}"; then
+      merged="true"
+      action_taken="merged-pr"
+      final_status="completed"
+    else
+      repo_flow_stop "pr-finish completion failed for PR $pr_selector"
+      command_status=1
+      final_status="blocked"
+    fi
+  fi
+
+  branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' "$current_branch")"
+
+  if [ "$repo_flow_json" -eq 1 ]; then
+    repo_flow_print_json \
+      "$mode" \
+      "${current_branch:-}" \
+      "${default_branch:-}" \
+      "clean" \
+      "0" \
+      "0" \
+      "skipped" \
+      "$pr_status" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "$final_status" \
+      "$action_taken" \
+      "$repo_flow_stop_reason"
+  elif [ "$repo_flow_explain" -eq 1 ]; then
+    if [ "$command_status" -eq 0 ]; then
+      repo_flow_info "final status: $final_status"
+    fi
+    repo_flow_submit_print_final_summary \
+      "$mode" \
+      "$branch_before" \
+      "$branch_after" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "none" \
+      "false" \
+      "$merged" \
+      "$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')" \
+      "$command_status" \
+      "$repo_flow_stop_reason"
+  elif [ "$command_status" -eq 0 ]; then
+    if [ -n "$pr_url" ]; then
+      printf '%s\n' "$pr_url"
+    else
+      printf 'pass\n'
+    fi
   fi
 
   return "$command_status"
@@ -1160,6 +1430,10 @@ repo_flow_main() {
   if [ "${1:-}" = "status-card" ]; then
     shift
     repo_flow_status_card_main "$@"
+    return $?
+  elif [ "${1:-}" = "merge" ]; then
+    shift
+    repo_flow_merge_main "$@"
     return $?
   elif [ "${1:-}" = "submit" ]; then
     shift
@@ -1509,6 +1783,7 @@ repo_flow_main() {
     fi
     if [ "$mode" = "submit" ]; then
       repo_flow_submit_print_final_summary \
+        submit \
         "$branch_before" \
         "$branch_after" \
         "${pr_number:-}" \

@@ -9,11 +9,12 @@ This doc is the source of truth for PR-loop state routes. [Helper Contracts](hel
 | no branch PR | create-or-reuse-pr path |
 | PR exists | push/watch/diagnose path |
 | guarded submit | explicit-path commit, then create-or-reuse-pr path |
+| review gate | green PR stays open for ChatGPT / human review |
+| merge requested | `repo-flow merge` |
 | checks pending | `wait` |
 | checks missing | `skip: no-checks` or configured no-checks behavior |
 | checks failed | diagnose |
 | GitHub unavailable | `fail: github-access` |
-| CI green + merge requested | merge |
 | after merge | sync main when requested |
 | same-PR repair | patch same branch, never open a replacement PR by default |
 
@@ -24,8 +25,9 @@ Rules:
 - No helper silently creates a no-op commit or empty PR.
 - Repair loops stay on the same PR branch unless the user explicitly changes direction.
 - `repo-flow status-card` never mutates repo state.
-- `repo-flow status-card` can recommend create branch, commit changes, dry-run `repo-flow`, `ci-watch --poll-seconds=5`, `pr-finish --merge --delete-branch --sync-main`, or inspect CI failure.
-- `repo-flow submit` stages only explicit paths or current staged files, then delegates to the PR create-or-reuse path.
+- `repo-flow status-card` can recommend create branch, commit changes, dry-run `repo-flow`, `ci-watch --poll-seconds=5`, `repo-flow merge`, or inspect CI failure.
+- `repo-flow submit` stages only explicit paths or current staged files, then delegates to the PR create-or-reuse path and stops before merge.
+- `repo-flow merge` is the explicit merge/delete/sync step after review.
 - `review-pack` is a fallback uploadable review packet; use the PR-first review path before it. It is lean by default, and `--full` opts into the heavier evidence bundle/repo-zip artifact.
 - `review-pack --target=codex` and `repair-prompt --target=codex` create artifacts only and do not invoke Codex.
 - `repo-flow autopilot --plan-only` is read-only and does not mutate repo state.
