@@ -93,7 +93,10 @@ smoke_check_pr_finish_merge_alias_remote() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/finish-alias' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-86' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":86,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/finish-alias","headSha":"current-sha-86","status":"completed","workflowName":"ci"}]' \
     GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
     "$local_bash_path" repo-automation/bin/pr-finish --merge --delete-branch --sync-main --pr=86 > /dev/null 2> "$stderr_file"
   ) && grep -Fq 'git checkout main' "$git_log_file" &&
@@ -117,6 +120,8 @@ smoke_check_pr_finish_merge_alias_remote() {
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/finish-alias' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-86' \
     GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
     "$local_bash_path" repo-automation/bin/pr-finish --status --pr=86 > /dev/null 2> "$rejected_stderr"
   ); then
