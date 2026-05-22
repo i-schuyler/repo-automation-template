@@ -254,6 +254,7 @@ The contract-test wrappers and smoke harness use the same quiet-first posture as
 - `--quiet` success: empty stdout and stderr
 - `--explain`: RUNNING/PASS/FAIL progress
 - `--json`: valid JSON only on stdout
+- focused wrappers derive `--help` usage from their own path and share the common wrapper runner in `repo-automation/tests/lib/smoke-common.sh`
 
 ## Artifact-producing commands
 

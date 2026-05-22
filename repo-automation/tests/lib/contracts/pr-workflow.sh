@@ -612,6 +612,10 @@ smoke_check_pr_body_check_contract() {
   local helper_help="$smoke_test_base/pr-body-check-help-$$.txt"
   local helper_stdout="$smoke_test_base/pr-body-check.out"
   local helper_stderr="$smoke_test_base/pr-body-check.err"
+  local wrapper_help="$smoke_test_base/pr-body-check-wrapper-help.txt"
+  local wrapper_json="$smoke_test_base/pr-body-check-wrapper.json"
+  local wrapper_stdout="$smoke_test_base/pr-body-check-wrapper.out"
+  local wrapper_stderr="$smoke_test_base/pr-body-check-wrapper.err"
 
   cat > "$valid_body" <<'EOF'
 ## Scope
@@ -824,6 +828,38 @@ EOF
     status=1
   fi
 
+  if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --help > "$wrapper_help"
+    ) && grep -Fxq 'Usage: repo-automation/tests/contracts/pr-body-check.sh [--quiet] [--explain] [--json] [--help]' "$wrapper_help"; then
+      test_pass "pr-body-check wrapper help shows the focused wrapper path"
+    else
+      test_fail "pr-body-check wrapper help shows the focused wrapper path"
+      status=1
+    fi
+
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --json > "$wrapper_json" 2> "$wrapper_stderr"
+    ) && [ ! -s "$wrapper_stderr" ] && python3 -m json.tool "$wrapper_json" >/dev/null && smoke_json_assert "$wrapper_json" 'data.get("script") == "pr-body-check" and data.get("mode") == "json" and data.get("status") == "pass" and data.get("fail_count") == 0'; then
+      test_pass "pr-body-check wrapper json is valid and quiet"
+    else
+      test_fail "pr-body-check wrapper json is valid and quiet"
+      status=1
+    fi
+
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --quiet > "$wrapper_stdout" 2> "$wrapper_stderr"
+    ) && [ ! -s "$wrapper_stdout" ] && [ ! -s "$wrapper_stderr" ]; then
+      test_pass "pr-body-check wrapper quiet success is silent"
+    else
+      test_fail "pr-body-check wrapper quiet success is silent"
+      status=1
+    fi
+  fi
+
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --body-file "$valid_body" > "$helper_stdout" 2> "$helper_stderr"
@@ -945,6 +981,8 @@ EOF
 smoke_check_branch_cleanup_json() {
   local status=0
   local branch_json="$smoke_test_dir/branch-cleanup.json"
+  local branch_wrapper_json="$smoke_test_base/branch-cleanup-wrapper.json"
+  local branch_wrapper_stderr="$smoke_test_base/branch-cleanup-wrapper.stderr"
   local branch_plan_stdout="$smoke_test_base/branch-cleanup-plan-$$.txt"
   local unknown_flag_stderr="$smoke_test_base/branch-cleanup-unknown.stderr"
   local start_branch=""
@@ -959,6 +997,18 @@ smoke_check_branch_cleanup_json() {
     status=1
   fi
 
+  if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/branch-cleanup-preflight.sh --json > "$branch_wrapper_json" 2> "$branch_wrapper_stderr"
+    ) && [ ! -s "$branch_wrapper_stderr" ] && python3 -m json.tool "$branch_wrapper_json" >/dev/null && smoke_json_assert "$branch_wrapper_json" 'data.get("script") == "branch-cleanup-preflight" and data.get("mode") == "json" and data.get("status") == "pass"'; then
+      test_pass "branch-cleanup wrapper json is valid and quiet"
+    else
+      test_fail "branch-cleanup wrapper json is valid and quiet"
+      status=1
+    fi
+  fi
+
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/branch-cleanup --plan > "$branch_plan_stdout"
@@ -971,14 +1021,14 @@ smoke_check_branch_cleanup_json() {
 
   (
     cd "$smoke_test_dir" || return 1
-    git checkout -b docs/merged-branch >/dev/null || return 1
+    git checkout -b docs/merged-branch >/dev/null 2>&1 || return 1
     echo "merged" >> README.md
     git add README.md || return 1
     git commit -m "merged branch commit" >/dev/null || return 1
-    git checkout main >/dev/null || return 1
+    git checkout main >/dev/null 2>&1 || return 1
     git merge --no-ff docs/merged-branch -m "merge docs branch" >/dev/null || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
-    git checkout -b feature/unique-branch >/dev/null || return 1
+    git checkout -b feature/unique-branch >/dev/null 2>&1 || return 1
     echo "unique" >> README.md
     git add README.md || return 1
     git commit -m "unique branch commit" >/dev/null || return 1
@@ -1040,6 +1090,8 @@ smoke_check_branch_cleanup_json() {
 smoke_check_preflight_json() {
   local status=0
   local preflight_json="$smoke_test_dir/preflight.json"
+  local preflight_wrapper_json="$smoke_test_base/preflight-wrapper.json"
+  local preflight_wrapper_stderr="$smoke_test_base/preflight-wrapper.stderr"
   local preflight_help="$smoke_test_dir/preflight-help.txt"
   local finish_stderr="$smoke_test_dir/pr-finish-stderr.log"
   local branch_format_stderr="$smoke_test_dir/preflight-branch-format.stderr"
@@ -1067,7 +1119,7 @@ smoke_check_preflight_json() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    git checkout main >/dev/null || return 1
+    git checkout main >/dev/null 2>&1 || return 1
     repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke >/dev/null
   ); then
     test_pass "preflight check-only succeeds"
@@ -1084,6 +1136,18 @@ smoke_check_preflight_json() {
   else
     test_fail "preflight json is parseable"
     status=1
+  fi
+
+  if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/codex-slice-preflight.sh --json > "$preflight_wrapper_json" 2> "$preflight_wrapper_stderr"
+    ) && [ ! -s "$preflight_wrapper_stderr" ] && python3 -m json.tool "$preflight_wrapper_json" >/dev/null && smoke_json_assert "$preflight_wrapper_json" 'data.get("script") == "codex-slice-preflight" and data.get("mode") == "json" and data.get("status") == "pass"'; then
+      test_pass "preflight wrapper json is valid and quiet"
+    else
+      test_fail "preflight wrapper json is valid and quiet"
+      status=1
+    fi
   fi
 
   if (
@@ -1470,12 +1534,20 @@ smoke_check_pr_finish_watch_exit() {
   local missing_stderr="$smoke_test_dir/pr-finish-watch-missing.log"
   local missing_stdout="$smoke_test_dir/pr-finish-watch-missing.out"
   local gh_stub_dir="$smoke_test_base/gh-stub"
+  local sleep_stub_dir="$smoke_test_base/sleep-stub"
   local local_bash_path=""
 
   trap 'test_cleanup' EXIT INT TERM
 
   smoke_setup_temp_repo || return 1
   smoke_write_gh_stub "$gh_stub_dir" || return 1
+  mkdir -p "$sleep_stub_dir" || return 1
+  cat > "$sleep_stub_dir/sleep" <<'EOF'
+#!/usr/bin/env bash
+set -u
+exit 0
+EOF
+  chmod +x "$sleep_stub_dir/sleep" || return 1
   local_bash_path="$(command -v bash)" || return 1
 
   if (
@@ -1483,7 +1555,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"failure","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 >/dev/null 2> "$blocked_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --pr=123 >/dev/null 2> "$blocked_stderr"
   ); then
     test_fail "pr-finish watch exits nonzero when checks are blocked"
     status=1
@@ -1502,7 +1574,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 > "$green_stdout" 2> "$green_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --pr=123 > "$green_stdout" 2> "$green_stderr"
   ) && [ "$(cat "$green_stdout")" = "pass" ] && [ ! -s "$green_stderr" ]; then
     test_pass "pr-finish watch exits zero when checks are green"
   else
@@ -1515,7 +1587,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
   ) && grep -q 'mode: watch' "$green_explain_stderr" && grep -q 'checks status: green' "$green_explain_stderr" && grep -Fxq '===== FINAL SUMMARY =====' "$green_explain_stderr" && grep -Fxq '===== END =====' "$green_explain_stderr"; then
     test_pass "pr-finish watch explain output is detailed"
   else
@@ -1532,7 +1604,7 @@ smoke_check_pr_finish_watch_exit() {
 ci log line two
 tail one
 tail two' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_stderr"
   ); then
     test_fail "pr-finish watch diagnoses blocked checks"
     status=1
@@ -1550,7 +1622,7 @@ tail two' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
   ); then
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
     status=1
@@ -1571,7 +1643,7 @@ tail two' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_LIST_SEQUENCE_FILE="$smoke_test_base/run-list-sequence.json" \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 > "$missing_stdout" 2> "$missing_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --diagnose-on-fail --pr=123 > "$missing_stdout" 2> "$missing_stderr"
   ); then
     test_pass "pr-finish watch retries missing checks before failing"
   else

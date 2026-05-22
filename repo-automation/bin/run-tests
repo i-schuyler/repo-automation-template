@@ -934,6 +934,35 @@ EOF
   return 0
 }
 
+run_tests_finish() {
+  local status="${1:-0}"
+  local counts
+  local pass_count=0
+  local warn_count=0
+  local fail_count=0
+  local skipped_count=0
+  local overall_status="pass"
+
+  if [ "$run_tests_mode" = "explain" ]; then
+    counts="$(run_tests_counts)"
+    IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+    if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
+      overall_status="fail"
+    elif [ "$warn_count" -gt 0 ]; then
+      overall_status="warn"
+    fi
+    repo_auto_print_final_summary \
+      "script=run-tests" \
+      "mode=explain" \
+      "rc=$status" \
+      "url_or_stop=$overall_status" >&2
+  fi
+
+  return "$status"
+}
+
 run_tests_main() {
   local arg
   local status=0
@@ -1070,7 +1099,8 @@ run_tests_main() {
   run_tests_ensure_temp_root || {
     run_tests_record_fail "prepare temp root" "failed"
     run_tests_print_results 1
-    return 1
+    run_tests_finish 1
+    return $?
   }
   run_tests_prune_stale_temp_artifacts
   trap 'run_tests_cleanup_temp_root' EXIT INT TERM
@@ -1088,7 +1118,8 @@ EOF
     else
       run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
     fi
-    return 1
+    run_tests_finish 1
+    return $?
   }
 
   cd "$repo_root" || {
@@ -1103,7 +1134,8 @@ EOF
     else
       run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
     fi
-    return 1
+    run_tests_finish 1
+    return $?
   }
 
   run_tests_log "$run_tests_start_line"
@@ -1116,6 +1148,7 @@ EOF
     if ! run_tests_disk_guard_check "/"; then
       status=1
       run_tests_print_results "$status"
+      run_tests_finish "$status"
       return $?
     fi
   fi
@@ -1127,18 +1160,21 @@ EOF
       run_tests_run_smoke "repo-automation/tests/smoke.sh" repo-automation/tests/smoke.sh || status=1
     fi
     run_tests_print_results "$status"
+    run_tests_finish "$status"
     return $?
   fi
 
   if [ "$run_tests_run_mode" = "docs" ]; then
     run_tests_run_cmd "repo-automation/tests/docs-check.sh" repo-automation/tests/docs-check.sh || status=1
     run_tests_print_results "$status"
+    run_tests_finish "$status"
     return $?
   fi
 
   if [ "$run_tests_run_mode" = "version" ]; then
     run_tests_run_cmd "repo-automation/tests/version-consistency.sh" repo-automation/tests/version-consistency.sh || status=1
     run_tests_print_results "$status"
+    run_tests_finish "$status"
     return $?
   fi
 
@@ -1210,6 +1246,7 @@ EOF
     fi
 
     run_tests_print_results "$status"
+    run_tests_finish "$status"
     return $?
   fi
 
@@ -1274,9 +1311,11 @@ EOF
   fi
 
   if [ "$fail_count" -gt 0 ] || [ "$status" -ne 0 ]; then
-    return 1
+    run_tests_finish "$status"
+    return $?
   fi
-  return 0
+  run_tests_finish "$status"
+  return $?
 }
 
 run_tests_main "$@"

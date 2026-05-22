@@ -10,7 +10,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/artifacts.sh"
 
 # shellcheck disable=SC2154
-smoke_main() {
+smoke_main_impl() {
   local status=0
   local output_root=""
   local output_log=""
@@ -188,6 +188,10 @@ PY
   fi
 
   return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
 }
 
 smoke_main "$@"

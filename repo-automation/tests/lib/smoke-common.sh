@@ -20,7 +20,7 @@ smoke_output_mode="${smoke_output_mode:-summary}"
 smoke_help_requested=0
 
 smoke_usage() {
-  printf 'Usage: repo-automation/tests/smoke.sh [--quiet] [--explain] [--json] [--help]\n'
+  printf 'Usage: %s [--quiet] [--explain] [--json] [--help]\n' "${TEST_OUTPUT_SCRIPT_PATH:-repo-automation/tests/smoke.sh}"
 }
 
 smoke_parse_output_mode() {
@@ -57,7 +57,63 @@ smoke_parse_output_mode() {
   done
 
   TEST_OUTPUT_MODE="$smoke_output_mode"
+  export TEST_OUTPUT_MODE
   return 0
+}
+
+smoke_run_focused_contract_wrapper() {
+  local body_function="${1:-}"
+  local status=0
+  local smoke_output_capture=""
+  local smoke_wrapper_path="${0#./}"
+  local smoke_wrapper_script="${smoke_wrapper_path##*/}"
+  local failure_line=""
+
+  if [ -z "$body_function" ]; then
+    printf 'fail: missing focused wrapper body function\n' >&2
+    return 1
+  fi
+  shift
+
+  smoke_wrapper_script="${smoke_wrapper_script%.sh}"
+  TEST_OUTPUT_SCRIPT="$smoke_wrapper_script"
+  export TEST_OUTPUT_SCRIPT
+  TEST_OUTPUT_SCRIPT_PATH="$smoke_wrapper_path"
+  smoke_help_requested=0
+
+  smoke_parse_output_mode "$@" || return 1
+  if [ "$smoke_help_requested" -eq 1 ]; then
+    return 0
+  fi
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
+    "$body_function" || status=1
+  else
+    mkdir -p "$TEST_TEMP_ROOT" || return 1
+    smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/${smoke_wrapper_script}.XXXXXX")" || return 1
+    exec 3>&1 4>&2
+    exec >"$smoke_output_capture" 2>&1
+    "$body_function" || status=1
+    if [ "$status" -ne 0 ] && [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
+      failure_line="$(test_extract_first_actionable_failure "$smoke_output_capture" || true)"
+      if [ -n "$failure_line" ]; then
+        test_fail "$failure_line"
+      else
+        test_fail "$smoke_wrapper_script"
+      fi
+    fi
+    exec 1>&3 2>&4
+    rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
+  fi
+
+  if [ "$status" -ne 0 ] && [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
+    test_fail "$smoke_wrapper_script"
+  fi
+
+  smoke_finish_output "$status"
+  return "$status"
 }
 
 smoke_finish_output() {

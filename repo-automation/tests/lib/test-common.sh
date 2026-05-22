@@ -15,11 +15,20 @@ TEST_TEMP_DIRS=()
 TEST_CHILD_PIDS=()
 TEST_OUTPUT_MODE="${TEST_OUTPUT_MODE:-summary}"
 TEST_OUTPUT_SCRIPT="${TEST_OUTPUT_SCRIPT:-smoke}"
+TEST_OUTPUT_SCRIPT_PATH="${TEST_OUTPUT_SCRIPT_PATH:-repo-automation/tests/smoke.sh}"
 TEST_EVENT_KIND=()
 TEST_EVENT_CHECK=()
 TEST_EVENT_MESSAGE=()
 TEST_FIRST_FAILURE_INDEX=-1
 TEST_FIRST_WARNING_INDEX=-1
+
+test_print_final_summary() {
+  printf '===== FINAL SUMMARY =====\n'
+  for summary_line in "$@"; do
+    printf '%s\n' "$summary_line"
+  done
+  printf '===== END =====\n'
+}
 
 test_escape_json() {
   local value="${1:-}"
@@ -113,6 +122,24 @@ test_render_first_failure() {
   return 0
 }
 
+test_extract_first_actionable_failure() {
+  local output_file="$1"
+  local failure_line=""
+
+  [ -f "$output_file" ] || return 1
+
+  failure_line="$(
+    awk '
+      /^fail: / { sub(/^fail: /, "", $0); print; exit }
+      /^STOP: / { print; exit }
+      /^ERROR: / { print; exit }
+    ' "$output_file"
+  )"
+
+  [ -n "$failure_line" ] || return 1
+  printf '%s\n' "$failure_line"
+}
+
 test_render_json() {
   local overall_status="$1"
   local pass_count=0
@@ -200,6 +227,8 @@ test_run_named_check() {
   local check_name="${1:-}"
   local scenario_function="${2:-}"
   local timeout_seconds="${smoke_timeout_seconds:-0}"
+  local capture_file=""
+  local failure_line=""
 
   if [ -z "$check_name" ] || [ -z "$scenario_function" ]; then
     test_fail "missing named check or scenario function"
@@ -212,9 +241,30 @@ test_run_named_check() {
     export TEST_CURRENT_CHECK
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
+    if test_run_with_timeout "$timeout_seconds" "$scenario_function"; then
+      if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ]; then
+        return 1
+      fi
+      if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
+        test_pass "$TEST_CURRENT_CHECK"
+      fi
+      return 0
+    fi
+
+    if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
+      if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
+        test_fail "$TEST_CURRENT_CHECK timed out"
+      else
+        test_fail "$TEST_CURRENT_CHECK"
+      fi
+    fi
+    return 1
   fi
 
-  if test_run_with_timeout "$timeout_seconds" "$scenario_function"; then
+  capture_file="$(mktemp "${TEST_TEMP_ROOT}/named-check.XXXXXX")" || return 1
+
+  if test_run_with_timeout "$timeout_seconds" "$scenario_function" >"$capture_file" 2>&1; then
+    rm -f -- "$capture_file" >/dev/null 2>&1 || true
     if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ]; then
       return 1
     fi
@@ -228,9 +278,15 @@ test_run_named_check() {
     if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
       test_fail "$TEST_CURRENT_CHECK timed out"
     else
-      test_fail "$TEST_CURRENT_CHECK"
+      failure_line="$(test_extract_first_actionable_failure "$capture_file" || true)"
+      if [ -n "$failure_line" ]; then
+        test_fail "$failure_line"
+      else
+        test_fail "$TEST_CURRENT_CHECK"
+      fi
     fi
   fi
+  rm -f -- "$capture_file" >/dev/null 2>&1 || true
 
   return 1
 }
@@ -291,8 +347,36 @@ test_unregister_child_pid() {
 
 test_kill_registered_child_pid() {
   local child_pid="${1:-}"
-  local child_pgid=""
-  local shell_pgid=""
+
+  case "$child_pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  test_kill_child_tree "$child_pid"
+  wait "$child_pid" >/dev/null 2>&1 || true
+}
+
+test_list_child_pids() {
+  local parent_pid="${1:-}"
+
+  case "$parent_pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  command -v ps >/dev/null 2>&1 || return 0
+
+  ps -eo pid=,ppid= 2>/dev/null | awk -v parent_pid="$parent_pid" '
+    $2 == parent_pid { print $1 }
+  '
+}
+
+test_kill_child_tree() {
+  local child_pid="${1:-}"
+  local descendant_pid=""
 
   case "$child_pid" in
     ''|*[!0-9]*)
@@ -301,17 +385,15 @@ test_kill_registered_child_pid() {
   esac
 
   if kill -0 "$child_pid" >/dev/null 2>&1; then
-    shell_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d '[:space:]')"
-    child_pgid="$(ps -o pgid= -p "$child_pid" 2>/dev/null | tr -d '[:space:]')"
-
-    if [ -n "$child_pgid" ] && [ -n "$shell_pgid" ] && [ "$child_pgid" = "$child_pid" ] && [ "$child_pgid" != "$shell_pgid" ]; then
-      kill -- "-$child_pid" >/dev/null 2>&1 || true
-    fi
-
+    while IFS= read -r descendant_pid; do
+      [ -n "$descendant_pid" ] || continue
+      test_kill_child_tree "$descendant_pid"
+    done <<EOF
+$(test_list_child_pids "$child_pid")
+EOF
     kill "$child_pid" >/dev/null 2>&1 || true
+    kill -KILL "$child_pid" >/dev/null 2>&1 || true
   fi
-
-  wait "$child_pid" >/dev/null 2>&1 || true
 }
 
 test_have_timeout() {
@@ -409,7 +491,6 @@ test_run_with_timeout() {
   local exit_code=0
   local is_function=0
   local watchdog_timeout=0
-  local child_pgid=""
 
   TEST_LAST_TIMEOUT=0
 
@@ -442,11 +523,7 @@ test_run_with_timeout() {
         sleep "$timeout_seconds"
         if kill -0 "$child_pid" >/dev/null 2>&1; then
           : > "$timeout_marker"
-          child_pgid="$(ps -o pgid= -p "$child_pid" 2>/dev/null | tr -d '[:space:]')"
-          if [ -n "$child_pgid" ]; then
-            kill -- "-$child_pgid" >/dev/null 2>&1 || true
-          fi
-          kill "$child_pid" >/dev/null 2>&1 || true
+          test_kill_child_tree "$child_pid"
         fi
       ) &
       watchdog_pid=$!

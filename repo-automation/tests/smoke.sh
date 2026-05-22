@@ -31,6 +31,13 @@ smoke_main() {
     rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
   fi
   smoke_finish_output "$status"
+  if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
+    test_print_final_summary \
+      "script=smoke" \
+      "mode=explain" \
+      "rc=$status" \
+      "url_or_stop=$([ "$status" -eq 0 ] && printf 'pass' || printf 'fail')" >&2
+  fi
   return "$status"
 }
 

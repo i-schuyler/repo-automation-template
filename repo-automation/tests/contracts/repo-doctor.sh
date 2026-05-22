@@ -9,7 +9,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/repo-health.sh"
 
-smoke_main() {
+smoke_main_impl() {
   local status=0
 
   trap 'test_cleanup' EXIT INT TERM
@@ -22,6 +22,10 @@ smoke_main() {
   smoke_run_named_check "smoke:repo-doctor-missing-config" smoke_check_repo_doctor_missing_config || status=1
 
   return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
 }
 
 smoke_main "$@"
