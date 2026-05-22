@@ -612,6 +612,10 @@ smoke_check_pr_body_check_contract() {
   local helper_help="$smoke_test_base/pr-body-check-help-$$.txt"
   local helper_stdout="$smoke_test_base/pr-body-check.out"
   local helper_stderr="$smoke_test_base/pr-body-check.err"
+  local wrapper_help="$smoke_test_base/pr-body-check-wrapper-help.txt"
+  local wrapper_json="$smoke_test_base/pr-body-check-wrapper.json"
+  local wrapper_stdout="$smoke_test_base/pr-body-check-wrapper.out"
+  local wrapper_stderr="$smoke_test_base/pr-body-check-wrapper.err"
 
   cat > "$valid_body" <<'EOF'
 ## Scope
@@ -824,6 +828,38 @@ EOF
     status=1
   fi
 
+  if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --help > "$wrapper_help"
+    ) && grep -Fxq 'Usage: repo-automation/tests/contracts/pr-body-check.sh [--quiet] [--explain] [--json] [--help]' "$wrapper_help"; then
+      test_pass "pr-body-check wrapper help shows the focused wrapper path"
+    else
+      test_fail "pr-body-check wrapper help shows the focused wrapper path"
+      status=1
+    fi
+
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --json > "$wrapper_json" 2> "$wrapper_stderr"
+    ) && [ ! -s "$wrapper_stderr" ] && python3 -m json.tool "$wrapper_json" >/dev/null && smoke_json_assert "$wrapper_json" 'data.get("script") == "pr-body-check" and data.get("mode") == "json" and data.get("status") == "pass" and data.get("fail_count") == 0'; then
+      test_pass "pr-body-check wrapper json is valid and quiet"
+    else
+      test_fail "pr-body-check wrapper json is valid and quiet"
+      status=1
+    fi
+
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --quiet > "$wrapper_stdout" 2> "$wrapper_stderr"
+    ) && [ ! -s "$wrapper_stdout" ] && [ ! -s "$wrapper_stderr" ]; then
+      test_pass "pr-body-check wrapper quiet success is silent"
+    else
+      test_fail "pr-body-check wrapper quiet success is silent"
+      status=1
+    fi
+  fi
+
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --body-file "$valid_body" > "$helper_stdout" 2> "$helper_stderr"
@@ -945,6 +981,8 @@ EOF
 smoke_check_branch_cleanup_json() {
   local status=0
   local branch_json="$smoke_test_dir/branch-cleanup.json"
+  local branch_wrapper_json="$smoke_test_base/branch-cleanup-wrapper.json"
+  local branch_wrapper_stderr="$smoke_test_base/branch-cleanup-wrapper.stderr"
   local branch_plan_stdout="$smoke_test_base/branch-cleanup-plan-$$.txt"
   local unknown_flag_stderr="$smoke_test_base/branch-cleanup-unknown.stderr"
   local start_branch=""
@@ -957,6 +995,18 @@ smoke_check_branch_cleanup_json() {
   else
     test_fail "branch-cleanup json is parseable"
     status=1
+  fi
+
+  if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/branch-cleanup-preflight.sh --json > "$branch_wrapper_json" 2> "$branch_wrapper_stderr"
+    ) && [ ! -s "$branch_wrapper_stderr" ] && python3 -m json.tool "$branch_wrapper_json" >/dev/null && smoke_json_assert "$branch_wrapper_json" 'data.get("script") == "branch-cleanup-preflight" and data.get("mode") == "json" and data.get("status") == "pass"'; then
+      test_pass "branch-cleanup wrapper json is valid and quiet"
+    else
+      test_fail "branch-cleanup wrapper json is valid and quiet"
+      status=1
+    fi
   fi
 
   if (
@@ -1040,6 +1090,8 @@ smoke_check_branch_cleanup_json() {
 smoke_check_preflight_json() {
   local status=0
   local preflight_json="$smoke_test_dir/preflight.json"
+  local preflight_wrapper_json="$smoke_test_base/preflight-wrapper.json"
+  local preflight_wrapper_stderr="$smoke_test_base/preflight-wrapper.stderr"
   local preflight_help="$smoke_test_dir/preflight-help.txt"
   local finish_stderr="$smoke_test_dir/pr-finish-stderr.log"
   local branch_format_stderr="$smoke_test_dir/preflight-branch-format.stderr"
@@ -1084,6 +1136,18 @@ smoke_check_preflight_json() {
   else
     test_fail "preflight json is parseable"
     status=1
+  fi
+
+  if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/codex-slice-preflight.sh --json > "$preflight_wrapper_json" 2> "$preflight_wrapper_stderr"
+    ) && [ ! -s "$preflight_wrapper_stderr" ] && python3 -m json.tool "$preflight_wrapper_json" >/dev/null && smoke_json_assert "$preflight_wrapper_json" 'data.get("script") == "codex-slice-preflight" and data.get("mode") == "json" and data.get("status") == "pass"'; then
+      test_pass "preflight wrapper json is valid and quiet"
+    else
+      test_fail "preflight wrapper json is valid and quiet"
+      status=1
+    fi
   fi
 
   if (

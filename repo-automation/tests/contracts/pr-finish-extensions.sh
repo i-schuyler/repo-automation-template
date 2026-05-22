@@ -511,7 +511,7 @@ smoke_check_pr_finish_merge_blocks_until_current_head() {
   return "$status"
 }
 
-smoke_main() {
+smoke_main_impl() {
   local status=0
 
   trap 'test_cleanup' EXIT INT TERM
@@ -528,6 +528,10 @@ smoke_main() {
   smoke_run_named_check "smoke:pr-finish-merge-blocks-until-current-head" smoke_check_pr_finish_merge_blocks_until_current_head || status=1
 
   return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
 }
 
 smoke_main "$@"

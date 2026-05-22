@@ -9,7 +9,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/ci.sh"
 
-smoke_main() {
+smoke_main_impl() {
   local status=0
   local smoke_output_capture=""
 
@@ -42,8 +42,11 @@ smoke_main() {
     rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
   fi
 
-  smoke_finish_output "$status"
   return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
 }
 
 smoke_main "$@"

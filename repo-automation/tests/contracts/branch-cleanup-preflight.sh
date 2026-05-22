@@ -9,7 +9,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/pr-workflow.sh"
 
-smoke_main() {
+smoke_main_impl() {
   local status=0
 
   # shellcheck disable=SC2034 # Used by shared harness helpers.
@@ -33,8 +33,9 @@ smoke_main() {
   return "$status"
 }
 
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
+}
+
 smoke_main "$@"
-smoke_status=$?
-smoke_finish_output "$smoke_status"
-exit "$smoke_status"
 # repo-automation/tests/contracts/branch-cleanup-preflight.sh EOF

@@ -2823,7 +2823,7 @@ smoke_check_repo_flow_submit_unrequested_paths_contract() {
 }
 
 
-smoke_main() {
+smoke_main_impl() {
   local status=0
   local smoke_output_capture=""
 
@@ -2935,8 +2935,11 @@ smoke_main() {
     rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
   fi
 
-  smoke_finish_output "$status"
   return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
 }
 
 smoke_main "$@"
