@@ -150,8 +150,23 @@ pr_body_check_main() {
     return 1
   fi
 
-  if [ ! -f "$pr_body_check_body_file" ]; then
+  if [ ! -e "$pr_body_check_body_file" ]; then
     pr_body_check_fail "body file does not exist: $pr_body_check_body_file" "provide an existing PR body file"
+    return 1
+  fi
+
+  if [ -d "$pr_body_check_body_file" ]; then
+    pr_body_check_fail "body file is a directory: $pr_body_check_body_file" "provide a regular readable PR body file"
+    return 1
+  fi
+
+  if [ ! -f "$pr_body_check_body_file" ]; then
+    pr_body_check_fail "body file is not a regular file: $pr_body_check_body_file" "provide a regular readable PR body file"
+    return 1
+  fi
+
+  if [ ! -r "$pr_body_check_body_file" ]; then
+    pr_body_check_fail "body file is not readable: $pr_body_check_body_file" "fix file permissions or choose a readable PR body file"
     return 1
   fi
 
