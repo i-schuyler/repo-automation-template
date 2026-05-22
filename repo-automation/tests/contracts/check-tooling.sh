@@ -6,6 +6,9 @@ set -o pipefail
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
+# shellcheck disable=SC2154
+# smoke_test_base, smoke_repo_root, TEST_OUTPUT_MODE, and TEST_TEMP_ROOT are
+# shared harness globals initialized by repo-automation/tests/lib/smoke-common.sh.
 
 smoke_check_tooling_make_fixture() {
   local fixture_dir="$1"
@@ -39,6 +42,7 @@ smoke_check_tooling_run() {
   shift 4
 
   (
+    # shellcheck disable=SC2154
     cd "$smoke_repo_root" || return 1
     REPO_AUTOMATION_TOOLING_PATH="$fixture_dir" \
       REPO_AUTOMATION_TOOLING_PLATFORM="$platform" \
@@ -47,6 +51,7 @@ smoke_check_tooling_run() {
 }
 
 smoke_check_tooling_help() {
+  # shellcheck disable=SC2154
   local out="$smoke_test_base/check-tooling-help-$$.txt"
   local err="$smoke_test_base/check-tooling-help-$$.err"
 
@@ -281,14 +286,10 @@ smoke_check_tooling_unknown_flag() {
 
 smoke_main_impl() {
   local status=0
-  local smoke_temp_base=""
 
   trap 'test_cleanup' EXIT INT TERM
 
-  mkdir -p "$TEST_TEMP_ROOT" || return 1
-  smoke_temp_base="$(mktemp -d "${TEST_TEMP_ROOT}/smoke.XXXXXX")" || return 1
-  smoke_test_base="$smoke_temp_base"
-  test_register_temp_dir "$smoke_test_base" || return 1
+  smoke_setup_temp_repo || return 1
 
   smoke_run_named_check "smoke:check-tooling-help" smoke_check_tooling_help || status=1
   smoke_run_named_check "smoke:check-tooling-all-present" smoke_check_tooling_all_present || status=1
