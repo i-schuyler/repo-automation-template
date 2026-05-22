@@ -603,13 +603,16 @@ smoke_check_pr_create_body_text() {
 smoke_check_pr_body_check_contract() {
   local status=0
   local valid_body="$smoke_test_base/pr-body-check-valid.md"
+  local template_body="$smoke_test_base/pr-body-check-template.md"
   local scaffold_body="$smoke_test_base/pr-body-check-scaffold.md"
   local duplicate_body="$smoke_test_base/pr-body-check-duplicate.md"
   local order_body="$smoke_test_base/pr-body-check-order.md"
   local passive_body="$smoke_test_base/pr-body-check-passive.md"
   local missing_body="$smoke_test_base/pr-body-check-missing.md"
+  local missing_heading_body="$smoke_test_base/pr-body-check-missing-heading.md"
   local directory_body="$smoke_test_base/pr-body-check-directory"
   local helper_help="$smoke_test_base/pr-body-check-help-$$.txt"
+  local helper_template="$smoke_test_base/pr-body-check-template.out"
   local helper_stdout="$smoke_test_base/pr-body-check.out"
   local helper_stderr="$smoke_test_base/pr-body-check.err"
   local wrapper_help="$smoke_test_base/pr-body-check-wrapper-help.txt"
@@ -625,6 +628,64 @@ Mixed change scope.
 ## What changed
 
 - Updated the tracked fixture.
+
+## What did not change
+
+- No unrelated files.
+
+## Verification status
+
+- pr-body-check contract smoke check
+
+## User-visible behavior changes
+
+None
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+EOF
+
+  cat > "$template_body" <<'EOF'
+<!-- Keep these headings exactly as written and in this order. repo-flow and pr-body-check validate heading names and order. Use None or N/A when a section does not apply. -->
+
+## Scope
+
+What area, branch, or user need does this PR cover? If this does not apply, write None or N/A.
+
+## What changed
+
+List the concrete files, commits, or behavior changes in this PR.
+
+## What did not change
+
+Call out what stayed the same, or write None or N/A.
+
+## Verification status
+
+List the checks you ran locally before merge, or write None or N/A.
+
+## User-visible behavior changes
+
+Describe any behavior a user would notice, or write None or N/A.
+
+## Stop conditions encountered
+
+Describe any stop conditions or blockers you hit, or write None or N/A.
+
+## Re-entry hint
+
+After the PR is opened, tell the next reviewer/operator what to do next. For example: review the PR, watch CI, then run `repo-automation/bin/repo-flow merge --explain`.
+EOF
+
+  cat > "$missing_heading_body" <<'EOF'
+## Scope
+
+Missing heading fixture.
 
 ## What did not change
 
@@ -801,10 +862,25 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --help > "$helper_help"
-  ) && grep -Fq -- '--body-file=<path>' "$helper_help" && grep -Fq -- '--quiet' "$helper_help"; then
+  ) && grep -Fq -- '--body-file=<path>' "$helper_help" && grep -Fq -- '--quiet' "$helper_help" && grep -Fq -- '--print-template' "$helper_help"; then
     test_pass "pr-body-check help shows strict syntax"
   else
     test_fail "pr-body-check help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --print-template > "$helper_template" 2> "$helper_stderr"
+  ) && [ ! -s "$helper_stderr" ] && repo-automation/bin/pr-body-check --quiet --body-file="$template_body" >/dev/null; then
+    if [ "$(cat "$helper_template")" = "$(cat "$template_body")" ]; then
+      test_pass "pr-body-check print-template emits an accepted body"
+    else
+      test_fail "pr-body-check print-template emits an accepted body"
+      status=1
+    fi
+  else
+    test_fail "pr-body-check print-template emits an accepted body"
     status=1
   fi
 
@@ -901,6 +977,19 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$missing_heading_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check missing required heading hint points to the template"
+    status=1
+  elif grep -Fxq 'fail: missing required heading: ## What changed' "$helper_stderr" && grep -Fxq 'fix: use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template' "$helper_stderr"; then
+    test_pass "pr-body-check missing required heading hint points to the template"
+  else
+    test_fail "pr-body-check missing required heading hint points to the template"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --body-file="$directory_body" > "$helper_stdout" 2> "$helper_stderr"
   ); then
     test_fail "pr-body-check rejects directory body files"
@@ -944,7 +1033,7 @@ EOF
   ); then
     test_fail "pr-body-check rejects out-of-order headings"
     status=1
-  elif grep -Fxq 'fail: required headings are out of order' "$helper_stderr" && grep -Fxq 'fix: reorder the headings to match the canonical contract' "$helper_stderr"; then
+  elif grep -Fxq 'fail: required headings are out of order' "$helper_stderr" && grep -Fxq 'fix: use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template' "$helper_stderr"; then
     test_pass "pr-body-check rejects out-of-order headings"
   else
     test_fail "pr-body-check rejects out-of-order headings"
@@ -974,7 +1063,7 @@ EOF
     status=1
   fi
 
-  rm -f "$valid_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_body" "$helper_help" "$helper_stdout" "$helper_stderr" >/dev/null 2>&1 || true
+  rm -f "$valid_body" "$template_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_heading_body" "$helper_help" "$helper_template" "$helper_stdout" "$helper_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

@@ -13,14 +13,49 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 pr_body_check_quiet=0
 pr_body_check_body_file=""
+pr_body_check_print_template=0
 
 pr_body_check_usage() {
-  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--body-file=<path>]\n'
+  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--print-template] [--body-file=<path>]\n'
 }
 
 pr_body_check_fail() {
   printf 'fail: %s\n' "$1" >&2
   printf 'fix: %s\n' "$2" >&2
+}
+
+pr_body_check_print_template_body() {
+  cat <<'EOF'
+<!-- Keep these headings exactly as written and in this order. repo-flow and pr-body-check validate heading names and order. Use None or N/A when a section does not apply. -->
+
+## Scope
+
+What area, branch, or user need does this PR cover? If this does not apply, write None or N/A.
+
+## What changed
+
+List the concrete files, commits, or behavior changes in this PR.
+
+## What did not change
+
+Call out what stayed the same, or write None or N/A.
+
+## Verification status
+
+List the checks you ran locally before merge, or write None or N/A.
+
+## User-visible behavior changes
+
+Describe any behavior a user would notice, or write None or N/A.
+
+## Stop conditions encountered
+
+Describe any stop conditions or blockers you hit, or write None or N/A.
+
+## Re-entry hint
+
+After the PR is opened, tell the next reviewer/operator what to do next. For example: review the PR, watch CI, then run `repo-automation/bin/repo-flow merge --explain`.
+EOF
 }
 
 pr_body_check_validate() {
@@ -66,9 +101,9 @@ for index, line in enumerate(lines):
 for heading in required:
     count = counts[heading]
     if count == 0:
-        print(f"missing required heading: {heading}")
-        print("add the canonical PR body headings in order")
-        raise SystemExit(1)
+      print(f"missing required heading: {heading}")
+      print("use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template")
+      raise SystemExit(1)
     if count > 1:
         print(f"heading appears more than once: {heading}")
         print("keep each required heading exactly once")
@@ -77,7 +112,7 @@ for heading in required:
 ordered_positions = [positions[heading] for heading in required]
 if ordered_positions != sorted(ordered_positions):
     print("required headings are out of order")
-    print("reorder the headings to match the canonical contract")
+    print("use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template")
     raise SystemExit(1)
 
 content_lines = [
@@ -118,6 +153,9 @@ pr_body_check_main() {
       --quiet)
         pr_body_check_quiet=1
         ;;
+      --print-template)
+        pr_body_check_print_template=1
+        ;;
       --body-file=*)
         pr_body_check_body_file="${arg#--body-file=}"
         if [ -z "$pr_body_check_body_file" ]; then
@@ -144,6 +182,15 @@ pr_body_check_main() {
     esac
     shift
   done
+
+  if [ "$pr_body_check_print_template" -eq 1 ]; then
+    if [ -n "$pr_body_check_body_file" ]; then
+      pr_body_check_fail "incompatible flag combination: --print-template and --body-file" "use --print-template by itself or validate a body file with --body-file=<path>"
+      return 1
+    fi
+    pr_body_check_print_template_body
+    return 0
+  fi
 
   if [ -z "$pr_body_check_body_file" ]; then
     pr_body_check_fail "missing required --body-file" "use --body-file=<path>"
