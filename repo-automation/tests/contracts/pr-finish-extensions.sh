@@ -62,7 +62,7 @@ smoke_check_pr_finish_watch_latest() {
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-901' \
     GH_STUB_PR_VIEW_HEAD_REF='feature/watch-latest' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":901,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-latest","headSha":"current-sha-901","status":"completed","workflowName":"ci"}]' \
-    "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=latest --explain > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --pr=latest --explain > /dev/null 2> "$stderr_file"
   ); then
     if grep -q 'mode: watch' "$stderr_file"; then
       test_pass "pr-finish watch selects latest PR without syncing main"
@@ -301,7 +301,7 @@ smoke_check_pr_finish_state_file_and_watch_reuse() {
     GH_STUB_RUN_LIST_LOG_FILE="$run_list_log_file" \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":655,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/state-file-reuse","headSha":"current-sha-655","status":"completed","workflowName":"ci"}]' \
     PR_FINISH_STATE_FILE="$state_file" \
-    "$local_bash_path" repo-automation/bin/pr-finish --watch --merge --pr=current --sync-main --delete-branch --explain > /dev/null 2> "$stderr_file"
+    "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --merge --pr=current --sync-main --delete-branch --explain > /dev/null 2> "$stderr_file"
   ); then
     if grep -Fq 'timing: pr_lookup=' "$stderr_file" &&
       grep -Fxq 'pr_number=655' "$state_file" &&

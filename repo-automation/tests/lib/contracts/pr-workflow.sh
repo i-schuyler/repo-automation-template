@@ -1534,12 +1534,20 @@ smoke_check_pr_finish_watch_exit() {
   local missing_stderr="$smoke_test_dir/pr-finish-watch-missing.log"
   local missing_stdout="$smoke_test_dir/pr-finish-watch-missing.out"
   local gh_stub_dir="$smoke_test_base/gh-stub"
+  local sleep_stub_dir="$smoke_test_base/sleep-stub"
   local local_bash_path=""
 
   trap 'test_cleanup' EXIT INT TERM
 
   smoke_setup_temp_repo || return 1
   smoke_write_gh_stub "$gh_stub_dir" || return 1
+  mkdir -p "$sleep_stub_dir" || return 1
+  cat > "$sleep_stub_dir/sleep" <<'EOF'
+#!/usr/bin/env bash
+set -u
+exit 0
+EOF
+  chmod +x "$sleep_stub_dir/sleep" || return 1
   local_bash_path="$(command -v bash)" || return 1
 
   if (
@@ -1547,7 +1555,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"failure","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 >/dev/null 2> "$blocked_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --pr=123 >/dev/null 2> "$blocked_stderr"
   ); then
     test_fail "pr-finish watch exits nonzero when checks are blocked"
     status=1
@@ -1566,7 +1574,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --pr=123 > "$green_stdout" 2> "$green_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --pr=123 > "$green_stdout" 2> "$green_stderr"
   ) && [ "$(cat "$green_stdout")" = "pass" ] && [ ! -s "$green_stderr" ]; then
     test_pass "pr-finish watch exits zero when checks are green"
   else
@@ -1579,7 +1587,7 @@ smoke_check_pr_finish_watch_exit() {
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --explain --pr=123 > /dev/null 2> "$green_explain_stderr"
   ) && grep -q 'mode: watch' "$green_explain_stderr" && grep -q 'checks status: green' "$green_explain_stderr" && grep -Fxq '===== FINAL SUMMARY =====' "$green_explain_stderr" && grep -Fxq '===== END =====' "$green_explain_stderr"; then
     test_pass "pr-finish watch explain output is detailed"
   else
@@ -1596,7 +1604,7 @@ smoke_check_pr_finish_watch_exit() {
 ci log line two
 tail one
 tail two' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_stderr"
   ); then
     test_fail "pr-finish watch diagnoses blocked checks"
     status=1
@@ -1614,7 +1622,7 @@ tail two' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":222,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --diagnose-on-fail --pr=123 >/dev/null 2> "$diagnose_fail_stderr"
   ); then
     test_fail "pr-finish watch reports diagnosis failures without hiding blocked checks"
     status=1
@@ -1635,7 +1643,7 @@ tail two' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-123' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":123,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-123","status":"completed","workflowName":"ci"}]' \
     GH_STUB_RUN_LIST_SEQUENCE_FILE="$smoke_test_base/run-list-sequence.json" \
-    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=123 > "$missing_stdout" 2> "$missing_stderr"
+    PATH="$sleep_stub_dir:$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --diagnose-on-fail --pr=123 > "$missing_stdout" 2> "$missing_stderr"
   ); then
     test_pass "pr-finish watch retries missing checks before failing"
   else

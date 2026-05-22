@@ -18,6 +18,10 @@ smoke_main() {
   if [ "$smoke_help_requested" -eq 1 ]; then
     return 0
   fi
+  if [ "$TEST_OUTPUT_MODE" = "quiet" ]; then
+    # shellcheck disable=SC2034 # Shared by smoke-common helpers.
+    smoke_timeout_seconds=0
+  fi
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     smoke_run "$@" || status=1
   else
@@ -31,6 +35,13 @@ smoke_main() {
     rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
   fi
   smoke_finish_output "$status"
+  if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
+    test_print_final_summary \
+      "script=smoke" \
+      "mode=explain" \
+      "rc=$status" \
+      "url_or_stop=$([ "$status" -eq 0 ] && printf 'pass' || printf 'fail')" >&2
+  fi
   return "$status"
 }
 

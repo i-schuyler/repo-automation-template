@@ -77,6 +77,7 @@ smoke_run_focused_contract_wrapper() {
 
   smoke_wrapper_script="${smoke_wrapper_script%.sh}"
   TEST_OUTPUT_SCRIPT="$smoke_wrapper_script"
+  export TEST_OUTPUT_SCRIPT
   TEST_OUTPUT_SCRIPT_PATH="$smoke_wrapper_path"
   smoke_help_requested=0
 

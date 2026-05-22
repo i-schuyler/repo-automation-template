@@ -22,6 +22,14 @@ TEST_EVENT_MESSAGE=()
 TEST_FIRST_FAILURE_INDEX=-1
 TEST_FIRST_WARNING_INDEX=-1
 
+test_print_final_summary() {
+  printf '===== FINAL SUMMARY =====\n'
+  for summary_line in "$@"; do
+    printf '%s\n' "$summary_line"
+  done
+  printf '===== END =====\n'
+}
+
 test_escape_json() {
   local value="${1:-}"
 
@@ -339,8 +347,20 @@ test_unregister_child_pid() {
 
 test_kill_registered_child_pid() {
   local child_pid="${1:-}"
-  local child_pgid=""
-  local shell_pgid=""
+
+  case "$child_pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  test_kill_child_tree "$child_pid"
+  wait "$child_pid" >/dev/null 2>&1 || true
+}
+
+test_kill_child_tree() {
+  local child_pid="${1:-}"
+  local descendant_pid=""
 
   case "$child_pid" in
     ''|*[!0-9]*)
@@ -349,17 +369,15 @@ test_kill_registered_child_pid() {
   esac
 
   if kill -0 "$child_pid" >/dev/null 2>&1; then
-    shell_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d '[:space:]')"
-    child_pgid="$(ps -o pgid= -p "$child_pid" 2>/dev/null | tr -d '[:space:]')"
-
-    if [ -n "$child_pgid" ] && [ -n "$shell_pgid" ] && [ "$child_pgid" = "$child_pid" ] && [ "$child_pgid" != "$shell_pgid" ]; then
-      kill -- "-$child_pid" >/dev/null 2>&1 || true
-    fi
-
+    while IFS= read -r descendant_pid; do
+      [ -n "$descendant_pid" ] || continue
+      test_kill_child_tree "$descendant_pid"
+    done <<EOF
+$(ps -o pid= --ppid "$child_pid" 2>/dev/null | awk '{print $1}')
+EOF
     kill "$child_pid" >/dev/null 2>&1 || true
+    kill -KILL "$child_pid" >/dev/null 2>&1 || true
   fi
-
-  wait "$child_pid" >/dev/null 2>&1 || true
 }
 
 test_have_timeout() {
@@ -457,7 +475,6 @@ test_run_with_timeout() {
   local exit_code=0
   local is_function=0
   local watchdog_timeout=0
-  local child_pgid=""
 
   TEST_LAST_TIMEOUT=0
 
@@ -490,11 +507,7 @@ test_run_with_timeout() {
         sleep "$timeout_seconds"
         if kill -0 "$child_pid" >/dev/null 2>&1; then
           : > "$timeout_marker"
-          child_pgid="$(ps -o pgid= -p "$child_pid" 2>/dev/null | tr -d '[:space:]')"
-          if [ -n "$child_pgid" ]; then
-            kill -- "-$child_pgid" >/dev/null 2>&1 || true
-          fi
-          kill "$child_pid" >/dev/null 2>&1 || true
+          test_kill_child_tree "$child_pid"
         fi
       ) &
       watchdog_pid=$!
