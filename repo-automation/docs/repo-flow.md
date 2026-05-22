@@ -10,8 +10,9 @@ Prefer `--modified` instead of shell-building a `--paths` CSV for tracked edits.
 It refuses absolute paths, `..`, default-branch submits, and any unrequested dirty or untracked worktree changes before staging when `--paths` is used.
 When submit stops for unrequested worktree changes, human failure output prints a compact `unrequested_paths=...` excerpt before the final summary.
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
+For review-facing PRs, prefer `--body-file=<path>` with a human-authored PR body; the supplied body must pass `repo-automation/bin/pr-body-check`.
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
-When `repo-flow submit` creates a PR, it generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`. When it reuses an existing PR, it refreshes that canonical body in place so staged paths and stop notes stay current. The generated PR body re-entry hint is: `Review the PR, then run repo-automation/bin/repo-flow merge --explain`.
+When `--body-file` is omitted, `repo-flow submit` generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`. When it reuses an existing PR, it refreshes that canonical body in place so staged paths and stop notes stay current. The generated PR body re-entry hint is: `Review the PR, then run repo-automation/bin/repo-flow merge --explain`.
 `--watch` hands off to the repo-native PR completion path with a bounded timeout and stops after CI is green; `--timeout=<seconds>` sets that limit.
 When `--watch` is used, `repo-flow submit` pushes the current branch before PR lookup/create/watch.
 `--diagnose-on-fail` is only forwarded with `--watch`.

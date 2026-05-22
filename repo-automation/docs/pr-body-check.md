@@ -13,6 +13,7 @@ It requires:
 - `## Re-entry hint`
 
 It rejects missing headings, duplicate headings, out-of-order headings, the passive monetization section, and placeholder-only scaffolding.
+It also requires a regular readable file and rejects directories, missing files, and unreadable files.
 
 Value flags use `--body-file=<path>` syntax. `--body-file <path>` is rejected.
 

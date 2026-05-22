@@ -608,6 +608,7 @@ smoke_check_pr_body_check_contract() {
   local order_body="$smoke_test_base/pr-body-check-order.md"
   local passive_body="$smoke_test_base/pr-body-check-passive.md"
   local missing_body="$smoke_test_base/pr-body-check-missing.md"
+  local directory_body="$smoke_test_base/pr-body-check-directory"
   local helper_help="$smoke_test_base/pr-body-check-help-$$.txt"
   local helper_stdout="$smoke_test_base/pr-body-check.out"
   local helper_stderr="$smoke_test_base/pr-body-check.err"
@@ -791,6 +792,8 @@ Use the PR URL, watch CI, and finish with pr-finish after checks pass.
 None
 EOF
 
+  mkdir -p "$directory_body" || return 1
+
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --help > "$helper_help"
@@ -857,6 +860,19 @@ EOF
     test_pass "pr-body-check rejects missing body files"
   else
     test_fail "pr-body-check rejects missing body files"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$directory_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects directory body files"
+    status=1
+  elif grep -Fxq "fail: body file is a directory: $directory_body" "$helper_stderr" && grep -Fxq 'fix: provide a regular readable PR body file' "$helper_stderr"; then
+    test_pass "pr-body-check rejects directory body files"
+  else
+    test_fail "pr-body-check rejects directory body files"
     status=1
   fi
 
