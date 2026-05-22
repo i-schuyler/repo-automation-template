@@ -619,6 +619,13 @@ smoke_check_pr_body_check_contract() {
   local wrapper_json="$smoke_test_base/pr-body-check-wrapper.json"
   local wrapper_stdout="$smoke_test_base/pr-body-check-wrapper.out"
   local wrapper_stderr="$smoke_test_base/pr-body-check-wrapper.err"
+  local wrapper_failure_stdout="$smoke_test_base/pr-body-check-wrapper-failure.out"
+  local wrapper_failure_stderr="$smoke_test_base/pr-body-check-wrapper-failure.err"
+
+  if [ "${SMOKE_FORCE_PR_BODY_CHECK_FAILURE:-0}" -eq 1 ]; then
+    printf 'fail: forced wrapper failure fixture\n' >&2
+    return 1
+  fi
 
   cat > "$valid_body" <<'EOF'
 ## Scope
@@ -932,6 +939,19 @@ EOF
       test_pass "pr-body-check wrapper quiet success is silent"
     else
       test_fail "pr-body-check wrapper quiet success is silent"
+      status=1
+    fi
+
+    if (
+      cd "$smoke_test_dir" || return 1
+      SMOKE_FORCE_PR_BODY_CHECK_FAILURE=1 SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/pr-body-check.sh --quiet > "$wrapper_failure_stdout" 2> "$wrapper_failure_stderr"
+    ); then
+      test_fail "pr-body-check wrapper quiet failure reports only the first actionable failure"
+      status=1
+    elif [ ! -s "$wrapper_failure_stdout" ] && [ "$(wc -l < "$wrapper_failure_stderr")" -eq 1 ] && grep -Fxq 'fail: smoke:pr-body-check-contract: forced wrapper failure fixture' "$wrapper_failure_stderr"; then
+      test_pass "pr-body-check wrapper quiet failure reports only the first actionable failure"
+    else
+      test_fail "pr-body-check wrapper quiet failure reports only the first actionable failure"
       status=1
     fi
   fi

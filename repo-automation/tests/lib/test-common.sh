@@ -22,6 +22,9 @@ TEST_EVENT_MESSAGE=()
 TEST_FIRST_FAILURE_INDEX=-1
 TEST_FIRST_WARNING_INDEX=-1
 
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/common.sh"
+
 test_print_final_summary() {
   printf '===== FINAL SUMMARY =====\n'
   for summary_line in "$@"; do
@@ -105,21 +108,21 @@ test_render_first_failure() {
   check_name="${TEST_EVENT_CHECK[$fail_index]}"
 
   if [ -n "$check_name" ] && [ -n "$message" ]; then
-    printf 'fail: %s: %s\n' "$check_name" "$message" >&2
-    return 0
+    repo_auto_print_failure_footer fail "$check_name: $message" >&2
+    return $?
   fi
 
   if [ -n "$check_name" ]; then
-    printf 'fail: %s\n' "$check_name" >&2
-    return 0
+    repo_auto_print_failure_footer fail "$check_name" >&2
+    return $?
   fi
 
   if [ -n "$message" ]; then
-    printf 'fail: %s\n' "$message" >&2
+    repo_auto_print_failure_footer fail "$message" >&2
   else
     printf 'fail\n' >&2
   fi
-  return 0
+  return $?
 }
 
 test_extract_first_actionable_failure() {
