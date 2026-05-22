@@ -1102,7 +1102,8 @@ smoke_check_preflight_json() {
   local preflight_explain_stderr="$smoke_test_dir/preflight-explain.err"
   local preflight_alias_explain_stderr="$smoke_test_dir/preflight-alias-explain.err"
   local preflight_stale_branch="feature/preflight-stale"
-  local preflight_stale_branch_explain_stderr="$smoke_test_dir/preflight-stale-branch-explain.err"
+  local preflight_stale_branch_head_main_explain_stderr="$smoke_test_base/preflight-stale-branch-head-main-explain.err"
+  local preflight_stale_branch_explain_stderr="$smoke_test_base/preflight-stale-branch-explain.err"
   local preflight_stale_repo="$smoke_test_base/preflight-stale-repo-$$"
   local preflight_low_disk_stub_dir="$smoke_test_base/preflight-low-disk-stub"
   local preflight_low_disk_explain_stderr="$smoke_test_base/preflight-low-disk.err"
@@ -1181,9 +1182,6 @@ smoke_check_preflight_json() {
     git checkout main >/dev/null 2>&1 || return 1
     git branch -D "$preflight_stale_branch" >/dev/null 2>&1 || true
     git switch -c "$preflight_stale_branch" >/dev/null 2>&1 || return 1
-    printf '\nstale branch note\n' >> README.md || return 1
-    git add README.md || return 1
-    git commit -m "test: stale preflight branch" >/dev/null 2>&1 || return 1
     git checkout main >/dev/null 2>&1 || return 1
     printf '\nmain advances after branch creation\n' >> README.md || return 1
     git add README.md || return 1
@@ -1205,13 +1203,23 @@ PY
     git remote set-url origin "$smoke_remote_dir" >/dev/null 2>&1 || return 1
     git push origin main >/dev/null 2>&1 || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    repo-automation/bin/codex-slice-preflight --check-only --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_head_main_explain_stderr"
     git checkout "$preflight_stale_branch" >/dev/null 2>&1 || return 1
     repo-automation/bin/codex-slice-preflight --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_explain_stderr"
   ); then
     test_fail "preflight stops on an existing branch behind origin/main"
     status=1
-  elif grep -Fxq '===== FINAL SUMMARY =====' "$preflight_stale_branch_explain_stderr" &&
+  elif grep -Fxq '===== FINAL SUMMARY =====' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Fxq 'script=codex-slice-preflight' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Eq '^mode=check-only$' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Eq '^rc=1$' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Fq 'STOP: existing branch is behind origin/main:' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Fq 'recreate, reset, or rebase it' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Fxq '===== END =====' "$preflight_stale_branch_head_main_explain_stderr" &&
+    grep -Fxq '===== FINAL SUMMARY =====' "$preflight_stale_branch_explain_stderr" &&
     grep -Fxq 'script=codex-slice-preflight' "$preflight_stale_branch_explain_stderr" &&
+    grep -Eq '^mode=run$' "$preflight_stale_branch_explain_stderr" &&
     grep -Eq '^rc=1$' "$preflight_stale_branch_explain_stderr" &&
     grep -Fq 'STOP: existing branch is behind origin/main:' "$preflight_stale_branch_explain_stderr" &&
     grep -Fq 'recreate, reset, or rebase it' "$preflight_stale_branch_explain_stderr" &&

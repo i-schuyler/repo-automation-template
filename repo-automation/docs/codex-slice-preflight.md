@@ -10,6 +10,8 @@ Before branch setup, preflight checks disk space with the same 1.5G guard used b
 The explain summary also prints human-friendly `disk_free`, `disk_threshold`, `disk_used`, and `disk_available` fields alongside the byte fields for scripts.
 
 `--check-only` validates config, remote expectations, current worktree status, and branch-cleanup planning without checking out or creating the requested branch.
+If the requested local branch already exists, it checks that branch’s divergence from `<remote>/<default>` without switching to it.
+It stops when that existing requested branch is behind or diverged, matching normal preflight safety behavior.
 Use `--explain` for the detailed preflight report; default success is compact `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
 
@@ -25,7 +27,7 @@ STOP behavior is conservative. The script returns non-zero when safety cannot be
 - dirty worktree before edits
 - branch still on default after checkout logic
 - ambiguous or invalid branch input
-- divergent `origin/<default-branch>...HEAD` where ahead and behind are both non-zero
+- divergent requested branch or `origin/<default-branch>...HEAD` where ahead and behind are both non-zero
 
 This script does not create PRs and does not merge PRs.
 

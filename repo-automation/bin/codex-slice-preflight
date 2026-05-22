@@ -318,6 +318,7 @@ preflight_main() {
   local ahead_count=0
   local behind_count=0
   local branch_preexists=0
+  local divergence_target=""
   local worktree_status=""
   local cleanup_json=""
   local branch_before=""
@@ -519,7 +520,23 @@ preflight_main() {
 
   if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 1 ]; then
     current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || current_branch=""
-    divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null) || divergence="unknown"
+    divergence_target="HEAD"
+    if preflight_branch_exists_local "$requested_branch"; then
+      branch_preexists=1
+      divergence_target="refs/heads/$requested_branch"
+    fi
+    divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...$divergence_target" 2>/dev/null) || divergence="unknown"
+    behind_count=$(printf '%s' "$divergence" | awk '{print $1}')
+    ahead_count=$(printf '%s' "$divergence" | awk '{print $2}')
+    if [ "$branch_preexists" -eq 1 ]; then
+      if [ "${behind_count:-0}" -gt 0 ] && [ "${ahead_count:-0}" -gt 0 ]; then
+        preflight_stop "branch diverged from $remote_name/$default_branch: $divergence"
+        command_status=1
+      elif [ "${behind_count:-0}" -gt 0 ]; then
+        preflight_stop "existing branch is behind $remote_name/$default_branch: $divergence; recreate, reset, or rebase it"
+        command_status=1
+      fi
+    fi
     if [ "$preflight_json" -eq 0 ] && [ "$preflight_explain" -eq 1 ]; then
       preflight_info "check-only complete"
       preflight_info "next step: repo-automation/bin/codex-slice-preflight --branch=$requested_branch"
