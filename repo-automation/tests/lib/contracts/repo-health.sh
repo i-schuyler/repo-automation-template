@@ -25,12 +25,18 @@ smoke_check_run_tests_contract() {
   local run_tests_clean_temp_tmpdir="$smoke_test_base/run-tests-clean-temp-tmp-$$"
   local run_tests_clean_temp_out="$smoke_test_base/run-tests-clean-temp-fail-$$.txt"
   local run_tests_clean_temp_err="$smoke_test_base/run-tests-clean-temp-fail-$$.stderr"
+  local run_tests_clean_temp_json="$smoke_test_base/run-tests-clean-temp-fail-$$.json"
+  local run_tests_clean_temp_json_err="$smoke_test_base/run-tests-clean-temp-fail-$$.json.stderr"
   local run_tests_no_clean_tmpdir="$smoke_test_base/run-tests-no-clean-tmp-$$"
   local run_tests_no_clean_out="$smoke_test_base/run-tests-no-clean-$$.txt"
   local run_tests_no_clean_err="$smoke_test_base/run-tests-no-clean-$$.stderr"
+  local run_tests_no_clean_json="$smoke_test_base/run-tests-no-clean-$$.json"
+  local run_tests_no_clean_json_err="$smoke_test_base/run-tests-no-clean-$$.json.stderr"
   local run_tests_explicit_log="$smoke_test_base/run-tests-explicit-$$.log"
   local run_tests_explicit_out="$smoke_test_base/run-tests-explicit-$$.txt"
   local run_tests_explicit_err="$smoke_test_base/run-tests-explicit-$$.stderr"
+  local run_tests_explicit_json="$smoke_test_base/run-tests-explicit-$$.json"
+  local run_tests_explicit_json_err="$smoke_test_base/run-tests-explicit-$$.json.stderr"
   local run_tests_stale_tmpdir="$smoke_test_base/run-tests-stale-tmp-$$"
   local run_tests_stale_root="$run_tests_stale_tmpdir/repo-automation-template"
   local run_tests_stale_dir="$run_tests_stale_root/run-tests-stale-$$"
@@ -41,6 +47,8 @@ smoke_check_run_tests_contract() {
   local run_tests_low_disk_stub_dir="$smoke_test_base/run-tests-low-disk-stub-$$"
   local run_tests_low_disk_out="$smoke_test_base/run-tests-low-disk-$$.txt"
   local run_tests_low_disk_err="$smoke_test_base/run-tests-low-disk-$$.stderr"
+  local run_tests_low_disk_marker="$smoke_test_base/run-tests-low-disk-marker-$$"
+  local run_tests_low_disk_changed_repo=""
   local run_tests_timeout_format_stderr="$smoke_test_base/run-tests-timeout-format-$$.stderr"
   local run_tests_timeout_missing_stderr="$smoke_test_base/run-tests-timeout-missing-$$.stderr"
   local run_tests_timeout_empty_stderr="$smoke_test_base/run-tests-timeout-empty-$$.stderr"
@@ -91,7 +99,7 @@ smoke_check_run_tests_contract() {
   if (
     cd "$smoke_repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_explain_out"
-  ) && grep -Eq '^TEST_TEMP_ROOT=' "$run_tests_explain_out" && grep -Eq '^PASS: repo-automation/tests/docs-check.sh - passed' "$run_tests_explain_out"; then
+  ) && grep -Eq '^TEST_TEMP_ROOT=' "$run_tests_explain_out" && grep -Eq '^temp_cleanup=enabled$' "$run_tests_explain_out" && grep -Eq '^stale_temp_hours=12$' "$run_tests_explain_out" && grep -Eq '^disk_guard=enabled$' "$run_tests_explain_out" && grep -Eq '^log_policy=run-temp-cleaned-by-default$' "$run_tests_explain_out" && grep -Eq '^PASS: repo-automation/tests/docs-check.sh - passed' "$run_tests_explain_out"; then
     test_pass "run-tests explain output shows details"
   else
     test_fail "run-tests explain output shows details"
@@ -165,7 +173,9 @@ EOF
   ); then
     test_fail "run-tests explain failure recommends a better next step"
     status=1
-  elif grep -Fq 'fix: inspect log: ' "$run_tests_explain_out" &&
+  elif grep -Fxq 'log: cleaned' "$run_tests_explain_out" &&
+    grep -Fxq 'fix: use --log-file=<path> or --no-clean-temp for durable logs' "$run_tests_explain_out" &&
+    grep -Fq 'excerpt:' "$run_tests_explain_out" &&
     ! grep -Fq 'fix: Next: repo-automation/bin/run-tests --explain' "$run_tests_explain_out"; then
     test_pass "run-tests explain failure recommends a better next step"
   else
@@ -199,16 +209,38 @@ EOF
   ); then
     test_fail "run-tests clean-temp removes run-owned temp output on failure"
     status=1
-  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_clean_temp_out" && grep -Eq '^log: ' "$run_tests_clean_temp_out"; then
-    clean_temp_log_file="$(awk '/^log: / {print $2; exit}' "$run_tests_clean_temp_out")"
-    if [ -n "$clean_temp_log_file" ] && [ ! -e "$clean_temp_log_file" ] && [ ! -d "$(dirname "$clean_temp_log_file")" ]; then
-      test_pass "run-tests clean-temp removes run-owned temp output on failure"
-    else
-      test_fail "run-tests clean-temp removes run-owned temp output on failure"
-      status=1
-    fi
+  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_clean_temp_out" &&
+    grep -Fxq 'log: cleaned' "$run_tests_clean_temp_out" &&
+    grep -Fxq 'fix: use --log-file=<path> or --no-clean-temp for durable logs' "$run_tests_clean_temp_out" &&
+    grep -Fq 'excerpt:' "$run_tests_clean_temp_out" &&
+    grep -Fq 'COMMAND: repo-automation/tests/docs-check.sh' "$run_tests_clean_temp_out" &&
+    grep -Fq 'docs-check fail' "$run_tests_clean_temp_out" &&
+    ! grep -Eq '^log: /' "$run_tests_clean_temp_out"; then
+    test_pass "run-tests clean-temp removes run-owned temp output on failure"
   else
     test_fail "run-tests clean-temp removes run-owned temp output on failure"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check fail\n' >&2
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_clean_temp_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn --clean-temp > "$run_tests_clean_temp_json" 2> "$run_tests_clean_temp_json_err"
+  ); then
+    test_fail "run-tests JSON clean-temp failure reports cleaned log policy"
+    status=1
+  elif [ ! -s "$run_tests_clean_temp_json_err" ] && python3 -m json.tool "$run_tests_clean_temp_json" >/dev/null &&
+    smoke_json_assert "$run_tests_clean_temp_json" 'data.get("log_status") == "cleaned" and data.get("log_policy") == "run-temp-cleaned-by-default" and data.get("log_file") in ("", None) and data.get("log_fix") == "use --log-file=<path> or --no-clean-temp for durable logs"'; then
+    test_pass "run-tests JSON clean-temp failure reports cleaned log policy"
+  else
+    test_fail "run-tests JSON clean-temp failure reports cleaned log policy"
     status=1
   fi
 
@@ -226,9 +258,10 @@ EOF
   ); then
     test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
     status=1
-  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_no_clean_out" && grep -Eq '^log: ' "$run_tests_no_clean_out"; then
+  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_no_clean_out" &&
+    grep -Fq "log: " "$run_tests_no_clean_out"; then
     no_clean_log_file="$(awk '/^log: / {print $2; exit}' "$run_tests_no_clean_out")"
-    if [ -n "$no_clean_log_file" ] && [ -e "$no_clean_log_file" ] && [ -d "$(dirname "$no_clean_log_file")" ]; then
+    if [ -n "$no_clean_log_file" ] && [ -e "$no_clean_log_file" ] && [ -d "$(dirname "$no_clean_log_file")" ] && grep -Fq "log: $no_clean_log_file" "$run_tests_no_clean_out"; then
       test_pass "run-tests no-clean-temp preserves run-owned temp output on failure"
     else
       test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
@@ -236,6 +269,28 @@ EOF
     fi
   else
     test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check fail\n' >&2
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_no_clean_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn --no-clean-temp > "$run_tests_no_clean_json" 2> "$run_tests_no_clean_json_err"
+  ); then
+    test_fail "run-tests JSON no-clean-temp preserves run-owned temp output"
+    status=1
+  elif [ ! -s "$run_tests_no_clean_json_err" ] && python3 -m json.tool "$run_tests_no_clean_json" >/dev/null &&
+    smoke_json_assert "$run_tests_no_clean_json" 'data.get("log_status") == "path" and data.get("log_policy") == "run-temp-kept-by-request" and data.get("log_file", "").startswith("'"$run_tests_no_clean_tmpdir"'")'; then
+    test_pass "run-tests JSON no-clean-temp preserves run-owned temp output"
+  else
+    test_fail "run-tests JSON no-clean-temp preserves run-owned temp output"
     status=1
   fi
 
@@ -280,10 +335,31 @@ EOF
   ); then
     test_fail "run-tests preserves an explicit --log-file path"
     status=1
-  elif [ -f "$run_tests_explicit_log" ] && grep -Eq '^log: ' "$run_tests_explicit_out"; then
+  elif [ -f "$run_tests_explicit_log" ] && grep -Fq "log: $run_tests_explicit_log" "$run_tests_explicit_out"; then
     test_pass "run-tests preserves an explicit --log-file path"
   else
     test_fail "run-tests preserves an explicit --log-file path"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn --log-file="$run_tests_explicit_log" > "$run_tests_explicit_json" 2> "$run_tests_explicit_json_err"
+  ); then
+    test_fail "run-tests JSON preserves an explicit --log-file path"
+    status=1
+  elif [ ! -s "$run_tests_explicit_json_err" ] && python3 -m json.tool "$run_tests_explicit_json" >/dev/null &&
+    smoke_json_assert "$run_tests_explicit_json" 'data.get("log_status") == "path" and data.get("log_policy") == "explicit-log-file" and data.get("log_file") == "'"$run_tests_explicit_log"'"'; then
+    test_pass "run-tests JSON preserves an explicit --log-file path"
+  else
+    test_fail "run-tests JSON preserves an explicit --log-file path"
     status=1
   fi
 
@@ -306,6 +382,57 @@ printf 'stubfs %s %s %s %s%% %s\n' \
   "${1:-${RUN_TESTS_DF_MOUNTPOINT:-/}}"
 EOF
   chmod +x "$run_tests_low_disk_stub_dir/df" || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/smoke.sh <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+: "\${RUN_TESTS_LOW_DISK_MARKER:?}"
+printf 'smoke ran\n' > "\$RUN_TESTS_LOW_DISK_MARKER"
+exit 1
+EOF
+    chmod +x repo-automation/tests/smoke.sh || return 1
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_LOW_DISK_MARKER="$run_tests_low_disk_marker" repo-automation/bin/run-tests --smoke --quiet > "$run_tests_low_disk_out" 2> "$run_tests_low_disk_err"
+  ); then
+    test_fail "run-tests low-disk guard blocks smoke mode before smoke runs"
+    status=1
+  elif grep -Fq 'fail: disk space check' "$run_tests_low_disk_out" && [ ! -e "$run_tests_low_disk_marker" ]; then
+    test_pass "run-tests low-disk guard blocks smoke mode before smoke runs"
+  else
+    test_fail "run-tests low-disk guard blocks smoke mode before smoke runs"
+    status=1
+  fi
+
+  run_tests_low_disk_changed_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "run-tests low-disk guard blocks changed smoke selection before smoke runs"
+    status=1
+  }
+
+  if [ -n "$run_tests_low_disk_changed_repo" ] && (
+    cd "$run_tests_low_disk_changed_repo" || return 1
+    cat > repo-automation/tests/smoke.sh <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+: "\${RUN_TESTS_LOW_DISK_MARKER:?}"
+printf 'smoke ran\n' > "\$RUN_TESTS_LOW_DISK_MARKER"
+exit 1
+EOF
+    chmod +x repo-automation/tests/smoke.sh || return 1
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_LOW_DISK_MARKER="$run_tests_low_disk_marker" repo-automation/bin/run-tests --changed --quiet > "$run_tests_low_disk_out" 2> "$run_tests_low_disk_err"
+  ); then
+    test_fail "run-tests low-disk guard blocks changed smoke selection before smoke runs"
+    status=1
+  elif grep -Fq 'fail: disk space check' "$run_tests_low_disk_out" && [ ! -e "$run_tests_low_disk_marker" ]; then
+    test_pass "run-tests low-disk guard blocks changed smoke selection before smoke runs"
+  else
+    test_fail "run-tests low-disk guard blocks changed smoke selection before smoke runs"
+    status=1
+  fi
+
   # shellcheck disable=SC2030,SC2031,SC2034
   if (
     cd "$smoke_repo_root" || return 1

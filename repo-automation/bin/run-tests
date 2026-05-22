@@ -76,6 +76,87 @@ run_tests_is_non_negative_integer() {
   return 0
 }
 
+run_tests_log_policy_value() {
+  if [ "$run_tests_log_enabled" -ne 1 ] || [ -z "$run_tests_log_file" ]; then
+    printf 'no-log\n'
+    return 0
+  fi
+
+  if [ "$run_tests_log_file_explicit" -eq 1 ]; then
+    printf 'explicit-log-file\n'
+    return 0
+  fi
+
+  if [ "$run_tests_clean_temp" -eq 1 ]; then
+    printf 'run-temp-cleaned-by-default\n'
+  else
+    printf 'run-temp-kept-by-request\n'
+  fi
+}
+
+run_tests_log_status_value() {
+  if [ "$run_tests_log_enabled" -ne 1 ] || [ -z "$run_tests_log_file" ]; then
+    printf 'none\n'
+    return 0
+  fi
+
+  if run_tests_log_will_be_cleaned; then
+    printf 'cleaned\n'
+    return 0
+  fi
+
+  printf 'path\n'
+}
+
+run_tests_log_file_value() {
+  if [ "$(run_tests_log_status_value)" = "path" ]; then
+    printf '%s\n' "$run_tests_log_file"
+  else
+    printf '\n'
+  fi
+}
+
+run_tests_log_fix_value() {
+  if [ "$(run_tests_log_status_value)" = "cleaned" ]; then
+    printf 'use --log-file=<path> or --no-clean-temp for durable logs\n'
+  else
+    printf '\n'
+  fi
+}
+
+run_tests_log_will_be_cleaned() {
+  [ "$run_tests_clean_temp" -eq 1 ] || return 1
+  [ "$run_tests_log_file_explicit" -eq 0 ] || return 1
+  [ -n "$run_tests_log_file" ] || return 1
+  [ -n "$run_tests_temp_root" ] || return 1
+  run_tests_path_is_under_root "$run_tests_log_file" "$run_tests_temp_root"
+}
+
+run_tests_extract_log_excerpt() {
+  local log_file="$1"
+  local fail_line=""
+  local start_line=""
+  local end_line=""
+
+  [ -f "$log_file" ] || return 1
+
+  fail_line="$(
+    grep -n -m 1 -E '^(fail|FAIL): ' "$log_file" | cut -d: -f1
+  )"
+  if [ -z "$fail_line" ]; then
+    fail_line="$(
+      grep -n -m 1 -E '^COMMAND: ' "$log_file" | cut -d: -f1
+    )"
+  fi
+  [ -n "$fail_line" ] || return 1
+
+  start_line=$((fail_line - 2))
+  [ "$start_line" -lt 1 ] && start_line=1
+  end_line=$((fail_line + 1))
+
+  sed -n "${start_line},${end_line}p" "$log_file"
+}
+
 run_tests_prune_stale_temp_artifacts() {
   local path=""
   local stale_mtime_mins=""
@@ -545,10 +626,23 @@ run_tests_print_log_reference() {
 
 run_tests_print_failure_fix_from_log() {
   local log_file="$1"
+  local log_cleaned="${2:-0}"
   local first_failure=""
   local command_line=""
   local focused_command=""
+  local excerpt=""
 
+  if [ "$log_cleaned" -eq 1 ]; then
+    printf 'log: cleaned\n'
+    excerpt="$(run_tests_extract_log_excerpt "$log_file" 2>/dev/null || true)"
+    if [ -n "$excerpt" ]; then
+      printf 'excerpt:\n%s\n' "$excerpt"
+    fi
+    printf 'fix: use --log-file=<path> or --no-clean-temp for durable logs\n'
+    return 0
+  fi
+
+  printf 'log: %s\n' "$log_file"
   first_failure="$(run_tests_extract_log_first_failure "$log_file" 2>/dev/null || true)"
   command_line="$(run_tests_extract_log_command "$log_file" 2>/dev/null || true)"
   focused_command="$(run_tests_focus_command_from_log "$first_failure" "$command_line" 2>/dev/null || true)"
@@ -714,6 +808,10 @@ run_tests_print_human() {
   if [ "$run_tests_mode" = "explain" ]; then
     printf 'TEST_TEMP_ROOT=%s\n' "$TEST_TEMP_ROOT"
     printf 'pass=%s warn=%s fail=%s skipped=%s\n' "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    printf 'temp_cleanup=%s\n' "$([ "$run_tests_clean_temp" -eq 1 ] && printf enabled || printf disabled)"
+    printf 'stale_temp_hours=%s\n' "$run_tests_stale_temp_hours"
+    printf 'disk_guard=enabled\n'
+    printf 'log_policy=%s\n' "$(run_tests_log_policy_value)"
     if [ "$run_tests_run_mode" = "changed" ]; then
       if [ "${#run_tests_changed_selected_subsets[@]}" -eq 0 ]; then
         printf 'Changed subsets: none\n'
@@ -748,9 +846,12 @@ run_tests_print_human() {
     else
       printf 'fail: %s\n' "$name"
     fi
-    run_tests_print_log_reference "$run_tests_log_file"
-    if [ -n "$run_tests_log_file" ] && [ "$run_tests_mode" != "explain" ]; then
-      run_tests_print_failure_fix_from_log "$run_tests_log_file"
+    if [ -n "$run_tests_log_file" ]; then
+      if run_tests_log_will_be_cleaned; then
+        run_tests_print_failure_fix_from_log "$run_tests_log_file" 1
+      else
+        run_tests_print_failure_fix_from_log "$run_tests_log_file" 0
+      fi
     elif [ "$run_tests_mode" != "quiet" ]; then
       run_tests_print_failure_fix
     fi
@@ -791,6 +892,13 @@ run_tests_print_json() {
   local first_selected=1
   local want_level="$run_tests_json_level"
   local timed_out_json
+  local log_status=""
+  local log_file=""
+  local log_fix=""
+
+  log_status="$(run_tests_log_status_value)"
+  log_file="$(run_tests_log_file_value)"
+  log_fix="$(run_tests_log_fix_value)"
 
   for entry in "${run_tests_checks[@]}"; do
     name="${entry%%|*}"
@@ -849,7 +957,12 @@ run_tests_print_json() {
   if [ "$run_tests_run_mode" = "changed" ]; then
     printf '"selected_subsets":[%s],' "$selected_json"
   fi
-  printf '"log_file":"%s"' "$(run_tests_json_escape "$run_tests_log_file")"
+  printf '"log_status":"%s",' "$(run_tests_json_escape "$log_status")"
+  printf '"log_policy":"%s",' "$(run_tests_json_escape "$(run_tests_log_policy_value)")"
+  printf '"log_file":"%s"' "$(run_tests_json_escape "$log_file")"
+  if [ -n "$log_fix" ]; then
+    printf ',"log_fix":"%s"' "$(run_tests_json_escape "$log_fix")"
+  fi
   printf '}\n'
 }
 
@@ -1154,6 +1267,14 @@ EOF
   fi
 
   if [ "$run_tests_run_mode" = "smoke" ]; then
+    if [ "$run_tests_disk_guard_checked" -eq 0 ]; then
+      if ! run_tests_disk_guard_check "/"; then
+        status=1
+        run_tests_print_results "$status"
+        run_tests_finish "$status"
+        return $?
+      fi
+    fi
     if [ "${RUN_TESTS_SKIP_SMOKE:-0}" = "1" ]; then
       run_tests_record_skip "repo-automation/tests/smoke.sh" "RUN_TESTS_SKIP_SMOKE=1"
     else
@@ -1227,6 +1348,15 @@ EOF
     if [ "$run_tests_run_smoke_changed" -eq 1 ] || [ "$run_tests_run_unknown_changed" -eq 1 ]; then
       run_tests_changed_selected_subsets+=("smoke")
       run_tests_run_smoke_selected=1
+    fi
+
+    if [ "$run_tests_run_smoke_selected" -eq 1 ] && [ "$run_tests_disk_guard_checked" -eq 0 ]; then
+      if ! run_tests_disk_guard_check "/"; then
+        status=1
+        run_tests_print_results "$status"
+        run_tests_finish "$status"
+        return $?
+      fi
     fi
 
     if [ "$run_tests_run_smoke_selected" -eq 1 ]; then
