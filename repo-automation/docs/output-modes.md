@@ -88,6 +88,7 @@ Rules:
 - Do not print every passing check.
 - Do not print child-script status from umbrella scripts.
 - Do not print decorative headings.
+- Shared failure footers use lowercase `fail`, `log`, `excerpt`, and `fix` labels in that order when present; omit empty fields.
 - Do not print a log path on clean success unless the command's purpose is to create an artifact or log.
 
 ## Quiet mode

@@ -633,16 +633,15 @@ run_tests_print_failure_fix_from_log() {
   local excerpt=""
 
   if [ "$log_cleaned" -eq 1 ]; then
-    printf 'log: cleaned\n'
     excerpt="$(run_tests_extract_log_excerpt "$log_file" 2>/dev/null || true)"
-    if [ -n "$excerpt" ]; then
-      printf 'excerpt:\n%s\n' "$excerpt"
-    fi
-    printf 'fix: use --log-file=<path> or --no-clean-temp for durable logs\n'
+    repo_auto_print_failure_footer \
+      log cleaned \
+      excerpt "$excerpt" \
+      fix "use --log-file=<path> or --no-clean-temp for durable logs"
     return 0
   fi
 
-  printf 'log: %s\n' "$log_file"
+  repo_auto_print_failure_footer log "$log_file"
   first_failure="$(run_tests_extract_log_first_failure "$log_file" 2>/dev/null || true)"
   command_line="$(run_tests_extract_log_command "$log_file" 2>/dev/null || true)"
   focused_command="$(run_tests_focus_command_from_log "$first_failure" "$command_line" 2>/dev/null || true)"
@@ -652,9 +651,9 @@ run_tests_print_failure_fix_from_log() {
   fi
 
   if [ -n "$focused_command" ]; then
-    printf 'fix: inspect log and run focused check: %s\n' "$focused_command"
+    repo_auto_print_failure_footer fix "inspect log and run focused check: $focused_command"
   else
-    printf 'fix: inspect log: %s\n' "$log_file"
+    repo_auto_print_failure_footer fix "inspect log: $log_file"
   fi
 }
 
@@ -665,12 +664,12 @@ run_tests_print_failure_fix() {
   local message=""
 
   if [ "$run_tests_mode" != "explain" ]; then
-    printf 'fix: %s\n' "$run_tests_next_hint"
+    repo_auto_print_failure_footer fix "$run_tests_next_hint"
     return 0
   fi
 
   if [ -n "$run_tests_log_file" ]; then
-    printf 'fix: inspect log: %s\n' "$run_tests_log_file"
+    repo_auto_print_failure_footer fix "inspect log: $run_tests_log_file"
     return 0
   fi
 
@@ -682,14 +681,14 @@ run_tests_print_failure_fix() {
     rest="${rest#*|}"
     message="$rest"
     if [ -n "$message" ] && [ "$message" != "failed" ]; then
-      printf 'fix: rerun %s directly after inspecting the failure details\n' "$name"
+      repo_auto_print_failure_footer fix "rerun $name directly after inspecting the failure details"
     else
-      printf 'fix: rerun %s directly\n' "$name"
+      repo_auto_print_failure_footer fix "rerun $name directly"
     fi
     return 0
   fi
 
-  printf 'fix: inspect the failing test details above\n'
+  repo_auto_print_failure_footer fix "inspect the failing test details above"
 }
 
 run_tests_first_entry_by_status() {
@@ -842,9 +841,9 @@ run_tests_print_human() {
     timed_out="${rest%%|*}"
     message="${rest#*|}"
     if [ -n "$message" ] && [ "$message" != "failed" ]; then
-      printf 'fail: %s - %s\n' "$name" "$message"
+      repo_auto_print_failure_footer fail "$name - $message"
     else
-      printf 'fail: %s\n' "$name"
+      repo_auto_print_failure_footer fail "$name"
     fi
     if [ -n "$run_tests_log_file" ]; then
       if run_tests_log_will_be_cleaned; then

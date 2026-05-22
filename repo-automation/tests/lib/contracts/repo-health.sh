@@ -37,6 +37,8 @@ smoke_check_run_tests_contract() {
   local run_tests_explicit_err="$smoke_test_base/run-tests-explicit-$$.stderr"
   local run_tests_explicit_json="$smoke_test_base/run-tests-explicit-$$.json"
   local run_tests_explicit_json_err="$smoke_test_base/run-tests-explicit-$$.json.stderr"
+  local run_tests_footer_order_out="$smoke_test_base/run-tests-footer-order-$$.txt"
+  local run_tests_footer_omit_out="$smoke_test_base/run-tests-footer-omit-$$.txt"
   local run_tests_stale_tmpdir="$smoke_test_base/run-tests-stale-tmp-$$"
   local run_tests_stale_root="$run_tests_stale_tmpdir/repo-automation-template"
   local run_tests_stale_dir="$run_tests_stale_root/run-tests-stale-$$"
@@ -96,6 +98,34 @@ smoke_check_run_tests_contract() {
     status=1
   fi
 
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo_auto_print_failure_footer \
+      fail "run-tests footer failure" \
+      log "$run_tests_log_file" \
+      excerpt "$(printf 'first line\nsecond line')" \
+      fix "run-tests footer fix" > "$run_tests_footer_order_out"
+  ) && [ "$(cat "$run_tests_footer_order_out")" = "$(printf 'fail: run-tests footer failure\nlog: %s\nexcerpt:\nfirst line\nsecond line\nfix: run-tests footer fix\n' "$run_tests_log_file")" ]; then
+    test_pass "shared failure footer prints fields in order"
+  else
+    test_fail "shared failure footer prints fields in order"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo_auto_print_failure_footer \
+      fail "run-tests footer failure" \
+      log none \
+      excerpt "$(printf 'first line\nsecond line')" \
+      fix "run-tests footer fix" > "$run_tests_footer_omit_out"
+  ) && [ "$(cat "$run_tests_footer_omit_out")" = "$(printf 'fail: run-tests footer failure\nexcerpt:\nfirst line\nsecond line\nfix: run-tests footer fix\n')" ] && ! grep -Fq 'log: none' "$run_tests_footer_omit_out"; then
+    test_pass "shared failure footer omits empty fields"
+  else
+    test_fail "shared failure footer omits empty fields"
+    status=1
+  fi
   if (
     cd "$smoke_repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_explain_out"

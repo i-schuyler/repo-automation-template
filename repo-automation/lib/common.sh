@@ -25,6 +25,61 @@ repo_auto_flag_error() {
   return 1
 }
 
+repo_auto_print_failure_footer() {
+  local field=""
+  local value=""
+  local fail=""
+  local log=""
+  local excerpt=""
+  local fix=""
+
+  while [ "$#" -gt 0 ]; do
+    field="$1"
+    shift
+    if [ "$#" -eq 0 ]; then
+      printf 'fail: missing value for footer field: %s\n' "$field" >&2
+      printf 'fix: use fail, log, excerpt, or fix with values\n' >&2
+      return 1
+    fi
+    value="$1"
+    shift
+    case "$field" in
+      fail)
+        fail="$value"
+        ;;
+      log)
+        if [ -n "$value" ] && [ "$value" != "none" ]; then
+          log="$value"
+        fi
+        ;;
+      excerpt)
+        excerpt="$value"
+        ;;
+      fix)
+        fix="$value"
+        ;;
+      *)
+        printf 'fail: unknown footer field: %s\n' "$field" >&2
+        printf 'fix: use fail, log, excerpt, or fix\n' >&2
+        return 1
+        ;;
+    esac
+  done
+
+  if [ -n "$fail" ]; then
+    printf 'fail: %s\n' "$fail"
+  fi
+  if [ -n "$log" ]; then
+    printf 'log: %s\n' "$log"
+  fi
+  if [ -n "$excerpt" ]; then
+    printf 'excerpt:\n%s\n' "$excerpt"
+  fi
+  if [ -n "$fix" ]; then
+    printf 'fix: %s\n' "$fix"
+  fi
+}
+
 repo_auto_require_command() {
   local command_name="${1:-}"
 
