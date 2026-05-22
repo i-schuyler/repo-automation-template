@@ -971,14 +971,14 @@ smoke_check_branch_cleanup_json() {
 
   (
     cd "$smoke_test_dir" || return 1
-    git checkout -b docs/merged-branch >/dev/null || return 1
+    git checkout -b docs/merged-branch >/dev/null 2>&1 || return 1
     echo "merged" >> README.md
     git add README.md || return 1
     git commit -m "merged branch commit" >/dev/null || return 1
-    git checkout main >/dev/null || return 1
+    git checkout main >/dev/null 2>&1 || return 1
     git merge --no-ff docs/merged-branch -m "merge docs branch" >/dev/null || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
-    git checkout -b feature/unique-branch >/dev/null || return 1
+    git checkout -b feature/unique-branch >/dev/null 2>&1 || return 1
     echo "unique" >> README.md
     git add README.md || return 1
     git commit -m "unique branch commit" >/dev/null || return 1
@@ -1067,7 +1067,7 @@ smoke_check_preflight_json() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    git checkout main >/dev/null || return 1
+    git checkout main >/dev/null 2>&1 || return 1
     repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke >/dev/null
   ); then
     test_pass "preflight check-only succeeds"

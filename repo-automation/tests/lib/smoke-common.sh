@@ -57,6 +57,7 @@ smoke_parse_output_mode() {
   done
 
   TEST_OUTPUT_MODE="$smoke_output_mode"
+  export TEST_OUTPUT_MODE
   return 0
 }
 

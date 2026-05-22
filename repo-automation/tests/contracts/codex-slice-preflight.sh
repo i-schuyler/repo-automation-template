@@ -12,14 +12,29 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/pr-workflow.sh"
 smoke_main() {
   local status=0
 
+  # shellcheck disable=SC2034 # Used by shared harness helpers.
+  TEST_OUTPUT_SCRIPT="codex-slice-preflight"
+  smoke_parse_output_mode "$@" || return 1
+  # shellcheck disable=SC2154 # Set by smoke_parse_output_mode.
+  if [ "$smoke_help_requested" -eq 1 ]; then
+    return 0
+  fi
+
   trap 'test_cleanup' EXIT INT TERM
 
   smoke_setup_temp_repo || return 1
 
-  smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
+  if [ "$TEST_OUTPUT_MODE" = "json" ]; then
+    smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json >/dev/null 2>&1 || status=1
+  else
+    smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || status=1
+  fi
 
   return "$status"
 }
 
 smoke_main "$@"
+smoke_status=$?
+smoke_finish_output "$smoke_status"
+exit "$smoke_status"
 # repo-automation/tests/contracts/codex-slice-preflight.sh EOF
