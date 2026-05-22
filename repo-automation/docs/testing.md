@@ -40,7 +40,7 @@ CI runs the same core checks:
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection and helper-metadata config-key drift detection in `repo-automation/tests/version-consistency.sh`; it also follows the quiet-first contract where success prints `pass`, `--quiet` stays silent, and `--explain` keeps detailed progress lines
 
-CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, and the `repo-automation/bin/run-tests` failure summary includes the referenced log path when logging is enabled.
+CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, and `repo-automation/bin/run-tests` prints a referenced path only for durable logs (explicit `--log-file=<path>` or `--no-clean-temp`).
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
@@ -63,8 +63,9 @@ The shared harness owns child-process cleanup, temp-dir cleanup, and timeout fal
 Tests do not delete remote branches and do not use force delete for local branches.
 
 `repo-automation/bin/run-tests` defaults to a 120-second per-check timeout. Use `--timeout=SECONDS` to change it and `--audit` for the compact full suite. If the `timeout` command is unavailable, the scripts warn once and continue without timeout guards instead of failing the whole run.
-It keeps run-owned temp output under `${TMPDIR:-$HOME/.cache}/repo-automation-template/run-tests-*`, recreates `TEST_TEMP_ROOT` when needed, prunes stale children older than `REPO_AUTOMATION_STALE_TEMP_HOURS` (default 12) when `REPO_AUTOMATION_CLEAN_STALE_TEMP=1` (default), and cleans the current run temp root on success and failure by default. Use `--no-clean-temp` to keep run-owned temp output for debugging or `--clean-temp` to reassert the default. Explicit `--log-file=<path>` output is preserved.
+It keeps run-owned temp output under `${TMPDIR:-$HOME/.cache}/repo-automation-template/run-tests-*`, recreates `TEST_TEMP_ROOT` when needed, prunes stale children older than `REPO_AUTOMATION_STALE_TEMP_HOURS` (default 12) when `REPO_AUTOMATION_CLEAN_STALE_TEMP=1` (default), and cleans the current run temp root on success and failure by default. Use `--no-clean-temp` to keep run-owned temp output for debugging or `--clean-temp` to reassert the default. Default failures that lose their temp log print `log: cleaned` plus `fix: use --log-file=<path> or --no-clean-temp for durable logs`; explicit `--log-file=<path>` output is preserved.
 `RUN_TESTS_DF_BIN` or `REPO_AUTOMATION_DF_BIN` can point the low-disk check at a deterministic `df` seam for tests. The guard stops before heavy checks when `/` drops below 1.5G free or the legacy under-15%-free threshold is crossed, and `--disk-diagnostic` prints the current snapshot plus compact top temp/cache dirs.
+`repo-automation/bin/run-tests --explain` reports `temp_cleanup=...`, `stale_temp_hours=...`, `disk_guard=enabled`, and `log_policy=...` policy lines alongside the compact check summary.
 
 If `repo-automation/bin/codex-slice-preflight` stops on disk, rerun it with `--clean-test-cache --explain` to clear the recurring repo-automation temp/cache roots, then rerun the normal preflight command.
 
