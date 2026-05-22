@@ -94,10 +94,41 @@ run_tests_log_policy_value() {
   fi
 }
 
+run_tests_log_status_value() {
+  if [ "$run_tests_log_enabled" -ne 1 ] || [ -z "$run_tests_log_file" ]; then
+    printf 'none\n'
+    return 0
+  fi
+
+  if run_tests_log_will_be_cleaned; then
+    printf 'cleaned\n'
+    return 0
+  fi
+
+  printf 'path\n'
+}
+
+run_tests_log_file_value() {
+  if [ "$(run_tests_log_status_value)" = "path" ]; then
+    printf '%s\n' "$run_tests_log_file"
+  else
+    printf '\n'
+  fi
+}
+
+run_tests_log_fix_value() {
+  if [ "$(run_tests_log_status_value)" = "cleaned" ]; then
+    printf 'use --log-file=<path> or --no-clean-temp for durable logs\n'
+  else
+    printf '\n'
+  fi
+}
+
 run_tests_log_will_be_cleaned() {
   [ "$run_tests_clean_temp" -eq 1 ] || return 1
   [ "$run_tests_log_file_explicit" -eq 0 ] || return 1
   [ -n "$run_tests_log_file" ] || return 1
+  [ -n "$run_tests_temp_root" ] || return 1
   run_tests_path_is_under_root "$run_tests_log_file" "$run_tests_temp_root"
 }
 
@@ -861,6 +892,13 @@ run_tests_print_json() {
   local first_selected=1
   local want_level="$run_tests_json_level"
   local timed_out_json
+  local log_status=""
+  local log_file=""
+  local log_fix=""
+
+  log_status="$(run_tests_log_status_value)"
+  log_file="$(run_tests_log_file_value)"
+  log_fix="$(run_tests_log_fix_value)"
 
   for entry in "${run_tests_checks[@]}"; do
     name="${entry%%|*}"
@@ -919,7 +957,12 @@ run_tests_print_json() {
   if [ "$run_tests_run_mode" = "changed" ]; then
     printf '"selected_subsets":[%s],' "$selected_json"
   fi
-  printf '"log_file":"%s"' "$(run_tests_json_escape "$run_tests_log_file")"
+  printf '"log_status":"%s",' "$(run_tests_json_escape "$log_status")"
+  printf '"log_policy":"%s",' "$(run_tests_json_escape "$(run_tests_log_policy_value)")"
+  printf '"log_file":"%s"' "$(run_tests_json_escape "$log_file")"
+  if [ -n "$log_fix" ]; then
+    printf ',"log_fix":"%s"' "$(run_tests_json_escape "$log_fix")"
+  fi
   printf '}\n'
 }
 

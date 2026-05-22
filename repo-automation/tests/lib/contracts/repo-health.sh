@@ -25,12 +25,18 @@ smoke_check_run_tests_contract() {
   local run_tests_clean_temp_tmpdir="$smoke_test_base/run-tests-clean-temp-tmp-$$"
   local run_tests_clean_temp_out="$smoke_test_base/run-tests-clean-temp-fail-$$.txt"
   local run_tests_clean_temp_err="$smoke_test_base/run-tests-clean-temp-fail-$$.stderr"
+  local run_tests_clean_temp_json="$smoke_test_base/run-tests-clean-temp-fail-$$.json"
+  local run_tests_clean_temp_json_err="$smoke_test_base/run-tests-clean-temp-fail-$$.json.stderr"
   local run_tests_no_clean_tmpdir="$smoke_test_base/run-tests-no-clean-tmp-$$"
   local run_tests_no_clean_out="$smoke_test_base/run-tests-no-clean-$$.txt"
   local run_tests_no_clean_err="$smoke_test_base/run-tests-no-clean-$$.stderr"
+  local run_tests_no_clean_json="$smoke_test_base/run-tests-no-clean-$$.json"
+  local run_tests_no_clean_json_err="$smoke_test_base/run-tests-no-clean-$$.json.stderr"
   local run_tests_explicit_log="$smoke_test_base/run-tests-explicit-$$.log"
   local run_tests_explicit_out="$smoke_test_base/run-tests-explicit-$$.txt"
   local run_tests_explicit_err="$smoke_test_base/run-tests-explicit-$$.stderr"
+  local run_tests_explicit_json="$smoke_test_base/run-tests-explicit-$$.json"
+  local run_tests_explicit_json_err="$smoke_test_base/run-tests-explicit-$$.json.stderr"
   local run_tests_stale_tmpdir="$smoke_test_base/run-tests-stale-tmp-$$"
   local run_tests_stale_root="$run_tests_stale_tmpdir/repo-automation-template"
   local run_tests_stale_dir="$run_tests_stale_root/run-tests-stale-$$"
@@ -226,6 +232,28 @@ printf 'docs-check fail\n' >&2
 exit 1
 EOF
     chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_clean_temp_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn --clean-temp > "$run_tests_clean_temp_json" 2> "$run_tests_clean_temp_json_err"
+  ); then
+    test_fail "run-tests JSON clean-temp failure reports cleaned log policy"
+    status=1
+  elif [ ! -s "$run_tests_clean_temp_json_err" ] && python3 -m json.tool "$run_tests_clean_temp_json" >/dev/null &&
+    smoke_json_assert "$run_tests_clean_temp_json" 'data.get("log_status") == "cleaned" and data.get("log_policy") == "run-temp-cleaned-by-default" and data.get("log_file") in ("", None) and data.get("log_fix") == "use --log-file=<path> or --no-clean-temp for durable logs"'; then
+    test_pass "run-tests JSON clean-temp failure reports cleaned log policy"
+  else
+    test_fail "run-tests JSON clean-temp failure reports cleaned log policy"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check fail\n' >&2
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
     TMPDIR="$run_tests_no_clean_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet --no-clean-temp > "$run_tests_no_clean_out" 2> "$run_tests_no_clean_err"
   ); then
     test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
@@ -241,6 +269,28 @@ EOF
     fi
   else
     test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+printf 'docs-check fail\n' >&2
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    TMPDIR="$run_tests_no_clean_tmpdir" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn --no-clean-temp > "$run_tests_no_clean_json" 2> "$run_tests_no_clean_json_err"
+  ); then
+    test_fail "run-tests JSON no-clean-temp preserves run-owned temp output"
+    status=1
+  elif [ ! -s "$run_tests_no_clean_json_err" ] && python3 -m json.tool "$run_tests_no_clean_json" >/dev/null &&
+    smoke_json_assert "$run_tests_no_clean_json" 'data.get("log_status") == "path" and data.get("log_policy") == "run-temp-kept-by-request" and data.get("log_file", "").startswith("'"$run_tests_no_clean_tmpdir"'")'; then
+    test_pass "run-tests JSON no-clean-temp preserves run-owned temp output"
+  else
+    test_fail "run-tests JSON no-clean-temp preserves run-owned temp output"
     status=1
   fi
 
@@ -289,6 +339,27 @@ EOF
     test_pass "run-tests preserves an explicit --log-file path"
   else
     test_fail "run-tests preserves an explicit --log-file path"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn --log-file="$run_tests_explicit_log" > "$run_tests_explicit_json" 2> "$run_tests_explicit_json_err"
+  ); then
+    test_fail "run-tests JSON preserves an explicit --log-file path"
+    status=1
+  elif [ ! -s "$run_tests_explicit_json_err" ] && python3 -m json.tool "$run_tests_explicit_json" >/dev/null &&
+    smoke_json_assert "$run_tests_explicit_json" 'data.get("log_status") == "path" and data.get("log_policy") == "explicit-log-file" and data.get("log_file") == "'"$run_tests_explicit_log"'"'; then
+    test_pass "run-tests JSON preserves an explicit --log-file path"
+  else
+    test_fail "run-tests JSON preserves an explicit --log-file path"
     status=1
   fi
 
