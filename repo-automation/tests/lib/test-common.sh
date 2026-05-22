@@ -358,6 +358,22 @@ test_kill_registered_child_pid() {
   wait "$child_pid" >/dev/null 2>&1 || true
 }
 
+test_list_child_pids() {
+  local parent_pid="${1:-}"
+
+  case "$parent_pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  command -v ps >/dev/null 2>&1 || return 0
+
+  ps -eo pid=,ppid= 2>/dev/null | awk -v parent_pid="$parent_pid" '
+    $2 == parent_pid { print $1 }
+  '
+}
+
 test_kill_child_tree() {
   local child_pid="${1:-}"
   local descendant_pid=""
@@ -373,7 +389,7 @@ test_kill_child_tree() {
       [ -n "$descendant_pid" ] || continue
       test_kill_child_tree "$descendant_pid"
     done <<EOF
-$(ps -o pid= --ppid "$child_pid" 2>/dev/null | awk '{print $1}')
+$(test_list_child_pids "$child_pid")
 EOF
     kill "$child_pid" >/dev/null 2>&1 || true
     kill -KILL "$child_pid" >/dev/null 2>&1 || true
