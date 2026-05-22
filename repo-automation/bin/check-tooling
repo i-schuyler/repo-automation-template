@@ -1,0 +1,380 @@
+#!/usr/bin/env bash
+# repo-automation/bin/check-tooling
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+check_tooling_mode="summary"
+check_tooling_platform_override="${REPO_AUTOMATION_TOOLING_PLATFORM:-}"
+check_tooling_path_override="${REPO_AUTOMATION_TOOLING_PATH:-}"
+
+check_tooling_required_tools=(
+  bash
+  git
+  python3
+  sed
+  awk
+  find
+  sort
+  xargs
+  df
+)
+
+check_tooling_recommended_tools=(
+  gh
+  shellcheck
+  timeout
+  du
+  ssh
+)
+
+check_tooling_usage() {
+  printf 'Usage: repo-automation/bin/check-tooling [--help] [--quiet] [--explain] [--json]\n'
+  printf '\n'
+  printf 'Flags:\n'
+  printf '  --help\n'
+  printf '  --quiet\n'
+  printf '  --explain\n'
+  printf '  --json\n'
+}
+
+check_tooling_flag_error() {
+  repo_auto_flag_error "unknown flag" "$1" "run repo-automation/bin/check-tooling --help"
+}
+
+check_tooling_json_escape() {
+  local value="${1:-}"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+check_tooling_join_csv() {
+  local first=1
+  local value
+
+  for value in "$@"; do
+    if [ "$first" -eq 0 ]; then
+      printf ', '
+    fi
+    printf '%s' "$value"
+    first=0
+  done
+}
+
+check_tooling_has_command() {
+  local command_name="$1"
+
+  if [ -n "$check_tooling_path_override" ]; then
+    PATH="$check_tooling_path_override" command -v "$command_name" >/dev/null 2>&1
+  else
+    command -v "$command_name" >/dev/null 2>&1
+  fi
+}
+
+check_tooling_detect_platform() {
+  local os_name=""
+  local os_id=""
+  local os_like=""
+  local key=""
+  local value=""
+
+  if [ -n "$check_tooling_platform_override" ]; then
+    printf '%s' "$check_tooling_platform_override"
+    return 0
+  fi
+
+  case "${OSTYPE:-}" in
+    msys*|cygwin*|mingw*)
+      printf 'windows-git-bash'
+      return 0
+      ;;
+  esac
+
+  os_name="$(uname -s 2>/dev/null || printf '')"
+  case "$os_name" in
+    Darwin)
+      printf 'macos'
+      return 0
+      ;;
+  esac
+
+  if [ -n "${TERMUX_VERSION:-}" ] || [ -n "${TERMUX_PREFIX:-}" ]; then
+    printf 'termux-android'
+    return 0
+  fi
+
+  if [ -r /etc/os-release ]; then
+    while IFS='=' read -r key value; do
+      case "$key" in
+        ID)
+          os_id="${value#\"}"
+          os_id="${os_id%\"}"
+          ;;
+        ID_LIKE)
+          os_like="${value#\"}"
+          os_like="${os_like%\"}"
+          ;;
+      esac
+    done </etc/os-release
+    case "$os_id $os_like" in
+      *termux*)
+        printf 'termux-android'
+        return 0
+        ;;
+      *ubuntu*|*debian*)
+        printf 'ubuntu-debian'
+        return 0
+        ;;
+      *fedora*|*rhel*|*centos*|*redhat*|*rocky*|*almalinux*)
+        printf 'fedora-rhel-centos'
+        return 0
+        ;;
+    esac
+  fi
+
+  printf 'unknown'
+}
+
+check_tooling_fix_for_platform() {
+  case "$1" in
+    termux-android)
+      printf 'pkg install bash git python sed gawk findutils coreutils xargs shellcheck gh openssh'
+      ;;
+    ubuntu-debian)
+      printf 'sudo apt-get update && sudo apt-get install -y bash git python3 sed gawk findutils coreutils shellcheck gh openssh-client'
+      ;;
+    fedora-rhel-centos)
+      printf 'sudo dnf install -y bash git python3 sed gawk findutils coreutils ShellCheck gh openssh-clients'
+      ;;
+    macos)
+      printf 'brew install bash git python gnu-sed gawk findutils coreutils shellcheck gh openssh'
+      ;;
+    windows-git-bash)
+      printf 'install Git for Windows, Python 3, GitHub CLI, and ShellCheck; ensure they are on PATH'
+      ;;
+    *)
+      printf 'install missing tools with your platform package manager'
+      ;;
+  esac
+}
+
+check_tooling_output_json() {
+  local platform="$1"
+  local status="$2"
+  local fix="$3"
+  local required_present_name="$4"
+  local required_missing_name="$5"
+  local recommended_present_name="$6"
+  local recommended_missing_name="$7"
+  # shellcheck disable=SC2178
+  local -n required_present_ref="$required_present_name"
+  # shellcheck disable=SC2178
+  local -n required_missing_ref="$required_missing_name"
+  # shellcheck disable=SC2178
+  local -n recommended_present_ref="$recommended_present_name"
+  # shellcheck disable=SC2178
+  local -n recommended_missing_ref="$recommended_missing_name"
+
+  printf '{'
+  printf '"script":"check-tooling",'
+  printf '"platform":"%s",' "$(check_tooling_json_escape "$platform")"
+  printf '"status":"%s",' "$(check_tooling_json_escape "$status")"
+  printf '"required_missing":['
+  local first=1
+  local value
+  for value in "${required_missing_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(check_tooling_json_escape "$value")"
+    first=0
+  done
+  printf '],'
+  printf '"recommended_missing":['
+  first=1
+  for value in "${recommended_missing_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(check_tooling_json_escape "$value")"
+    first=0
+  done
+  printf '],'
+  printf '"required_present":['
+  first=1
+  for value in "${required_present_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(check_tooling_json_escape "$value")"
+    first=0
+  done
+  printf '],'
+  printf '"recommended_present":['
+  first=1
+  for value in "${recommended_present_ref[@]}"; do
+    if [ "$first" -eq 0 ]; then
+      printf ','
+    fi
+    printf '"%s"' "$(check_tooling_json_escape "$value")"
+    first=0
+  done
+  printf '],'
+  printf '"fix":"%s"' "$(check_tooling_json_escape "$fix")"
+  printf '}\n'
+}
+
+check_tooling_output_human() {
+  local mode="$1"
+  local status="$2"
+  local platform="$3"
+  local fix="$4"
+  local required_present_name="$5"
+  local required_missing_name="$6"
+  local recommended_present_name="$7"
+  local recommended_missing_name="$8"
+  # shellcheck disable=SC2178
+  local -n required_present_ref="$required_present_name"
+  # shellcheck disable=SC2178
+  local -n required_missing_ref="$required_missing_name"
+  # shellcheck disable=SC2178
+  local -n recommended_present_ref="$recommended_present_name"
+  # shellcheck disable=SC2178
+  local -n recommended_missing_ref="$recommended_missing_name"
+
+  if [ "$mode" = "explain" ]; then
+    printf 'status: %s\n' "$status"
+    printf 'platform: %s\n' "$platform"
+    printf 'required_checked: %s\n' "$(check_tooling_join_csv "${check_tooling_required_tools[@]}")"
+    if [ "${#required_present_ref[@]}" -gt 0 ]; then
+      printf 'required_present: %s\n' "$(check_tooling_join_csv "${required_present_ref[@]}")"
+    fi
+    if [ "${#required_missing_ref[@]}" -gt 0 ]; then
+      printf 'required_missing: %s\n' "$(check_tooling_join_csv "${required_missing_ref[@]}")"
+    fi
+    printf 'recommended_checked: %s\n' "$(check_tooling_join_csv "${check_tooling_recommended_tools[@]}")"
+    if [ "${#recommended_present_ref[@]}" -gt 0 ]; then
+      printf 'recommended_present: %s\n' "$(check_tooling_join_csv "${recommended_present_ref[@]}")"
+    fi
+    if [ "${#recommended_missing_ref[@]}" -gt 0 ]; then
+      printf 'recommended_missing: %s\n' "$(check_tooling_join_csv "${recommended_missing_ref[@]}")"
+    fi
+  fi
+
+  case "$status" in
+    pass)
+      if [ "$mode" = "summary" ]; then
+        printf 'pass\n'
+      fi
+      ;;
+    warn)
+      printf 'warn: missing recommended tools\n'
+      if [ "${#recommended_missing_ref[@]}" -gt 0 ]; then
+        printf 'recommended_missing: %s\n' "$(check_tooling_join_csv "${recommended_missing_ref[@]}")"
+      fi
+      repo_auto_print_failure_footer fix "$fix" || true
+      ;;
+    fail)
+      printf 'fail: missing required tools\n'
+      if [ "${#required_missing_ref[@]}" -gt 0 ]; then
+        printf 'missing: %s\n' "$(check_tooling_join_csv "${required_missing_ref[@]}")"
+      fi
+      if [ "${#recommended_missing_ref[@]}" -gt 0 ]; then
+        printf 'recommended_missing: %s\n' "$(check_tooling_join_csv "${recommended_missing_ref[@]}")"
+      fi
+      repo_auto_print_failure_footer fix "$fix" || true
+      ;;
+  esac
+}
+
+check_tooling_main() {
+  local status="pass"
+  local platform
+  local fix
+  local required_present=()
+  local required_missing=()
+  local recommended_present=()
+  local recommended_missing=()
+  local tool
+
+  for arg in "$@"; do
+    case "$arg" in
+      --help)
+        check_tooling_usage
+        return 0
+        ;;
+      --quiet)
+        check_tooling_mode="quiet"
+        ;;
+      --explain)
+        check_tooling_mode="explain"
+        ;;
+      --json)
+        check_tooling_mode="json"
+        ;;
+      -*)
+        check_tooling_flag_error "$arg"
+        return 1
+        ;;
+      *)
+        check_tooling_flag_error "$arg"
+        return 1
+        ;;
+    esac
+  done
+
+  platform="$(check_tooling_detect_platform)"
+  fix="$(check_tooling_fix_for_platform "$platform")"
+
+  for tool in "${check_tooling_required_tools[@]}"; do
+    if check_tooling_has_command "$tool"; then
+      required_present+=("$tool")
+    else
+      required_missing+=("$tool")
+    fi
+  done
+
+  for tool in "${check_tooling_recommended_tools[@]}"; do
+    if check_tooling_has_command "$tool"; then
+      recommended_present+=("$tool")
+    else
+      recommended_missing+=("$tool")
+    fi
+  done
+
+  if [ "${#required_missing[@]}" -gt 0 ]; then
+    status="fail"
+  elif [ "${#recommended_missing[@]}" -gt 0 ]; then
+    status="warn"
+  fi
+
+  case "$check_tooling_mode" in
+    json)
+      check_tooling_output_json "$platform" "$status" "$fix" required_present required_missing recommended_present recommended_missing
+      ;;
+    quiet)
+      if [ "$status" != "pass" ]; then
+        check_tooling_output_human "$check_tooling_mode" "$status" "$platform" "$fix" required_present required_missing recommended_present recommended_missing
+      fi
+      ;;
+    explain|summary)
+      check_tooling_output_human "$check_tooling_mode" "$status" "$platform" "$fix" required_present required_missing recommended_present recommended_missing
+      ;;
+  esac
+
+  [ "$status" != "fail" ]
+}
+
+check_tooling_main "$@"
+# repo-automation/bin/check-tooling EOF

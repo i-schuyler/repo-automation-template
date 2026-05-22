@@ -53,6 +53,7 @@ shellcheck -e SC2317 \
   repo-automation/bin/add-doc-pr \
   repo-automation/bin/repo-automation-report-upstream \
   repo-automation/bin/repo-doctor \
+  repo-automation/bin/check-tooling \
   repo-automation/bin/repo-automation-install \
   repo-automation/bin/run-tests \
   repo-automation/tests/lib/*.sh \

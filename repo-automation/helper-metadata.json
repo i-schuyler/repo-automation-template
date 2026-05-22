@@ -78,6 +78,27 @@
       ]
     },
     {
+      "name": "check-tooling",
+      "path": "repo-automation/bin/check-tooling",
+      "doc_path": "repo-automation/docs/check-tooling.md",
+      "contract_test_path": "repo-automation/tests/contracts/check-tooling.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "instant",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": true,
+      "artifact_helper": false,
+      "umbrella_helper": false,
+      "workflow_role": "readiness",
+      "config_keys": []
+    },
+    {
       "name": "ci-log-dump",
       "path": "repo-automation/bin/ci-log-dump",
       "doc_path": "repo-automation/docs/ci-log-dump.md",
