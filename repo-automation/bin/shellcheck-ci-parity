@@ -7,7 +7,8 @@ set -o pipefail
 print_help() {
   printf 'Usage: repo-automation/bin/shellcheck-ci-parity [--help]\n'
   printf '\n'
-  printf 'Run ShellCheck against the CI file set with the CI parity exclusion.\n'
+  printf 'Run ShellCheck against the metadata-driven CI file set with the CI parity exclusion.\n'
+  printf 'Use --print-paths to show the exact file set.\n'
 }
 
 flag_error() {
@@ -26,6 +27,8 @@ for arg in "$@"; do
       print_help
       exit 0
       ;;
+    --print-paths)
+      ;;
     -*)
       flag_error "unknown flag" "$arg" "run repo-automation/bin/shellcheck-ci-parity --help"
       ;;
@@ -37,27 +40,90 @@ done
 
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 
+shellcheck_ci_parity_print_paths() {
+  python3 - "$repo_root" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+metadata_path = repo_root / "repo-automation" / "helper-metadata.json"
+
+try:
+    helper_metadata = json.loads(metadata_path.read_text())
+except Exception as exc:  # pragma: no cover - defensive shell entrypoint guard
+    print(f"fail: unable to parse helper metadata: {metadata_path}", file=sys.stderr)
+    print(f"detail: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+helpers = helper_metadata.get("helpers")
+if not isinstance(helpers, list):
+    print(f"fail: helper metadata missing helpers array: {metadata_path}", file=sys.stderr)
+    raise SystemExit(1)
+
+paths = []
+seen = set()
+
+
+def add(path: Path) -> None:
+    rel_path = path.relative_to(repo_root).as_posix()
+    if rel_path in seen:
+        print(f"fail: duplicate shellcheck path: {rel_path}", file=sys.stderr)
+        raise SystemExit(1)
+    if not path.exists():
+        print(f"fail: missing shellcheck path: {rel_path}", file=sys.stderr)
+        raise SystemExit(1)
+    if not path.is_file():
+        print(f"fail: expected file path: {rel_path}", file=sys.stderr)
+        raise SystemExit(1)
+    seen.add(rel_path)
+    paths.append(rel_path)
+
+
+for helper in helpers:
+    if not isinstance(helper, dict):
+        continue
+    helper_path = helper.get("path")
+    if isinstance(helper_path, str) and helper_path.startswith("repo-automation/bin/"):
+        add(repo_root / helper_path)
+
+add(repo_root / "repo-automation" / "lib" / "common.sh")
+
+for pattern in (
+    "repo-automation/tests/lib/*.sh",
+    "repo-automation/tests/contracts/*.sh",
+):
+    matches = sorted(repo_root.glob(pattern))
+    if not matches:
+        print(f"fail: no shellcheck paths matched {pattern}", file=sys.stderr)
+        raise SystemExit(1)
+    for path in matches:
+        add(path)
+
+for relative_path in (
+    "repo-automation/tests/docs-check.sh",
+    "repo-automation/tests/smoke.sh",
+    "repo-automation/tests/version-consistency.sh",
+):
+    add(repo_root / relative_path)
+
+for path in sorted(paths):
+    print(path)
+PY
+}
+
+cd "$repo_root" || exit 1
+
+if [ "${1:-}" = "--print-paths" ]; then
+  shellcheck_ci_parity_print_paths
+  exit 0
+fi
+
 if ! command -v shellcheck >/dev/null 2>&1; then
   printf 'STOP: shellcheck is required; pkg install shellcheck\n' >&2
   exit 1
 fi
 
-cd "$repo_root" || exit 1
+mapfile -t shellcheck_paths < <(shellcheck_ci_parity_print_paths)
 
-shellcheck -e SC2317 \
-  repo-automation/bin/branch-cleanup \
-  repo-automation/bin/codex-slice-preflight \
-  repo-automation/bin/post-codex-packet \
-  repo-automation/bin/post-codex-review \
-  repo-automation/bin/pr-finish \
-  repo-automation/bin/add-doc-pr \
-  repo-automation/bin/repo-automation-report-upstream \
-  repo-automation/bin/repo-doctor \
-  repo-automation/bin/check-tooling \
-  repo-automation/bin/repo-automation-install \
-  repo-automation/bin/run-tests \
-  repo-automation/tests/lib/*.sh \
-  repo-automation/tests/docs-check.sh \
-  repo-automation/tests/contracts/*.sh \
-  repo-automation/tests/smoke.sh \
-  repo-automation/tests/version-consistency.sh
+shellcheck -e SC2317 "${shellcheck_paths[@]}"
