@@ -1,27 +1,29 @@
+<!-- Keep these headings exactly as written and in this order. repo-flow and pr-body-check validate heading names and order. Use None or N/A when a section does not apply. -->
+
 ## Scope
 
-Summarize the branch and the submit context here.
+What area, branch, or user need does this PR cover? If this does not apply, write None or N/A.
 
 ## What changed
 
-List the commits, files, or behavior changes in this PR.
+List the concrete files, commits, or behavior changes in this PR.
 
 ## What did not change
 
-Note the unchanged areas or say "None".
+Call out what stayed the same, or write None or N/A.
 
 ## Verification status
 
-List the local checks you ran before merge.
+List the checks you ran locally before merge, or write None or N/A.
 
 ## User-visible behavior changes
 
-Describe any visible change, or say "None".
+Describe any behavior a user would notice, or write None or N/A.
 
 ## Stop conditions encountered
 
-None
+Describe any stop conditions or blockers you hit, or write None or N/A.
 
 ## Re-entry hint
 
-Return to this PR URL, watch CI, and finish the merge once checks pass.
+After the PR is opened, tell the next reviewer/operator what to do next. For example: review the PR, watch CI, then run `repo-automation/bin/repo-flow merge --explain`.
