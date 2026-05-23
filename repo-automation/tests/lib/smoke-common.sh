@@ -19,6 +19,34 @@ smoke_expected_origin_url="git@github.com:i-schuyler/repo-automation-template.gi
 smoke_output_mode="${smoke_output_mode:-summary}"
 smoke_help_requested=0
 
+smoke_collect_lib_paths() {
+  local path=""
+  for path in "$smoke_repo_root"/repo-automation/lib/*.sh; do
+    [ -e "$path" ] || continue
+    printf '%s\n' "${path#"$smoke_repo_root/"}"
+  done
+}
+
+smoke_assert_fixture_integrity() {
+  local rel_path=""
+  local source_path=""
+  local target_path=""
+
+  while IFS= read -r rel_path; do
+    [ -n "$rel_path" ] || continue
+    source_path="$smoke_repo_root/$rel_path"
+    target_path="$smoke_test_dir/$rel_path"
+    [ -f "$target_path" ] || return 1
+    if [ -x "$source_path" ] && [ ! -x "$target_path" ]; then
+      return 1
+    fi
+  done <<EOF
+$(smoke_collect_lib_paths)
+EOF
+
+  return 0
+}
+
 smoke_usage() {
   printf 'Usage: %s [--quiet] [--explain] [--json] [--help]\n' "${TEST_OUTPUT_SCRIPT_PATH:-repo-automation/tests/smoke.sh}"
 }
@@ -582,7 +610,7 @@ smoke_setup_temp_repo() {
 
   mkdir -p "$smoke_test_dir/repo-automation/bin" "$smoke_test_dir/repo-automation/lib" "$smoke_test_dir/repo-automation/tests/lib" "$smoke_test_dir/repo-automation/tests/lib/contracts" "$smoke_test_dir/repo-automation/tests/contracts" "$smoke_test_dir/repo-automation/tests" || return 1
   cp "$smoke_repo_root/AGENTS.md" "$smoke_test_dir/AGENTS.md" || return 1
-  cp "$smoke_repo_root/repo-automation/lib/common.sh" "$smoke_test_dir/repo-automation/lib/common.sh" || return 1
+  cp "$smoke_repo_root"/repo-automation/lib/*.sh "$smoke_test_dir/repo-automation/lib/" || return 1
   cp "$smoke_repo_root/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/branch-cleanup" || return 1
   cp "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
   cp "$smoke_repo_root/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/pr-finish" || return 1
@@ -807,6 +835,8 @@ EOF
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     return 0
   ) || return 1
+
+  smoke_assert_fixture_integrity || return 1
 }
 
 smoke_setup_subset_repo() {

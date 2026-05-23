@@ -1214,6 +1214,7 @@ smoke_check_preflight_json() {
   local preflight_stale_branch_head_main_explain_stderr="$smoke_test_base/preflight-stale-branch-head-main-explain.err"
   local preflight_stale_branch_explain_stderr="$smoke_test_base/preflight-stale-branch-explain.err"
   local preflight_stale_repo="$smoke_test_base/preflight-stale-repo-$$"
+  local preflight_healthy_disk_stub_dir="$smoke_test_base/preflight-healthy-disk-stub"
   local preflight_low_disk_stub_dir="$smoke_test_base/preflight-low-disk-stub"
   local preflight_low_disk_explain_stderr="$smoke_test_base/preflight-low-disk.err"
   local preflight_clean_tmpdir="$smoke_test_base/preflight-clean-tmp"
@@ -1227,10 +1228,48 @@ smoke_check_preflight_json() {
   local shim_dir=""
   local ssh_stub_dir="$smoke_test_base/preflight-ssh-stub"
 
+  mkdir -p "$preflight_low_disk_stub_dir" "$preflight_healthy_disk_stub_dir" || return 1
+  cat > "$preflight_low_disk_stub_dir/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${PREFLIGHT_DF_BLOCKS:-1000000}" \
+  "${PREFLIGHT_DF_USED:-840000}" \
+  "${PREFLIGHT_DF_AVAILABLE:-1024}" \
+  "${PREFLIGHT_DF_USE_PERCENT:-84}" \
+  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$preflight_low_disk_stub_dir/df" || return 1
+  cat > "$preflight_healthy_disk_stub_dir/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${PREFLIGHT_DF_BLOCKS:-1953125}" \
+  "${PREFLIGHT_DF_USED:-50}" \
+  "${PREFLIGHT_DF_AVAILABLE:-1953125}" \
+  "${PREFLIGHT_DF_USE_PERCENT:-50}" \
+  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$preflight_healthy_disk_stub_dir/df" || return 1
+
   if (
     cd "$smoke_test_dir" || return 1
     git checkout main >/dev/null 2>&1 || return 1
-    repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke >/dev/null
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke >/dev/null
   ); then
     test_pass "preflight check-only succeeds"
   else
@@ -1240,7 +1279,7 @@ smoke_check_preflight_json() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_json"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_json"
   ) && python3 -m json.tool "$preflight_json" >/dev/null; then
     test_pass "preflight json is parseable"
   else
@@ -1251,7 +1290,7 @@ smoke_check_preflight_json() {
   if [ "${SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST:-0}" -ne 1 ]; then
     if (
       cd "$smoke_test_dir" || return 1
-      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 repo-automation/tests/contracts/codex-slice-preflight.sh --json > "$preflight_wrapper_json" 2> "$preflight_wrapper_stderr"
+      SMOKE_SKIP_FOCUSED_WRAPPER_SELFTEST=1 REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/tests/contracts/codex-slice-preflight.sh --json > "$preflight_wrapper_json" 2> "$preflight_wrapper_stderr"
     ) && [ ! -s "$preflight_wrapper_stderr" ] && python3 -m json.tool "$preflight_wrapper_json" >/dev/null && smoke_json_assert "$preflight_wrapper_json" 'data.get("script") == "codex-slice-preflight" and data.get("mode") == "json" and data.get("status") == "pass"'; then
       test_pass "preflight wrapper json is valid and quiet"
     else
@@ -1262,7 +1301,7 @@ smoke_check_preflight_json() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --help > "$preflight_help"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --help > "$preflight_help"
   ) && grep -Fq -- '--branch=<name>' "$preflight_help" && grep -Fq -- '--explain' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
     test_pass "preflight help shows strict branch syntax"
   else
@@ -1274,7 +1313,7 @@ smoke_check_preflight_json() {
     cd "$smoke_test_dir" || return 1
     git reset --hard >/dev/null 2>&1 || return 1
     git clean -fd >/dev/null 2>&1 || return 1
-    repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke > "$preflight_explain_stdout" 2> "$preflight_explain_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke > "$preflight_explain_stdout" 2> "$preflight_explain_stderr"
   ) && [ "$(cat "$preflight_explain_stdout")" = "pass" ]; then
     test_pass "preflight default human output is compact"
   else
@@ -1313,9 +1352,9 @@ PY
     git push origin main >/dev/null 2>&1 || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     git checkout main >/dev/null 2>&1 || return 1
-    repo-automation/bin/codex-slice-preflight --check-only --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_head_main_explain_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_head_main_explain_stderr"
     git checkout "$preflight_stale_branch" >/dev/null 2>&1 || return 1
-    repo-automation/bin/codex-slice-preflight --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_explain_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --branch="$preflight_stale_branch" --explain > /dev/null 2> "$preflight_stale_branch_explain_stderr"
   ); then
     test_fail "preflight stops on an existing branch behind origin/main"
     status=1
@@ -1343,7 +1382,7 @@ PY
   if (
     cd "$smoke_test_dir" || return 1
     git remote set-url origin 'git@github-alias:i-schuyler/repo-automation-template.git' >/dev/null 2>&1 || return 1
-    PATH="$ssh_stub_dir:$PATH" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_alias_explain_stderr"
+    PATH="$ssh_stub_dir:$PATH" REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --explain > /dev/null 2> "$preflight_alias_explain_stderr"
   ) && disk_free_line="$(grep -n -m1 '^disk_free=' "$preflight_alias_explain_stderr" | cut -d: -f1)" &&
     disk_threshold_line="$(grep -n -m1 '^disk_threshold=' "$preflight_alias_explain_stderr" | cut -d: -f1)" &&
     url_line="$(grep -n -m1 '^url_or_stop=' "$preflight_alias_explain_stderr" | cut -d: -f1)" &&
@@ -1353,26 +1392,6 @@ PY
     test_fail "preflight explain output ends with FINAL SUMMARY"
     status=1
   fi
-
-  mkdir -p "$preflight_low_disk_stub_dir" || return 1
-  cat > "$preflight_low_disk_stub_dir/df" <<'EOF'
-#!/usr/bin/env bash
-set -u
-case "${1:-}" in
-  -P*) shift ;;
-esac
-if [ "${1:-}" = "-k" ]; then
-  shift
-fi
-printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-printf 'stubfs %s %s %s %s%% %s\n' \
-  "${PREFLIGHT_DF_BLOCKS:-1000000}" \
-  "${PREFLIGHT_DF_USED:-840000}" \
-  "${PREFLIGHT_DF_AVAILABLE:-1024}" \
-  "${PREFLIGHT_DF_USE_PERCENT:-84}" \
-  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
-EOF
-  chmod +x "$preflight_low_disk_stub_dir/df" || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -1438,8 +1457,8 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
-      repo-automation/bin/codex-slice-preflight --clean-test-cache --explain > "$preflight_clean_stdout" 2> "$preflight_clean_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --explain > "$preflight_clean_stdout" 2> "$preflight_clean_stderr"
   ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_stderr" &&
     grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_stderr" &&
     grep -Eq '^mode=clean-test-cache$' "$preflight_clean_stderr" &&
@@ -1521,8 +1540,8 @@ PY
     git branch -D "$preflight_clean_branch" >/dev/null 2>&1 || true
     git switch -c "$preflight_clean_branch" >/dev/null 2>&1 || return 1
     git checkout main >/dev/null 2>&1 || return 1
-    TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
-    repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
   ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_branch_stderr" &&
     grep -Eq '^mode=(run|preflight)$' "$preflight_clean_branch_stderr" &&
@@ -1550,7 +1569,7 @@ PY
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --branch feature/preflight-smoke >/dev/null 2> "$branch_format_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --branch feature/preflight-smoke >/dev/null 2> "$branch_format_stderr"
   ); then
     test_fail "preflight rejects --branch <name>"
     status=1
@@ -1563,7 +1582,7 @@ PY
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --branch >/dev/null 2> "$branch_missing_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --branch >/dev/null 2> "$branch_missing_stderr"
   ); then
     test_fail "preflight rejects missing --branch value"
     status=1
@@ -1576,7 +1595,7 @@ PY
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --branch= >/dev/null 2> "$branch_empty_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --branch= >/dev/null 2> "$branch_empty_stderr"
   ); then
     test_fail "preflight rejects empty --branch value"
     status=1
@@ -1589,7 +1608,7 @@ PY
 
   if (
     cd "$smoke_test_dir" || return 1
-    repo-automation/bin/codex-slice-preflight --whatever >/dev/null 2> "$branch_unknown_stderr"
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --whatever >/dev/null 2> "$branch_unknown_stderr"
   ); then
     test_fail "preflight rejects unknown flags"
     status=1

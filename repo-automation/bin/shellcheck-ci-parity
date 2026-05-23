@@ -87,7 +87,16 @@ for helper in helpers:
     if isinstance(helper_path, str) and helper_path.startswith("repo-automation/bin/"):
         add(repo_root / helper_path)
 
-add(repo_root / "repo-automation" / "lib" / "common.sh")
+required_lib_path = repo_root / "repo-automation" / "lib" / "temp-disk.sh"
+if not required_lib_path.exists():
+    print("fail: missing shellcheck path: repo-automation/lib/temp-disk.sh", file=sys.stderr)
+    raise SystemExit(1)
+if not required_lib_path.is_file():
+    print("fail: expected file path: repo-automation/lib/temp-disk.sh", file=sys.stderr)
+    raise SystemExit(1)
+
+for path in sorted((repo_root / "repo-automation" / "lib").glob("*.sh")):
+    add(path)
 
 for pattern in (
     "repo-automation/tests/lib/*.sh",
@@ -115,7 +124,7 @@ PY
 cd "$repo_root" || exit 1
 
 if [ "${1:-}" = "--print-paths" ]; then
-  shellcheck_ci_parity_print_paths
+  shellcheck_ci_parity_print_paths || exit 1
   exit 0
 fi
 
