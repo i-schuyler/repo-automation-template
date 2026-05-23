@@ -51,6 +51,7 @@ jobs:
               exit 1
             fi
           fi
+          repo-automation/bin/check-portability
           repo-automation/bin/run-tests --log-file="$run_tests_log"
 
       - name: Upload failure logs

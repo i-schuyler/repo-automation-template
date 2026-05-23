@@ -89,6 +89,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/check-portability",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/failure-log",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -329,6 +334,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/check-portability.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/github-settings-check.md",
       "owner": "repo-automation-template",
       "kind": "doc"
@@ -480,6 +490,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/check-tooling.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/check-portability.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },

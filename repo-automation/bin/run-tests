@@ -595,6 +595,14 @@ run_tests_focus_command_from_log() {
       printf 'repo-automation/tests/contracts/run-tests.sh --quiet\n'
       return 0
       ;;
+    shellcheck\ path\ discovery*)
+      printf 'repo-automation/bin/shellcheck-ci-parity --print-paths\n'
+      return 0
+      ;;
+    shellcheck\ repo-automation\ scripts\ and\ tests*)
+      printf 'repo-automation/bin/shellcheck-ci-parity\n'
+      return 0
+      ;;
   esac
 
   case "$command_line" in
@@ -682,6 +690,10 @@ run_tests_print_failure_fix() {
     message="$rest"
     if [ -n "$message" ] && [ "$message" != "failed" ]; then
       repo_auto_print_failure_footer fix "rerun $name directly after inspecting the failure details"
+    elif [ "$name" = "shellcheck repo-automation scripts and tests" ]; then
+      repo_auto_print_failure_footer fix "rerun repo-automation/bin/shellcheck-ci-parity"
+    elif [ "$name" = "shellcheck path discovery" ]; then
+      repo_auto_print_failure_footer fix "rerun repo-automation/bin/shellcheck-ci-parity --print-paths"
     else
       repo_auto_print_failure_footer fix "rerun $name directly"
     fi
@@ -1379,24 +1391,27 @@ EOF
     return $?
   fi
 
-  while IFS= read -r shell_path; do
-    [ -n "$shell_path" ] || continue
-    run_tests_run_cmd "bash syntax $shell_path" bash -n "$shell_path" || status=1
-  done <<EOF
-$(find repo-automation/bin repo-automation/lib repo-automation/tests -type f | LC_ALL=C sort)
-EOF
-
-  if command -v shellcheck >/dev/null 2>&1; then
-    shellcheck_args=(-e SC2317)
+  shellcheck_paths_file="$run_tests_temp_root/run-tests-shellcheck-paths-$$.txt"
+  if repo-automation/bin/shellcheck-ci-parity --print-paths >"$shellcheck_paths_file" 2>/dev/null &&
+    [ -s "$shellcheck_paths_file" ]; then
     while IFS= read -r shell_path; do
       [ -n "$shell_path" ] || continue
-      shellcheck_args+=("$shell_path")
-    done <<EOF
-$(find repo-automation/bin repo-automation/lib repo-automation/tests -type f | LC_ALL=C sort)
-EOF
-    run_tests_run_cmd "shellcheck repo-automation scripts and tests" shellcheck "${shellcheck_args[@]}" || status=1
+      run_tests_run_cmd "bash syntax $shell_path" bash -n "$shell_path" || status=1
+    done < "$shellcheck_paths_file"
+
+    if command -v shellcheck >/dev/null 2>&1; then
+      shellcheck_args=(-e SC2317)
+      while IFS= read -r shell_path; do
+        [ -n "$shell_path" ] || continue
+        shellcheck_args+=("$shell_path")
+      done < "$shellcheck_paths_file"
+      run_tests_run_cmd "shellcheck repo-automation scripts and tests" shellcheck "${shellcheck_args[@]}" || status=1
+    else
+      run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
+    fi
   else
-    run_tests_record_warn "shellcheck not installed locally; skipping shellcheck" "shellcheck unavailable"
+    run_tests_record_fail "shellcheck path discovery" "failed" "0"
+    status=1
   fi
 
   run_tests_run_cmd "repo-automation/bin/pr-finish --help" bash -c 'repo-automation/bin/pr-finish --help >/dev/null' || status=1

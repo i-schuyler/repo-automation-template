@@ -23,6 +23,7 @@ The repo automation entry points live under `repo-automation/`:
 - `repo-automation/bin/repo-flow`
 - `repo-automation/bin/repo-doctor`
 - `repo-automation/bin/check-tooling`
+- `repo-automation/bin/check-portability`
 - `repo-automation/bin/run-tests`
 - `repo-automation/bin/prepare-release`
 - `repo-automation/bin/repo-automation-install`

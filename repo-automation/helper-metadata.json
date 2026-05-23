@@ -99,6 +99,27 @@
       "config_keys": []
     },
     {
+      "name": "check-portability",
+      "path": "repo-automation/bin/check-portability",
+      "doc_path": "repo-automation/docs/check-portability.md",
+      "contract_test_path": "repo-automation/tests/contracts/check-portability.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "broad-local",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": true,
+      "supports_quiet": true,
+      "supports_json": true,
+      "artifact_helper": false,
+      "umbrella_helper": false,
+      "workflow_role": "audit",
+      "config_keys": []
+    },
+    {
       "name": "ci-log-dump",
       "path": "repo-automation/bin/ci-log-dump",
       "doc_path": "repo-automation/docs/ci-log-dump.md",
