@@ -33,6 +33,7 @@ case "$cmd $sub" in
     url=""
     title=""
     state=""
+    body=""
     if [ "${GH_STUB_PR_VIEW_EMPTY:-0}" -eq 1 ] 2>/dev/null; then
       exit 1
     fi
@@ -41,13 +42,18 @@ case "$cmd $sub" in
       url="$(repo_flow_stub_field "$GH_STUB_PR_STATE_FILE" 2)"
       title="$(repo_flow_stub_field "$GH_STUB_PR_STATE_FILE" 3)"
       state="$(repo_flow_stub_field "$GH_STUB_PR_STATE_FILE" 4)"
+      body_file="$(repo_flow_stub_field "$GH_STUB_PR_STATE_FILE" 5)"
     elif [ -n "${GH_STUB_PR_VIEW_NUMBER:-}" ]; then
       number="${GH_STUB_PR_VIEW_NUMBER:-}"
       url="${GH_STUB_PR_VIEW_URL:-}"
       title="${GH_STUB_PR_VIEW_TITLE:-}"
       state="${GH_STUB_PR_VIEW_STATE:-OPEN}"
+      body_file="${GH_STUB_PR_VIEW_BODY_FILE:-}"
     else
       exit 1
+    fi
+    if [ -n "${GH_STUB_PR_VIEW_BODY_FILE:-}" ]; then
+      body_file="${GH_STUB_PR_VIEW_BODY_FILE:-}"
     fi
     case " $* " in
       *' --json number '*|*' --jq .number '*)
@@ -61,6 +67,18 @@ case "$cmd $sub" in
         ;;
       *' --json state '*|*' --jq .state '*)
         printf '%s\n' "$state"
+        ;;
+      *' --json body '*|*' --jq .body '*)
+        if [ "${GH_STUB_PR_VIEW_BODY_EXIT:-0}" -ne 0 ] 2>/dev/null; then
+          printf '%s\n' "${GH_STUB_PR_VIEW_BODY_ERROR:-gh pr view failed}" >&2
+          exit "${GH_STUB_PR_VIEW_BODY_EXIT}"
+        elif [ -n "${body_file:-}" ] && [ -f "$body_file" ]; then
+          cat "$body_file"
+        elif [ -n "${GH_STUB_PR_VIEW_BODY_TEXT:-}" ]; then
+          printf '%s\n' "${GH_STUB_PR_VIEW_BODY_TEXT:-}"
+        else
+          printf '%s\n' "$body"
+        fi
         ;;
       *' --json headRefName '*|*' --jq .headRefName '*)
         printf '%s\n' "${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}"
@@ -836,6 +854,7 @@ smoke_check_repo_flow_existing_pr_body_refresh() {
     GH_STUB_PR_CREATE_LOG_FILE="$create_log_file_second" \
     GH_STUB_PR_EDIT_LOG_FILE="$edit_log_file" \
     GH_STUB_PR_EDIT_BODY_COPY_FILE="$refreshed_body_file" \
+    GH_STUB_PR_VIEW_BODY_FILE="$first_body_file" \
     GH_STUB_PR_CREATE_NUMBER=812 \
     GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/812' \
     "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit existing pr refresh new commit' > "$second_stdout_file" 2> "$second_stderr_file"
@@ -843,16 +862,26 @@ smoke_check_repo_flow_existing_pr_body_refresh() {
     if [ "$(cat "$second_stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/812' ] &&
       [ ! -s "$create_log_file_second" ] &&
       grep -Fq 'gh pr edit number=812 body_file=' "$edit_log_file" &&
+      grep -Fq 'Commit subject: repo-flow submit existing pr refresh old commit' "$refreshed_body_file" &&
+      grep -Fq 'README.md' "$refreshed_body_file" &&
       grep -Fq 'Commit subject: repo-flow submit existing pr refresh new commit' "$refreshed_body_file" &&
       grep -Fq 'docs/testing.md' "$refreshed_body_file" &&
-      ! grep -Fq 'README.md' "$refreshed_body_file"; then
-      test_pass "repo-flow submit refreshes the body when reusing an existing PR"
+      grep -Fq '## Update log' "$refreshed_body_file" &&
+      [ "$(grep -Fc '## Update log' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## Scope' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## What changed' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## What did not change' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## Verification status' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## User-visible behavior changes' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## Stop conditions encountered' "$refreshed_body_file")" = "1" ] &&
+      [ "$(grep -Fc '## Re-entry hint' "$refreshed_body_file")" = "1" ]; then
+      test_pass "repo-flow submit appends an update log to an existing PR body"
     else
-      test_fail "repo-flow submit refreshes the body when reusing an existing PR"
+      test_fail "repo-flow submit appends an update log to an existing PR body"
       status=1
     fi
   else
-    test_fail "repo-flow submit refreshes the body when reusing an existing PR"
+    test_fail "repo-flow submit appends an update log to an existing PR body"
     status=1
   fi
 
@@ -927,6 +956,58 @@ smoke_check_repo_flow_existing_pr_body_refresh_failure() {
     test_pass "repo-flow submit stops when refreshing an existing PR body fails"
   else
     test_fail "repo-flow submit stops when refreshing an existing PR body fails"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_existing_pr_body_fetch_failure() {
+  local status=0
+  local gh_stub_dir=""
+  local state_file=""
+  local edit_log_file=""
+  local stdout_file=""
+  local stderr_file=""
+  local local_bash_path=""
+
+  smoke_setup_temp_repo || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  state_file="$smoke_test_base/repo-flow-existing-pr-body-fetch-fail.txt"
+  edit_log_file="$smoke_test_base/repo-flow-existing-pr-body-fetch-fail-edit.log"
+  stdout_file="$smoke_test_base/repo-flow-existing-pr-body-fetch-fail.stdout"
+  stderr_file="$smoke_test_base/repo-flow-existing-pr-body-fetch-fail.stderr"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-existing-body-fetch-fail" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  printf '\nrepo-flow submit existing pr body fetch fail line\n' >> "$smoke_test_dir/README.md" || return 1
+  git -C "$smoke_test_dir" add README.md || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    REMOTE_NAME=localorigin \
+    EXPECTED_REMOTE_URL="" \
+    GH_STUB_PR_STATE_FILE="$state_file" \
+    GH_STUB_PR_VIEW_NUMBER=814 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/814' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_BODY_EXIT=1 \
+    GH_STUB_PR_VIEW_BODY_ERROR='gh pr view failed: permission denied' \
+    GH_STUB_PR_EDIT_LOG_FILE="$edit_log_file" \
+    "$local_bash_path" repo-automation/bin/repo-flow submit --staged --message='repo-flow submit existing pr body fetch fail commit' > "$stdout_file" 2> "$stderr_file"
+  ); then
+    test_fail "repo-flow submit stops when fetching an existing PR body fails"
+    status=1
+  elif grep -Fxq 'fix: rerun with --replace-body only if intentional full PR body replacement is desired' "$stderr_file" &&
+    grep -Fxq 'STOP: failed to fetch existing PR #814 body: gh pr view failed: permission denied' "$stderr_file" &&
+    [ ! -s "$edit_log_file" ]; then
+    test_pass "repo-flow submit stops when fetching an existing PR body fails"
+  else
+    test_fail "repo-flow submit stops when fetching an existing PR body fails"
     status=1
   fi
 
@@ -1214,21 +1295,145 @@ EOF
     GH_STUB_PR_VIEW_NUMBER=706 \
     GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/706' \
     GH_STUB_PR_VIEW_STATE='OPEN' \
-    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit body-file refresh commit' --body-file="$body_file" > "$stdout_file" 2> "$stderr_file"
+    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit body-file refresh commit' --body-file="$body_file" --replace-body > "$stdout_file" 2> "$stderr_file"
   ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/706' ] && [ -f "$edit_log_file" ] && [ -f "$edit_body_copy_file" ] && [ ! -s "$refresh_create_log_file" ]; then
     if grep -Fq 'Human-authored PR body support.' "$edit_body_copy_file" &&
       grep -Fq 'submit --body-file support' "$edit_body_copy_file" &&
       grep -Fq 'Review-facing PRs can now use a user-authored body.' "$edit_body_copy_file" &&
       ! grep -Fq 'Commit subject: repo-flow submit body-file refresh commit' "$edit_body_copy_file" &&
+      ! grep -Fq '## Update log' "$edit_body_copy_file" &&
       grep -Fq 'gh pr edit number=706 body_file=' "$edit_log_file" &&
-      ! grep -Fq 'docs/testing.md' "$body_file"; then
-      test_pass "repo-flow submit refreshes an existing PR body from a supplied file"
+      ! grep -Fq 'repo-flow submit body-file refresh line' "$edit_body_copy_file"; then
+      test_pass "repo-flow submit replaces an existing PR body from a supplied file"
     else
-      test_fail "repo-flow submit refreshes an existing PR body from a supplied file"
+      test_fail "repo-flow submit replaces an existing PR body from a supplied file"
       status=1
     fi
   else
-    test_fail "repo-flow submit refreshes an existing PR body from a supplied file"
+    test_fail "repo-flow submit replaces an existing PR body from a supplied file"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_submit_body_file_existing_pr_requires_replace_body() {
+  local status=0
+  local gh_stub_dir=""
+  local state_file=""
+  local body_file=""
+  local stdout_file=""
+  local stderr_file=""
+  local head_before=""
+  local head_after=""
+  local local_bash_path=""
+
+  smoke_setup_temp_repo || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  state_file="$smoke_test_base/repo-flow-submit-body-file-requires-replace.txt"
+  body_file="$smoke_test_base/repo-flow-submit-body-file-requires-replace.md"
+  stdout_file="$smoke_test_base/repo-flow-submit-body-file-requires-replace.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-body-file-requires-replace.stderr"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-body-file-requires-replace" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  cat > "$body_file" <<'EOF'
+## Scope
+
+Human-authored PR body support.
+
+## What changed
+
+- Added submit --body-file support.
+
+## What did not change
+
+- The fallback generated body remains available.
+
+## Verification status
+
+- repo-flow submit body-file smoke test
+
+## User-visible behavior changes
+
+Review-facing PRs can now use a user-authored body.
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Review the PR, then run `repo-automation/bin/repo-flow merge --explain`.
+EOF
+
+  printf '\nrepo-flow submit body-file requires replace\n' >> "$smoke_test_dir/README.md" || return 1
+  git -C "$smoke_test_dir" add README.md || return 1
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    REMOTE_NAME=localorigin \
+    EXPECTED_REMOTE_URL="" \
+    GH_STUB_PR_STATE_FILE="$state_file" \
+    GH_STUB_PR_VIEW_NUMBER=707 \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/707' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_CREATE_LOG_FILE="$smoke_test_base/repo-flow-submit-body-file-requires-replace-create.log" \
+    GH_STUB_PR_EDIT_LOG_FILE="$smoke_test_base/repo-flow-submit-body-file-requires-replace-edit.log" \
+    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit body-file requires replace commit' --body-file="$body_file" > "$stdout_file" 2> "$stderr_file"
+  ); then
+    test_fail "repo-flow submit stops before commit when an existing PR body file lacks --replace-body"
+    status=1
+  elif grep -Fxq 'fix: supplied full body files replace PR bodies; use --replace-body to intentionally replace the PR body' "$stderr_file" &&
+    grep -Fxq 'STOP: existing PR #707 requires --replace-body when --body-file is supplied' "$stderr_file"; then
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    if [ "$head_before" = "$head_after" ] &&
+      [ ! -s "$smoke_test_base/repo-flow-submit-body-file-requires-replace-create.log" ] &&
+      [ ! -s "$smoke_test_base/repo-flow-submit-body-file-requires-replace-edit.log" ]; then
+      test_pass "repo-flow submit stops before commit when an existing PR body file lacks --replace-body"
+    else
+      test_fail "repo-flow submit stops before commit when an existing PR body file lacks --replace-body"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit stops before commit when an existing PR body file lacks --replace-body"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_repo_flow_submit_replace_body_flag_rejected() {
+  local status=0
+  local gh_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  stdout_file="$smoke_test_base/repo-flow-submit-replace-body-rejected.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-replace-body-rejected.stderr"
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit replace-body rejected' --replace-body=maybe > "$stdout_file" 2> "$stderr_file"
+  ); then
+    test_fail "repo-flow submit rejects --replace-body=<value>"
+    status=1
+  elif grep -Fxq 'fail: flag format not accepted' "$stderr_file" &&
+    grep -Fxq 'flag: --replace-body' "$stderr_file" &&
+    grep -Fxq 'fix: use --replace-body' "$stderr_file"; then
+    test_pass "repo-flow submit rejects --replace-body=<value>"
+  else
+    test_fail "repo-flow submit rejects --replace-body=<value>"
     status=1
   fi
 
@@ -1337,20 +1542,21 @@ EOF
     GH_STUB_PR_VIEW_NUMBER=706 \
     GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/706' \
     GH_STUB_PR_VIEW_STATE='OPEN' \
-    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit body-file refresh commit' --body-file="$body_file" > "$stdout_file" 2> "$stderr_file"
+    repo-automation/bin/repo-flow submit --staged --message='repo-flow submit body-file refresh commit' --body-file="$body_file" --replace-body > "$stdout_file" 2> "$stderr_file"
   ) && [ "$(cat "$stdout_file")" = 'https://github.com/i-schuyler/repo-automation-template/pull/706' ] && [ -f "$edit_log_file" ] && [ -f "$edit_body_copy_file" ] && [ ! -s "$refresh_create_log_file" ]; then
     if grep -Fq 'Human-authored PR body support.' "$edit_body_copy_file" &&
-      grep -Fq 'Added submit --body-file support.' "$edit_body_copy_file" &&
       grep -Fq 'Review-facing PRs can now use a user-authored body.' "$edit_body_copy_file" &&
+      ! grep -Fq 'Commit subject: repo-flow submit body-file refresh commit' "$edit_body_copy_file" &&
+      ! grep -Fq '## Update log' "$edit_body_copy_file" &&
       grep -Fq 'gh pr edit number=706 body_file=' "$edit_log_file" &&
-      ! grep -Fq 'Commit subject: repo-flow submit body-file refresh commit' "$edit_body_copy_file"; then
-      test_pass "repo-flow submit refreshes an existing PR body from a supplied file"
+      ! grep -Fq 'repo-flow submit body-file refresh line' "$edit_body_copy_file"; then
+      test_pass "repo-flow submit replaces an existing PR body from a supplied file"
     else
-      test_fail "repo-flow submit refreshes an existing PR body from a supplied file"
+      test_fail "repo-flow submit replaces an existing PR body from a supplied file"
       status=1
     fi
   else
-    test_fail "repo-flow submit refreshes an existing PR body from a supplied file"
+    test_fail "repo-flow submit replaces an existing PR body from a supplied file"
     status=1
   fi
 
@@ -2200,7 +2406,7 @@ smoke_check_repo_flow_submit_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
-  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
     if ! grep -Fq 'pr-finish --merge' "$help_out" && ! grep -Fq 'repo-flow merge' "$help_out"; then
       test_pass "repo-flow submit help shows strict syntax"
     else
@@ -2848,9 +3054,12 @@ smoke_main_impl() {
     smoke_run_named_check "smoke:repo-flow-existing-pr" smoke_check_repo_flow_existing_pr || status=1
     smoke_run_named_check "smoke:repo-flow-existing-pr-body-refresh" smoke_check_repo_flow_existing_pr_body_refresh || status=1
     smoke_run_named_check "smoke:repo-flow-existing-pr-body-refresh-failure" smoke_check_repo_flow_existing_pr_body_refresh_failure || status=1
+    smoke_run_named_check "smoke:repo-flow-existing-pr-body-fetch-failure" smoke_check_repo_flow_existing_pr_body_fetch_failure || status=1
     smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
     smoke_run_named_check "smoke:repo-flow-submit-paths" smoke_check_repo_flow_submit_paths || status=1
     smoke_run_named_check "smoke:repo-flow-submit-body-file-create-refresh" smoke_check_repo_flow_submit_body_file_create_refresh || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-body-file-existing-pr-requires-replace-body" smoke_check_repo_flow_submit_body_file_existing_pr_requires_replace_body || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-replace-body-flag-rejected" smoke_check_repo_flow_submit_replace_body_flag_rejected || status=1
     smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
     smoke_run_named_check "smoke:repo-flow-submit-watch-publishes-branch" smoke_check_repo_flow_submit_watch_publishes_branch || status=1
     smoke_run_named_check "smoke:repo-flow-submit-watch-explain-failure-summary" smoke_check_repo_flow_submit_watch_explain_failure_summary || status=1
@@ -2895,6 +3104,9 @@ smoke_main_impl() {
       smoke_run_named_check "smoke:repo-flow-existing-pr-body-refresh-failure" smoke_check_repo_flow_existing_pr_body_refresh_failure || status=1
     fi
     if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-existing-pr-body-fetch-failure" smoke_check_repo_flow_existing_pr_body_fetch_failure || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
     fi
     if [ "$status" -eq 0 ]; then
@@ -2902,6 +3114,12 @@ smoke_main_impl() {
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-body-file-create-refresh" smoke_check_repo_flow_submit_body_file_create_refresh || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-body-file-existing-pr-requires-replace-body" smoke_check_repo_flow_submit_body_file_existing_pr_requires_replace_body || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-replace-body-flag-rejected" smoke_check_repo_flow_submit_replace_body_flag_rejected || status=1
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
