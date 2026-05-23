@@ -759,25 +759,6 @@ $(
 EOF
 }
 
-run_tests_source_optional_config() {
-  local config_file="$1"
-  local config_label="$2"
-
-  [ -f "$config_file" ] || return 0
-
-  repo_auto_secret_scan_file "$config_file" || return 1
-
-  # shellcheck source=/dev/null
-  . "$config_file" || {
-    if [ -n "$config_label" ]; then
-      repo_auto_stop "failed to source $config_label config file: $config_file"
-    else
-      repo_auto_stop "failed to source config file: $config_file"
-    fi
-    return 1
-  }
-}
-
 run_tests_changed_needs_docs() {
   case "$1" in
     README.md|CHANGELOG.md|CONTRIBUTING.md|SUPPORT.md|docs/*|repo-automation/docs/*|.github/pull_request_template.md|.github/ISSUE_TEMPLATE/*)
@@ -868,6 +849,31 @@ EOF
   fi
 
   return "$status"
+}
+
+run_tests_source_optional_config() {
+  local config_path="$1"
+  local secret_scan_label="$2"
+  local load_label="$3"
+  local secret_scan_message="$4"
+  local load_message="$5"
+
+  if [ ! -f "$config_path" ]; then
+    return 0
+  fi
+
+  if ! repo_auto_secret_scan_file "$config_path" >/dev/null 2>&1; then
+    run_tests_record_fail "$secret_scan_label" "$secret_scan_message"
+    return 1
+  fi
+
+  # shellcheck source=/dev/null
+  if ! . "$config_path" >/dev/null 2>&1; then
+    run_tests_record_fail "$load_label" "$load_message"
+    return 1
+  fi
+
+  return 0
 }
 
 run_tests_main() {
@@ -1074,8 +1080,39 @@ EOF
     return $?
   }
 
-  run_tests_source_optional_config "$repo_root/.repo-automation.conf" "" || return 1
-  run_tests_source_optional_config "$repo_root/.repo-automation.local.conf" "local" || return 1
+  if ! run_tests_source_optional_config \
+    "$repo_root/.repo-automation.conf" \
+    "config secret scan" \
+    "config load" \
+    "possible secret markers found in .repo-automation.conf" \
+    "failed to source .repo-automation.conf"; then
+    status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    if ! run_tests_source_optional_config \
+      "$repo_root/.repo-automation.local.conf" \
+      "local config secret scan" \
+      "local config load" \
+      "possible secret markers found in .repo-automation.local.conf" \
+      "failed to source .repo-automation.local.conf"; then
+      status=1
+    fi
+  fi
+
+  if [ "$status" -ne 0 ]; then
+    counts="$(run_tests_counts)"
+    IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+    overall_status="fail"
+    if [ "$run_tests_json" -eq 1 ]; then
+      run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    else
+      run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+    fi
+    run_tests_finish 1
+    return $?
+  fi
 
   if [ "$run_tests_env_REPO_AUTOMATION_TEST_TEMP_ROOT_set" -eq 1 ]; then
     REPO_AUTOMATION_TEST_TEMP_ROOT="$run_tests_env_REPO_AUTOMATION_TEST_TEMP_ROOT"
@@ -1123,6 +1160,26 @@ EOF
     run_tests_finish 1
     return $?
   fi
+
+  case "$run_tests_clean_stale_temp" in
+    0|1)
+      ;;
+    *)
+      run_tests_record_fail "resolve temp/disk config" "invalid REPO_AUTOMATION_CLEAN_STALE_TEMP value"
+      counts="$(run_tests_counts)"
+      IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF
+$counts
+EOF
+      overall_status="fail"
+      if [ "$run_tests_json" -eq 1 ]; then
+        run_tests_print_json "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+      else
+        run_tests_print_human "$overall_status" "$pass_count" "$warn_count" "$fail_count" "$skipped_count"
+      fi
+      run_tests_finish 1
+      return $?
+      ;;
+  esac
 
   run_tests_timeout_seconds="$timeout_value"
   run_tests_ensure_temp_root || {
@@ -1321,8 +1378,10 @@ EOF
   else
     run_tests_run_smoke "repo-automation/tests/smoke.sh" repo-automation/tests/smoke.sh || status=1
   fi
-  run_tests_run_cmd "repo-automation/tests/docs-check.sh" repo-automation/tests/docs-check.sh || status=1
-  run_tests_run_cmd "repo-automation/tests/version-consistency.sh" repo-automation/tests/version-consistency.sh || status=1
+  if [ "${RUN_TESTS_SKIP_SMOKE:-0}" != "1" ]; then
+    run_tests_run_cmd "repo-automation/tests/docs-check.sh" repo-automation/tests/docs-check.sh || status=1
+    run_tests_run_cmd "repo-automation/tests/version-consistency.sh" repo-automation/tests/version-consistency.sh || status=1
+  fi
 
   counts="$(run_tests_counts)"
   IFS=' ' read -r pass_count warn_count fail_count skipped_count <<EOF

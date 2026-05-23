@@ -87,9 +87,16 @@ smoke_check_run_tests_contract() {
   local run_tests_missing_temp_disk_err="$smoke_test_base/run-tests-missing-temp-disk-$$.stderr"
   local run_tests_invalid_clean_stale_out="$smoke_test_base/run-tests-invalid-clean-stale-$$.txt"
   local run_tests_invalid_clean_stale_err="$smoke_test_base/run-tests-invalid-clean-stale-$$.stderr"
-  local run_tests_secret_config_out="$smoke_test_base/run-tests-secret-config-$$.txt"
-  local run_tests_secret_config_err="$smoke_test_base/run-tests-secret-config-$$.stderr"
   local run_tests_secret_config_marker="$smoke_test_base/run-tests-secret-config-sourced-$$"
+  local run_tests_secret_config_json="$smoke_test_base/run-tests-secret-config-$$.json"
+  local run_tests_secret_config_json_err="$smoke_test_base/run-tests-secret-config-$$.json.stderr"
+  local run_tests_secret_config_explain="$smoke_test_base/run-tests-secret-config-$$.explain.txt"
+  local run_tests_secret_config_explain_err="$smoke_test_base/run-tests-secret-config-$$.explain.stderr"
+  local run_tests_secret_config_quiet="$smoke_test_base/run-tests-secret-config-$$.quiet.txt"
+  local run_tests_secret_config_quiet_err="$smoke_test_base/run-tests-secret-config-$$.quiet.stderr"
+  local run_tests_secret_config_source_out="$smoke_test_base/run-tests-secret-source-$$.txt"
+  local run_tests_secret_config_source_err="$smoke_test_base/run-tests-secret-source-$$.stderr"
+  local run_tests_secret_config_source_marker="$smoke_test_base/run-tests-secret-source-executed-$$"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -722,19 +729,85 @@ EOF
 password=fixture
 touch "$run_tests_secret_config_marker"
 EOF
-    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet > "$run_tests_secret_config_out" 2> "$run_tests_secret_config_err"
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn > "$run_tests_secret_config_json" 2> "$run_tests_secret_config_json_err"
   ); then
     test_fail "run-tests secret-scans local config before sourcing"
     status=1
   elif [ ! -e "$run_tests_secret_config_marker" ] &&
-    [ ! -s "$run_tests_secret_config_out" ] &&
-    grep -Fq 'WARN: possible secret markers found in' "$run_tests_secret_config_err"; then
+    [ ! -s "$run_tests_secret_config_json_err" ] &&
+    python3 -m json.tool "$run_tests_secret_config_json" >/dev/null &&
+    smoke_json_assert "$run_tests_secret_config_json" 'data.get("overall_status") == "fail" and any(check.get("name") == "local config secret scan" and check.get("status") == "fail" and "possible secret markers found in .repo-automation.local.conf" in check.get("message", "") for check in data.get("checks", []))'; then
     test_pass "run-tests secret-scans local config before sourcing"
   else
     test_fail "run-tests secret-scans local config before sourcing"
     status=1
   fi
   rm -f "$smoke_test_dir/.repo-automation.local.conf" "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+    cat > .repo-automation.local.conf <<EOF
+password=fixture
+touch "$run_tests_secret_config_marker"
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_secret_config_explain" 2> "$run_tests_secret_config_explain_err"
+  ); then
+    test_fail "run-tests explain renders local config secret scan failures"
+    status=1
+  elif [ ! -e "$run_tests_secret_config_marker" ] &&
+    grep -Fq '===== FINAL SUMMARY =====' "$run_tests_secret_config_explain_err" &&
+    grep -Fq 'FAIL: local config secret scan - possible secret markers found in .repo-automation.local.conf' "$run_tests_secret_config_explain" &&
+    [ -s "$run_tests_secret_config_explain_err" ]; then
+    test_pass "run-tests explain renders local config secret scan failures"
+  else
+    test_fail "run-tests explain renders local config secret scan failures"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+    cat > .repo-automation.local.conf <<EOF
+password=fixture
+touch "$run_tests_secret_config_marker"
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet > "$run_tests_secret_config_quiet" 2> "$run_tests_secret_config_quiet_err"
+  ); then
+    test_fail "run-tests quiet renders compact local config secret scan failures"
+    status=1
+  elif [ ! -e "$run_tests_secret_config_marker" ] &&
+    [ ! -s "$run_tests_secret_config_quiet_err" ] &&
+    grep -Fxq 'fail: local config secret scan - possible secret markers found in .repo-automation.local.conf' "$run_tests_secret_config_quiet"; then
+    test_pass "run-tests quiet renders compact local config secret scan failures"
+  else
+    test_fail "run-tests quiet renders compact local config secret scan failures"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$run_tests_secret_config_source_marker" >/dev/null 2>&1 || true
+    cat > .repo-automation.local.conf <<EOF
+REPO_AUTOMATION_TEST_TEMP_ROOT="$run_tests_low_disk_tmpdir/repo-automation-template"
+return 1
+touch "$run_tests_secret_config_source_marker"
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet > "$run_tests_secret_config_source_out" 2> "$run_tests_secret_config_source_err"
+  ); then
+    test_fail "run-tests quiet handles local config source failures"
+    status=1
+  elif [ ! -e "$run_tests_secret_config_source_marker" ] &&
+    [ ! -s "$run_tests_secret_config_source_err" ] &&
+    grep -Fxq 'fail: local config load - failed to source .repo-automation.local.conf' "$run_tests_secret_config_source_out"; then
+    test_pass "run-tests quiet handles local config source failures"
+  else
+    test_fail "run-tests quiet handles local config source failures"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" "$run_tests_secret_config_source_marker" >/dev/null 2>&1 || true
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -953,7 +1026,7 @@ EOF
     status=1
   fi
 
-  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_temp_disk_backup" "$run_tests_missing_temp_disk_out" "$run_tests_missing_temp_disk_err" "$run_tests_invalid_clean_stale_out" "$run_tests_invalid_clean_stale_err" "$run_tests_secret_config_out" "$run_tests_secret_config_err" "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_temp_disk_backup" "$run_tests_missing_temp_disk_out" "$run_tests_missing_temp_disk_err" "$run_tests_invalid_clean_stale_out" "$run_tests_invalid_clean_stale_err" "$run_tests_secret_config_marker" "$run_tests_secret_config_json" "$run_tests_secret_config_json_err" "$run_tests_secret_config_explain" "$run_tests_secret_config_explain_err" "$run_tests_secret_config_quiet" "$run_tests_secret_config_quiet_err" "$run_tests_secret_config_source_out" "$run_tests_secret_config_source_err" "$run_tests_secret_config_source_marker" >/dev/null 2>&1 || true
   return "$status"
 }
 
