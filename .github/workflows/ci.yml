@@ -38,6 +38,7 @@ jobs:
           set -euo pipefail
           run_tests_log="$RUNNER_TEMP/run-tests.log"
           shellcheck_log="$RUNNER_TEMP/shellcheck.log"
+          check_portability_log="$RUNNER_TEMP/check-portability.log"
           mapfile -t shellcheck_paths < <(repo-automation/bin/shellcheck-ci-parity --print-paths)
 
           git diff --check
@@ -51,15 +52,22 @@ jobs:
               exit 1
             fi
           fi
-          repo-automation/bin/check-portability
+          repo-automation/bin/check-portability | tee "$check_portability_log"
           repo-automation/bin/run-tests --log-file="$run_tests_log"
 
-      - name: Upload failure logs
+      - name: Collect failure artifacts
+        if: failure()
+        run: |
+          set -u -o pipefail
+          mkdir -p "$RUNNER_TEMP/ci-failure-artifacts"
+          repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn --log-file="$RUNNER_TEMP/repo-doctor.log" > "$RUNNER_TEMP/repo-doctor.json" 2> "$RUNNER_TEMP/repo-doctor.stderr" || true
+          repo-automation/bin/ci-failure-artifacts --out-dir="$RUNNER_TEMP/ci-failure-artifacts" --run-tests-log="$RUNNER_TEMP/run-tests.log" --shellcheck-log="$RUNNER_TEMP/shellcheck.log" --check-portability-log="$RUNNER_TEMP/check-portability.log" --repo-doctor-json="$RUNNER_TEMP/repo-doctor.json" --repo-doctor-log="$RUNNER_TEMP/repo-doctor.log" --repo-doctor-stderr="$RUNNER_TEMP/repo-doctor.stderr" > "$RUNNER_TEMP/ci-failure-artifacts/artifact-generation.log" 2>&1 || true
+
+      - name: Upload failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-failure-logs
+          name: ci-failure-artifacts
           path: |
-            ${{ runner.temp }}/run-tests.log
-            ${{ runner.temp }}/shellcheck.log
+            ${{ runner.temp }}/ci-failure-artifacts/**
           if-no-files-found: ignore

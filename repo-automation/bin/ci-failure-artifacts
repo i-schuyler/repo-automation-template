@@ -1,0 +1,520 @@
+#!/usr/bin/env bash
+# repo-automation/bin/ci-failure-artifacts
+
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
+
+ci_failure_artifacts_out_dir=""
+ci_failure_artifacts_run_tests_log=""
+ci_failure_artifacts_shellcheck_log=""
+ci_failure_artifacts_check_portability_log=""
+ci_failure_artifacts_repo_doctor_json=""
+ci_failure_artifacts_repo_doctor_log=""
+ci_failure_artifacts_repo_doctor_stderr=""
+ci_failure_artifacts_quiet=0
+ci_failure_artifacts_json=0
+
+ci_failure_artifacts_usage() {
+  printf 'Usage: repo-automation/bin/ci-failure-artifacts --out-dir=<path> [--run-tests-log=<path>] [--shellcheck-log=<path>] [--check-portability-log=<path>] [--repo-doctor-json=<path>] [--repo-doctor-log=<path>] [--repo-doctor-stderr=<path>] [--quiet] [--json] [--help]\n'
+}
+
+ci_failure_artifacts_missing_value_error() {
+  local flag="$1"
+  local fix="$2"
+  repo_auto_flag_error "missing flag value" "$flag" "$fix"
+}
+
+ci_failure_artifacts_empty_value_error() {
+  local flag="$1"
+  local fix="$2"
+  repo_auto_flag_error "empty flag value" "$flag" "$fix"
+}
+
+ci_failure_artifacts_unrecognized_value_error() {
+  local flag="$1"
+  local fix="$2"
+  repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+}
+
+ci_failure_artifacts_main() {
+  local arg=""
+  local next=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    next="${2:-}"
+    case "$arg" in
+      --help)
+        ci_failure_artifacts_usage
+        return 0
+        ;;
+      --quiet)
+        ci_failure_artifacts_quiet=1
+        ;;
+      --json)
+        ci_failure_artifacts_json=1
+        ;;
+      --out-dir=*)
+        ci_failure_artifacts_out_dir="${arg#--out-dir=}"
+        if [ -z "$ci_failure_artifacts_out_dir" ]; then
+          ci_failure_artifacts_empty_value_error "--out-dir" "use --out-dir=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --out-dir)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--out-dir" "use --out-dir=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--out-dir" "use --out-dir=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --run-tests-log=*)
+        ci_failure_artifacts_run_tests_log="${arg#--run-tests-log=}"
+        if [ -z "$ci_failure_artifacts_run_tests_log" ]; then
+          ci_failure_artifacts_empty_value_error "--run-tests-log" "use --run-tests-log=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --run-tests-log)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--run-tests-log" "use --run-tests-log=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--run-tests-log" "use --run-tests-log=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --shellcheck-log=*)
+        ci_failure_artifacts_shellcheck_log="${arg#--shellcheck-log=}"
+        if [ -z "$ci_failure_artifacts_shellcheck_log" ]; then
+          ci_failure_artifacts_empty_value_error "--shellcheck-log" "use --shellcheck-log=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --shellcheck-log)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--shellcheck-log" "use --shellcheck-log=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--shellcheck-log" "use --shellcheck-log=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --check-portability-log=*)
+        ci_failure_artifacts_check_portability_log="${arg#--check-portability-log=}"
+        if [ -z "$ci_failure_artifacts_check_portability_log" ]; then
+          ci_failure_artifacts_empty_value_error "--check-portability-log" "use --check-portability-log=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --check-portability-log)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--check-portability-log" "use --check-portability-log=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--check-portability-log" "use --check-portability-log=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --repo-doctor-json=*)
+        ci_failure_artifacts_repo_doctor_json="${arg#--repo-doctor-json=}"
+        if [ -z "$ci_failure_artifacts_repo_doctor_json" ]; then
+          ci_failure_artifacts_empty_value_error "--repo-doctor-json" "use --repo-doctor-json=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --repo-doctor-json)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--repo-doctor-json" "use --repo-doctor-json=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--repo-doctor-json" "use --repo-doctor-json=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --repo-doctor-log=*)
+        ci_failure_artifacts_repo_doctor_log="${arg#--repo-doctor-log=}"
+        if [ -z "$ci_failure_artifacts_repo_doctor_log" ]; then
+          ci_failure_artifacts_empty_value_error "--repo-doctor-log" "use --repo-doctor-log=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --repo-doctor-log)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--repo-doctor-log" "use --repo-doctor-log=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--repo-doctor-log" "use --repo-doctor-log=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --repo-doctor-stderr=*)
+        ci_failure_artifacts_repo_doctor_stderr="${arg#--repo-doctor-stderr=}"
+        if [ -z "$ci_failure_artifacts_repo_doctor_stderr" ]; then
+          ci_failure_artifacts_empty_value_error "--repo-doctor-stderr" "use --repo-doctor-stderr=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --repo-doctor-stderr)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          ci_failure_artifacts_unrecognized_value_error "--repo-doctor-stderr" "use --repo-doctor-stderr=<path>" || return 1
+        else
+          ci_failure_artifacts_missing_value_error "--repo-doctor-stderr" "use --repo-doctor-stderr=<path>" || return 1
+        fi
+        return 1
+        ;;
+      --*)
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-failure-artifacts --help" || return 1
+        return 1
+        ;;
+      *)
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/ci-failure-artifacts --help" || return 1
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$ci_failure_artifacts_out_dir" ]; then
+    ci_failure_artifacts_missing_value_error "--out-dir" "use --out-dir=<path>" || return 1
+    return 1
+  fi
+
+  if ! mkdir -p "$ci_failure_artifacts_out_dir" >/dev/null 2>&1; then
+    printf 'fail: unable to create output directory\n' >&2
+    printf 'path: %s\n' "$ci_failure_artifacts_out_dir" >&2
+    return 1
+  fi
+
+  python3 - "$ci_failure_artifacts_out_dir" \
+    "$ci_failure_artifacts_run_tests_log" \
+    "$ci_failure_artifacts_shellcheck_log" \
+    "$ci_failure_artifacts_check_portability_log" \
+    "$ci_failure_artifacts_repo_doctor_json" \
+    "$ci_failure_artifacts_repo_doctor_log" \
+    "$ci_failure_artifacts_repo_doctor_stderr" <<'PY' || return 1
+import json
+import os
+import re
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+out_dir = Path(sys.argv[1])
+source_paths = {
+    "run-tests.log": sys.argv[2],
+    "shellcheck.log": sys.argv[3],
+    "check-portability.log": sys.argv[4],
+    "repo-doctor.json": sys.argv[5],
+    "repo-doctor.log": sys.argv[6],
+    "repo-doctor.stderr": sys.argv[7],
+}
+
+artifact_paths = {
+    "failure_log": out_dir / "failure-log.txt",
+    "failure_excerpt": out_dir / "failure-excerpt.txt",
+    "policy_summary": out_dir / "policy-summary.md",
+    "machine_summary": out_dir / "machine-summary.json",
+    "run_tests_log": out_dir / "run-tests.log",
+    "shellcheck_log": out_dir / "shellcheck.log",
+    "check_portability_log": out_dir / "check-portability.log",
+    "repo_doctor_log": out_dir / "repo-doctor.log",
+    "repo_doctor_json": out_dir / "repo-doctor.json",
+    "repo_doctor_stderr": out_dir / "repo-doctor.stderr",
+    "artifact_generation_log": out_dir / "artifact-generation.log",
+}
+
+missing_inputs = []
+
+
+def file_present(path_str: str) -> bool:
+    if not path_str:
+        return False
+    path = Path(path_str)
+    return path.is_file() and os.access(path, os.R_OK)
+
+
+def copy_if_present(logical_name: str, src_str: str) -> None:
+    if not src_str:
+        return
+    src = Path(src_str)
+    dst = out_dir / logical_name
+    if file_present(src_str):
+        try:
+            if src.resolve() == dst.resolve():
+                return
+        except FileNotFoundError:
+            pass
+        shutil.copyfile(src, dst)
+    else:
+        missing_inputs.append(logical_name)
+
+
+for logical_name, src_str in source_paths.items():
+    copy_if_present(logical_name, src_str)
+
+def first_non_empty(paths):
+    for path in paths:
+        if path.is_file() and path.stat().st_size > 0:
+            return path
+    return None
+
+
+repo_doctor_summary = {}
+repo_doctor_json_path = artifact_paths["repo_doctor_json"]
+if repo_doctor_json_path.is_file() and repo_doctor_json_path.stat().st_size > 0:
+    try:
+        repo_doctor_summary = json.loads(repo_doctor_json_path.read_text(encoding="utf-8"))
+    except Exception:
+        repo_doctor_summary = {}
+
+def read_text(path: Path) -> list[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return []
+
+
+def detect_label(lines: list[str], source_name: str) -> str:
+    patterns = [
+        ("shellcheck", re.compile(r"(shellcheck|\bSC\d{4}\b)", re.I)),
+        ("docs-check", re.compile(r"(docs-check|docs index coverage)", re.I)),
+        ("version-consistency", re.compile(r"version-consistency", re.I)),
+        ("check-portability", re.compile(r"(check-portability|portability drift)", re.I)),
+        ("run-tests", re.compile(r"run-tests", re.I)),
+        ("repo-doctor", re.compile(r"repo-doctor", re.I)),
+        ("pr-body-check", re.compile(r"pr-body-check", re.I)),
+    ]
+    for line in lines:
+        for label, pattern in patterns:
+            if pattern.search(line):
+                return label
+    if source_name == "repo-doctor.json":
+        return "repo-doctor"
+    if source_name == "run-tests.log":
+        return "run-tests"
+    if source_name == "shellcheck.log":
+        return "shellcheck"
+    if source_name == "check-portability.log":
+        return "check-portability"
+    if source_name == "repo-doctor.log":
+        return "repo-doctor"
+    return "unknown-ci"
+
+
+def detect_excerpt(lines: list[str], label: str) -> str:
+    if not lines:
+        return ""
+    patterns = [
+        re.compile(r"(shellcheck|\bSC\d{4}\b)", re.I),
+        re.compile(r"(docs-check|docs index coverage)", re.I),
+        re.compile(r"version-consistency", re.I),
+        re.compile(r"(check-portability|portability drift)", re.I),
+        re.compile(r"run-tests", re.I),
+        re.compile(r"repo-doctor", re.I),
+        re.compile(r"pr-body-check", re.I),
+        re.compile(r"^(fail|FAIL|STOP|ERROR):\s+", re.I),
+    ]
+    match_index = None
+    for pattern in patterns:
+        for idx, line in enumerate(lines):
+            if pattern.search(line):
+                match_index = idx
+                break
+        if match_index is not None:
+            break
+    if match_index is None:
+        tail = lines[-12:]
+        return "\n".join(tail).strip()
+    excerpt_lines = lines[match_index:match_index + 4]
+    return "\n".join(excerpt_lines).strip()
+
+
+def suggested_command(label: str) -> str:
+    commands = {
+        "shellcheck": "repo-automation/bin/shellcheck-ci-parity",
+        "docs-check": "repo-automation/tests/docs-check.sh",
+        "version-consistency": "repo-automation/tests/version-consistency.sh",
+        "check-portability": "repo-automation/bin/check-portability --explain",
+        "run-tests": "repo-automation/bin/run-tests --changed --quiet",
+        "repo-doctor": "repo-automation/bin/repo-doctor --quick --no-run-tests --explain",
+        "pr-body-check": "repo-automation/bin/pr-body-check --help",
+        "unknown-ci": "inspect failure-excerpt.txt and failure-log.txt",
+    }
+    return commands.get(label, commands["unknown-ci"])
+
+
+source_file = None
+source_name = ""
+for path in [
+    artifact_paths["run_tests_log"],
+    artifact_paths["shellcheck_log"],
+    artifact_paths["check_portability_log"],
+    artifact_paths["repo_doctor_log"],
+    artifact_paths["artifact_generation_log"],
+]:
+    if path.is_file() and path.stat().st_size > 0:
+        source_file = path
+        source_name = path.name
+        break
+
+if source_file is None:
+    if repo_doctor_json_path.is_file() and repo_doctor_json_path.stat().st_size > 0:
+        source_file = repo_doctor_json_path
+        source_name = "repo-doctor.json"
+    else:
+        source_name = "unknown-ci"
+
+primary_source_label = "unknown-ci"
+primary_excerpt = ""
+if source_file is not None and source_name != "repo-doctor.json":
+    lines = read_text(source_file)
+    primary_source_label = detect_label(lines, source_name)
+    primary_excerpt = detect_excerpt(lines, primary_source_label)
+elif source_name == "repo-doctor.json":
+    primary_source_label = "repo-doctor"
+    overall_status = str(repo_doctor_summary.get("overall_status", "unknown"))
+    fail_count = repo_doctor_summary.get("fail_count", 0)
+    warn_count = repo_doctor_summary.get("warn_count", 0)
+    primary_excerpt = f"overall_status={overall_status} fail_count={fail_count} warn_count={warn_count}"
+
+if not primary_excerpt and source_file is not None and source_name != "repo-doctor.json":
+    lines = read_text(source_file)
+    primary_excerpt = "\n".join(lines[-12:]).strip()
+
+if source_file is not None and source_name != "repo-doctor.json" and source_file.name in {
+    "run-tests.log",
+    "shellcheck.log",
+    "check-portability.log",
+    "repo-doctor.log",
+    "artifact-generation.log",
+}:
+    shutil.copyfile(source_file, artifact_paths["failure_log"])
+elif source_name == "repo-doctor.json":
+    # repo-doctor JSON is summarized separately; the raw failure log is optional.
+    pass
+
+if artifact_paths["failure_log"].is_file() and artifact_paths["failure_log"].stat().st_size > 0:
+    failure_lines = read_text(artifact_paths["failure_log"])
+else:
+    failure_lines = []
+
+if not primary_excerpt:
+    if failure_lines:
+        primary_excerpt = "\n".join(failure_lines[-12:]).strip()
+    else:
+        primary_excerpt = "no failure log available"
+
+artifact_filenames = {
+    "failure_log": artifact_paths["failure_log"].name if source_file is not None and source_name != "repo-doctor.json" else "",
+    "failure_excerpt": artifact_paths["failure_excerpt"].name,
+    "policy_summary": artifact_paths["policy_summary"].name,
+    "machine_summary": artifact_paths["machine_summary"].name,
+    "run_tests_log": artifact_paths["run_tests_log"].name if artifact_paths["run_tests_log"].exists() else "",
+    "shellcheck_log": artifact_paths["shellcheck_log"].name if artifact_paths["shellcheck_log"].exists() else "",
+    "check_portability_log": artifact_paths["check_portability_log"].name if artifact_paths["check_portability_log"].exists() else "",
+    "repo_doctor_log": artifact_paths["repo_doctor_log"].name if artifact_paths["repo_doctor_log"].exists() else "",
+    "repo_doctor_json": artifact_paths["repo_doctor_json"].name if artifact_paths["repo_doctor_json"].exists() else "",
+    "repo_doctor_stderr": artifact_paths["repo_doctor_stderr"].name if artifact_paths["repo_doctor_stderr"].exists() else "",
+    "artifact_generation_log": artifact_paths["artifact_generation_log"].name if artifact_paths["artifact_generation_log"].exists() else "",
+}
+
+repo_doctor_object = {}
+if repo_doctor_summary:
+    repo_doctor_object = {
+        "overall_status": str(repo_doctor_summary.get("overall_status", "")),
+        "pass_count": repo_doctor_summary.get("pass_count", 0),
+        "warn_count": repo_doctor_summary.get("warn_count", 0),
+        "fail_count": repo_doctor_summary.get("fail_count", 0),
+    }
+
+policy_lines = [
+    "# CI failure artifacts",
+    "",
+    "## artifact files",
+]
+for key in [
+    "failure_log",
+    "failure_excerpt",
+    "policy_summary",
+    "machine_summary",
+    "run_tests_log",
+    "shellcheck_log",
+    "check_portability_log",
+    "repo_doctor_log",
+    "repo_doctor_json",
+    "repo_doctor_stderr",
+    "artifact_generation_log",
+]:
+    filename = artifact_filenames.get(key, "")
+    if filename:
+        policy_lines.append(f"- `{filename}`")
+policy_lines.extend([
+    "",
+    f"primary failure source: `{source_name or 'unknown-ci'}`",
+    f"first failure label: `{primary_source_label}`",
+    f"suggested next command: `{suggested_command(primary_source_label)}`",
+])
+if repo_doctor_object:
+    policy_lines.append(
+        f"repo-doctor: `{repo_doctor_object['overall_status']}` (pass={repo_doctor_object['pass_count']} warn={repo_doctor_object['warn_count']} fail={repo_doctor_object['fail_count']})"
+    )
+policy_lines.extend([
+    "",
+    "repo-doctor is collected on failure and does not mask the original CI failure.",
+    "check-portability advisory findings may be warnings unless blocking drift exists.",
+])
+artifact_paths["policy_summary"].write_text("\n".join(policy_lines).rstrip() + "\n", encoding="utf-8")
+artifact_paths["failure_excerpt"].write_text(primary_excerpt.rstrip() + "\n", encoding="utf-8")
+
+machine_summary = {
+    "script": "ci-failure-artifacts",
+    "overall_status": "pass",
+    "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "primary_failure": {
+        "source": source_name or "unknown-ci",
+        "label": primary_source_label,
+        "excerpt": primary_excerpt,
+        "suggested_command": suggested_command(primary_source_label),
+    },
+    "artifacts": {
+        "failure_log": artifact_filenames.get("failure_log", ""),
+        "failure_excerpt": artifact_filenames.get("failure_excerpt", ""),
+        "policy_summary": artifact_filenames.get("policy_summary", ""),
+        "machine_summary": artifact_filenames.get("machine_summary", ""),
+        "run_tests_log": artifact_filenames.get("run_tests_log", ""),
+        "shellcheck_log": artifact_filenames.get("shellcheck_log", ""),
+        "check_portability_log": artifact_filenames.get("check_portability_log", ""),
+        "repo_doctor_log": artifact_filenames.get("repo_doctor_log", ""),
+        "repo_doctor_json": artifact_filenames.get("repo_doctor_json", ""),
+        "repo_doctor_stderr": artifact_filenames.get("repo_doctor_stderr", ""),
+        "artifact_generation_log": artifact_filenames.get("artifact_generation_log", ""),
+    },
+    "missing_inputs": missing_inputs,
+    "output_dir": str(out_dir),
+}
+if repo_doctor_object:
+    machine_summary["repo_doctor"] = repo_doctor_object
+else:
+    machine_summary["repo_doctor"] = {}
+
+artifact_paths["machine_summary"].write_text(
+    json.dumps(machine_summary, indent=2, sort_keys=False) + "\n",
+    encoding="utf-8",
+)
+
+if artifact_paths["failure_log"].exists() and artifact_paths["failure_log"].stat().st_size == 0:
+    artifact_paths["failure_log"].unlink()
+PY
+  if [ "$ci_failure_artifacts_json" -eq 1 ]; then
+    cat "$ci_failure_artifacts_out_dir/machine-summary.json"
+    printf '\n'
+  elif [ "$ci_failure_artifacts_quiet" -ne 1 ]; then
+    printf '%s\n' "$ci_failure_artifacts_out_dir"
+  fi
+
+  return 0
+}
+
+ci_failure_artifacts_main "$@"
+# repo-automation/bin/ci-failure-artifacts EOF

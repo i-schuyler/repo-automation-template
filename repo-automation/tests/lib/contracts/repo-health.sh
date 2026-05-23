@@ -1952,10 +1952,13 @@ EOF
     status=1
   fi
 
-  if grep -Fq 'repo-automation/bin/check-portability' "$smoke_repo_root/.github/workflows/ci.yml"; then
-    test_pass "ci workflow invokes check-portability"
+  if grep -Fq 'repo-automation/bin/check-portability | tee "$check_portability_log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
+    grep -Fq 'repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn --log-file="$RUNNER_TEMP/repo-doctor.log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
+    grep -Fq 'repo-automation/bin/ci-failure-artifacts --out-dir="$RUNNER_TEMP/ci-failure-artifacts"' "$smoke_repo_root/.github/workflows/ci.yml" &&
+    grep -Fq '${{ runner.temp }}/ci-failure-artifacts/**' "$smoke_repo_root/.github/workflows/ci.yml"; then
+    test_pass "ci workflow captures portability and failure artifacts"
   else
-    test_fail "ci workflow invokes check-portability"
+    test_fail "ci workflow captures portability and failure artifacts"
     status=1
   fi
 

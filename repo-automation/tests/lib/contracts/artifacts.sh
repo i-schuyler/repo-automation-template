@@ -1998,4 +1998,254 @@ PY
   return "$status"
 }
 
+smoke_check_ci_failure_artifacts_contract() {
+  local status=0
+  local help_file="$smoke_test_base/ci-failure-artifacts-help-$$.txt"
+  local unknown_stderr="$smoke_test_base/ci-failure-artifacts-unknown-$$.stderr"
+  local out_dir_format_stderr="$smoke_test_base/ci-failure-artifacts-out-dir-format-$$.stderr"
+  local out_dir_empty_stderr="$smoke_test_base/ci-failure-artifacts-out-dir-empty-$$.stderr"
+  local run_tests_format_stderr="$smoke_test_base/ci-failure-artifacts-run-tests-format-$$.stderr"
+  local run_tests_empty_stderr="$smoke_test_base/ci-failure-artifacts-run-tests-empty-$$.stderr"
+  local missing_out_dir_stderr="$smoke_test_base/ci-failure-artifacts-missing-out-dir-$$.stderr"
+  local default_dir="$smoke_test_base/ci-failure-artifacts-default-$$"
+  local default_out="$smoke_test_base/ci-failure-artifacts-default-$$.txt"
+  local quiet_dir="$smoke_test_base/ci-failure-artifacts-quiet-$$"
+  local quiet_out="$smoke_test_base/ci-failure-artifacts-quiet-$$.txt"
+  local quiet_err="$smoke_test_base/ci-failure-artifacts-quiet-$$.stderr"
+  local json_dir="$smoke_test_base/ci-failure-artifacts-json-$$"
+  local json_out="$smoke_test_base/ci-failure-artifacts-json-$$.json"
+  local json_missing_dir="$smoke_test_base/ci-failure-artifacts-missing-$$"
+  local json_missing_out="$smoke_test_base/ci-failure-artifacts-missing-$$.txt"
+  local rich_out_dir="$smoke_test_base/ci-failure-artifacts-rich-$$"
+  local rich_stdout="$smoke_test_base/ci-failure-artifacts-rich-$$.txt"
+  local rich_input_dir="$smoke_test_base/ci-failure-artifacts-inputs-$$"
+  local rich_run_tests="$rich_input_dir/run-tests.log"
+  local rich_shellcheck="$rich_input_dir/shellcheck.log"
+  local rich_portability="$rich_input_dir/check-portability.log"
+  local rich_repo_doctor_log="$rich_input_dir/repo-doctor.log"
+  local rich_repo_doctor_json="$rich_input_dir/repo-doctor.json"
+  local rich_repo_doctor_stderr="$rich_input_dir/repo-doctor.stderr"
+  local rich_failure_log="$rich_out_dir/failure-log.txt"
+  local rich_failure_excerpt="$rich_out_dir/failure-excerpt.txt"
+  local rich_policy_summary="$rich_out_dir/policy-summary.md"
+  local rich_machine_summary="$rich_out_dir/machine-summary.json"
+  local fallback_out_dir="$smoke_test_base/ci-failure-artifacts-fallback-$$"
+  local fallback_stdout="$smoke_test_base/ci-failure-artifacts-fallback-$$.txt"
+  local fallback_input_dir="$smoke_test_base/ci-failure-artifacts-fallback-inputs-$$"
+  local fallback_run_tests="$fallback_input_dir/run-tests.log"
+  local fallback_shellcheck="$fallback_input_dir/shellcheck.log"
+  local fallback_failure_log="$fallback_out_dir/failure-log.txt"
+  local fallback_machine_summary="$fallback_out_dir/machine-summary.json"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --help > "$help_file"
+  ) && grep -Fq -- '--out-dir=<path>' "$help_file" && grep -Fq -- '--run-tests-log=<path>' "$help_file" && grep -Fq -- '--repo-doctor-stderr=<path>' "$help_file" && ! grep -Fq -- '--out-dir PATH' "$help_file" && ! grep -Fq -- '--run-tests-log PATH' "$help_file"; then
+    test_pass "ci-failure-artifacts help shows strict value syntax"
+  else
+    test_fail "ci-failure-artifacts help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --bogus >/dev/null 2> "$unknown_stderr"
+  ); then
+    test_fail "ci-failure-artifacts rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_stderr" "unknown flag" "--bogus" "run repo-automation/bin/ci-failure-artifacts --help"; then
+    test_pass "ci-failure-artifacts rejects unknown flags"
+  else
+    test_fail "ci-failure-artifacts rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --out-dir "$default_dir" >/dev/null 2> "$out_dir_format_stderr"
+  ); then
+    test_fail "ci-failure-artifacts rejects --out-dir <path>"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_format_stderr" "flag format not accepted" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "ci-failure-artifacts rejects --out-dir <path>"
+  else
+    test_fail "ci-failure-artifacts rejects --out-dir <path>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --out-dir= >/dev/null 2> "$out_dir_empty_stderr"
+  ); then
+    test_fail "ci-failure-artifacts rejects empty --out-dir"
+    status=1
+  elif smoke_assert_flag_error_shape "$out_dir_empty_stderr" "empty flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "ci-failure-artifacts rejects empty --out-dir"
+  else
+    test_fail "ci-failure-artifacts rejects empty --out-dir"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --out-dir >/dev/null 2> "$missing_out_dir_stderr"
+  ); then
+    test_fail "ci-failure-artifacts rejects missing --out-dir"
+    status=1
+  elif smoke_assert_flag_error_shape "$missing_out_dir_stderr" "missing flag value" "--out-dir" "use --out-dir=<path>"; then
+    test_pass "ci-failure-artifacts rejects missing --out-dir"
+  else
+    test_fail "ci-failure-artifacts rejects missing --out-dir"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --run-tests-log "$default_dir/run-tests.log" >/dev/null 2> "$run_tests_format_stderr"
+  ); then
+    test_fail "ci-failure-artifacts rejects --run-tests-log <path>"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_format_stderr" "flag format not accepted" "--run-tests-log" "use --run-tests-log=<path>"; then
+    test_pass "ci-failure-artifacts rejects --run-tests-log <path>"
+  else
+    test_fail "ci-failure-artifacts rejects --run-tests-log <path>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/ci-failure-artifacts --run-tests-log= >/dev/null 2> "$run_tests_empty_stderr"
+  ); then
+    test_fail "ci-failure-artifacts rejects empty --run-tests-log"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_empty_stderr" "empty flag value" "--run-tests-log" "use --run-tests-log=<path>"; then
+    test_pass "ci-failure-artifacts rejects empty --run-tests-log"
+  else
+    test_fail "ci-failure-artifacts rejects empty --run-tests-log"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/ci-failure-artifacts --out-dir="$default_dir" > "$default_out"
+  ) && smoke_assert_single_path_output "$default_out" && [ "$(cat "$default_out")" = "$default_dir" ]; then
+    test_pass "ci-failure-artifacts default success prints the output directory"
+  else
+    test_fail "ci-failure-artifacts default success prints the output directory"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/ci-failure-artifacts --out-dir="$quiet_dir" --quiet > "$quiet_out" 2> "$quiet_err"
+  ) && [ ! -s "$quiet_out" ] && [ ! -s "$quiet_err" ]; then
+    test_pass "ci-failure-artifacts quiet success is silent"
+  else
+    test_fail "ci-failure-artifacts quiet success is silent"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/ci-failure-artifacts --out-dir="$json_dir" --json > "$json_out"
+  ) && python3 -m json.tool "$json_out" >/dev/null && smoke_json_assert "$json_out" 'data.get("script") == "ci-failure-artifacts" and data.get("overall_status") == "pass" and data.get("output_dir") == "'"$json_dir"'" and isinstance(data.get("primary_failure"), dict) and isinstance(data.get("artifacts"), dict)'; then
+    test_pass "ci-failure-artifacts json success is valid"
+  else
+    test_fail "ci-failure-artifacts json success is valid"
+    status=1
+  fi
+
+  mkdir -p "$rich_input_dir" "$rich_out_dir" || return 1
+  cat > "$rich_run_tests" <<'EOF'
+fail: repo-automation/tests/docs-check.sh
+fix: repo-automation/bin/run-tests --changed --quiet
+EOF
+  cat > "$rich_shellcheck" <<'EOF'
+shellcheck: repo-automation/bin/pr-finish:42:1: SC2086: Double quote to prevent globbing and word splitting.
+EOF
+  cat > "$rich_portability" <<'EOF'
+warn: portability advisory findings
+EOF
+  cat > "$rich_repo_doctor_log" <<'EOF'
+WARN: repo-doctor - repo health warning
+EOF
+  cat > "$rich_repo_doctor_json" <<'EOF'
+{"script":"repo-doctor","overall_status":"warn","pass_count":4,"warn_count":2,"fail_count":1}
+EOF
+  cat > "$rich_repo_doctor_stderr" <<'EOF'
+repo-doctor stderr line
+EOF
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/ci-failure-artifacts \
+      --out-dir="$rich_out_dir" \
+      --run-tests-log="$rich_run_tests" \
+      --shellcheck-log="$rich_shellcheck" \
+      --check-portability-log="$rich_portability" \
+      --repo-doctor-json="$rich_repo_doctor_json" \
+      --repo-doctor-log="$rich_repo_doctor_log" \
+      --repo-doctor-stderr="$rich_repo_doctor_stderr" > "$rich_stdout"
+  ) && smoke_assert_single_path_output "$rich_stdout" && [ "$(cat "$rich_stdout")" = "$rich_out_dir" ] &&
+    [ -f "$rich_out_dir/run-tests.log" ] &&
+    [ -f "$rich_out_dir/shellcheck.log" ] &&
+    [ -f "$rich_out_dir/check-portability.log" ] &&
+    [ -f "$rich_out_dir/repo-doctor.log" ] &&
+    [ -f "$rich_out_dir/repo-doctor.json" ] &&
+    [ -f "$rich_out_dir/repo-doctor.stderr" ] &&
+    cmp -s "$rich_run_tests" "$rich_failure_log" &&
+    cmp -s "$rich_run_tests" "$rich_out_dir/run-tests.log" &&
+    grep -Fq 'docs-check' "$rich_failure_excerpt" &&
+    grep -Fq 'suggested next command: `repo-automation/tests/docs-check.sh`' "$rich_policy_summary" &&
+    grep -Fq 'repo-doctor: `warn`' "$rich_policy_summary" &&
+    python3 -m json.tool "$rich_machine_summary" >/dev/null &&
+    smoke_json_assert "$rich_machine_summary" 'data.get("primary_failure", {}).get("source") == "run-tests.log" and data.get("primary_failure", {}).get("label") == "docs-check" and data.get("primary_failure", {}).get("suggested_command") == "repo-automation/tests/docs-check.sh" and data.get("artifacts", {}).get("run_tests_log") == "run-tests.log" and data.get("artifacts", {}).get("shellcheck_log") == "shellcheck.log" and data.get("artifacts", {}).get("repo_doctor_json") == "repo-doctor.json" and data.get("repo_doctor", {}).get("overall_status") == "warn" and data.get("repo_doctor", {}).get("fail_count") == 1 and data.get("repo_doctor", {}).get("warn_count") == 2 and data.get("missing_inputs") == []'; then
+    test_pass "ci-failure-artifacts assembles stable artifacts and summaries"
+  else
+    test_fail "ci-failure-artifacts assembles stable artifacts and summaries"
+    status=1
+  fi
+
+  mkdir -p "$fallback_input_dir" "$fallback_out_dir" || return 1
+  : > "$fallback_run_tests"
+  cat > "$fallback_shellcheck" <<'EOF'
+shellcheck: repo-automation/bin/check-portability:1:1: SC2034: warning example
+EOF
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/ci-failure-artifacts \
+      --out-dir="$fallback_out_dir" \
+      --run-tests-log="$fallback_run_tests" \
+      --shellcheck-log="$fallback_shellcheck" > "$fallback_stdout"
+  ) && cmp -s "$fallback_shellcheck" "$fallback_failure_log" &&
+    smoke_json_assert "$fallback_out_dir/machine-summary.json" 'data.get("primary_failure", {}).get("source") == "shellcheck.log" and data.get("primary_failure", {}).get("label") == "shellcheck"'; then
+    test_pass "ci-failure-artifacts falls back to the first non-empty evidence file"
+  else
+    test_fail "ci-failure-artifacts falls back to the first non-empty evidence file"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_repo_root" || return 1
+    repo-automation/bin/ci-failure-artifacts \
+      --out-dir="$json_missing_dir" \
+      --run-tests-log="$json_missing_dir/run-tests.log" \
+      --shellcheck-log="$json_missing_dir/shellcheck.log" \
+      --check-portability-log="$json_missing_dir/check-portability.log" \
+      --repo-doctor-json="$json_missing_dir/repo-doctor.json" \
+      --repo-doctor-log="$json_missing_dir/repo-doctor.log" \
+      --repo-doctor-stderr="$json_missing_dir/repo-doctor.stderr" > "$json_missing_out"
+  ) && smoke_json_assert "$json_missing_dir/machine-summary.json" 'sorted(data.get("missing_inputs", [])) == ["check-portability.log", "repo-doctor.json", "repo-doctor.log", "repo-doctor.stderr", "run-tests.log", "shellcheck.log"]'; then
+    test_pass "ci-failure-artifacts records missing optional inputs without failing"
+  else
+    test_fail "ci-failure-artifacts records missing optional inputs without failing"
+    status=1
+  fi
+
+  rm -rf "$rich_input_dir" "$fallback_input_dir" "$default_dir" "$quiet_dir" "$json_dir" "$json_missing_dir" "$rich_out_dir" "$fallback_out_dir" >/dev/null 2>&1 || true
+  rm -f "$help_file" "$unknown_stderr" "$out_dir_format_stderr" "$out_dir_empty_stderr" "$run_tests_format_stderr" "$run_tests_empty_stderr" "$missing_out_dir_stderr" "$default_out" "$quiet_out" "$quiet_err" "$json_out" "$json_missing_out" "$rich_stdout" "$fallback_stdout" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 # repo-automation/tests/lib/contracts/artifacts.sh EOF

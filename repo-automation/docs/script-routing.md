@@ -18,6 +18,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | CI status check | `ci-status` | yes | no | no | yes | no | `ci-watch` |
 | CI watch | `ci-watch` | no | no | no | yes | no | `failure-log` |
 | CI failure evidence | `ci-log-dump` | no | yes | no | yes | no | `failure-log` |
+| CI failure artifact assembly | `ci-failure-artifacts` | yes | yes | no | no | no | `repo-doctor` |
 | review gate and merge | `repo-flow merge`, `pr-finish` | no | yes | yes | yes | maybe | `branch-cleanup` |
 | release prep | `prepare-release` | no | yes | yes | no | yes | `repo-doctor` |
 | downstream install/update | `repo-automation-install` | no | yes | no | no | no | `starter-template-ready` |

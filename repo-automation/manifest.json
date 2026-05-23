@@ -119,6 +119,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/ci-failure-artifacts",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/shellcheck-ci-parity",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -369,6 +374,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/ci-failure-artifacts.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/shellcheck-ci-parity.md",
       "owner": "repo-automation-template",
       "kind": "doc"
@@ -480,6 +490,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/ci-log-dump.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/ci-failure-artifacts.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },

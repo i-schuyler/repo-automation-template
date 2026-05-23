@@ -42,7 +42,7 @@ CI runs the same core checks:
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection and helper-metadata config-key drift detection in `repo-automation/tests/version-consistency.sh`; it also follows the quiet-first contract where success prints `pass`, `--quiet` stays silent, and `--explain` keeps detailed progress lines
 
-CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, and `repo-automation/bin/run-tests` prints a referenced path only for durable logs (explicit `--log-file=<path>` or `--no-clean-temp`).
+CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, plus the flat `repo-automation/bin/ci-failure-artifacts` bundle with stable names such as `failure-log.txt`, `failure-excerpt.txt`, `policy-summary.md`, `machine-summary.json`, and the copied raw logs from the CI failure step. `repo-automation/bin/run-tests` still prints a referenced path only for durable logs (explicit `--log-file=<path>` or `--no-clean-temp`).
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.
