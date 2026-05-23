@@ -1546,6 +1546,291 @@ PY
   return "$status"
 }
 
+smoke_check_portability_make_path_fixture() {
+  local fixture_dir="$1"
+
+  mkdir -p "$fixture_dir" || return 1
+  ln -sf "$(command -v bash)" "$fixture_dir/bash" || return 1
+  ln -sf "$(command -v dirname)" "$fixture_dir/dirname" || return 1
+}
+
+smoke_check_portability_clear_advisories() {
+  python3 - "$smoke_test_dir" <<'PY' || return 1
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+replacements = {
+    root / "repo-automation" / "bin" / "repo-doctor": [
+        ("-printf '%P\\n'", "-print"),
+    ],
+    root / "repo-automation" / "bin" / "post-codex-packet": [
+        ("stat -c", "stat -f"),
+    ],
+    root / "repo-automation" / "bin" / "repo-zip": [
+        ("stat -c", "stat -f"),
+    ],
+    root / "repo-automation" / "bin" / "evidence-bundle": [
+        ("stat -c", "stat -f"),
+    ],
+    root / "repo-automation" / "bin" / "status-packet": [
+        ("stat -c", "stat -f"),
+    ],
+    root / "repo-automation" / "bin" / "post-codex-review": [
+        ("stat -c", "stat -f"),
+    ],
+    root / "repo-automation" / "bin" / "failure-log": [
+        ("stat -c", "stat -f"),
+    ],
+    root / "repo-automation" / "tests" / "docs-check.sh": [
+        ("/tmp", "${TMPDIR:-$HOME/.cache}"),
+        ("/var/tmp", "${TMPDIR:-$HOME/.cache}"),
+    ],
+    root / "repo-automation" / "tests" / "contracts" / "repo-flow.sh": [
+        ("/tmp/example", "${TMPDIR:-$HOME/.cache}/example"),
+    ],
+}
+
+for path, edits in replacements.items():
+    text = path.read_text(encoding="utf-8")
+    for old, new in edits:
+        text = text.replace(old, new)
+    path.write_text(text, encoding="utf-8")
+PY
+}
+
+smoke_check_portability_contract() {
+  local status=0
+  local help_out="$smoke_test_base/check-portability-help-$$.txt"
+  local help_err="$smoke_test_base/check-portability-help-$$.stderr"
+  local unknown_err="$smoke_test_base/check-portability-unknown-$$.stderr"
+  local targets_out="$smoke_test_base/check-portability-targets-$$.txt"
+  local targets_err="$smoke_test_base/check-portability-targets-$$.stderr"
+  local advisory_out="$smoke_test_base/check-portability-advisory-$$.txt"
+  local advisory_err="$smoke_test_base/check-portability-advisory-$$.stderr"
+  local quiet_out="$smoke_test_base/check-portability-quiet-$$.txt"
+  local quiet_err="$smoke_test_base/check-portability-quiet-$$.stderr"
+  local json_out="$smoke_test_base/check-portability-json-$$.json"
+  local json_err="$smoke_test_base/check-portability-json-$$.stderr"
+  local clean_json_out="$smoke_test_base/check-portability-clean-json-$$.json"
+  local clean_json_err="$smoke_test_base/check-portability-clean-json-$$.stderr"
+  local allowed_out="$smoke_test_base/check-portability-allowed-$$.txt"
+  local allowed_err="$smoke_test_base/check-portability-allowed-$$.stderr"
+  local temp_out="$smoke_test_base/check-portability-temp-$$.txt"
+  local temp_err="$smoke_test_base/check-portability-temp-$$.stderr"
+  local portable_out="$smoke_test_base/check-portability-portable-$$.txt"
+  local portable_err="$smoke_test_base/check-portability-portable-$$.stderr"
+  local python_out="$smoke_test_base/check-portability-python-$$.txt"
+  local python_err="$smoke_test_base/check-portability-python-$$.stderr"
+  local workflow_path="$smoke_test_dir/.github/workflows/ci.yml"
+  local path_fixture="$smoke_test_base/check-portability-path-fixture-$$"
+
+  smoke_check_portability_make_path_fixture "$path_fixture" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$path_fixture" repo-automation/bin/check-portability --help >"$help_out" 2>"$help_err"
+  ) && grep -Fqx 'Usage: repo-automation/bin/check-portability [--help] [--quiet] [--explain] [--json] [--print-targets]' "$help_out" &&
+    grep -Fq -- '--print-targets' "$help_out" &&
+    ! grep -Fq -- '--print-targets=' "$help_out" &&
+    [ ! -s "$help_err" ]; then
+    test_pass "check-portability help works before shellcheck availability"
+  else
+    test_fail "check-portability help works before shellcheck availability"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability --bogus >"$help_out" 2>"$unknown_err"
+  ); then
+    test_fail "check-portability rejects unknown flags"
+    status=1
+  elif smoke_assert_flag_error_shape "$unknown_err" "unknown flag" "--bogus" "run repo-automation/bin/check-portability --help"; then
+    test_pass "check-portability rejects unknown flags"
+  else
+    test_fail "check-portability rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir/repo-automation/tests" || return 1
+    ../bin/check-portability --print-targets >"$targets_out"
+  ); then
+    if python3 - "$targets_out" <<'PY' >/dev/null 2>"$targets_err"
+import sys
+from pathlib import Path
+
+targets = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+if targets != sorted(targets):
+    raise SystemExit(1)
+if len(targets) != len(set(targets)):
+    raise SystemExit(1)
+required = {
+    "repo-automation/bin/check-portability",
+    ".github/workflows/ci.yml",
+}
+if not required.issubset(set(targets)):
+    raise SystemExit(1)
+PY
+    then
+    test_pass "check-portability prints the metadata-driven file set"
+    else
+      test_fail "check-portability prints the metadata-driven file set"
+      status=1
+    fi
+  else
+    test_fail "check-portability prints the metadata-driven file set"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability >"$advisory_out" 2>"$advisory_err"
+  ) && grep -Fq 'warn: portability advisory findings' "$advisory_out" &&
+    [ -s "$advisory_out" ] &&
+    [ ! -s "$advisory_err" ]; then
+    test_pass "check-portability advisory findings exit 0"
+  else
+    test_fail "check-portability advisory findings exit 0"
+    status=1
+  fi
+
+  smoke_check_portability_clear_advisories || return 1
+
+  cat > "$workflow_path" <<'EOF'
+name: CI
+permissions:
+  contents: read
+jobs:
+  portability:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ready
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability --quiet >"$quiet_out" 2>"$quiet_err"
+  ) && [ ! -s "$quiet_out" ] && [ ! -s "$quiet_err" ]; then
+    test_pass "check-portability quiet success is silent"
+  else
+    test_fail "check-portability quiet success is silent"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability --json >"$json_out" 2>"$json_err"
+  ) && [ ! -s "$json_err" ] && python3 -m json.tool "$json_out" >/dev/null &&
+    smoke_json_assert "$json_out" 'data.get("script") == "check-portability" and data.get("status") == "pass" and data.get("target_count") > 0 and data.get("fail_count") == 0 and data.get("warn_count") == 0 and isinstance(data.get("targets"), list) and isinstance(data.get("findings"), list) and isinstance(data.get("target_sources"), dict)'; then
+    test_pass "check-portability json is valid"
+  else
+    test_fail "check-portability json is valid"
+    status=1
+  fi
+
+  cat > "$workflow_path" <<'EOF'
+name: CI
+permissions:
+  contents: read
+jobs:
+  portability:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python3 script.py
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability >"$allowed_out" 2>"$allowed_err"
+  ) && grep -Fqx 'pass' "$allowed_out" && [ ! -s "$allowed_err" ]; then
+    test_pass "check-portability allows python3 command tokens"
+  else
+    test_fail "check-portability allows python3 command tokens"
+    status=1
+  fi
+
+  cat > "$workflow_path" <<'EOF'
+name: CI
+permissions:
+  contents: read
+jobs:
+  portability:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo /tmp/cache
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability >"$temp_out" 2>"$temp_err"
+  ) && grep -Fq 'warn:' "$temp_out" && grep -Fq 'portability-temp-path' "$temp_out" && grep -Fq '${TMPDIR:-$HOME/.cache}' "$temp_out" && [ ! -s "$temp_err" ]; then
+    test_pass "check-portability warns on tmp-path portability drift"
+  else
+    test_fail "check-portability warns on tmp-path portability drift"
+    status=1
+  fi
+
+  cat > "$workflow_path" <<'EOF'
+name: CI
+permissions:
+  contents: read
+jobs:
+  portability:
+    runs-on: ubuntu-latest
+    steps:
+      - run: grep -P '^x$' /dev/null
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability >"$portable_out" 2>"$portable_err"
+  ) && grep -Fq 'warn:' "$portable_out" && grep -Fq 'portability-grep-p' "$portable_out" && [ ! -s "$portable_err" ]; then
+    test_pass "check-portability warns on GNU/BSD-sensitive drift"
+  else
+    test_fail "check-portability warns on GNU/BSD-sensitive drift"
+    status=1
+  fi
+
+  cat > "$workflow_path" <<'EOF'
+name: CI
+permissions:
+  contents: read
+jobs:
+  portability:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python - <<'PY'
+          print('bad')
+        PY
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/check-portability >"$python_out" 2>"$python_err"
+  ); then
+    test_fail "check-portability rejects executable python command tokens"
+    status=1
+  elif grep -Fq 'fail: portability drift' "$python_out" || grep -Fq 'fail: portability drift' "$python_err"; then
+    test_pass "check-portability rejects executable python command tokens"
+  else
+    test_fail "check-portability rejects executable python command tokens"
+    status=1
+  fi
+
+  if grep -Fq 'repo-automation/bin/check-portability' "$smoke_repo_root/.github/workflows/ci.yml"; then
+    test_pass "ci workflow invokes check-portability"
+  else
+    test_fail "ci workflow invokes check-portability"
+    status=1
+  fi
+
+  rm -f "$help_out" "$help_err" "$unknown_err" "$targets_out" "$targets_err" "$advisory_out" "$advisory_err" "$quiet_out" "$quiet_err" "$json_out" "$json_err" "$clean_json_out" "$clean_json_err" "$allowed_out" "$allowed_err" "$temp_out" "$temp_err" "$portable_out" "$portable_err" "$python_out" "$python_err" >/dev/null 2>&1 || true
+  rm -rf "$path_fixture" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 smoke_check_repo_config_local_override_contract() {
   local status=0
   local local_config_path="$smoke_test_dir/.repo-automation.local.conf"

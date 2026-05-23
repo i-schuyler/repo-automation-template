@@ -1,0 +1,437 @@
+#!/usr/bin/env bash
+# repo-automation/bin/check-portability
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+check_portability_quiet=0
+check_portability_explain=0
+check_portability_json=0
+check_portability_print_targets=0
+
+check_portability_usage() {
+  printf 'Usage: repo-automation/bin/check-portability [--help] [--quiet] [--explain] [--json] [--print-targets]\n'
+  printf '\n'
+  printf 'Scan metadata-driven repo source and workflow targets for portability drift.\n'
+  printf 'Use --print-targets to show the exact file set.\n'
+}
+
+check_portability_flag_error() {
+  repo_auto_flag_error "unknown flag" "$1" "run repo-automation/bin/check-portability --help"
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help)
+      check_portability_usage
+      exit 0
+      ;;
+    --quiet)
+      check_portability_quiet=1
+      ;;
+    --explain)
+      check_portability_explain=1
+      ;;
+    --json)
+      check_portability_json=1
+      ;;
+    --print-targets)
+      check_portability_print_targets=1
+      ;;
+    --*)
+      check_portability_flag_error "$1"
+      exit 1
+      ;;
+    *)
+      check_portability_flag_error "$1"
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+repo_root="$(cd "$script_dir/../.." && pwd)"
+
+check_portability_run_python() {
+  python3 - "$repo_root" "$check_portability_quiet" "$check_portability_explain" "$check_portability_json" "$check_portability_print_targets" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+quiet = sys.argv[2] == "1"
+explain = sys.argv[3] == "1"
+json_mode = sys.argv[4] == "1"
+print_targets = sys.argv[5] == "1"
+
+command_prefix = r"(?:^|[;&|()]|run:\s*|if\s+|elif\s+|then\s+|do\s+|time\s+|while\s+|until\s+)"
+
+blocking_rules = [
+    (
+        "python-command-drift",
+        re.compile(r"^\s*#!.*\bpython(?!3)\b"),
+        lambda line: "change the shebang to #!/usr/bin/env python3"
+        if "/usr/bin/env" in line
+        else "change the shebang to python3",
+    ),
+    (
+        "python-command-drift",
+        re.compile(command_prefix + r"/usr/bin/env\s+python(?!3)\b"),
+        lambda line: "use /usr/bin/env python3 instead of /usr/bin/env python",
+    ),
+    (
+        "python-command-drift",
+        re.compile(command_prefix + r"python(?!3)\b"),
+        lambda line: "use python3 instead of python",
+    ),
+]
+
+advisory_rules = [
+    (
+        "portability-temp-path",
+        re.compile(r"/tmp\b"),
+        lambda line: "replace /tmp with ${TMPDIR:-$HOME/.cache}",
+    ),
+    (
+        "portability-temp-path",
+        re.compile(r"/var/tmp\b"),
+        lambda line: "replace /var/tmp with ${TMPDIR:-$HOME/.cache}",
+    ),
+    (
+        "portability-grep-p",
+        re.compile(command_prefix + r"grep\s+-P\b"),
+        lambda line: "use a POSIX grep/awk fallback instead of grep -P",
+    ),
+    (
+        "portability-sed-r",
+        re.compile(command_prefix + r"sed\s+-r\b"),
+        lambda line: "use sed -E or a portable sed expression",
+    ),
+    (
+        "portability-find-printf",
+        re.compile(command_prefix + r"find\b.*\s-printf\b"),
+        lambda line: "use find -print or a portable find+shell loop instead of -printf",
+    ),
+    (
+        "portability-stat-c",
+        re.compile(command_prefix + r"stat\b.*\s-c\b"),
+        lambda line: "use a portable stat fallback or another text-based size/timestamp source",
+    ),
+    (
+        "portability-xargs-r",
+        re.compile(command_prefix + r"xargs\b.*\s-r\b"),
+        lambda line: "guard the pipeline explicitly instead of using xargs -r",
+    ),
+    (
+        "portability-readlink-f",
+        re.compile(command_prefix + r"readlink\s+-f\b"),
+        lambda line: "use cd && pwd or another portable path-resolution fallback",
+    ),
+    (
+        "portability-date-I",
+        re.compile(command_prefix + r"date\s+-I\b"),
+        lambda line: "use a portable ISO-8601 formatter or python3",
+    ),
+    (
+        "portability-sort-V",
+        re.compile(command_prefix + r"sort\s+-V\b"),
+        lambda line: "use an explicit version compare or a portable sort fallback",
+    ),
+]
+
+
+def fail(message: str, detail: str | None = None) -> "NoReturn":
+    print(f"fail: {message}", file=sys.stderr)
+    if detail:
+      print(f"detail: {detail}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def discover_targets() -> tuple[list[str], dict[str, int]]:
+    seen: set[str] = set()
+    targets: list[str] = []
+    source_counts = {
+        "shellcheck-ci-parity": 0,
+        "workflows": 0,
+        "tracked-executable": 0,
+    }
+
+    def add(rel_path: str, source: str) -> None:
+        if rel_path in seen:
+            return
+        path = repo_root / rel_path
+        if not path.exists():
+            fail(f"missing portability target: {rel_path}")
+        if not path.is_file():
+            fail(f"expected portability target file: {rel_path}")
+        seen.add(rel_path)
+        targets.append(rel_path)
+        source_counts[source] += 1
+
+    shellcheck_parity = subprocess.run(
+        [str(repo_root / "repo-automation" / "bin" / "shellcheck-ci-parity"), "--print-paths"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+    )
+    if shellcheck_parity.returncode != 0:
+        stderr = shellcheck_parity.stderr.strip() or shellcheck_parity.stdout.strip()
+        fail("shellcheck-ci-parity target discovery failed", stderr)
+
+    for raw in shellcheck_parity.stdout.splitlines():
+        if not raw:
+            fail("shellcheck-ci-parity produced an empty target path")
+        if raw != raw.strip():
+            fail(f"shellcheck-ci-parity produced a non-canonical target path: {raw}")
+        add(raw, "shellcheck-ci-parity")
+
+    workflows_dir = repo_root / ".github" / "workflows"
+    workflow_paths = sorted(workflows_dir.glob("*.yml"))
+    if not workflow_paths:
+        fail("missing workflow target source: .github/workflows/*.yml")
+    for path in workflow_paths:
+        add(path.relative_to(repo_root).as_posix(), "workflows")
+
+    git_ls_files = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "-z", "--stage"],
+        text=False,
+        capture_output=True,
+    )
+    if git_ls_files.returncode != 0:
+        fail("git is required for portability target discovery")
+
+    for record in git_ls_files.stdout.split(b"\0"):
+        if not record:
+            continue
+        try:
+            meta, path_bytes = record.split(b"\t", 1)
+        except ValueError:
+            fail("unable to parse git ls-files output")
+        mode = meta.split(b" ", 1)[0].decode("utf-8", "replace")
+        if mode != "100755":
+            continue
+        rel_path = path_bytes.decode("utf-8", "replace")
+        add(rel_path, "tracked-executable")
+
+    return sorted(targets), source_counts
+
+
+def trim_excerpt(line: str, limit: int = 160) -> str:
+    excerpt = line.strip()
+    if len(excerpt) <= limit:
+        return excerpt
+    return excerpt[: limit - 1] + "…"
+
+
+def scan_targets(targets: list[str]) -> tuple[list[dict[str, object]], dict[str, int]]:
+    findings: list[dict[str, object]] = []
+    target_count = len(targets)
+    for rel_path in targets:
+        path = repo_root / rel_path
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            fail(f"unable to read portability target: {rel_path}", str(exc))
+
+        for line_number, raw_line in enumerate(text.splitlines(), 1):
+            stripped = raw_line.lstrip()
+            if stripped.startswith("#") and not stripped.startswith("#!"):
+                continue
+
+            for rule_name, pattern, fix_fn in blocking_rules:
+                if pattern.search(raw_line):
+                    findings.append(
+                        {
+                            "severity": "fail",
+                            "rule": rule_name,
+                            "path": rel_path,
+                            "line": line_number,
+                            "excerpt": trim_excerpt(raw_line),
+                            "fix": fix_fn(raw_line),
+                        }
+                    )
+
+            if rel_path != "repo-automation/bin/check-portability":
+                for rule_name, pattern, fix_fn in advisory_rules:
+                    if pattern.search(raw_line):
+                        findings.append(
+                            {
+                                "severity": "warn",
+                                "rule": rule_name,
+                                "path": rel_path,
+                                "line": line_number,
+                                "excerpt": trim_excerpt(raw_line),
+                                "fix": fix_fn(raw_line),
+                            }
+                        )
+
+    findings.sort(
+        key=lambda item: (
+            0 if item["severity"] == "fail" else 1,
+            str(item["path"]),
+            int(item["line"]),
+            str(item["rule"]),
+            str(item["excerpt"]),
+            str(item["fix"]),
+        )
+    )
+    counts = {
+        "fail_count": sum(1 for finding in findings if finding["severity"] == "fail"),
+        "warn_count": sum(1 for finding in findings if finding["severity"] == "warn"),
+        "target_count": target_count,
+    }
+    return findings, counts
+
+
+def print_human(targets: list[str], source_counts: dict[str, int], findings: list[dict[str, object]], counts: dict[str, int]) -> int:
+    fail_count = counts["fail_count"]
+    warn_count = counts["warn_count"]
+    target_count = counts["target_count"]
+
+    if fail_count == 0 and warn_count == 0:
+        print("pass")
+        return 0
+
+    first = findings[0]
+    summary = (
+        f"fail: portability drift (fail_count={fail_count} warn_count={warn_count} "
+        f"target_count={target_count})"
+        if fail_count > 0
+        else f"warn: portability advisory findings (warn_count={warn_count} target_count={target_count})"
+    )
+    if fail_count > 0:
+        print(
+            f"{summary} first: {first['path']}:{first['line']} {first['rule']}; "
+            f"excerpt: {first['excerpt']}; fix: {first['fix']}"
+        )
+        return 1
+
+    print(
+        f"{summary} first: {first['path']}:{first['line']} {first['rule']}; "
+        f"fix: {first['fix']}"
+    )
+    return 0
+
+
+def print_explain(targets: list[str], source_counts: dict[str, int], findings: list[dict[str, object]], counts: dict[str, int]) -> int:
+    status = "pass"
+    if counts["fail_count"] > 0:
+        status = "fail"
+    elif counts["warn_count"] > 0:
+        status = "warn"
+
+    print(f"status: {status}")
+    print(f"target_count: {counts['target_count']}")
+    print(f"fail_count: {counts['fail_count']}")
+    print(f"warn_count: {counts['warn_count']}")
+    print(
+        "target_sources: "
+        f"shellcheck-ci-parity={source_counts['shellcheck-ci-parity']}, "
+        f"workflows={source_counts['workflows']}, "
+        f"tracked-executable={source_counts['tracked-executable']}"
+    )
+    for finding in findings:
+        label = "FAIL" if finding["severity"] == "fail" else "WARN"
+        print(
+            f"{label} {finding['path']}:{finding['line']} {finding['rule']}: "
+            f"{finding['excerpt']}"
+        )
+        print(f"fix: {finding['fix']}")
+    if counts["fail_count"] > 0:
+        return 1
+    return 0
+
+
+def print_json(targets: list[str], source_counts: dict[str, int], findings: list[dict[str, object]], counts: dict[str, int]) -> int:
+    status = "pass"
+    if counts["fail_count"] > 0:
+        status = "fail"
+    elif counts["warn_count"] > 0:
+        status = "warn"
+
+    payload = {
+        "script": "check-portability",
+        "status": status,
+        "target_count": counts["target_count"],
+        "fail_count": counts["fail_count"],
+        "warn_count": counts["warn_count"],
+        "targets": targets,
+        "target_sources": source_counts,
+        "findings": findings,
+    }
+    print(json.dumps(payload, separators=(",", ":")))
+    if counts["fail_count"] > 0:
+        return 1
+    return 0
+
+
+def main() -> int:
+    if print_targets:
+        targets, _source_counts = discover_targets()
+        for target in targets:
+            print(target)
+        return 0
+
+    if not shutil.which("python3"):
+        fail("python3 is required")
+    targets, source_counts = discover_targets()
+    findings, counts = scan_targets(targets)
+
+    if json_mode:
+        return print_json(targets, source_counts, findings, counts)
+    if explain:
+        return print_explain(targets, source_counts, findings, counts)
+    if quiet:
+        if counts["fail_count"] == 0 and counts["warn_count"] == 0:
+            return 0
+        return print_human(targets, source_counts, findings, counts)
+    return print_human(targets, source_counts, findings, counts)
+
+
+import shutil
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+PY
+}
+
+if [ "$check_portability_print_targets" -eq 1 ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf 'fail: python3 is required for portability target discovery\n' >&2
+    printf 'fix: install python3\n' >&2
+    exit 1
+  fi
+  if ! command -v git >/dev/null 2>&1; then
+    printf 'fail: git is required for portability target discovery\n' >&2
+    printf 'fix: install git\n' >&2
+    exit 1
+  fi
+  check_portability_run_python
+  exit $?
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'fail: python3 is required\n' >&2
+  printf 'fix: install python3\n' >&2
+  exit 1
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  printf 'fail: git is required for portability target discovery\n' >&2
+  printf 'fix: install git\n' >&2
+  exit 1
+fi
+
+check_portability_run_python

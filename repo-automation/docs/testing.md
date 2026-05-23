@@ -9,6 +9,7 @@ CI runs the same core checks:
 - `git diff --check`
 - Bash syntax checks for scripts and tests
 - ShellCheck for scripts and tests via the metadata-driven file set from `repo-automation/bin/shellcheck-ci-parity --print-paths`
+- portability drift scan via `repo-automation/bin/check-portability`
 - smoke tests for branch cleanup and codex slice preflight
 - smoke coverage for `repo-automation/bin/pr-finish` help and safe no-auth/no-gh failure behavior
 - smoke coverage for `repo-automation/bin/add-doc-pr` docs-only plan validation, create-pr docs checks, and blocked-file boundary behavior
