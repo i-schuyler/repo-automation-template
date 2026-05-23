@@ -2148,7 +2148,7 @@ smoke_check_ci_failure_artifacts_contract() {
   if (
     cd "$smoke_repo_root" || return 1
     repo-automation/bin/ci-failure-artifacts --out-dir="$json_dir" --json > "$json_out"
-  ) && python3 -m json.tool "$json_out" >/dev/null && smoke_json_assert "$json_out" 'data.get("script") == "ci-failure-artifacts" and data.get("overall_status") == "pass" and data.get("output_dir") == "'"$json_dir"'" and isinstance(data.get("primary_failure"), dict) and isinstance(data.get("artifacts"), dict)'; then
+  ) && python3 -m json.tool "$json_out" >/dev/null && smoke_json_assert "$json_out" 'data.get("script") == "ci-failure-artifacts" and data.get("overall_status") == "fail" and data.get("artifact_generation_status") == "pass" and data.get("output_dir") == "'"$json_dir"'" and isinstance(data.get("primary_failure"), dict) and isinstance(data.get("artifacts"), dict)'; then
     test_pass "ci-failure-artifacts json success is valid"
   else
     test_fail "ci-failure-artifacts json success is valid"
@@ -2199,7 +2199,7 @@ EOF
     grep -Fq 'suggested next command: `repo-automation/tests/docs-check.sh`' "$rich_policy_summary" &&
     grep -Fq 'repo-doctor: `warn`' "$rich_policy_summary" &&
     python3 -m json.tool "$rich_machine_summary" >/dev/null &&
-    smoke_json_assert "$rich_machine_summary" 'data.get("primary_failure", {}).get("source") == "run-tests.log" and data.get("primary_failure", {}).get("label") == "docs-check" and data.get("primary_failure", {}).get("suggested_command") == "repo-automation/tests/docs-check.sh" and data.get("artifacts", {}).get("run_tests_log") == "run-tests.log" and data.get("artifacts", {}).get("shellcheck_log") == "shellcheck.log" and data.get("artifacts", {}).get("repo_doctor_json") == "repo-doctor.json" and data.get("repo_doctor", {}).get("overall_status") == "warn" and data.get("repo_doctor", {}).get("fail_count") == 1 and data.get("repo_doctor", {}).get("warn_count") == 2 and data.get("missing_inputs") == []'; then
+    smoke_json_assert "$rich_machine_summary" 'data.get("overall_status") == "fail" and data.get("artifact_generation_status") == "pass" and data.get("primary_failure", {}).get("source") == "run-tests.log" and data.get("primary_failure", {}).get("label") == "docs-check" and data.get("primary_failure", {}).get("suggested_command") == "repo-automation/tests/docs-check.sh" and data.get("artifacts", {}).get("run_tests_log") == "run-tests.log" and data.get("artifacts", {}).get("shellcheck_log") == "shellcheck.log" and data.get("artifacts", {}).get("repo_doctor_json") == "repo-doctor.json" and data.get("repo_doctor", {}).get("overall_status") == "warn" and data.get("repo_doctor", {}).get("fail_count") == 1 and data.get("repo_doctor", {}).get("warn_count") == 2 and data.get("missing_inputs") == []'; then
     test_pass "ci-failure-artifacts assembles stable artifacts and summaries"
   else
     test_fail "ci-failure-artifacts assembles stable artifacts and summaries"
@@ -2219,7 +2219,7 @@ EOF
       --run-tests-log="$fallback_run_tests" \
       --shellcheck-log="$fallback_shellcheck" > "$fallback_stdout"
   ) && cmp -s "$fallback_shellcheck" "$fallback_failure_log" &&
-    smoke_json_assert "$fallback_out_dir/machine-summary.json" 'data.get("primary_failure", {}).get("source") == "shellcheck.log" and data.get("primary_failure", {}).get("label") == "shellcheck"'; then
+    smoke_json_assert "$fallback_out_dir/machine-summary.json" 'data.get("overall_status") == "fail" and data.get("artifact_generation_status") == "pass" and data.get("primary_failure", {}).get("source") == "shellcheck.log" and data.get("primary_failure", {}).get("label") == "shellcheck"'; then
     test_pass "ci-failure-artifacts falls back to the first non-empty evidence file"
   else
     test_fail "ci-failure-artifacts falls back to the first non-empty evidence file"

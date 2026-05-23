@@ -469,7 +469,8 @@ artifact_paths["failure_excerpt"].write_text(primary_excerpt.rstrip() + "\n", en
 
 machine_summary = {
     "script": "ci-failure-artifacts",
-    "overall_status": "pass",
+    "overall_status": "fail",
+    "artifact_generation_status": "pass",
     "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "primary_failure": {
         "source": source_name or "unknown-ci",

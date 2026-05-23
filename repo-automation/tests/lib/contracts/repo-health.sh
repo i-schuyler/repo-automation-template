@@ -1952,7 +1952,7 @@ EOF
     status=1
   fi
 
-  if grep -Fq 'repo-automation/bin/check-portability | tee "$check_portability_log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
+  if grep -Fq 'repo-automation/bin/check-portability 2>&1 | tee "$check_portability_log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
     grep -Fq 'repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn --log-file="$RUNNER_TEMP/repo-doctor.log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
     grep -Fq 'repo-automation/bin/ci-failure-artifacts --out-dir="$RUNNER_TEMP/ci-failure-artifacts"' "$smoke_repo_root/.github/workflows/ci.yml" &&
     grep -Fq '${{ runner.temp }}/ci-failure-artifacts/**' "$smoke_repo_root/.github/workflows/ci.yml"; then
