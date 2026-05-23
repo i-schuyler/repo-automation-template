@@ -7,7 +7,7 @@ It does not fix anything automatically. It does not create branches, commits, PR
 Default behavior is safe and read-only.
 
 - Default human output is `--summary`.
-- `--explain` prints the full PASS/WARN/FAIL detail.
+- `--explain` prints the full PASS/WARN/FAIL detail and ends with a compact `===== FINAL SUMMARY =====` block.
 - `--quiet` keeps only the final result and warning/failure hints.
 - `--audit` is a compact alias for the full read-only diagnostic path.
 - `--timeout=SECONDS` passes a per-check timeout through to `repo-automation/bin/run-tests`.
@@ -41,6 +41,9 @@ JSON mode contract:
   - `action_taken`
   - `stop_reason`
   - `json_level`
+  - `first_failure`
+  - `first_warning`
+  - `suggested_fix`
   - `log_file`
 
 Checks include:

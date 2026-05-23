@@ -167,12 +167,27 @@ repo_doctor_print_json() {
   local fail_count="$5"
   local skipped_count="$6"
   local stop_reason="$7"
+  local first_failure="none"
+  local first_warning="none"
+  local suggested_fix="none"
   local idx=0
   local entry
   local name
   local status
   local message
   local json_checks=""
+  local rest
+
+  if entry="$(repo_doctor_first_entry_by_status fail)"; then
+    name="${entry%%|*}"
+    first_failure="$name"
+    suggested_fix="$(repo_doctor_fix_for_check "$name" explain)"
+  fi
+
+  if entry="$(repo_doctor_first_entry_by_status warn)"; then
+    name="${entry%%|*}"
+    first_warning="$name"
+  fi
 
   for entry in "${repo_doctor_checks[@]}"; do
     name="${entry%%|*}"
@@ -201,8 +216,81 @@ repo_doctor_print_json() {
   printf '"action_taken":"%s",' "$(repo_doctor_json_escape "$action_taken")"
   printf '"stop_reason":"%s",' "$(repo_doctor_json_escape "$stop_reason")"
   printf '"json_level":"%s",' "$(repo_doctor_json_escape "$repo_doctor_json_level")"
+  printf '"first_failure":"%s",' "$(repo_doctor_json_escape "$first_failure")"
+  printf '"first_warning":"%s",' "$(repo_doctor_json_escape "$first_warning")"
+  printf '"suggested_fix":"%s",' "$(repo_doctor_json_escape "$suggested_fix")"
   printf '"log_file":"%s"' "$(repo_doctor_json_escape "$repo_doctor_log_file")"
   printf '}\n'
+}
+
+repo_doctor_print_human_failure() {
+  local output_mode="$1"
+  local first_entry name rest message fix
+
+  first_entry="$(repo_doctor_first_entry_by_status fail)" || return 1
+  name="${first_entry%%|*}"
+  rest="${first_entry#*|}"
+  message="${rest#*|}"
+  fix="$(repo_doctor_fix_for_check "$name" "$output_mode")"
+
+  if [ -n "$message" ]; then
+    printf 'fail: %s - %s\n' "$name" "$message"
+  else
+    printf 'fail: %s\n' "$name"
+  fi
+
+  if [ -n "$fix" ]; then
+    printf 'fix: %s\n' "$fix"
+  fi
+
+  return 0
+}
+
+repo_doctor_print_final_summary() {
+  local rc="$1"
+  local overall_status="$2"
+  local pass_count="$3"
+  local warn_count="$4"
+  local fail_count="$5"
+  local skipped_count="$6"
+  local first_failure="none"
+  local first_warning="none"
+  local log_value="none"
+  local stop_reason_value="none"
+  local entry name
+
+  if entry="$(repo_doctor_first_entry_by_status fail)"; then
+    name="${entry%%|*}"
+    first_failure="$name"
+  fi
+
+  if entry="$(repo_doctor_first_entry_by_status warn)"; then
+    name="${entry%%|*}"
+    first_warning="$name"
+  fi
+
+  if [ -n "$repo_doctor_log_file" ] && [ -f "$repo_doctor_log_file" ]; then
+    log_value="$repo_doctor_log_file"
+  fi
+
+  if [ -n "$repo_doctor_stop_reason" ]; then
+    stop_reason_value="$repo_doctor_stop_reason"
+  fi
+
+  printf '===== FINAL SUMMARY =====\n'
+  printf 'script=repo-doctor\n'
+  printf 'mode=%s\n' "$repo_doctor_mode"
+  printf 'rc=%s\n' "$rc"
+  printf 'overall_status=%s\n' "$overall_status"
+  printf 'pass_count=%s\n' "$pass_count"
+  printf 'warn_count=%s\n' "$warn_count"
+  printf 'fail_count=%s\n' "$fail_count"
+  printf 'skipped_count=%s\n' "$skipped_count"
+  printf 'first_failure=%s\n' "$first_failure"
+  printf 'first_warning=%s\n' "$first_warning"
+  printf 'log=%s\n' "$log_value"
+  printf 'stop_reason=%s\n' "$stop_reason_value"
+  printf '===== END =====\n'
 }
 
 repo_doctor_first_entry_by_status() {
@@ -221,6 +309,53 @@ repo_doctor_first_entry_by_status() {
   done
 
   return 1
+}
+
+repo_doctor_specific_fix_for_check() {
+  case "$1" in
+    git-remote-match)
+      printf '%s\n' 'update EXPECTED_REMOTE_URL in .repo-automation.conf or set the configured git remote URL to match'
+      ;;
+    git-remote-url)
+      printf '%s\n' 'set the configured git remote or update REMOTE_NAME in .repo-automation.conf'
+      ;;
+    config-exists)
+      printf '%s\n' 'restore .repo-automation.conf or run from a configured repo'
+      ;;
+    config-load)
+      printf '%s\n' 'inspect .repo-automation.conf syntax and local overrides'
+      ;;
+    config-validate)
+      printf '%s\n' 'fill missing required config values in .repo-automation.conf'
+      ;;
+    docs-index-exists)
+      printf '%s\n' 'restore docs/INDEX.md'
+      ;;
+    run-tests)
+      printf '%s\n' 'repo-automation/bin/run-tests --changed --quiet'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+repo_doctor_fix_for_check() {
+  local check_name="$1"
+  local output_mode="${2:-summary}"
+
+  if repo_doctor_specific_fix_for_check "$check_name"; then
+    return 0
+  fi
+
+  case "$output_mode" in
+    explain)
+      printf '%s\n' 'inspect the failing check above'
+      ;;
+    *)
+      printf '%s\n' 'repo-automation/bin/repo-doctor --explain'
+      ;;
+  esac
 }
 
 repo_doctor_check_git() {
@@ -880,19 +1015,7 @@ repo_doctor_print_human_summary() {
   fi
 
   if [ "$fail_count" -gt 0 ]; then
-    first_entry="$(repo_doctor_first_entry_by_status fail)"
-    name="${first_entry%%|*}"
-    rest="${first_entry#*|}"
-    status="${rest%%|*}"
-    message="${rest#*|}"
-    if [ -n "$message" ]; then
-      printf 'fail: %s - %s\n' "$name" "$message"
-    else
-      printf 'fail: %s\n' "$name"
-    fi
-    if [ "$repo_doctor_output_mode" != "quiet" ]; then
-      printf 'fix: repo-automation/bin/repo-doctor --explain\n'
-    fi
+    repo_doctor_print_human_failure "$repo_doctor_output_mode"
     return 0
   fi
 
@@ -924,6 +1047,7 @@ repo_doctor_main() {
   local warn_count=0
   local fail_count=0
   local skipped_count=0
+  local rc=0
   local status
   local checks_to_run=()
   local counts
@@ -1125,17 +1249,27 @@ EOF
   fi
 
   if [ -n "$repo_doctor_stop_reason" ]; then
+    overall_status="fail"
+    rc=1
     if [ "$repo_doctor_json" -eq 1 ]; then
       repo_doctor_print_json \
-        "fail" \
+        "$overall_status" \
         "$action_taken" \
         "$pass_count" \
         "$warn_count" \
         "$fail_count" \
         "$skipped_count" \
         "$repo_doctor_stop_reason"
+    elif [ "$repo_doctor_output_mode" = "explain" ]; then
+      repo_doctor_print_final_summary \
+        "$rc" \
+        "$overall_status" \
+        "$pass_count" \
+        "$warn_count" \
+        "$fail_count" \
+        "$skipped_count"
     fi
-    return 1
+    return "$rc"
   fi
 
   if [ "$repo_doctor_json" -eq 1 ]; then
@@ -1155,6 +1289,19 @@ EOF
       "$fail_count" \
       "$skipped_count" \
       repo_doctor_checks
+  fi
+
+  if [ "$repo_doctor_output_mode" = "explain" ]; then
+    if [ "$fail_count" -gt 0 ] || [ "$command_status" -ne 0 ]; then
+      rc=1
+    fi
+    repo_doctor_print_final_summary \
+      "$rc" \
+      "$overall_status" \
+      "$pass_count" \
+      "$warn_count" \
+      "$fail_count" \
+      "$skipped_count"
   fi
 
   if [ "$fail_count" -gt 0 ] || [ "$command_status" -ne 0 ]; then

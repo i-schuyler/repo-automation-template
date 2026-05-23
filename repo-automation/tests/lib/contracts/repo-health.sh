@@ -908,8 +908,18 @@ smoke_check_repo_doctor_contract() {
   local doctor_quiet_out="$smoke_test_base/repo-doctor-quick-quiet-$$.txt"
   local doctor_quiet_err="$smoke_test_base/repo-doctor-quick-quiet-$$.stderr"
   local doctor_explain_out="$smoke_test_base/repo-doctor-quick-explain-$$.txt"
+  local doctor_explain_no_log_out="$smoke_test_base/repo-doctor-quick-explain-nolog-$$.txt"
   local doctor_json_warn="$smoke_test_base/repo-doctor-quick-warn-$$.json"
   local doctor_json_warn_err="$smoke_test_base/repo-doctor-quick-warn-$$.stderr"
+  local doctor_default_fail_out="$smoke_test_base/repo-doctor-default-fail-$$.txt"
+  local doctor_default_fail_err="$smoke_test_base/repo-doctor-default-fail-$$.stderr"
+  local doctor_quiet_fail_out="$smoke_test_base/repo-doctor-quiet-fail-$$.txt"
+  local doctor_quiet_fail_err="$smoke_test_base/repo-doctor-quiet-fail-$$.stderr"
+  local doctor_json_fail="$smoke_test_base/repo-doctor-fail-$$.json"
+  local doctor_json_fail_err="$smoke_test_base/repo-doctor-fail-$$.stderr"
+  local doctor_explain_fail_out="$smoke_test_base/repo-doctor-explain-fail-$$.txt"
+  local doctor_explain_fail_err="$smoke_test_base/repo-doctor-explain-fail-$$.stderr"
+  local doctor_remote_repo=""
   local doctor_log_file="$smoke_test_base/repo-doctor-log-$$.log"
   local doctor_no_log_file="$smoke_test_base/repo-doctor-no-log-$$.log"
   local doctor_no_log_out="$smoke_test_base/repo-doctor-no-log-$$.txt"
@@ -979,12 +989,105 @@ smoke_check_repo_doctor_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/repo-doctor --check=config --explain --no-log > "$doctor_explain_no_log_out"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$doctor_explain_no_log_out" && \
+    grep -Fxq 'rc=0' "$doctor_explain_no_log_out" && \
+    grep -Fxq 'overall_status=pass' "$doctor_explain_no_log_out" && \
+    grep -Fxq 'log=none' "$doctor_explain_no_log_out"; then
+    test_pass "repo-doctor explain success ends with final summary"
+  else
+    test_fail "repo-doctor explain success ends with final summary"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/repo-doctor --json --check=config --json-level=all > "$doctor_json_warn" 2> "$doctor_json_warn_err"
   ) && [ ! -s "$doctor_json_warn_err" ] && python3 -m json.tool "$doctor_json_warn" >/dev/null && \
     smoke_json_assert "$doctor_json_warn" 'data.get("overall_status") == "pass" and data.get("json_level") == "all" and any(check.get("name") == "config-exists" and check.get("status") == "pass" for check in data.get("checks", []))'; then
     test_pass "repo-doctor json output is parseable"
   else
     test_fail "repo-doctor json output is parseable"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    mv .repo-automation.conf .repo-automation.conf.bak || return 1
+    repo-automation/bin/repo-doctor --check=config > "$doctor_default_fail_out" 2> "$doctor_default_fail_err"
+    result=$?
+    mv .repo-automation.conf.bak .repo-automation.conf || return 1
+    [ "$result" -ne 0 ]
+  ) && [ ! -s "$doctor_default_fail_err" ] && \
+    grep -Fxq 'fail: config-exists - missing .repo-automation.conf' "$doctor_default_fail_out" && \
+    grep -Fxq 'fix: restore .repo-automation.conf or run from a configured repo' "$doctor_default_fail_out" && \
+    ! grep -Fq 'FINAL SUMMARY' "$doctor_default_fail_out"; then
+    test_pass "repo-doctor default failure stays compact"
+  else
+    test_fail "repo-doctor default failure stays compact"
+    status=1
+    (
+      cd "$smoke_test_dir" || true
+      [ -f .repo-automation.conf ] || mv .repo-automation.conf.bak .repo-automation.conf >/dev/null 2>&1 || true
+    )
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    mv .repo-automation.conf .repo-automation.conf.bak || return 1
+    repo-automation/bin/repo-doctor --check=config --quiet > "$doctor_quiet_fail_out" 2> "$doctor_quiet_fail_err"
+    result=$?
+    mv .repo-automation.conf.bak .repo-automation.conf || return 1
+    [ "$result" -ne 0 ]
+  ) && [ ! -s "$doctor_quiet_fail_err" ] && \
+    grep -Fxq 'fail: config-exists - missing .repo-automation.conf' "$doctor_quiet_fail_out" && \
+    grep -Fxq 'fix: restore .repo-automation.conf or run from a configured repo' "$doctor_quiet_fail_out"; then
+    test_pass "repo-doctor quiet failure prints fix"
+  else
+    test_fail "repo-doctor quiet failure prints fix"
+    status=1
+    (
+      cd "$smoke_test_dir" || true
+      [ -f .repo-automation.conf ] || mv .repo-automation.conf.bak .repo-automation.conf >/dev/null 2>&1 || true
+    )
+  fi
+
+  doctor_remote_repo="$(smoke_setup_subset_repo)" || {
+    test_fail "repo-doctor git failure fixture creates a repo"
+    status=1
+    doctor_remote_repo=""
+  }
+
+  if [ -n "$doctor_remote_repo" ] && (
+    cd "$doctor_remote_repo" || return 1
+    EXPECTED_REMOTE_URL="https://example.invalid/repo.git" repo-automation/bin/repo-doctor --check=git --json --json-level=all > "$doctor_json_fail" 2> "$doctor_json_fail_err"
+    result=$?
+    [ "$result" -ne 0 ]
+  ) && [ ! -s "$doctor_json_fail_err" ] && python3 -m json.tool "$doctor_json_fail" >/dev/null && \
+    smoke_json_assert "$doctor_json_fail" 'data.get("overall_status") == "fail" and data.get("first_failure") == "git-remote-match" and data.get("suggested_fix") == "update EXPECTED_REMOTE_URL in .repo-automation.conf or set the configured git remote URL to match"'; then
+    test_pass "repo-doctor json failure is parseable and stdout-only"
+  else
+    test_fail "repo-doctor json failure is parseable and stdout-only"
+    status=1
+  fi
+
+  if [ -n "$doctor_remote_repo" ] && (
+    cd "$doctor_remote_repo" || return 1
+    EXPECTED_REMOTE_URL="https://example.invalid/repo.git" repo-automation/bin/repo-doctor --check=git --explain > "$doctor_explain_fail_out" 2> "$doctor_explain_fail_err"
+    result=$?
+    [ "$result" -ne 0 ]
+  ) && [ ! -s "$doctor_explain_fail_err" ] && \
+    grep -Fxq '===== FINAL SUMMARY =====' "$doctor_explain_fail_out" && \
+    grep -Fxq 'rc=1' "$doctor_explain_fail_out" && \
+    grep -Fxq 'overall_status=fail' "$doctor_explain_fail_out" && \
+    grep -Fxq 'first_failure=git-remote-match' "$doctor_explain_fail_out" && \
+    grep -Eq '^log=.+$' "$doctor_explain_fail_out" && \
+    ! grep -Fxq 'log=none' "$doctor_explain_fail_out" && \
+    grep -Fxq 'fix: update EXPECTED_REMOTE_URL in .repo-automation.conf or set the configured git remote URL to match' "$doctor_explain_fail_out" && \
+    ! grep -Fq 'fix: repo-automation/bin/repo-doctor --explain' "$doctor_explain_fail_out"; then
+    test_pass "repo-doctor explain failure ends with final summary"
+  else
+    test_fail "repo-doctor explain failure ends with final summary"
     status=1
   fi
 
