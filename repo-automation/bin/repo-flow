@@ -752,6 +752,20 @@ PY
     rm -f "$current_body_file" "$current_body_stderr" >/dev/null 2>&1 || true
   fi
 
+  if [ "$replace_body" -eq 0 ]; then
+    validation_output=""
+    if ! validation_output="$("$script_dir/pr-body-check" --quiet --body-file="$body_file" 2>&1)"; then
+      local validation_failure=""
+      validation_failure="$(printf '%s\n' "$validation_output" | sed -n '1p')"
+      [ -n "$validation_failure" ] || validation_failure="PR body validation failed"
+      [ -n "$validation_output" ] && printf '%s\n' "$validation_output" >&2
+      printf 'fix: rerun with --replace-body only if intentional full PR body replacement is desired\n' >&2
+      rm -f "$body_file" >/dev/null 2>&1 || true
+      "$stop_fn" "failed to refresh existing PR #$pr_number body: $validation_failure"
+      return 1
+    fi
+  fi
+
   if ! pr_edit_output="$(gh pr edit "$pr_number" --body-file="$body_file" 2>&1)"; then
     pr_edit_output="${pr_edit_output//$'\n'/ }"
     pr_edit_output="${pr_edit_output//$'\r'/ }"
@@ -1051,15 +1065,6 @@ repo_flow_submit_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$replace_body" -eq 0 ] && [ -n "$custom_body_file" ]; then
-    existing_pr_number=$(gh pr view "$current_branch" --json number --jq '.number' 2>/dev/null || true)
-    if [ -n "$existing_pr_number" ]; then
-      printf 'fix: supplied full body files replace PR bodies; use --replace-body to intentionally replace the PR body\n' >&2
-      repo_flow_submit_stop "existing PR #$existing_pr_number requires --replace-body when --body-file is supplied"
-      command_status=1
-    fi
-  fi
-
   if [ "$command_status" -eq 0 ] && [ "$staged" -eq 1 ] && [ -n "$paths_csv" ]; then
     repo_flow_submit_stop "use either --paths or --staged, not both"
     command_status=1
@@ -1160,6 +1165,15 @@ repo_flow_submit_main() {
   if [ "$command_status" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
     repo_flow_submit_stop "current branch is default branch; checkout a feature branch"
     command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$replace_body" -eq 0 ] && [ -n "$custom_body_file" ]; then
+    existing_pr_number=$(gh pr view "$current_branch" --json number --jq '.number' 2>/dev/null || true)
+    if [ -n "$existing_pr_number" ]; then
+      printf 'fix: supplied full body files replace PR bodies; use --replace-body to intentionally replace the PR body\n' >&2
+      repo_flow_submit_stop "existing PR #$existing_pr_number requires --replace-body when --body-file is supplied"
+      command_status=1
+    fi
   fi
 
   branch_before="$current_branch"
