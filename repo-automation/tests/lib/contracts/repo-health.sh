@@ -61,6 +61,17 @@ smoke_check_run_tests_contract() {
   local run_tests_json_level_missing_stderr="$smoke_test_base/run-tests-json-level-missing-$$.stderr"
   local run_tests_json_level_empty_stderr="$smoke_test_base/run-tests-json-level-empty-$$.stderr"
   local run_tests_unknown_stderr="$smoke_test_base/run-tests-unknown-$$.stderr"
+  local run_tests_shellcheck_ci_parity_backup="$smoke_test_base/run-tests-shellcheck-ci-parity-backup-$$.sh"
+  local run_tests_shellcheck_ci_parity_log="$smoke_test_base/run-tests-shellcheck-ci-parity-$$.args"
+  local run_tests_shellcheck_ci_parity_path="$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity"
+  local run_tests_shellcheck_stub_dir="$smoke_test_base/run-tests-shellcheck-stub-$$"
+  local run_tests_shellcheck_stub_log="$smoke_test_base/run-tests-shellcheck-stub-$$.args"
+  local run_tests_shellcheck_focus_out="$smoke_test_base/run-tests-shellcheck-focus-$$.txt"
+  local run_tests_shellcheck_focus_log="$smoke_test_base/run-tests-shellcheck-focus-$$.log"
+  local run_tests_shellcheck_target="$smoke_test_dir/repo-automation/tests/lib/contracts/repo-health.sh"
+  local run_tests_shellcheck_target_backup="$smoke_test_base/run-tests-repo-health-backup-$$.sh"
+  local run_tests_shellcheck_readme_backup="$smoke_test_base/run-tests-readme-backup-$$.md"
+  local run_tests_shellcheck_docs_backup="$smoke_test_base/run-tests-docs-backup-$$"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -212,6 +223,128 @@ EOF
     test_fail "run-tests explain failure recommends a better next step"
     status=1
   fi
+
+  rm -f "$smoke_test_dir/docs/run-tests-diagnostic.md" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cp "$smoke_test_dir/README.md" "$run_tests_shellcheck_readme_backup" || return 1
+    cp -R "$smoke_test_dir/docs" "$run_tests_shellcheck_docs_backup" || return 1
+    cp "$smoke_repo_root/README.md" "$smoke_test_dir/README.md" || return 1
+    cp "$smoke_repo_root/LICENSE" "$smoke_test_dir/LICENSE" || return 1
+    cp -R "$smoke_repo_root/docs" "$smoke_test_dir/" || return 1
+    mkdir -p "$run_tests_shellcheck_stub_dir" || return 1
+    cp "$run_tests_shellcheck_ci_parity_path" "$run_tests_shellcheck_ci_parity_backup" || return 1
+    cp "$run_tests_shellcheck_target" "$run_tests_shellcheck_target_backup" || return 1
+    cat > "$run_tests_shellcheck_ci_parity_path" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+printf '%s\n' "\$@" > "$run_tests_shellcheck_ci_parity_log"
+
+case "\${1:-}" in
+  --print-paths)
+    printf '%s\n' \
+      repo-automation/bin/check-portability \
+      repo-automation/bin/shellcheck-ci-parity
+    ;;
+  *)
+    printf 'unexpected shellcheck-ci-parity args\n' >&2
+    exit 1
+    ;;
+esac
+EOF
+    chmod +x "$run_tests_shellcheck_ci_parity_path" || return 1
+    cat > "$run_tests_shellcheck_stub_dir/shellcheck" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+printf '%s\n' "\$@" > "$run_tests_shellcheck_stub_log"
+
+case "\${REPO_AUTOMATION_SHELLCHECK_MODE:-verify}" in
+  verify)
+    if [ "\${1:-}" != "-e" ] || [ "\${2:-}" != "SC2317" ]; then
+      printf 'unexpected shellcheck flags\n' >&2
+      exit 1
+    fi
+    shift 2
+    if [ "\$#" -ne 2 ] ||
+      [ "\$1" != "repo-automation/bin/check-portability" ] ||
+      [ "\$2" != "repo-automation/bin/shellcheck-ci-parity" ]; then
+      printf 'unexpected shellcheck paths\n' >&2
+      exit 1
+    fi
+    ;;
+  fail-focus)
+    printf 'shellcheck simulated failure\n' >&2
+    exit 1
+    ;;
+  *)
+    printf 'unexpected shellcheck mode\n' >&2
+    exit 1
+    ;;
+esac
+EOF
+    chmod +x "$run_tests_shellcheck_stub_dir/shellcheck" || return 1
+    printf '\nif true; then\n' >> "$run_tests_shellcheck_target"
+    PATH="$run_tests_shellcheck_stub_dir:$PATH" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet >"$run_tests_shellcheck_focus_out" 2>"$run_tests_shellcheck_focus_log"
+  ); then
+    :
+  else
+    test_fail "run-tests full mode uses shellcheck-ci-parity paths"
+    status=1
+  fi
+
+  if [ ! -s "$run_tests_shellcheck_focus_out" ] && [ ! -s "$run_tests_shellcheck_focus_log" ]; then
+    test_pass "run-tests full mode stays compact with shellcheck-ci-parity paths"
+  else
+    test_fail "run-tests full mode stays compact with shellcheck-ci-parity paths"
+    status=1
+  fi
+
+  if grep -Fqx -- '--print-paths' "$run_tests_shellcheck_ci_parity_log"; then
+    test_pass "run-tests shellcheck path discovery calls shellcheck-ci-parity --print-paths"
+  else
+    test_fail "run-tests shellcheck path discovery calls shellcheck-ci-parity --print-paths"
+    status=1
+  fi
+
+  if grep -Fqx -- 'repo-automation/bin/check-portability' "$run_tests_shellcheck_stub_log" &&
+    grep -Fqx -- 'repo-automation/bin/shellcheck-ci-parity' "$run_tests_shellcheck_stub_log" &&
+    ! grep -Fq -- 'repo-automation/tests/lib/contracts/repo-health.sh' "$run_tests_shellcheck_stub_log"; then
+    test_pass "run-tests shellcheck uses generated paths and skips the old broad find"
+  else
+    test_fail "run-tests shellcheck uses generated paths and skips the old broad find"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cp "$run_tests_shellcheck_target_backup" "$run_tests_shellcheck_target" || return 1
+    REPO_AUTOMATION_SHELLCHECK_MODE=fail-focus PATH="$run_tests_shellcheck_stub_dir:$PATH" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet --log-file="$run_tests_shellcheck_focus_log" >"$run_tests_shellcheck_focus_out" 2>&1
+  ); then
+    test_fail "run-tests shellcheck failure points to shellcheck-ci-parity"
+    status=1
+  elif grep -Fq 'fail: shellcheck repo-automation scripts and tests' "$run_tests_shellcheck_focus_out" &&
+    grep -Fq 'fix: inspect log and run focused check: repo-automation/bin/shellcheck-ci-parity' "$run_tests_shellcheck_focus_out"; then
+    test_pass "run-tests shellcheck failure points to shellcheck-ci-parity"
+  else
+    test_fail "run-tests shellcheck failure points to shellcheck-ci-parity"
+    status=1
+  fi
+
+  cp "$run_tests_shellcheck_readme_backup" "$smoke_test_dir/README.md" >/dev/null 2>&1 || true
+  rm -rf "$smoke_test_dir/docs" >/dev/null 2>&1 || true
+  cp -R "$run_tests_shellcheck_docs_backup" "$smoke_test_dir/docs" >/dev/null 2>&1 || true
+  rm -f "$smoke_test_dir/LICENSE" >/dev/null 2>&1 || true
+  cp "$run_tests_shellcheck_ci_parity_backup" "$run_tests_shellcheck_ci_parity_path" >/dev/null 2>&1 || true
+  cp "$run_tests_shellcheck_target_backup" "$run_tests_shellcheck_target" >/dev/null 2>&1 || true
+  rm -f "$run_tests_shellcheck_readme_backup" "$run_tests_shellcheck_ci_parity_backup" "$run_tests_shellcheck_target_backup" >/dev/null 2>&1 || true
+  rm -rf "$run_tests_shellcheck_docs_backup" >/dev/null 2>&1 || true
+  rm -f "$run_tests_shellcheck_ci_parity_log" "$run_tests_shellcheck_stub_log" "$run_tests_shellcheck_focus_out" "$run_tests_shellcheck_focus_log" >/dev/null 2>&1 || true
+  rm -rf "$run_tests_shellcheck_stub_dir" >/dev/null 2>&1 || true
 
   rm -f "$smoke_test_dir/docs/run-tests-diagnostic.md" >/dev/null 2>&1 || true
 
