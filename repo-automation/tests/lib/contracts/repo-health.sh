@@ -2099,4 +2099,268 @@ EOF
   return "$status"
 }
 
+smoke_check_contract_debt_report_contract() {
+  local status=0
+  smoke_setup_temp_repo || return 1
+  local report_tmpdir="$smoke_test_base/contract-debt-report-$$"
+  local report_dir="$report_tmpdir/repo-automation-template/contract-debt-report"
+  local report_markdown="$report_dir/contract-debt-report.md"
+  local report_json="$report_dir/contract-debt-report.json"
+  local help_out="$smoke_test_base/contract-debt-help-$$.txt"
+  local help_err="$smoke_test_base/contract-debt-help-$$.stderr"
+  local unknown_err="$smoke_test_base/contract-debt-unknown-$$.stderr"
+  local outdir_space_err="$smoke_test_base/contract-debt-outdir-space-$$.stderr"
+  local outdir_empty_err="$smoke_test_base/contract-debt-outdir-empty-$$.stderr"
+  local default_out="$smoke_test_base/contract-debt-default-$$.txt"
+  local default_err="$smoke_test_base/contract-debt-default-$$.stderr"
+  local quiet_out="$smoke_test_base/contract-debt-quiet-$$.txt"
+  local quiet_err="$smoke_test_base/contract-debt-quiet-$$.stderr"
+  local explain_out="$smoke_test_base/contract-debt-explain-$$.txt"
+  local explain_err="$smoke_test_base/contract-debt-explain-$$.stderr"
+  local json_out="$smoke_test_base/contract-debt-json-$$.json"
+  local json_err="$smoke_test_base/contract-debt-json-$$.stderr"
+  local seeded_large_file="$smoke_test_dir/repo-automation/bin/contract-debt-large-candidate"
+  local large_json="$smoke_test_base/contract-debt-large-$$.json"
+  local large_err="$smoke_test_base/contract-debt-large-$$.stderr"
+  local gap_json="$smoke_test_base/contract-debt-gap-$$.json"
+  local gap_err="$smoke_test_base/contract-debt-gap-$$.stderr"
+  local json_gap_file="$smoke_test_dir/repo-automation/tests/contracts/ci-failure-artifacts.sh"
+  local quiet_gap_file="$smoke_test_dir/repo-automation/tests/contracts/repo-doctor.sh"
+  local invalid_meta_err="$smoke_test_base/contract-debt-invalid-meta-$$.stderr"
+  local invalid_meta_json="$smoke_test_base/contract-debt-invalid-meta-$$.json"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/contract-debt-report --help >"$help_out" 2>"$help_err"
+  ) && grep -Fq 'Usage: repo-automation/bin/contract-debt-report [--help] [--out-dir=<path>] [--quiet] [--explain] [--json]' "$help_out" &&
+    grep -Fq 'Generate an advisory maintainability and contract debt report.' "$help_out" &&
+    grep -Fq 'Debt findings warn but do not fail the command.' "$help_out" &&
+    ! grep -Fq 'fail:' "$help_err"; then
+    test_pass "contract-debt-report help shows usage and summary"
+  else
+    test_fail "contract-debt-report help shows usage and summary"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/contract-debt-report --bogus > /dev/null 2>"$unknown_err"
+  ); then
+    test_fail "contract-debt-report unknown flag is rejected"
+    status=1
+  elif grep -Fxq 'fail: unknown flag' "$unknown_err" &&
+    grep -Fxq 'flag: --bogus' "$unknown_err" &&
+    grep -Fxq 'fix: run repo-automation/bin/contract-debt-report --help' "$unknown_err"; then
+    test_pass "contract-debt-report unknown flag is rejected"
+  else
+    test_fail "contract-debt-report unknown flag is rejected"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/contract-debt-report --out-dir "$report_tmpdir/space" > /dev/null 2>"$outdir_space_err"
+  ); then
+    test_fail "contract-debt-report rejects spaced out-dir syntax"
+    status=1
+  elif grep -Fxq 'fail: flag format not accepted' "$outdir_space_err" &&
+    grep -Fxq 'flag: --out-dir' "$outdir_space_err" &&
+    grep -Fxq 'fix: use --out-dir=<path>' "$outdir_space_err"; then
+    test_pass "contract-debt-report rejects spaced out-dir syntax"
+  else
+    test_fail "contract-debt-report rejects spaced out-dir syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/contract-debt-report --out-dir= > /dev/null 2>"$outdir_empty_err"
+  ); then
+    test_fail "contract-debt-report rejects empty out-dir syntax"
+    status=1
+  elif grep -Fxq 'fail: empty flag value' "$outdir_empty_err" &&
+    grep -Fxq 'flag: --out-dir' "$outdir_empty_err" &&
+    grep -Fxq 'fix: use --out-dir=<path>' "$outdir_empty_err"; then
+    test_pass "contract-debt-report rejects empty out-dir syntax"
+  else
+    test_fail "contract-debt-report rejects empty out-dir syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report >"$default_out" 2>"$default_err"
+  ) && [ "$(cat "$default_out")" = "$report_markdown" ] && [ ! -s "$default_err" ] && [ -f "$report_markdown" ] && [ -f "$report_json" ]; then
+    test_pass "contract-debt-report default output prints the markdown path"
+  else
+    test_fail "contract-debt-report default output prints the markdown path"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --quiet >"$quiet_out" 2>"$quiet_err"
+  ) && [ ! -s "$quiet_out" ] && [ ! -s "$quiet_err" ]; then
+    test_pass "contract-debt-report quiet output is silent"
+  else
+    test_fail "contract-debt-report quiet output is silent"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --explain >"$explain_out" 2>"$explain_err"
+  ) && [ ! -s "$explain_err" ] &&
+    grep -Eq '^status: (pass|warn)$' "$explain_out" &&
+    grep -Eq '^counts: warn=[0-9]+ fail=[0-9]+ total=[0-9]+ included=[0-9]+ omitted=[0-9]+$' "$explain_out" &&
+    grep -Eq "^report_markdown: $report_markdown$" "$explain_out" &&
+    grep -Eq "^report_json: $report_json$" "$explain_out" &&
+    grep -Eq '^top_categories: ' "$explain_out"; then
+    test_pass "contract-debt-report explain output includes counts and paths"
+  else
+    test_fail "contract-debt-report explain output includes counts and paths"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$json_out" 2>"$json_err"
+  ) && [ ! -s "$json_err" ] && python3 -m json.tool "$json_out" >/dev/null &&
+    smoke_json_assert "$json_out" 'data.get("script") == "contract-debt-report" and data.get("overall_status") in ("pass", "warn") and data.get("report_markdown", "").endswith("contract-debt-report.md") and data.get("report_json", "").endswith("contract-debt-report.json") and "script_large_lines" in data.get("thresholds", {}) and "max_findings_per_category" in data.get("thresholds", {})'; then
+    cmp -s "$json_out" "$report_json" &&
+      [ -f "$report_markdown" ] &&
+      test_pass "contract-debt-report json output is valid and matches the report file"
+  else
+    test_fail "contract-debt-report json output is valid and matches the report file"
+    status=1
+  fi
+
+  python3 - "$seeded_large_file" <<'PY' || return 1
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text("\n".join(f"line {i}" for i in range(1, 505)) + "\n", encoding="utf-8")
+PY
+  git -C "$smoke_test_dir" add repo-automation/bin/contract-debt-large-candidate || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$large_json" 2>"$large_err"
+  ) && [ ! -s "$large_err" ] && python3 -m json.tool "$large_json" >/dev/null &&
+    smoke_json_assert "$large_json" 'data.get("overall_status") == "warn" and any(f.get("severity") == "warn" and f.get("category") == "file-size" and f.get("path") == "repo-automation/bin/contract-debt-large-candidate" for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns on large files"
+  else
+    test_fail "contract-debt-report warns on large files"
+    status=1
+  fi
+
+  python3 - "$smoke_test_dir/repo-automation/helper-metadata.json" <<'PY' || return 1
+from pathlib import Path
+import json
+import sys
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding="utf-8"))
+helpers = data.setdefault("helpers", [])
+helpers.append(
+    {
+        "name": "contract-debt-gap",
+        "path": "repo-automation/bin/contract-debt-gap",
+        "doc_path": "repo-automation/docs/contract-debt-gap.md",
+        "contract_test_path": "repo-automation/tests/contracts/contract-debt-gap.sh",
+        "kind": "script",
+        "public": True,
+        "phone_safe": True,
+        "check_cost_tier": "broad-local",
+        "writes_files": False,
+        "writes_git": False,
+        "uses_github": False,
+        "runs_run_tests": False,
+        "can_run_broad_checks": True,
+        "supports_quiet": True,
+        "supports_json": True,
+        "artifact_helper": False,
+        "umbrella_helper": False,
+        "workflow_role": "audit",
+        "config_keys": [],
+    }
+)
+path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+PY
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$gap_json" 2>"$gap_err"
+  ) && [ ! -s "$gap_err" ] && python3 -m json.tool "$gap_json" >/dev/null &&
+    smoke_json_assert "$gap_json" 'data.get("overall_status") == "warn" and any(f.get("severity") == "warn" and f.get("category") == "metadata-gap" and f.get("path") in ("repo-automation/docs/contract-debt-gap.md", "repo-automation/tests/contracts/contract-debt-gap.sh", "repo-automation/bin/contract-debt-gap") for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns on helper metadata and file gaps"
+  else
+    test_fail "contract-debt-report warns on helper metadata and file gaps"
+    status=1
+  fi
+
+  cat > "$json_gap_file" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# smoke:ci-failure-artifacts contract coverage stub
+echo contract-debt-report
+EOF
+  chmod +x "$json_gap_file" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$gap_json" 2>"$gap_err"
+  ) && [ ! -s "$gap_err" ] && python3 -m json.tool "$gap_json" >/dev/null &&
+    smoke_json_assert "$gap_json" 'any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "ci-failure-artifacts" and "supports_json" in f.get("message", "") for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns when supports_json coverage is missing"
+  else
+    test_fail "contract-debt-report warns when supports_json coverage is missing"
+    status=1
+  fi
+
+  cat > "$quiet_gap_file" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# smoke:repo-doctor contract coverage stub
+echo contract-debt-report
+EOF
+  chmod +x "$quiet_gap_file" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$large_json" 2>"$large_err"
+  ) && [ ! -s "$large_err" ] && python3 -m json.tool "$large_json" >/dev/null &&
+    smoke_json_assert "$large_json" 'any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "ci-failure-artifacts" and "quiet" in f.get("message", "") for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns when supports_quiet coverage is missing"
+  else
+    test_fail "contract-debt-report warns when supports_quiet coverage is missing"
+    status=1
+  fi
+
+  cat > "$smoke_test_dir/repo-automation/helper-metadata.json" <<'EOF'
+not-json
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$invalid_meta_json" 2>"$invalid_meta_err"
+  ); then
+    test_fail "contract-debt-report fails on invalid helper metadata"
+    status=1
+  elif python3 -m json.tool "$invalid_meta_json" >/dev/null &&
+    smoke_json_assert "$invalid_meta_json" 'data.get("overall_status") == "fail" and any(f.get("severity") == "fail" for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report fails on invalid helper metadata"
+  else
+    test_fail "contract-debt-report fails on invalid helper metadata"
+    status=1
+  fi
+
+  rm -f "$help_out" "$help_err" "$unknown_err" "$outdir_space_err" "$outdir_empty_err" "$default_out" "$default_err" "$quiet_out" "$quiet_err" "$explain_out" "$explain_err" "$json_out" "$json_err" "$large_json" "$large_err" "$gap_json" "$gap_err" "$invalid_meta_json" "$invalid_meta_err" >/dev/null 2>&1 || true
+  rm -f "$seeded_large_file" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 # repo-automation/tests/lib/contracts/repo-health.sh EOF

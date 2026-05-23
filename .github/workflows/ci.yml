@@ -61,6 +61,7 @@ jobs:
           set -u -o pipefail
           mkdir -p "$RUNNER_TEMP/ci-failure-artifacts"
           repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn --log-file="$RUNNER_TEMP/repo-doctor.log" > "$RUNNER_TEMP/repo-doctor.json" 2> "$RUNNER_TEMP/repo-doctor.stderr" || true
+          repo-automation/bin/contract-debt-report --out-dir="$RUNNER_TEMP/ci-failure-artifacts" --quiet || true
           repo-automation/bin/ci-failure-artifacts --out-dir="$RUNNER_TEMP/ci-failure-artifacts" --run-tests-log="$RUNNER_TEMP/run-tests.log" --shellcheck-log="$RUNNER_TEMP/shellcheck.log" --check-portability-log="$RUNNER_TEMP/check-portability.log" --repo-doctor-json="$RUNNER_TEMP/repo-doctor.json" --repo-doctor-log="$RUNNER_TEMP/repo-doctor.log" --repo-doctor-stderr="$RUNNER_TEMP/repo-doctor.stderr" > "$RUNNER_TEMP/ci-failure-artifacts/artifact-generation.log" 2>&1 || true
 
       - name: Upload failure artifacts
