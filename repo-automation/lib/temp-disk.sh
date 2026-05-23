@@ -375,6 +375,15 @@ run_tests_temp_disk_resolve_runtime_config() {
     return 1
   fi
 
+  case "$run_tests_clean_stale_temp" in
+    0|1)
+      ;;
+    *)
+      run_tests_temp_disk_config_error="invalid REPO_AUTOMATION_CLEAN_STALE_TEMP value"
+      return 1
+      ;;
+  esac
+
   if ! run_tests_temp_disk_is_positive_integer "$run_tests_stale_temp_hours"; then
     run_tests_temp_disk_config_error="invalid REPO_AUTOMATION_STALE_TEMP_HOURS value"
     return 1

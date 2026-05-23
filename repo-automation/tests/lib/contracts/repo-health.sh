@@ -81,6 +81,15 @@ smoke_check_run_tests_contract() {
   local run_tests_shellcheck_target_backup="$smoke_test_base/run-tests-repo-health-backup-$$.sh"
   local run_tests_shellcheck_readme_backup="$smoke_test_base/run-tests-readme-backup-$$.md"
   local run_tests_shellcheck_docs_backup="$smoke_test_base/run-tests-docs-backup-$$"
+  local run_tests_temp_disk_path="$smoke_test_dir/repo-automation/lib/temp-disk.sh"
+  local run_tests_temp_disk_backup="$smoke_test_base/run-tests-temp-disk-backup-$$.sh"
+  local run_tests_missing_temp_disk_out="$smoke_test_base/run-tests-missing-temp-disk-$$.txt"
+  local run_tests_missing_temp_disk_err="$smoke_test_base/run-tests-missing-temp-disk-$$.stderr"
+  local run_tests_invalid_clean_stale_out="$smoke_test_base/run-tests-invalid-clean-stale-$$.txt"
+  local run_tests_invalid_clean_stale_err="$smoke_test_base/run-tests-invalid-clean-stale-$$.stderr"
+  local run_tests_secret_config_out="$smoke_test_base/run-tests-secret-config-$$.txt"
+  local run_tests_secret_config_err="$smoke_test_base/run-tests-secret-config-$$.stderr"
+  local run_tests_secret_config_marker="$smoke_test_base/run-tests-secret-config-sourced-$$"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -96,6 +105,32 @@ smoke_check_run_tests_contract() {
   else
     test_fail "run-tests help shows strict value syntax"
     status=1
+  fi
+
+  if [ -f "$run_tests_temp_disk_path" ]; then
+    test_pass "smoke fixture copies temp-disk library"
+  else
+    test_fail "smoke fixture copies temp-disk library"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    mv "$run_tests_temp_disk_path" "$run_tests_temp_disk_backup" || return 1
+    repo-automation/bin/run-tests --docs --quiet >"$run_tests_missing_temp_disk_out" 2>"$run_tests_missing_temp_disk_err"
+    rc=$?
+    mv "$run_tests_temp_disk_backup" "$run_tests_temp_disk_path" || return 1
+    exit "$rc"
+  ); then
+    test_fail "run-tests requires active checkout temp-disk library"
+    status=1
+  elif [ ! -s "$run_tests_missing_temp_disk_out" ] &&
+    grep -Fxq 'STOP: missing required library: repo-automation/lib/temp-disk.sh' "$run_tests_missing_temp_disk_err"; then
+    test_pass "run-tests requires active checkout temp-disk library"
+  else
+    test_fail "run-tests requires active checkout temp-disk library"
+    status=1
+    mv "$run_tests_temp_disk_backup" "$run_tests_temp_disk_path" >/dev/null 2>&1 || true
   fi
 
   if (
@@ -664,6 +699,46 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     cat > .repo-automation.local.conf <<EOF
+REPO_AUTOMATION_CLEAN_STALE_TEMP=bogus
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_invalid_clean_stale_out" 2> "$run_tests_invalid_clean_stale_err"
+  ); then
+    test_fail "run-tests rejects invalid stale cleanup overrides"
+    status=1
+  elif grep -Fq 'fail: resolve temp/disk config' "$run_tests_invalid_clean_stale_out" &&
+    grep -Fq 'invalid REPO_AUTOMATION_CLEAN_STALE_TEMP value' "$run_tests_invalid_clean_stale_out" &&
+    [ ! -s "$run_tests_invalid_clean_stale_err" ]; then
+    test_pass "run-tests rejects invalid stale cleanup overrides"
+  else
+    test_fail "run-tests rejects invalid stale cleanup overrides"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+    cat > .repo-automation.local.conf <<EOF
+password=fixture
+touch "$run_tests_secret_config_marker"
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --quiet > "$run_tests_secret_config_out" 2> "$run_tests_secret_config_err"
+  ); then
+    test_fail "run-tests secret-scans local config before sourcing"
+    status=1
+  elif [ ! -e "$run_tests_secret_config_marker" ] &&
+    [ ! -s "$run_tests_secret_config_out" ] &&
+    grep -Fq 'WARN: possible secret markers found in' "$run_tests_secret_config_err"; then
+    test_pass "run-tests secret-scans local config before sourcing"
+  else
+    test_fail "run-tests secret-scans local config before sourcing"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > .repo-automation.local.conf <<EOF
 REPO_AUTOMATION_TEST_TEMP_ROOT="$run_tests_low_disk_tmpdir/repo-automation-template"
 REPO_AUTOMATION_RUN_TESTS_TEMP_WARN_KIB=1
 EOF
@@ -878,7 +953,7 @@ EOF
     status=1
   fi
 
-  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_temp_disk_backup" "$run_tests_missing_temp_disk_out" "$run_tests_missing_temp_disk_err" "$run_tests_invalid_clean_stale_out" "$run_tests_invalid_clean_stale_err" "$run_tests_secret_config_out" "$run_tests_secret_config_err" "$run_tests_secret_config_marker" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1628,6 +1703,10 @@ smoke_check_shellcheck_ci_parity_contract() {
   local shellcheck_paths_check="$smoke_test_base/shellcheck-ci-parity-paths-check-$$.stderr"
   local shellcheck_paths_status=0
   local shellcheck_workflow="$smoke_test_base/shellcheck-ci-parity-workflow-$$.txt"
+  local shellcheck_temp_disk_path="$smoke_test_dir/repo-automation/lib/temp-disk.sh"
+  local shellcheck_temp_disk_backup="$smoke_test_base/shellcheck-ci-parity-temp-disk-backup-$$.sh"
+  local shellcheck_missing_temp_disk_out="$smoke_test_base/shellcheck-ci-parity-missing-temp-disk-$$.txt"
+  local shellcheck_missing_temp_disk_err="$smoke_test_base/shellcheck-ci-parity-missing-temp-disk-$$.stderr"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -1653,19 +1732,36 @@ smoke_check_shellcheck_ci_parity_contract() {
   fi
 
   if (
+    cd "$smoke_test_dir" || return 1
+    mv "$shellcheck_temp_disk_path" "$shellcheck_temp_disk_backup" || return 1
+    repo-automation/bin/shellcheck-ci-parity --print-paths > "$shellcheck_missing_temp_disk_out" 2> "$shellcheck_missing_temp_disk_err"
+    rc=$?
+    mv "$shellcheck_temp_disk_backup" "$shellcheck_temp_disk_path" || return 1
+    exit "$rc"
+  ); then
+    test_fail "shellcheck-ci-parity requires active checkout temp-disk library"
+    status=1
+  elif [ ! -s "$shellcheck_missing_temp_disk_out" ] &&
+    grep -Fxq 'fail: missing shellcheck path: repo-automation/lib/temp-disk.sh' "$shellcheck_missing_temp_disk_err"; then
+    test_pass "shellcheck-ci-parity requires active checkout temp-disk library"
+  else
+    test_fail "shellcheck-ci-parity requires active checkout temp-disk library"
+    status=1
+    mv "$shellcheck_temp_disk_backup" "$shellcheck_temp_disk_path" >/dev/null 2>&1 || true
+  fi
+
+  if (
     cd "$smoke_test_dir/repo-automation/tests" || return 1
     ../bin/shellcheck-ci-parity --print-paths > "$shellcheck_paths"
   ); then
     python3 - "$smoke_test_dir/repo-automation/helper-metadata.json" "$shellcheck_paths" <<'PY' >/dev/null 2> "$shellcheck_paths_check" || shellcheck_paths_status=1
 import json
-import os
 import sys
 from pathlib import Path
 
 metadata_path = Path(sys.argv[1])
 paths_path = Path(sys.argv[2])
 repo_root = metadata_path.parent.parent
-fallback_root = Path(os.environ["smoke_repo_root"]) if os.environ.get("smoke_repo_root") else None
 
 try:
     helper_metadata = json.loads(metadata_path.read_text())
@@ -1685,14 +1781,13 @@ seen = set()
 
 def add(path: Path) -> None:
     rel_path = path.relative_to(repo_root).as_posix()
-    fallback_path = fallback_root / rel_path if fallback_root is not None else None
     if rel_path in seen:
         print(f"fail: duplicate shellcheck path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
-    if not path.exists() and not (fallback_path is not None and fallback_path.exists()):
+    if not path.exists():
         print(f"fail: missing shellcheck path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
-    if not path.is_file() and not (fallback_path is not None and fallback_path.is_file()):
+    if not path.is_file():
         print(f"fail: expected file path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
     seen.add(rel_path)
@@ -1706,17 +1801,8 @@ for helper in helpers:
     if isinstance(helper_path, str) and helper_path.startswith("repo-automation/bin/"):
         add(repo_root / helper_path)
 
-lib_roots = [repo_root]
-if fallback_root is not None and fallback_root != repo_root:
-    lib_roots.append(fallback_root)
-
-lib_seen = set()
-for lib_root in lib_roots:
-    for path in sorted((lib_root / "repo-automation" / "lib").glob("*.sh")):
-        if path.name in lib_seen:
-            continue
-        lib_seen.add(path.name)
-        add(repo_root / "repo-automation" / "lib" / path.name)
+for path in sorted((repo_root / "repo-automation" / "lib").glob("*.sh")):
+    add(path)
 
 for pattern in (
     "repo-automation/tests/lib/*.sh",
@@ -1788,7 +1874,7 @@ PY
   fi
 
   rm -f "$shellcheck_help" >/dev/null 2>&1 || true
-  rm -f "$shellcheck_paths" "$shellcheck_paths_check" "$shellcheck_workflow" >/dev/null 2>&1 || true
+  rm -f "$shellcheck_paths" "$shellcheck_paths_check" "$shellcheck_workflow" "$shellcheck_missing_temp_disk_out" "$shellcheck_missing_temp_disk_err" "$shellcheck_temp_disk_backup" >/dev/null 2>&1 || true
   return "$status"
 }
 

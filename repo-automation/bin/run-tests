@@ -8,13 +8,12 @@ set -o pipefail
 source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 # shellcheck source=/dev/null
 run_tests_temp_disk_lib="$(cd "$(dirname "$0")" && pwd)/../lib/temp-disk.sh"
-if [ -f "$run_tests_temp_disk_lib" ]; then
-  # shellcheck source=/dev/null
-  source "$run_tests_temp_disk_lib"
-elif [ -n "${smoke_repo_root:-}" ] && [ -f "$smoke_repo_root/repo-automation/lib/temp-disk.sh" ]; then
-  # shellcheck source=/dev/null
-  source "$smoke_repo_root/repo-automation/lib/temp-disk.sh"
+if [ ! -f "$run_tests_temp_disk_lib" ]; then
+  repo_auto_stop "missing required library: repo-automation/lib/temp-disk.sh"
+  exit 1
 fi
+# shellcheck source=/dev/null
+source "$run_tests_temp_disk_lib"
 unset run_tests_temp_disk_lib
 
 # shellcheck disable=SC2034
@@ -760,6 +759,25 @@ $(
 EOF
 }
 
+run_tests_source_optional_config() {
+  local config_file="$1"
+  local config_label="$2"
+
+  [ -f "$config_file" ] || return 0
+
+  repo_auto_secret_scan_file "$config_file" || return 1
+
+  # shellcheck source=/dev/null
+  . "$config_file" || {
+    if [ -n "$config_label" ]; then
+      repo_auto_stop "failed to source $config_label config file: $config_file"
+    else
+      repo_auto_stop "failed to source config file: $config_file"
+    fi
+    return 1
+  }
+}
+
 run_tests_changed_needs_docs() {
   case "$1" in
     README.md|CHANGELOG.md|CONTRIBUTING.md|SUPPORT.md|docs/*|repo-automation/docs/*|.github/pull_request_template.md|.github/ISSUE_TEMPLATE/*)
@@ -1056,20 +1074,8 @@ EOF
     return $?
   }
 
-  if [ -f "$repo_root/.repo-automation.conf" ]; then
-    # shellcheck source=/dev/null
-    . "$repo_root/.repo-automation.conf" || {
-      repo_auto_stop "failed to source config file: $repo_root/.repo-automation.conf"
-      return 1
-    }
-  fi
-  if [ -f "$repo_root/.repo-automation.local.conf" ]; then
-    # shellcheck source=/dev/null
-    . "$repo_root/.repo-automation.local.conf" || {
-      repo_auto_stop "failed to source local config file: $repo_root/.repo-automation.local.conf"
-      return 1
-    }
-  fi
+  run_tests_source_optional_config "$repo_root/.repo-automation.conf" "" || return 1
+  run_tests_source_optional_config "$repo_root/.repo-automation.local.conf" "local" || return 1
 
   if [ "$run_tests_env_REPO_AUTOMATION_TEST_TEMP_ROOT_set" -eq 1 ]; then
     REPO_AUTOMATION_TEST_TEMP_ROOT="$run_tests_env_REPO_AUTOMATION_TEST_TEMP_ROOT"
@@ -1279,22 +1285,14 @@ EOF
     [ -s "$shellcheck_paths_file" ]; then
     while IFS= read -r shell_path; do
       [ -n "$shell_path" ] || continue
-      shell_path_exec="$shell_path"
-      if [ ! -f "$shell_path_exec" ] && [ -n "${smoke_repo_root:-}" ] && [ -f "$smoke_repo_root/$shell_path" ]; then
-        shell_path_exec="$smoke_repo_root/$shell_path"
-      fi
-      run_tests_run_cmd "bash syntax $shell_path" bash -n "$shell_path_exec" || status=1
+      run_tests_run_cmd "bash syntax $shell_path" bash -n "$shell_path" || status=1
     done < "$shellcheck_paths_file"
 
     if command -v shellcheck >/dev/null 2>&1; then
       shellcheck_args=(-e SC2317)
       while IFS= read -r shell_path; do
         [ -n "$shell_path" ] || continue
-        shell_path_exec="$shell_path"
-        if [ ! -f "$shell_path_exec" ] && [ -n "${smoke_repo_root:-}" ] && [ -f "$smoke_repo_root/$shell_path" ]; then
-          shell_path_exec="$smoke_repo_root/$shell_path"
-        fi
-        shellcheck_args+=("$shell_path_exec")
+        shellcheck_args+=("$shell_path")
       done < "$shellcheck_paths_file"
       run_tests_run_cmd "shellcheck repo-automation scripts and tests" shellcheck "${shellcheck_args[@]}" || status=1
     else
