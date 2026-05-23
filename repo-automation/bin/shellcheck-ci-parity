@@ -43,10 +43,12 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 shellcheck_ci_parity_print_paths() {
   python3 - "$repo_root" <<'PY'
 import json
+import os
 import sys
 from pathlib import Path
 
 repo_root = Path(sys.argv[1])
+fallback_root = Path(os.environ["smoke_repo_root"]) if os.environ.get("smoke_repo_root") else None
 metadata_path = repo_root / "repo-automation" / "helper-metadata.json"
 
 try:
@@ -67,15 +69,17 @@ seen = set()
 
 def add(path: Path) -> None:
     rel_path = path.relative_to(repo_root).as_posix()
+    fallback_path = fallback_root / rel_path if fallback_root is not None else None
     if rel_path in seen:
         print(f"fail: duplicate shellcheck path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
-    if not path.exists():
+    if not path.exists() and not (fallback_path is not None and fallback_path.exists()):
         print(f"fail: missing shellcheck path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
     if not path.is_file():
-        print(f"fail: expected file path: {rel_path}", file=sys.stderr)
-        raise SystemExit(1)
+        if fallback_path is None or not fallback_path.is_file():
+            print(f"fail: expected file path: {rel_path}", file=sys.stderr)
+            raise SystemExit(1)
     seen.add(rel_path)
     paths.append(rel_path)
 
@@ -87,7 +91,17 @@ for helper in helpers:
     if isinstance(helper_path, str) and helper_path.startswith("repo-automation/bin/"):
         add(repo_root / helper_path)
 
-add(repo_root / "repo-automation" / "lib" / "common.sh")
+lib_roots = [repo_root]
+if fallback_root is not None and fallback_root != repo_root:
+    lib_roots.append(fallback_root)
+
+lib_seen = set()
+for lib_root in lib_roots:
+    for path in sorted((lib_root / "repo-automation" / "lib").glob("*.sh")):
+        if path.name in lib_seen:
+            continue
+        lib_seen.add(path.name)
+        add(repo_root / "repo-automation" / "lib" / path.name)
 
 for pattern in (
     "repo-automation/tests/lib/*.sh",

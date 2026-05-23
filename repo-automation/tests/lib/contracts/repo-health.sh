@@ -51,6 +51,15 @@ smoke_check_run_tests_contract() {
   local run_tests_low_disk_err="$smoke_test_base/run-tests-low-disk-$$.stderr"
   local run_tests_low_disk_marker="$smoke_test_base/run-tests-low-disk-marker-$$"
   local run_tests_low_disk_changed_repo=""
+  local run_tests_low_bytes_config_out="$smoke_test_base/run-tests-low-bytes-config-$$.txt"
+  local run_tests_low_bytes_config_err="$smoke_test_base/run-tests-low-bytes-config-$$.stderr"
+  local run_tests_low_bytes_env_out="$smoke_test_base/run-tests-low-bytes-env-$$.txt"
+  local run_tests_low_bytes_env_err="$smoke_test_base/run-tests-low-bytes-env-$$.stderr"
+  local run_tests_low_percent_config_out="$smoke_test_base/run-tests-low-percent-config-$$.txt"
+  local run_tests_low_percent_config_err="$smoke_test_base/run-tests-low-percent-config-$$.stderr"
+  local run_tests_invalid_percent_err="$smoke_test_base/run-tests-invalid-percent-$$.stderr"
+  local run_tests_temp_warn_out="$smoke_test_base/run-tests-temp-warn-$$.txt"
+  local run_tests_temp_warn_err="$smoke_test_base/run-tests-temp-warn-$$.stderr"
   local run_tests_timeout_format_stderr="$smoke_test_base/run-tests-timeout-format-$$.stderr"
   local run_tests_timeout_missing_stderr="$smoke_test_base/run-tests-timeout-missing-$$.stderr"
   local run_tests_timeout_empty_stderr="$smoke_test_base/run-tests-timeout-empty-$$.stderr"
@@ -221,6 +230,16 @@ EOF
     test_pass "run-tests explain failure recommends a better next step"
   else
     test_fail "run-tests explain failure recommends a better next step"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_STALE_TEMP_HOURS=24 RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --explain > "$run_tests_explain_out" 2>&1 || true
+  ) && grep -Fxq 'stale_temp_hours=24' "$run_tests_explain_out"; then
+    test_pass "run-tests explain reflects stale temp hour overrides"
+  else
+    test_fail "run-tests explain reflects stale temp hour overrides"
     status=1
   fi
 
@@ -567,6 +586,110 @@ EOF
     test_fail "run-tests low-disk guard blocks smoke mode before smoke runs"
     status=1
   fi
+  git -C "$smoke_test_dir" checkout -- repo-automation/tests/smoke.sh >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > .repo-automation.local.conf <<EOF
+REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1000000000
+EOF
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_DF_BLOCKS=1171875 RUN_TESTS_DF_USED=50 RUN_TESTS_DF_AVAILABLE=1171875 RUN_TESTS_DF_USE_PERCENT=50 RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_low_bytes_config_out" 2> "$run_tests_low_bytes_config_err"
+  ); then
+    if [ ! -s "$run_tests_low_bytes_config_out" ] && [ ! -s "$run_tests_low_bytes_config_err" ]; then
+      test_pass "run-tests config can lower disk low-bytes threshold"
+    else
+      test_fail "run-tests config can lower disk low-bytes threshold"
+      status=1
+    fi
+  else
+    test_fail "run-tests config can lower disk low-bytes threshold"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f .repo-automation.local.conf >/dev/null 2>&1 || true
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_DF_BLOCKS=1953125 RUN_TESTS_DF_USED=50 RUN_TESTS_DF_AVAILABLE=1953125 RUN_TESTS_DF_USE_PERCENT=50 RUN_TESTS_SKIP_SMOKE=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=3000000000 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_low_bytes_env_out" 2> "$run_tests_low_bytes_env_err"
+  ); then
+    test_fail "run-tests env can raise disk low-bytes threshold"
+    status=1
+  elif grep -Fq 'fail: disk space check' "$run_tests_low_bytes_env_out"; then
+    test_pass "run-tests env can raise disk low-bytes threshold"
+  else
+    test_fail "run-tests env can raise disk low-bytes threshold"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > .repo-automation.local.conf <<EOF
+REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=10
+EOF
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_DF_BLOCKS=1953125 RUN_TESTS_DF_USED=86 RUN_TESTS_DF_AVAILABLE=1953125 RUN_TESTS_DF_USE_PERCENT=14 RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_low_percent_config_out" 2> "$run_tests_low_percent_config_err"
+  ); then
+    if [ ! -s "$run_tests_low_percent_config_out" ] && [ ! -s "$run_tests_low_percent_config_err" ]; then
+      test_pass "run-tests config can set disk low-percent threshold"
+    else
+      test_fail "run-tests config can set disk low-percent threshold"
+      status=1
+    fi
+  else
+    test_fail "run-tests config can set disk low-percent threshold"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > .repo-automation.local.conf <<EOF
+REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=bogus
+EOF
+    RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_invalid_percent_err" 2>&1
+  ); then
+    test_fail "run-tests rejects invalid disk low-percent overrides"
+    status=1
+  elif grep -Fq 'fail: resolve temp/disk config' "$run_tests_invalid_percent_err" &&
+    grep -Fq 'invalid REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT value' "$run_tests_invalid_percent_err"; then
+    test_pass "run-tests rejects invalid disk low-percent overrides"
+  else
+    test_fail "run-tests rejects invalid disk low-percent overrides"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > .repo-automation.local.conf <<EOF
+REPO_AUTOMATION_TEST_TEMP_ROOT="$run_tests_low_disk_tmpdir/repo-automation-template"
+REPO_AUTOMATION_RUN_TESTS_TEMP_WARN_KIB=1
+EOF
+    cat > repo-automation/tests/docs-check.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+python3 - <<'PY' >&2
+print("x" * 2048)
+PY
+exit 1
+EOF
+    chmod +x repo-automation/tests/docs-check.sh || return 1
+    RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_DF_BLOCKS=1953125 RUN_TESTS_DF_USED=50 RUN_TESTS_DF_AVAILABLE=1953125 RUN_TESTS_DF_USE_PERCENT=50 RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --log-file="$run_tests_low_disk_tmpdir/repo-automation-template/run-tests.log" > "$run_tests_temp_warn_out" 2> "$run_tests_temp_warn_err"
+  ); then
+    test_fail "run-tests accepts temp warn KiB overrides"
+    status=1
+  elif grep -Fq 'WARN: TEST_TEMP_ROOT still uses' "$run_tests_temp_warn_err" &&
+    grep -Fq 'run-tests.log' "$run_tests_temp_warn_out"; then
+    test_pass "run-tests accepts temp warn KiB overrides"
+  else
+    test_fail "run-tests accepts temp warn KiB overrides"
+    status=1
+  fi
+  rm -f "$smoke_test_dir/.repo-automation.local.conf" >/dev/null 2>&1 || true
+  git -C "$smoke_test_dir" checkout -- repo-automation/tests/docs-check.sh >/dev/null 2>&1 || true
 
   run_tests_low_disk_changed_repo="$(smoke_setup_subset_repo)" || {
     test_fail "run-tests low-disk guard blocks changed smoke selection before smoke runs"
@@ -595,49 +718,30 @@ EOF
     test_fail "run-tests low-disk guard blocks changed smoke selection before smoke runs"
     status=1
   fi
+  git -C "$smoke_test_dir" checkout -- repo-automation/tests/smoke.sh >/dev/null 2>&1 || true
 
-  # shellcheck disable=SC2030,SC2031,SC2034
   if (
-    cd "$smoke_repo_root" || return 1
-    defs_file="$run_tests_low_disk_tmpdir/run-tests-defs.sh"
-    mkdir -p "$run_tests_low_disk_tmpdir" || return 1
-    # shellcheck disable=SC2016
-    sed \
-      -e "s#source \"\$(cd \"\$(dirname \"\$0\")\" && pwd)/../lib/common.sh\"#. \"$smoke_repo_root/repo-automation/lib/common.sh\"#" \
-      -e '/^run_tests_main "\$@"$/,$d' \
-      repo-automation/bin/run-tests > "$defs_file" || return 1
-    # shellcheck source=/dev/null
-    . "$defs_file" || return 1
-    TEST_TEMP_ROOT="$run_tests_low_disk_tmpdir/repo-automation-template"
-    mkdir -p "$TEST_TEMP_ROOT" || return 1
-
-    run_tests_checks=()
-    if RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" \
-      RUN_TESTS_DF_BLOCKS=1000000 \
-      RUN_TESTS_DF_USED=840000 \
-      RUN_TESTS_DF_AVAILABLE=1024 \
-      RUN_TESTS_DF_USE_PERCENT=84 \
-      run_tests_disk_guard_check "/" > "$run_tests_low_disk_err" 2>&1; then
-      return 1
-    fi
-    printf '%s\n' "${run_tests_checks[0]:-}" > "$run_tests_low_disk_out"
-    if [ "${run_tests_checks[0]:-}" != 'disk space check|fail|0|available disk space below 1.5G (1048576 bytes free)' ]; then
-      return 1
-    fi
-
-    run_tests_checks=()
-    if RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" \
-      RUN_TESTS_DF_BLOCKS=1000000 \
-      RUN_TESTS_DF_USED=860000 \
-      RUN_TESTS_DF_AVAILABLE=2000000 \
-      RUN_TESTS_DF_USE_PERCENT=86 \
-      run_tests_disk_guard_check "/" > "$run_tests_low_disk_err" 2>&1; then
-      return 1
-    fi
-    if [ "${run_tests_checks[0]:-}" != 'disk space check|fail|0|available disk space below 15% (14% free)' ]; then
-      return 1
-    fi
+    cd "$smoke_test_dir" || return 1
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_DF_BLOCKS=1000000 RUN_TESTS_DF_USED=840000 RUN_TESTS_DF_AVAILABLE=1024 RUN_TESTS_DF_USE_PERCENT=84 RUN_TESTS_LOW_DISK_MARKER="$run_tests_low_disk_marker" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_low_disk_out" 2> "$run_tests_low_disk_err"
   ); then
+    test_fail "run-tests low-disk guard prevents heavy checks"
+    status=1
+  elif grep -Fq 'available disk space below 1.5G (1048576 bytes free)' "$run_tests_low_disk_out" && [ ! -e "$run_tests_low_disk_marker" ]; then
+    test_pass "run-tests low-disk guard prevents heavy checks"
+  else
+    test_fail "run-tests low-disk guard prevents heavy checks"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$run_tests_low_disk_marker" >/dev/null 2>&1 || true
+    TMPDIR="$run_tests_low_disk_tmpdir" RUN_TESTS_DF_BIN="$run_tests_low_disk_stub_dir/df" RUN_TESTS_DF_BLOCKS=1000000 RUN_TESTS_DF_USED=860000 RUN_TESTS_DF_AVAILABLE=2000000 RUN_TESTS_DF_USE_PERCENT=86 RUN_TESTS_LOW_DISK_MARKER="$run_tests_low_disk_marker" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_low_disk_out" 2> "$run_tests_low_disk_err"
+  ); then
+    test_fail "run-tests low-disk guard prevents heavy checks"
+    status=1
+  elif grep -Fq 'available disk space below 15% (14% free)' "$run_tests_low_disk_out" && [ ! -e "$run_tests_low_disk_marker" ]; then
     test_pass "run-tests low-disk guard prevents heavy checks"
   else
     test_fail "run-tests low-disk guard prevents heavy checks"
@@ -774,130 +878,7 @@ EOF
     status=1
   fi
 
-  local run_tests_subset_repo=""
-  local run_tests_subset_smoke_json="$smoke_test_base/run-tests-subset-smoke-$$.json"
-  local run_tests_subset_docs_json="$smoke_test_base/run-tests-subset-docs-$$.json"
-  local run_tests_subset_version_json="$smoke_test_base/run-tests-subset-version-$$.json"
-  local run_tests_subset_changed_json="$smoke_test_base/run-tests-subset-changed-$$.json"
-  local run_tests_subset_changed_default_out="$smoke_test_base/run-tests-subset-changed-default-$$.txt"
-  local run_tests_subset_changed_default_err="$smoke_test_base/run-tests-subset-changed-default-$$.stderr"
-  local run_tests_subset_changed_quiet_out="$smoke_test_base/run-tests-subset-changed-quiet-$$.txt"
-  local run_tests_subset_changed_quiet_err="$smoke_test_base/run-tests-subset-changed-quiet-$$.stderr"
-  local run_tests_subset_changed_smoke_json="$smoke_test_base/run-tests-subset-changed-smoke-$$.json"
-  local run_tests_subset_changed_bin_json="$smoke_test_base/run-tests-subset-changed-bin-$$.json"
-
-  run_tests_subset_repo="$(smoke_setup_subset_repo)" || {
-    test_fail "run-tests subset fixture creates a repo"
-    status=1
-  }
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --smoke --json --json-level=all > "$run_tests_subset_smoke_json" || true
-  ) && python3 -m json.tool "$run_tests_subset_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_smoke_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/smoke.sh"'; then
-    test_pass "run-tests smoke subset runs only smoke"
-  else
-    test_fail "run-tests smoke subset runs only smoke"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --docs --json --json-level=all > "$run_tests_subset_docs_json" || true
-  ) && python3 -m json.tool "$run_tests_subset_docs_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_docs_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/docs-check.sh"'; then
-    test_pass "run-tests docs subset runs only docs-check"
-  else
-    test_fail "run-tests docs subset runs only docs-check"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --version --json --json-level=all > "$run_tests_subset_version_json" || true
-  ) && python3 -m json.tool "$run_tests_subset_version_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_version_json" 'data.get("script") == "run-tests" and len(data.get("checks", [])) == 1 and data.get("checks", [])[0].get("name") == "repo-automation/tests/version-consistency.sh"'; then
-    test_pass "run-tests version subset runs only version-consistency"
-  else
-    test_fail "run-tests version subset runs only version-consistency"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    cat > repo-automation/tests/docs-check.sh <<EOF
-#!/usr/bin/env bash
-set -u
-set -o pipefail
-exit 0
-EOF
-    chmod +x repo-automation/tests/docs-check.sh || return 1
-    git add repo-automation/tests/docs-check.sh || return 1
-    git commit -m "test: stub passing docs-check" >/dev/null 2>&1 || return 1
-    printf '\nAdditional docs note.\n' >> repo-automation/docs/testing.md || return 1
-    repo-automation/bin/run-tests --changed > "$run_tests_subset_changed_default_out" 2> "$run_tests_subset_changed_default_err"
-  ) && [ "$(cat "$run_tests_subset_changed_default_out")" = "pass" ] && [ ! -s "$run_tests_subset_changed_default_err" ]; then
-    test_pass "run-tests changed subset defaults to compact pass output"
-  else
-    test_fail "run-tests changed subset defaults to compact pass output"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --changed --quiet > "$run_tests_subset_changed_quiet_out" 2> "$run_tests_subset_changed_quiet_err"
-  ) && [ ! -s "$run_tests_subset_changed_quiet_out" ] && [ ! -s "$run_tests_subset_changed_quiet_err" ]; then
-    test_pass "run-tests changed subset quiet output is silent"
-  else
-    test_fail "run-tests changed subset quiet output is silent"
-    status=1
-  fi
-
-  if [ -n "$run_tests_subset_repo" ] && (
-    cd "$run_tests_subset_repo" || return 1
-    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_json" || true
-  ) && python3 -m json.tool "$run_tests_subset_changed_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_json" 'data.get("selected_subsets") == ["docs"] and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and not any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
-    test_pass "run-tests changed subset follows docs-only changes"
-  else
-    test_fail "run-tests changed subset follows docs-only changes"
-    status=1
-  fi
-
-  local run_tests_subset_changed_smoke_repo=""
-  run_tests_subset_changed_smoke_repo="$(smoke_setup_subset_repo)" || {
-    test_fail "run-tests changed subset follows docs plus smoke changes"
-    status=1
-  }
-
-  if [ -n "$run_tests_subset_changed_smoke_repo" ] && (
-    cd "$run_tests_subset_changed_smoke_repo" || return 1
-    printf '\nsubset docs plus smoke change\n' >> repo-automation/docs/testing.md || return 1
-    printf '\n# subset smoke change\n' >> repo-automation/tests/smoke.sh || return 1
-    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_smoke_json" || true
-  ) && python3 -m json.tool "$run_tests_subset_changed_smoke_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_smoke_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
-    test_pass "run-tests changed subset follows docs plus smoke changes"
-  else
-    test_fail "run-tests changed subset follows docs plus smoke changes"
-    status=1
-  fi
-
-  local run_tests_subset_changed_bin_repo=""
-  run_tests_subset_changed_bin_repo="$(smoke_setup_subset_repo)" || {
-    test_fail "run-tests changed subset follows docs plus bin changes"
-    status=1
-  }
-
-  if [ -n "$run_tests_subset_changed_bin_repo" ] && (
-    cd "$run_tests_subset_changed_bin_repo" || return 1
-    printf '\nsubset docs plus bin change\n' >> repo-automation/docs/testing.md || return 1
-    printf '\n# subset bin change\n' >> repo-automation/bin/failure-log || return 1
-    repo-automation/bin/run-tests --changed --json --json-level=all > "$run_tests_subset_changed_bin_json" || true
-  ) && python3 -m json.tool "$run_tests_subset_changed_bin_json" >/dev/null &&     smoke_json_assert "$run_tests_subset_changed_bin_json" 'len(data.get("selected_subsets", [])) == 2 and "docs" in data.get("selected_subsets", []) and "smoke" in data.get("selected_subsets", []) and any(check.get("name") == "repo-automation/tests/docs-check.sh" for check in data.get("checks", [])) and any(check.get("name") == "repo-automation/tests/smoke.sh" for check in data.get("checks", []))'; then
-    test_pass "run-tests changed subset follows docs plus bin changes"
-  else
-    test_fail "run-tests changed subset follows docs plus bin changes"
-    status=1
-  fi
-
-  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_subset_smoke_json" "$run_tests_subset_docs_json" "$run_tests_subset_version_json" "$run_tests_subset_changed_default_out" "$run_tests_subset_changed_default_err" "$run_tests_subset_changed_quiet_out" "$run_tests_subset_changed_quiet_err" "$run_tests_subset_changed_json" "$run_tests_subset_changed_smoke_json" "$run_tests_subset_changed_bin_json" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1537,6 +1518,8 @@ smoke_check_managed_file_tools_contract() {
   local managed_file_new_path="repo-automation/docs/managed-file-tools-smoke.md"
   local managed_file_manifest_path="$smoke_test_dir/repo-automation/manifest.json"
   local managed_file_installer_path="$smoke_test_dir/repo-automation/bin/repo-automation-install"
+  local managed_file_manifest_backup="$smoke_test_base/managed-file-manifest-backup-$$.json"
+  local managed_file_installer_backup="$smoke_test_base/managed-file-installer-backup-$$.sh"
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -1607,6 +1590,8 @@ smoke_check_managed_file_tools_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    cp "$managed_file_manifest_path" "$managed_file_manifest_backup" || return 1
+    cp "$managed_file_installer_path" "$managed_file_installer_backup" || return 1
     repo-automation/bin/managed-file-add --path="$managed_file_new_path" --kind=doc >/dev/null
   ) && python3 -m json.tool "$managed_file_manifest_path" >/dev/null && \
     grep -Fq -- "\"path\": \"$managed_file_new_path\"" "$managed_file_manifest_path" && \
@@ -1627,7 +1612,11 @@ smoke_check_managed_file_tools_contract() {
     status=1
   fi
 
+  cp "$managed_file_manifest_backup" "$managed_file_manifest_path" >/dev/null 2>&1 || true
+  cp "$managed_file_installer_backup" "$managed_file_installer_path" >/dev/null 2>&1 || true
+
   rm -f "$managed_file_help" "$managed_file_add_help" "$managed_file_clean_out" "$managed_file_clean_err" "$managed_file_fail_stderr" "$managed_file_add_stderr" >/dev/null 2>&1 || true
+  rm -f "$managed_file_manifest_backup" "$managed_file_installer_backup" >/dev/null 2>&1 || true
   return "$status"
 }
 
@@ -1669,12 +1658,14 @@ smoke_check_shellcheck_ci_parity_contract() {
   ); then
     python3 - "$smoke_test_dir/repo-automation/helper-metadata.json" "$shellcheck_paths" <<'PY' >/dev/null 2> "$shellcheck_paths_check" || shellcheck_paths_status=1
 import json
+import os
 import sys
 from pathlib import Path
 
 metadata_path = Path(sys.argv[1])
 paths_path = Path(sys.argv[2])
 repo_root = metadata_path.parent.parent
+fallback_root = Path(os.environ["smoke_repo_root"]) if os.environ.get("smoke_repo_root") else None
 
 try:
     helper_metadata = json.loads(metadata_path.read_text())
@@ -1694,13 +1685,14 @@ seen = set()
 
 def add(path: Path) -> None:
     rel_path = path.relative_to(repo_root).as_posix()
+    fallback_path = fallback_root / rel_path if fallback_root is not None else None
     if rel_path in seen:
         print(f"fail: duplicate shellcheck path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
-    if not path.exists():
+    if not path.exists() and not (fallback_path is not None and fallback_path.exists()):
         print(f"fail: missing shellcheck path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
-    if not path.is_file():
+    if not path.is_file() and not (fallback_path is not None and fallback_path.is_file()):
         print(f"fail: expected file path: {rel_path}", file=sys.stderr)
         raise SystemExit(1)
     seen.add(rel_path)
@@ -1714,7 +1706,17 @@ for helper in helpers:
     if isinstance(helper_path, str) and helper_path.startswith("repo-automation/bin/"):
         add(repo_root / helper_path)
 
-add(repo_root / "repo-automation" / "lib" / "common.sh")
+lib_roots = [repo_root]
+if fallback_root is not None and fallback_root != repo_root:
+    lib_roots.append(fallback_root)
+
+lib_seen = set()
+for lib_root in lib_roots:
+    for path in sorted((lib_root / "repo-automation" / "lib").glob("*.sh")):
+        if path.name in lib_seen:
+            continue
+        lib_seen.add(path.name)
+        add(repo_root / "repo-automation" / "lib" / path.name)
 
 for pattern in (
     "repo-automation/tests/lib/*.sh",
@@ -1755,6 +1757,14 @@ if "repo-automation/bin/check-tooling" not in actual:
 
 if "repo-automation/bin/shellcheck-ci-parity" not in actual:
     print("fail: shellcheck-ci-parity --print-paths is missing repo-automation/bin/shellcheck-ci-parity", file=sys.stderr)
+    raise SystemExit(1)
+
+if "repo-automation/lib/common.sh" not in actual:
+    print("fail: shellcheck-ci-parity --print-paths is missing repo-automation/lib/common.sh", file=sys.stderr)
+    raise SystemExit(1)
+
+if "repo-automation/lib/temp-disk.sh" not in actual:
+    print("fail: shellcheck-ci-parity --print-paths is missing repo-automation/lib/temp-disk.sh", file=sys.stderr)
     raise SystemExit(1)
 PY
     if [ "$shellcheck_paths_status" -eq 0 ]; then
@@ -1860,7 +1870,6 @@ smoke_check_portability_contract() {
   local python_err="$smoke_test_base/check-portability-python-$$.stderr"
   local workflow_path="$smoke_test_dir/.github/workflows/ci.yml"
   local path_fixture="$smoke_test_base/check-portability-path-fixture-$$"
-
   smoke_check_portability_make_path_fixture "$path_fixture" || return 1
 
   if (
