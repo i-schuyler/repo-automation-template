@@ -25,6 +25,7 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-watch` read-only polling, timeout handling, and machine JSON
 - smoke coverage for `repo-automation/bin/ci-log-dump` read-only failed-run discovery, durable log capture, tail excerpts, and machine JSON
+- smoke coverage for `repo-automation/bin/contract-debt-report` advisory report generation, strict flag parsing, compact human output, JSON parseability, and seeded debt/advisory warnings
 - smoke coverage for `repo-automation/bin/status-packet` human default output, `--explain` FINAL SUMMARY output, machine JSON, and compact repo state reporting
 - smoke coverage for `repo-automation/bin/post-codex-review` default FINAL SUMMARY output, `--quiet`, `--explain`, `--json`, `--packet` bundle creation, and ≤25-line output contract
 - smoke coverage for `repo-automation/bin/post-codex-packet` packet assembly, tracked and staged diff capture, safe untracked file copying, skip rules, and zip output
@@ -42,7 +43,7 @@ CI runs the same core checks:
 - JSON parseability checks for branch cleanup and preflight
 - version consistency guard via `repo-automation/bin/prepare-release --check`, plus manifest-vs-installer coverage drift detection and helper-metadata config-key drift detection in `repo-automation/tests/version-consistency.sh`; it also follows the quiet-first contract where success prints `pass`, `--quiet` stays silent, and `--explain` keeps detailed progress lines
 
-CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, plus the flat `repo-automation/bin/ci-failure-artifacts` bundle with stable names such as `failure-log.txt`, `failure-excerpt.txt`, `policy-summary.md`, `machine-summary.json`, and the copied raw logs from the CI failure step. `repo-automation/bin/run-tests` still prints a referenced path only for durable logs (explicit `--log-file=<path>` or `--no-clean-temp`).
+CI stores the detailed failure logs for `repo-automation/bin/run-tests` and ShellCheck in `run-tests.log` and `shellcheck.log` artifacts, plus the flat `repo-automation/bin/ci-failure-artifacts` bundle with stable names such as `failure-log.txt`, `failure-excerpt.txt`, `policy-summary.md`, `machine-summary.json`, and the copied raw logs from the CI failure step. The advisory `repo-automation/bin/contract-debt-report` helper also writes `contract-debt-report.md` and `contract-debt-report.json` into that same CI failure artifact directory when the failure-artifact step runs, but it never blocks CI on debt findings. `repo-automation/bin/run-tests` still prints a referenced path only for durable logs (explicit `--log-file=<path>` or `--no-clean-temp`).
 
 The test scaffold does not require GitHub auth and does not create issues or PRs.
 `repo-automation/bin/pr-finish` smoke coverage does not perform real merges.

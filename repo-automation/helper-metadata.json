@@ -162,6 +162,27 @@
       "config_keys": []
     },
     {
+      "name": "contract-debt-report",
+      "path": "repo-automation/bin/contract-debt-report",
+      "doc_path": "repo-automation/docs/contract-debt-report.md",
+      "contract_test_path": "repo-automation/tests/contracts/contract-debt-report.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "broad-local",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": true,
+      "supports_quiet": true,
+      "supports_json": true,
+      "artifact_helper": true,
+      "umbrella_helper": false,
+      "workflow_role": "audit",
+      "config_keys": []
+    },
+    {
       "name": "ci-status",
       "path": "repo-automation/bin/ci-status",
       "doc_path": "repo-automation/docs/ci-status.md",

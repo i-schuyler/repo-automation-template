@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+# repo-automation/bin/contract-debt-report
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+contract_debt_report_out_dir="${TMPDIR:-$HOME/.cache}/repo-automation-template/contract-debt-report"
+contract_debt_report_mode="summary"
+
+contract_debt_report_usage() {
+  printf 'Usage: repo-automation/bin/contract-debt-report [--help] [--out-dir=<path>] [--quiet] [--explain] [--json]\n'
+  printf '\n'
+  printf 'Generate an advisory maintainability and contract debt report.\n'
+  printf 'Debt findings warn but do not fail the command.\n'
+}
+
+contract_debt_report_fail_flag() {
+  repo_auto_flag_error "$1" "$2" "$3"
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help)
+      contract_debt_report_usage
+      exit 0
+      ;;
+    --quiet)
+      contract_debt_report_mode="quiet"
+      ;;
+    --explain)
+      contract_debt_report_mode="explain"
+      ;;
+    --json)
+      contract_debt_report_mode="json"
+      ;;
+    --out-dir=*)
+      contract_debt_report_out_dir="${1#--out-dir=}"
+      if [ -z "$contract_debt_report_out_dir" ]; then
+        contract_debt_report_fail_flag "empty flag value" "--out-dir" "use --out-dir=<path>" || exit 1
+      fi
+      ;;
+    --out-dir)
+      if [ "${2:-}" != "" ] && [ "${2#-}" = "$2" ]; then
+        contract_debt_report_fail_flag "flag format not accepted" "--out-dir" "use --out-dir=<path>" || exit 1
+      else
+        contract_debt_report_fail_flag "missing flag value" "--out-dir" "use --out-dir=<path>" || exit 1
+      fi
+      exit 1
+      ;;
+    --*)
+      contract_debt_report_fail_flag "unknown flag" "$1" "run repo-automation/bin/contract-debt-report --help" || exit 1
+      ;;
+    *)
+      contract_debt_report_fail_flag "unknown flag" "$1" "run repo-automation/bin/contract-debt-report --help" || exit 1
+      ;;
+  esac
+  shift
+done
+
+if ! mkdir -p "$contract_debt_report_out_dir" >/dev/null 2>&1; then
+  printf 'fail: unable to create output directory\n' >&2
+  printf 'path: %s\n' "$contract_debt_report_out_dir" >&2
+  printf 'fix: choose a writable --out-dir\n' >&2
+  exit 1
+fi
+
+repo_root="$(cd "$script_dir/../.." && pwd)"
+export repo_root contract_debt_report_out_dir contract_debt_report_mode
+
+python3 - "$repo_root" "$contract_debt_report_out_dir" "$contract_debt_report_mode" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+out_dir = Path(sys.argv[2])
+mode = sys.argv[3]
+
+thresholds = {
+    "script_large_lines": 500,
+    "script_very_large_lines": 900,
+    "test_large_lines": 900,
+    "test_very_large_lines": 1500,
+    "doc_large_lines": 450,
+    "doc_very_large_lines": 900,
+    "repeated_flag_parser_branches": 8,
+    "max_findings_per_category": 20,
+}
+
+helper_metadata_path = repo_root / "repo-automation" / "helper-metadata.json"
+manifest_path = repo_root / "repo-automation" / "manifest.json"
+generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+report_markdown = out_dir / "contract-debt-report.md"
+report_json = out_dir / "contract-debt-report.json"
+
+
+class OperationalFailure(RuntimeError):
+    pass
+
+
+def read_json(path: Path, label: str):
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise OperationalFailure(f"unreadable required file: {label}") from exc
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise OperationalFailure(f"invalid JSON in {label}: {exc.msg}") from exc
+
+
+def run_git_ls_files() -> list[str]:
+    proc = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "-z"],
+        check=False,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise OperationalFailure("failed to enumerate tracked files")
+    out = proc.stdout.decode("utf-8", errors="replace")
+    return [item for item in out.split("\0") if item]
+
+
+def is_excluded(rel_path: str) -> bool:
+    parts = Path(rel_path).parts
+    excluded_parts = {".git", ".cache", "node_modules", "vendor", "build", "dist", "tmp", "temp"}
+    return any(part in excluded_parts or part.startswith(".tmp") for part in parts)
+
+
+def file_line_count(path: Path) -> int:
+    try:
+      text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+      raise OperationalFailure(f"unreadable required file: {path.relative_to(repo_root).as_posix()}") from exc
+    return text.count("\n") + (0 if text.endswith("\n") or text == "" else 1)
+
+
+def add_finding(store: list[dict[str, object]], **finding: object) -> None:
+    store.append(finding)
+
+
+def category_for_path(rel_path: str) -> str | None:
+    if rel_path.startswith("repo-automation/bin/") or rel_path.startswith("repo-automation/lib/"):
+        return "script"
+    if rel_path.startswith("repo-automation/tests/"):
+        return "test"
+    if rel_path.endswith(".md"):
+        return "doc"
+    return None
+
+
+def threshold_for_path(rel_path: str) -> tuple[int, int] | None:
+    if rel_path.startswith("repo-automation/bin/") or rel_path.startswith("repo-automation/lib/"):
+        return thresholds["script_large_lines"], thresholds["script_very_large_lines"]
+    if rel_path.startswith("repo-automation/tests/"):
+        return thresholds["test_large_lines"], thresholds["test_very_large_lines"]
+    if rel_path.endswith(".md"):
+        return thresholds["doc_large_lines"], thresholds["doc_very_large_lines"]
+    return None
+
+
+def supports_json_coverage(text: str) -> bool:
+    return "--json" in text and any(marker in text for marker in ("python3 -m json.tool", "smoke_json_assert", "json.tool"))
+
+
+def supports_quiet_coverage(text: str) -> bool:
+    if "--quiet" not in text:
+        return False
+    return any(marker in text for marker in ("quiet success", "quiet output", "silent", "compact failure"))
+
+
+def normalize_metadata_path(value: object) -> str | None:
+    if isinstance(value, str):
+        value = value.strip()
+        if value:
+            return value
+    return None
+
+
+def shell_function_body(text: str, function_name: str) -> str | None:
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if re.match(rf"^{re.escape(function_name)}\(\)\s*\{{\s*$", line):
+            start = index
+            break
+    if start is None:
+        return None
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\(\)\s*\{", lines[index]):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+def shared_contract_function_names(wrapper_text: str) -> list[str]:
+    names = {match for match in re.findall(r"\b(smoke_check_[A-Za-z0-9_]+)\b", wrapper_text)}
+    return sorted(names)
+
+
+def contract_coverage_text(contract_file: Path) -> tuple[str, list[str]]:
+    wrapper_text = contract_file.read_text(encoding="utf-8", errors="replace")
+    coverage_parts = [wrapper_text]
+    missing_functions: list[str] = []
+    shared_contract_dir = repo_root / "repo-automation" / "tests" / "lib" / "contracts"
+    shared_contract_texts: dict[Path, str] = {}
+    for shared_contract_file in sorted(shared_contract_dir.glob("*.sh")):
+        shared_contract_texts[shared_contract_file] = shared_contract_file.read_text(encoding="utf-8", errors="replace")
+    for function_name in shared_contract_function_names(wrapper_text):
+        function_body = None
+        for shared_text in shared_contract_texts.values():
+            function_body = shell_function_body(shared_text, function_name)
+            if function_body is not None:
+                coverage_parts.append(function_body)
+                break
+        if function_body is None:
+            missing_functions.append(function_name)
+    return "\n\n".join(coverage_parts), missing_functions
+
+
+def helper_doc_has_example(helper_path: str, text: str) -> bool:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if helper_path in stripped and ("--" in stripped or stripped.startswith("`")):
+            return True
+    return False
+
+
+def parse_helper_metadata():
+    metadata = read_json(helper_metadata_path, "repo-automation/helper-metadata.json")
+    if metadata.get("schema") != "repo-automation-helper-metadata/v1":
+        raise OperationalFailure("invalid helper metadata schema")
+    helpers = metadata.get("helpers")
+    if not isinstance(helpers, list):
+        raise OperationalFailure("invalid helper metadata shape")
+    return helpers
+
+
+def parse_manifest() -> set[str]:
+    manifest = read_json(manifest_path, "repo-automation/manifest.json")
+    if manifest.get("schema") != "repo-automation-manifest/v1":
+        raise OperationalFailure("invalid manifest schema")
+    managed = manifest.get("managed_files")
+    if not isinstance(managed, list):
+        raise OperationalFailure("invalid manifest shape")
+    paths: set[str] = set()
+    for item in managed:
+        if isinstance(item, dict) and isinstance(item.get("path"), str):
+            paths.add(item["path"])
+    return paths
+
+
+def build_findings() -> tuple[list[dict[str, object]], list[str], dict[str, int], list[dict[str, object]], list[dict[str, object]]]:
+    helpers = parse_helper_metadata()
+    managed_paths = parse_manifest()
+    tracked_paths = run_git_ls_files()
+    findings: list[dict[str, object]] = []
+    missing_inputs: list[str] = []
+    category_counts: Counter[str] = Counter()
+    helper_lookup: dict[str, dict[str, object]] = {}
+
+    for helper in helpers:
+        if isinstance(helper, dict) and helper.get("name") and helper.get("path"):
+            helper_lookup[str(helper["path"])] = helper
+
+    for helper in helpers:
+        if not isinstance(helper, dict) or not helper.get("public"):
+            continue
+        helper_name = str(helper.get("name", "unknown"))
+        helper_path = str(helper.get("path", ""))
+        doc_path = normalize_metadata_path(helper.get("doc_path"))
+        contract_path = normalize_metadata_path(helper.get("contract_test_path"))
+        supports_json = bool(helper.get("supports_json"))
+        supports_quiet = bool(helper.get("supports_quiet"))
+
+        helper_file = repo_root / helper_path
+        doc_file = repo_root / doc_path if doc_path is not None else None
+        contract_file = repo_root / contract_path if contract_path is not None else None
+
+        if helper_path and not helper_file.is_file():
+            add_finding(findings, severity="warn", category="metadata-gap", path=helper_path, helper=helper_name, message="public helper file is missing", suggested_action="restore the helper file or remove the public metadata entry")
+            missing_inputs.append(helper_path)
+            category_counts["metadata-gap"] += 1
+        elif helper_path and helper_path not in managed_paths:
+            add_finding(findings, severity="warn", category="manifest-drift", path=helper_path, helper=helper_name, message="public helper path is missing from repo-automation/manifest.json", suggested_action="add the helper path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install")
+            category_counts["manifest-drift"] += 1
+
+        if doc_path is None:
+            add_finding(findings, severity="warn", category="metadata-gap", path=helper_path or helper_name, helper=helper_name, message="public helper doc_path metadata is missing or empty", suggested_action="add doc_path metadata or remove the public helper entry")
+            category_counts["metadata-gap"] += 1
+        else:
+            if not doc_file.is_file():
+                add_finding(findings, severity="warn", category="metadata-gap", path=str(doc_path), helper=helper_name, message="public helper doc is missing", suggested_action="add the helper doc or remove the doc_path metadata")
+                missing_inputs.append(str(doc_path))
+                category_counts["metadata-gap"] += 1
+            else:
+                doc_text = doc_file.read_text(encoding="utf-8", errors="replace")
+                if str(helper_path) not in doc_text:
+                    add_finding(findings, severity="warn", category="docs-coverage", path=str(doc_path), helper=helper_name, message="helper doc does not mention the helper path", suggested_action="mention the helper path in the helper doc")
+                    category_counts["docs-coverage"] += 1
+                if not helper_doc_has_example(str(helper_path), doc_text):
+                    add_finding(findings, severity="warn", category="docs-coverage", path=str(doc_path), helper=helper_name, message="helper doc is missing a usage/example command", suggested_action="add a short usage example for the helper")
+                    category_counts["docs-coverage"] += 1
+                if str(doc_path) not in managed_paths:
+                    add_finding(findings, severity="warn", category="manifest-drift", path=str(doc_path), helper=helper_name, message="helper doc is missing from repo-automation/manifest.json", suggested_action="add the doc path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install")
+                    category_counts["manifest-drift"] += 1
+
+        if contract_path is None:
+            add_finding(findings, severity="warn", category="metadata-gap", path=helper_path or helper_name, helper=helper_name, message="public helper contract_test_path metadata is missing or empty", suggested_action="add contract_test_path metadata or remove the public helper entry")
+            category_counts["metadata-gap"] += 1
+        else:
+            if not contract_file.is_file():
+                add_finding(findings, severity="warn", category="metadata-gap", path=str(contract_path), helper=helper_name, message="public helper contract test is missing", suggested_action="add the contract test or remove the contract_test_path metadata")
+                missing_inputs.append(str(contract_path))
+                category_counts["metadata-gap"] += 1
+            else:
+                contract_text, missing_shared_functions = contract_coverage_text(contract_file)
+                for function_name in missing_shared_functions:
+                    add_finding(findings, severity="warn", category="contract-coverage", path=str(contract_path), helper=helper_name, message=f"wrapper references a missing shared contract function: {function_name}", suggested_action="define the shared contract function under repo-automation/tests/lib/contracts or update the wrapper")
+                    category_counts["contract-coverage"] += 1
+                if supports_json and not supports_json_coverage(contract_text):
+                    add_finding(findings, severity="warn", category="contract-coverage", path=str(contract_path), helper=helper_name, message="supports_json helper contract test is missing JSON parseability coverage", suggested_action="mention --json and assert parseable JSON in the contract test")
+                    category_counts["contract-coverage"] += 1
+                if supports_quiet and not supports_quiet_coverage(contract_text):
+                    add_finding(findings, severity="warn", category="contract-coverage", path=str(contract_path), helper=helper_name, message="supports_quiet helper contract test is missing quiet-mode coverage", suggested_action="mention --quiet and assert quiet success or compact failure")
+                    category_counts["contract-coverage"] += 1
+                if not any(marker in contract_text for marker in ("unknown flag", "fail:", "fix:")):
+                    add_finding(findings, severity="warn", category="contract-coverage", path=str(contract_path), helper=helper_name, message="helper contract test is missing failure-shape coverage", suggested_action="add unknown-flag or fail/fix assertions to the contract test")
+                    category_counts["contract-coverage"] += 1
+                if str(contract_path) not in managed_paths:
+                    add_finding(findings, severity="warn", category="manifest-drift", path=str(contract_path), helper=helper_name, message="helper contract test is missing from repo-automation/manifest.json", suggested_action="add the contract test path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install")
+                    category_counts["manifest-drift"] += 1
+
+    for rel_path in tracked_paths:
+        if is_excluded(rel_path):
+            continue
+        path = repo_root / rel_path
+        if not path.is_file():
+            continue
+        thresholds_for_file = threshold_for_path(rel_path)
+        if thresholds_for_file is None:
+            continue
+        line_count = file_line_count(path)
+        large_threshold, very_large_threshold = thresholds_for_file
+        if line_count > very_large_threshold:
+            add_finding(findings, severity="warn", category="file-size", path=rel_path, line_count=line_count, helper=helper_lookup.get(rel_path, {}).get("name"), message="very large file is a refactor candidate", suggested_action="split the file into smaller helpers or data tables")
+            category_counts["file-size"] += 1
+        elif line_count > large_threshold:
+            add_finding(findings, severity="warn", category="file-size", path=rel_path, line_count=line_count, helper=helper_lookup.get(rel_path, {}).get("name"), message="large file is a maintenance candidate", suggested_action="consider splitting this file before it grows further")
+            category_counts["file-size"] += 1
+
+        if rel_path.startswith("repo-automation/bin/") or rel_path.startswith("repo-automation/lib/"):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            parser_hits = sum(text.count(marker) for marker in ("repo_auto_flag_error", "missing flag value", "empty flag value", "flag format not accepted"))
+            if parser_hits >= thresholds["repeated_flag_parser_branches"]:
+                add_finding(findings, severity="warn", category="parser-refactor", path=rel_path, line_count=parser_hits, helper=helper_lookup.get(rel_path, {}).get("name"), message="repeated flag parser branches suggest a refactor", suggested_action="factor repeated flag parsing into a shared helper")
+                category_counts["parser-refactor"] += 1
+
+    top_categories_raw = [
+        {
+            "category": category,
+            "count": count,
+            "omitted": max(0, count - thresholds["max_findings_per_category"]),
+        }
+        for category, count in sorted(category_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    return findings, missing_inputs, dict(category_counts), top_categories_raw, tracked_paths
+
+
+def cap_findings(findings: list[dict[str, object]]) -> tuple[list[dict[str, object]], dict[str, int]]:
+    grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for finding in findings:
+        grouped[str(finding["category"])].append(finding)
+    capped: list[dict[str, object]] = []
+    omitted: dict[str, int] = {}
+    for category in sorted(grouped):
+        items = grouped[category]
+        capped.extend(items[: thresholds["max_findings_per_category"]])
+        omitted[category] = max(0, len(items) - thresholds["max_findings_per_category"])
+    capped.sort(key=lambda item: (str(item.get("category")), str(item.get("path", "")), str(item.get("helper", "")), int(item.get("line_count", 0) or 0), str(item.get("message", ""))))
+    return capped, omitted
+
+
+def render_markdown(result: dict[str, object]) -> str:
+    lines: list[str] = []
+    findings = result["findings"]
+    assert isinstance(findings, list)
+    top_categories = result["top_categories"]
+    assert isinstance(top_categories, list)
+    counts = result["counts"]
+    assert isinstance(counts, dict)
+    thresholds_map = result["thresholds"]
+    assert isinstance(thresholds_map, dict)
+
+    lines.append("# Contract Debt Report")
+    lines.append("")
+    lines.append(f"generated: {result['generated_at']}")
+    lines.append(f"status: {result['overall_status']}")
+    lines.append(f"counts: findings={counts.get('total_findings', 0)} included={counts.get('included_findings', 0)} omitted={counts.get('omitted_findings', 0)} warn={counts.get('warn_count', 0)} fail={counts.get('fail_count', 0)}")
+    lines.append("")
+    lines.append("## Thresholds")
+    lines.append("")
+    lines.append("| Name | Lines |")
+    lines.append("| --- | ---: |")
+    for key in (
+        "script_large_lines",
+        "script_very_large_lines",
+        "test_large_lines",
+        "test_very_large_lines",
+        "doc_large_lines",
+        "doc_very_large_lines",
+        "repeated_flag_parser_branches",
+        "max_findings_per_category",
+    ):
+        lines.append(f"| `{key}` | {thresholds_map[key]} |")
+    lines.append("")
+    if top_categories:
+        lines.append("## Top Categories")
+        lines.append("")
+        lines.append("| Category | Count | Omitted |")
+        lines.append("| --- | ---: | ---: |")
+        for item in top_categories:
+            lines.append(f"| `{item['category']}` | {item['count']} | {item['omitted']} |")
+        lines.append("")
+    grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for finding in findings:
+        grouped[str(finding["category"])].append(finding)
+    for category in sorted(grouped):
+        lines.append(f"## {category}")
+        lines.append("")
+        items = grouped[category]
+        omitted = int(result["top_categories_by_category"].get(category, 0)) if isinstance(result.get("top_categories_by_category"), dict) else 0
+        if omitted:
+            lines.append(f"omitted: {omitted}")
+            lines.append("")
+        lines.append("| Severity | Path | Helper | Line Count | Message | Suggested Action |")
+        lines.append("| --- | --- | --- | ---: | --- | --- |")
+        for finding in items:
+            lines.append(
+                "| {severity} | {path} | {helper} | {line_count} | {message} | {suggested_action} |".format(
+                    severity=finding.get("severity", ""),
+                    path=finding.get("path", ""),
+                    helper=finding.get("helper", "") or "",
+                    line_count=finding.get("line_count", "") or "",
+                    message=str(finding.get("message", "")).replace("|", "\\|"),
+                    suggested_action=str(finding.get("suggested_action", "")).replace("|", "\\|"),
+                )
+            )
+        lines.append("")
+    lines.append("## Suggested Next Actions")
+    lines.append("")
+    lines.append("- fix the highest-count categories first")
+    lines.append("- keep new helper docs and contract tests in manifest coverage")
+    lines.append("- split very large files before they become harder to review")
+    lines.append("")
+    lines.append("Advisory note: findings warn but do not fail CI.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def build_result() -> dict[str, object]:
+    all_findings, missing_inputs, category_counts, top_categories, _tracked_paths = build_findings()
+    capped_findings, omitted_by_category = cap_findings(all_findings)
+    warn_count = len(all_findings)
+    omitted_total = sum(omitted_by_category.values())
+    counts = {
+        "warn_count": warn_count,
+        "fail_count": 0,
+        "total_findings": warn_count,
+        "included_findings": len(capped_findings),
+        "omitted_findings": omitted_total,
+    }
+    result = {
+        "script": "contract-debt-report",
+        "overall_status": "pass" if warn_count == 0 else "warn",
+        "generated_at": generated_at,
+        "report_markdown": str(report_markdown),
+        "report_json": str(report_json),
+        "thresholds": thresholds,
+        "counts": counts,
+        "findings": capped_findings,
+        "top_categories": top_categories,
+        "top_categories_by_category": omitted_by_category,
+        "missing_inputs": sorted(set(missing_inputs)),
+        "output_dir": str(out_dir),
+    }
+    return result
+
+
+def fail_json(message: str) -> dict[str, object]:
+    return {
+        "script": "contract-debt-report",
+        "overall_status": "fail",
+        "generated_at": generated_at,
+        "report_markdown": str(report_markdown),
+        "report_json": str(report_json),
+        "thresholds": thresholds,
+        "counts": {"warn_count": 0, "fail_count": 1, "total_findings": 1, "included_findings": 1, "omitted_findings": 0},
+        "findings": [
+            {
+                "severity": "fail",
+                "category": "operational",
+                "path": "",
+                "message": message,
+                "suggested_action": "fix the input files or command invocation and rerun",
+            }
+        ],
+        "top_categories": [],
+        "missing_inputs": [],
+        "output_dir": str(out_dir),
+    }
+
+
+try:
+    result = build_result()
+except OperationalFailure as exc:
+    result = fail_json(str(exc))
+    if mode == "json":
+        print(json.dumps(result, separators=(",", ":"), sort_keys=False))
+    elif mode == "explain":
+        print("fail: contract-debt-report operational failure")
+        print(f"detail: {exc}")
+        print(f"report_markdown: {report_markdown}")
+        print(f"report_json: {report_json}")
+    else:
+        print(f"fail: {exc}", file=sys.stderr)
+        print("fix: check the required metadata and manifest files", file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    markdown = render_markdown(result)
+    report_markdown.write_text(markdown + "\n", encoding="utf-8")
+    result["report_markdown_size_lines"] = markdown.count("\n") + 1
+    report_json.write_text(json.dumps(result, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+except OSError as exc:
+    failure = fail_json(f"failed to write report files: {exc.strerror or exc}")
+    if mode == "json":
+        print(json.dumps(failure, separators=(",", ":"), sort_keys=False))
+    elif mode == "explain":
+        print("fail: contract-debt-report failed to write report files")
+        print(f"detail: {exc}")
+        print(f"report_markdown: {report_markdown}")
+        print(f"report_json: {report_json}")
+    else:
+        print("fail: failed to write report files", file=sys.stderr)
+        print(f"path: {report_markdown}", file=sys.stderr)
+        print(f"path: {report_json}", file=sys.stderr)
+    raise SystemExit(1)
+
+if mode == "json":
+    print(report_json.read_text(encoding="utf-8"), end="")
+elif mode == "explain":
+    counts = result["counts"]
+    top_categories = result["top_categories"]
+    assert isinstance(counts, dict)
+    assert isinstance(top_categories, list)
+    print(f"status: {result['overall_status']}")
+    print(f"counts: warn={counts.get('warn_count', 0)} fail={counts.get('fail_count', 0)} total={counts.get('total_findings', 0)} included={counts.get('included_findings', 0)} omitted={counts.get('omitted_findings', 0)}")
+    print(f"report_markdown: {result['report_markdown']}")
+    print(f"report_json: {result['report_json']}")
+    if top_categories:
+        print("top_categories: " + ", ".join(f"{item['category']}={item['count']}" for item in top_categories[:3]))
+    else:
+        print("top_categories: none")
+elif mode == "quiet":
+    pass
+else:
+    print(result["report_markdown"])
+PY
