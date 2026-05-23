@@ -2122,6 +2122,14 @@ smoke_check_contract_debt_report_contract() {
   local seeded_large_file="$smoke_test_dir/repo-automation/bin/contract-debt-large-candidate"
   local large_json="$smoke_test_base/contract-debt-large-$$.json"
   local large_err="$smoke_test_base/contract-debt-large-$$.stderr"
+  local shared_coverage_json="$smoke_test_base/contract-debt-shared-coverage-$$.json"
+  local shared_coverage_err="$smoke_test_base/contract-debt-shared-coverage-$$.stderr"
+  local missing_shared_json="$smoke_test_base/contract-debt-missing-shared-$$.json"
+  local missing_shared_err="$smoke_test_base/contract-debt-missing-shared-$$.stderr"
+  local missing_doc_json="$smoke_test_base/contract-debt-missing-doc-$$.json"
+  local missing_doc_err="$smoke_test_base/contract-debt-missing-doc-$$.stderr"
+  local missing_contract_json="$smoke_test_base/contract-debt-missing-contract-$$.json"
+  local missing_contract_err="$smoke_test_base/contract-debt-missing-contract-$$.stderr"
   local gap_json="$smoke_test_base/contract-debt-gap-$$.json"
   local gap_err="$smoke_test_base/contract-debt-gap-$$.stderr"
   local json_gap_file="$smoke_test_dir/repo-automation/tests/contracts/ci-failure-artifacts.sh"
@@ -2254,6 +2262,310 @@ PY
     status=1
   fi
 
+  cat > "$smoke_test_dir/repo-automation/tests/lib/contracts/contract-debt-shared-coverage.sh" <<'EOF'
+# shellcheck shell=bash
+
+smoke_check_contract_debt_shared_coverage_contract() {
+  # shared contract coverage markers
+  # --json python3 -m json.tool
+  # --quiet quiet success
+  # unknown flag fail: fix:
+  return 0
+}
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/tests/contracts/contract-debt-shared-coverage.sh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/contract-debt-shared-coverage.sh"
+
+smoke_main_impl() {
+  local status=0
+
+  smoke_run_named_check "smoke:contract-debt-shared-coverage-contract" smoke_check_contract_debt_shared_coverage_contract || status=1
+
+  return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
+}
+
+smoke_main "$@"
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/bin/contract-debt-shared-coverage" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+echo contract-debt-shared-coverage
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/docs/contract-debt-shared-coverage.md" <<'EOF'
+# Contract Debt Shared Coverage
+
+`repo-automation/bin/contract-debt-shared-coverage` is a focused helper used by the contract-debt-report smoke checks.
+
+```sh
+repo-automation/bin/contract-debt-shared-coverage
+```
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/tests/lib/contracts/contract-debt-missing-shared.sh" <<'EOF'
+# shellcheck shell=bash
+
+smoke_check_contract_debt_missing_shared_support() {
+  return 0
+}
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/tests/contracts/aa-contract-debt-missing-shared.sh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/contract-debt-missing-shared.sh"
+
+smoke_main_impl() {
+  local status=0
+
+  # shared wrapper coverage markers
+  # --json python3 -m json.tool
+  # --quiet quiet success
+  # unknown flag fail: fix:
+  smoke_run_named_check "smoke:contract-debt-missing-shared-contract" smoke_check_contract_debt_missing_shared_contract || status=1
+
+  return "$status"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "$@"
+}
+
+smoke_main "$@"
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/bin/aa-contract-debt-missing-shared" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+echo contract-debt-missing-shared
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/docs/aa-contract-debt-missing-shared.md" <<'EOF'
+# Contract Debt Missing Shared
+
+`repo-automation/bin/aa-contract-debt-missing-shared` is a focused helper used by the contract-debt-report smoke checks.
+
+```sh
+repo-automation/bin/aa-contract-debt-missing-shared
+```
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/bin/contract-debt-gap-doc" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+echo contract-debt-gap-doc
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/bin/contract-debt-gap-contract" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+echo contract-debt-gap-contract
+EOF
+
+  cat > "$smoke_test_dir/repo-automation/docs/contract-debt-gap-contract.md" <<'EOF'
+# Contract Debt Gap Contract
+
+`repo-automation/bin/contract-debt-gap-contract` is a focused helper used by the contract-debt-report smoke checks.
+
+```sh
+repo-automation/bin/contract-debt-gap-contract
+```
+EOF
+
+  python3 - "$smoke_test_dir/repo-automation/helper-metadata.json" "$smoke_test_dir/repo-automation/manifest.json" <<'PY' || return 1
+from pathlib import Path
+import json
+import sys
+
+metadata_path = Path(sys.argv[1])
+manifest_path = Path(sys.argv[2])
+
+metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+helpers = metadata.setdefault("helpers", [])
+
+helper_entries = [
+    {
+        "name": "contract-debt-shared-coverage",
+        "path": "repo-automation/bin/contract-debt-shared-coverage",
+        "doc_path": "repo-automation/docs/contract-debt-shared-coverage.md",
+        "contract_test_path": "repo-automation/tests/contracts/contract-debt-shared-coverage.sh",
+        "kind": "script",
+        "public": True,
+        "phone_safe": True,
+        "check_cost_tier": "broad-local",
+        "writes_files": False,
+        "writes_git": False,
+        "uses_github": False,
+        "runs_run_tests": False,
+        "can_run_broad_checks": True,
+        "supports_quiet": True,
+        "supports_json": True,
+        "artifact_helper": False,
+        "umbrella_helper": False,
+        "workflow_role": "audit",
+        "config_keys": [],
+    },
+    {
+        "name": "contract-debt-aa-missing-shared",
+        "path": "repo-automation/bin/aa-contract-debt-missing-shared",
+        "doc_path": "repo-automation/docs/aa-contract-debt-missing-shared.md",
+        "contract_test_path": "repo-automation/tests/contracts/aa-contract-debt-missing-shared.sh",
+        "kind": "script",
+        "public": True,
+        "phone_safe": True,
+        "check_cost_tier": "broad-local",
+        "writes_files": False,
+        "writes_git": False,
+        "uses_github": False,
+        "runs_run_tests": False,
+        "can_run_broad_checks": True,
+        "supports_quiet": True,
+        "supports_json": True,
+        "artifact_helper": False,
+        "umbrella_helper": False,
+        "workflow_role": "audit",
+        "config_keys": [],
+    },
+    {
+        "name": "contract-debt-gap-doc",
+        "path": "repo-automation/bin/contract-debt-gap-doc",
+        "contract_test_path": "repo-automation/tests/contracts/contract-debt-shared-coverage.sh",
+        "kind": "script",
+        "public": True,
+        "phone_safe": True,
+        "check_cost_tier": "broad-local",
+        "writes_files": False,
+        "writes_git": False,
+        "uses_github": False,
+        "runs_run_tests": False,
+        "can_run_broad_checks": True,
+        "supports_quiet": True,
+        "supports_json": True,
+        "artifact_helper": False,
+        "umbrella_helper": False,
+        "workflow_role": "audit",
+        "config_keys": [],
+    },
+    {
+        "name": "contract-debt-gap-contract",
+        "path": "repo-automation/bin/contract-debt-gap-contract",
+        "doc_path": "repo-automation/docs/contract-debt-gap-contract.md",
+        "kind": "script",
+        "public": True,
+        "phone_safe": True,
+        "check_cost_tier": "broad-local",
+        "writes_files": False,
+        "writes_git": False,
+        "uses_github": False,
+        "runs_run_tests": False,
+        "can_run_broad_checks": True,
+        "supports_quiet": True,
+        "supports_json": True,
+        "artifact_helper": False,
+        "umbrella_helper": False,
+        "workflow_role": "audit",
+        "config_keys": [],
+    },
+]
+
+known_helpers = {entry.get("name") for entry in helpers if isinstance(entry, dict)}
+for entry in helper_entries:
+    if entry["name"] not in known_helpers:
+        helpers.append(entry)
+
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+managed_files = manifest.setdefault("managed_files", [])
+known_paths = {entry.get("path") for entry in managed_files if isinstance(entry, dict)}
+
+for path in [
+    "repo-automation/bin/contract-debt-shared-coverage",
+    "repo-automation/docs/contract-debt-shared-coverage.md",
+    "repo-automation/tests/contracts/contract-debt-shared-coverage.sh",
+    "repo-automation/bin/contract-debt-missing-shared",
+    "repo-automation/bin/aa-contract-debt-missing-shared",
+    "repo-automation/docs/aa-contract-debt-missing-shared.md",
+    "repo-automation/tests/contracts/aa-contract-debt-missing-shared.sh",
+    "repo-automation/bin/contract-debt-gap-doc",
+    "repo-automation/bin/contract-debt-gap-contract",
+    "repo-automation/docs/contract-debt-gap-contract.md",
+]:
+    if path not in known_paths:
+        managed_files.append({"path": path})
+
+metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+PY
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$shared_coverage_json" 2>"$shared_coverage_err"
+  ) && [ ! -s "$shared_coverage_err" ] && python3 -m json.tool "$shared_coverage_json" >/dev/null &&
+    smoke_json_assert "$shared_coverage_json" 'not any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "contract-debt-shared-coverage" for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report uses shared contract bodies for coverage"
+  else
+    test_fail "contract-debt-report uses shared contract bodies for coverage"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$missing_shared_json" 2>"$missing_shared_err"
+  ) && [ ! -s "$missing_shared_err" ] && python3 -m json.tool "$missing_shared_json" >/dev/null &&
+    smoke_json_assert "$missing_shared_json" 'any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "check-tooling" and "missing shared contract function" in f.get("message", "") for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns when a shared contract function is missing"
+  else
+    test_fail "contract-debt-report warns when a shared contract function is missing"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$missing_doc_json" 2>"$missing_doc_err"
+  ) && [ ! -s "$missing_doc_err" ] && python3 -m json.tool "$missing_doc_json" >/dev/null &&
+    smoke_json_assert "$missing_doc_json" 'any(f.get("severity") == "warn" and f.get("category") == "metadata-gap" and f.get("helper") == "contract-debt-gap-doc" and "doc_path metadata is missing or empty" in f.get("message", "") for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns when doc_path metadata is missing"
+  else
+    test_fail "contract-debt-report warns when doc_path metadata is missing"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$missing_contract_json" 2>"$missing_contract_err"
+  ) && [ ! -s "$missing_contract_err" ] && python3 -m json.tool "$missing_contract_json" >/dev/null &&
+    smoke_json_assert "$missing_contract_json" 'any(f.get("severity") == "warn" and f.get("category") == "metadata-gap" and f.get("helper") == "contract-debt-gap-contract" and "contract_test_path metadata is missing or empty" in f.get("message", "") for f in data.get("findings", []))'; then
+    test_pass "contract-debt-report warns when contract_test_path metadata is missing"
+  else
+    test_fail "contract-debt-report warns when contract_test_path metadata is missing"
+    status=1
+  fi
+
   python3 - "$smoke_test_dir/repo-automation/helper-metadata.json" <<'PY' || return 1
 from pathlib import Path
 import json
@@ -2358,7 +2670,7 @@ EOF
     status=1
   fi
 
-  rm -f "$help_out" "$help_err" "$unknown_err" "$outdir_space_err" "$outdir_empty_err" "$default_out" "$default_err" "$quiet_out" "$quiet_err" "$explain_out" "$explain_err" "$json_out" "$json_err" "$large_json" "$large_err" "$gap_json" "$gap_err" "$invalid_meta_json" "$invalid_meta_err" >/dev/null 2>&1 || true
+  rm -f "$help_out" "$help_err" "$unknown_err" "$outdir_space_err" "$outdir_empty_err" "$default_out" "$default_err" "$quiet_out" "$quiet_err" "$explain_out" "$explain_err" "$json_out" "$json_err" "$large_json" "$large_err" "$shared_coverage_json" "$shared_coverage_err" "$missing_shared_json" "$missing_shared_err" "$missing_doc_json" "$missing_doc_err" "$missing_contract_json" "$missing_contract_err" "$gap_json" "$gap_err" "$invalid_meta_json" "$invalid_meta_err" >/dev/null 2>&1 || true
   rm -f "$seeded_large_file" >/dev/null 2>&1 || true
   return "$status"
 }

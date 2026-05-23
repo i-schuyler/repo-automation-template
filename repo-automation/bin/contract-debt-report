@@ -183,6 +183,56 @@ def supports_quiet_coverage(text: str) -> bool:
     return any(marker in text for marker in ("quiet success", "quiet output", "silent", "compact failure"))
 
 
+def normalize_metadata_path(value: object) -> str | None:
+    if isinstance(value, str):
+        value = value.strip()
+        if value:
+            return value
+    return None
+
+
+def shell_function_body(text: str, function_name: str) -> str | None:
+    lines = text.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if re.match(rf"^{re.escape(function_name)}\(\)\s*\{{\s*$", line):
+            start = index
+            break
+    if start is None:
+        return None
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*\(\)\s*\{", lines[index]):
+            end = index
+            break
+    return "\n".join(lines[start:end])
+
+
+def shared_contract_function_names(wrapper_text: str) -> list[str]:
+    names = {match for match in re.findall(r"\b(smoke_check_[A-Za-z0-9_]+)\b", wrapper_text)}
+    return sorted(names)
+
+
+def contract_coverage_text(contract_file: Path) -> tuple[str, list[str]]:
+    wrapper_text = contract_file.read_text(encoding="utf-8", errors="replace")
+    coverage_parts = [wrapper_text]
+    missing_functions: list[str] = []
+    shared_contract_dir = repo_root / "repo-automation" / "tests" / "lib" / "contracts"
+    shared_contract_texts: dict[Path, str] = {}
+    for shared_contract_file in sorted(shared_contract_dir.glob("*.sh")):
+        shared_contract_texts[shared_contract_file] = shared_contract_file.read_text(encoding="utf-8", errors="replace")
+    for function_name in shared_contract_function_names(wrapper_text):
+        function_body = None
+        for shared_text in shared_contract_texts.values():
+            function_body = shell_function_body(shared_text, function_name)
+            if function_body is not None:
+                coverage_parts.append(function_body)
+                break
+        if function_body is None:
+            missing_functions.append(function_name)
+    return "\n\n".join(coverage_parts), missing_functions
+
+
 def helper_doc_has_example(helper_path: str, text: str) -> bool:
     for line in text.splitlines():
         stripped = line.strip()
@@ -233,14 +283,14 @@ def build_findings() -> tuple[list[dict[str, object]], list[str], dict[str, int]
             continue
         helper_name = str(helper.get("name", "unknown"))
         helper_path = str(helper.get("path", ""))
-        doc_path = helper.get("doc_path")
-        contract_path = helper.get("contract_test_path")
+        doc_path = normalize_metadata_path(helper.get("doc_path"))
+        contract_path = normalize_metadata_path(helper.get("contract_test_path"))
         supports_json = bool(helper.get("supports_json"))
         supports_quiet = bool(helper.get("supports_quiet"))
 
         helper_file = repo_root / helper_path
-        doc_file = repo_root / str(doc_path) if isinstance(doc_path, str) else None
-        contract_file = repo_root / str(contract_path) if isinstance(contract_path, str) else None
+        doc_file = repo_root / doc_path if doc_path is not None else None
+        contract_file = repo_root / contract_path if contract_path is not None else None
 
         if helper_path and not helper_file.is_file():
             add_finding(findings, severity="warn", category="metadata-gap", path=helper_path, helper=helper_name, message="public helper file is missing", suggested_action="restore the helper file or remove the public metadata entry")
@@ -250,7 +300,10 @@ def build_findings() -> tuple[list[dict[str, object]], list[str], dict[str, int]
             add_finding(findings, severity="warn", category="manifest-drift", path=helper_path, helper=helper_name, message="public helper path is missing from repo-automation/manifest.json", suggested_action="add the helper path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install")
             category_counts["manifest-drift"] += 1
 
-        if isinstance(doc_path, str):
+        if doc_path is None:
+            add_finding(findings, severity="warn", category="metadata-gap", path=helper_path or helper_name, helper=helper_name, message="public helper doc_path metadata is missing or empty", suggested_action="add doc_path metadata or remove the public helper entry")
+            category_counts["metadata-gap"] += 1
+        else:
             if not doc_file.is_file():
                 add_finding(findings, severity="warn", category="metadata-gap", path=str(doc_path), helper=helper_name, message="public helper doc is missing", suggested_action="add the helper doc or remove the doc_path metadata")
                 missing_inputs.append(str(doc_path))
@@ -267,13 +320,19 @@ def build_findings() -> tuple[list[dict[str, object]], list[str], dict[str, int]
                     add_finding(findings, severity="warn", category="manifest-drift", path=str(doc_path), helper=helper_name, message="helper doc is missing from repo-automation/manifest.json", suggested_action="add the doc path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install")
                     category_counts["manifest-drift"] += 1
 
-        if isinstance(contract_path, str):
+        if contract_path is None:
+            add_finding(findings, severity="warn", category="metadata-gap", path=helper_path or helper_name, helper=helper_name, message="public helper contract_test_path metadata is missing or empty", suggested_action="add contract_test_path metadata or remove the public helper entry")
+            category_counts["metadata-gap"] += 1
+        else:
             if not contract_file.is_file():
                 add_finding(findings, severity="warn", category="metadata-gap", path=str(contract_path), helper=helper_name, message="public helper contract test is missing", suggested_action="add the contract test or remove the contract_test_path metadata")
                 missing_inputs.append(str(contract_path))
                 category_counts["metadata-gap"] += 1
             else:
-                contract_text = contract_file.read_text(encoding="utf-8", errors="replace")
+                contract_text, missing_shared_functions = contract_coverage_text(contract_file)
+                for function_name in missing_shared_functions:
+                    add_finding(findings, severity="warn", category="contract-coverage", path=str(contract_path), helper=helper_name, message=f"wrapper references a missing shared contract function: {function_name}", suggested_action="define the shared contract function under repo-automation/tests/lib/contracts or update the wrapper")
+                    category_counts["contract-coverage"] += 1
                 if supports_json and not supports_json_coverage(contract_text):
                     add_finding(findings, severity="warn", category="contract-coverage", path=str(contract_path), helper=helper_name, message="supports_json helper contract test is missing JSON parseability coverage", suggested_action="mention --json and assert parseable JSON in the contract test")
                     category_counts["contract-coverage"] += 1

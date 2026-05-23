@@ -2,7 +2,7 @@
 
 `repo-automation/bin/contract-debt-report` is an advisory, metadata-driven report helper for maintainability debt and contract drift.
 
-It scans public helper metadata, the managed-file manifest, helper docs, helper contract tests, and tracked repo files. Debt findings are warnings only; the command exits nonzero only for operational errors.
+It scans public helper metadata, the managed-file manifest, helper docs, helper contract tests, and tracked repo files. For contract coverage, it inspects each focused wrapper plus any shared contract function bodies the wrapper calls under `repo-automation/tests/lib/contracts/*.sh`. Missing `doc_path` or `contract_test_path` metadata is reported as advisory metadata-gap debt. Debt findings are warnings only; the command exits nonzero only for operational errors.
 
 ## Outputs
 
