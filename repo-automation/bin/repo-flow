@@ -17,7 +17,7 @@ repo_flow_stop_reason=""
 
 repo_flow_usage() {
   printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
-  printf '       repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
   printf '       repo-automation/bin/repo-flow merge [--pr=<number|current|latest>] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
 }
 
@@ -26,7 +26,7 @@ repo_flow_status_card_usage() {
 }
 
 repo_flow_submit_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_merge_usage() {
@@ -663,7 +663,10 @@ repo_flow_submit_refresh_existing_pr_body() {
   local staged_files="$6"
   local stop_reason="${7:-None}"
   local body_source_file="${8:-}"
+  local replace_body="${9:-0}"
   local body_file=""
+  local current_body_file=""
+  local current_body_stderr=""
   local pr_edit_output=""
 
   body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-body.XXXXXX")" || {
@@ -671,10 +674,96 @@ repo_flow_submit_refresh_existing_pr_body() {
     return 1
   }
 
-  if ! repo_flow_submit_write_pr_body "$body_file" "$branch_name" "$default_branch" "$commit_subject" "$staged_files" "$stop_reason" "$body_source_file"; then
-    rm -f "$body_file" >/dev/null 2>&1 || true
-    "$stop_fn" "failed to write PR body"
-    return 1
+  if [ "$replace_body" -eq 1 ]; then
+    if ! repo_flow_submit_write_pr_body "$body_file" "$branch_name" "$default_branch" "$commit_subject" "$staged_files" "$stop_reason" "$body_source_file"; then
+      rm -f "$body_file" >/dev/null 2>&1 || true
+      "$stop_fn" "failed to write PR body"
+      return 1
+    fi
+  else
+    if [ -n "$body_source_file" ]; then
+      printf 'fix: supplied full body files replace PR bodies; use --replace-body to intentionally replace the PR body\n' >&2
+      rm -f "$body_file" >/dev/null 2>&1 || true
+      "$stop_fn" "existing PR #$pr_number requires --replace-body when --body-file is supplied"
+      return 1
+    fi
+
+    current_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-current-body.XXXXXX")" || {
+      rm -f "$body_file" >/dev/null 2>&1 || true
+      "$stop_fn" "failed to create temporary body file"
+      return 1
+    }
+    current_body_stderr="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-current-body.XXXXXX.log")" || {
+      rm -f "$body_file" "$current_body_file" >/dev/null 2>&1 || true
+      "$stop_fn" "failed to create temporary body file"
+      return 1
+    }
+    if ! gh pr view "$pr_number" --json body --jq .body > "$current_body_file" 2> "$current_body_stderr"; then
+      local pr_view_output=""
+      pr_view_output="$(cat "$current_body_stderr" 2>/dev/null || true)"
+      pr_view_output="${pr_view_output//$'\n'/ }"
+      pr_view_output="${pr_view_output//$'\r'/ }"
+      rm -f "$body_file" "$current_body_file" "$current_body_stderr" >/dev/null 2>&1 || true
+      printf 'fix: rerun with --replace-body only if intentional full PR body replacement is desired\n' >&2
+      "$stop_fn" "failed to fetch existing PR #$pr_number body: $pr_view_output"
+      return 1
+    fi
+    REPO_FLOW_SUBMIT_BODY_FILE="$body_file" \
+    REPO_FLOW_SUBMIT_CURRENT_BODY_FILE="$current_body_file" \
+    REPO_FLOW_SUBMIT_BRANCH="$branch_name" \
+    REPO_FLOW_SUBMIT_DEFAULT_BRANCH="$default_branch" \
+    REPO_FLOW_SUBMIT_COMMIT_SUBJECT="$commit_subject" \
+    REPO_FLOW_SUBMIT_STAGED_FILES="$staged_files" \
+    REPO_FLOW_SUBMIT_STOP_REASON="$stop_reason" \
+    python3 - <<'PY'
+from pathlib import Path
+import os
+
+body_file = Path(os.environ["REPO_FLOW_SUBMIT_BODY_FILE"])
+current_body_file = Path(os.environ["REPO_FLOW_SUBMIT_CURRENT_BODY_FILE"])
+branch_name = os.environ["REPO_FLOW_SUBMIT_BRANCH"]
+default_branch = os.environ["REPO_FLOW_SUBMIT_DEFAULT_BRANCH"]
+commit_subject = os.environ["REPO_FLOW_SUBMIT_COMMIT_SUBJECT"]
+staged_files = [line for line in os.environ.get("REPO_FLOW_SUBMIT_STAGED_FILES", "").splitlines() if line.strip()]
+stop_reason = os.environ.get("REPO_FLOW_SUBMIT_STOP_REASON", "").strip()
+
+existing_body = current_body_file.read_text(encoding="utf-8")
+staged_lines = "\n".join(f"  - {path}" for path in staged_files) if staged_files else "  - none"
+entry_lines = [
+    "- Added by `repo-flow submit`.",
+    f"- Commit subject: {commit_subject}",
+    "- Staged paths:",
+    staged_lines,
+]
+if stop_reason and stop_reason != "None":
+    entry_lines.extend([
+        f"- Stop reason: {stop_reason}",
+    ])
+entry_lines.extend([
+    "- Re-entry hint: Review the PR, then run `repo-automation/bin/repo-flow merge --explain`.",
+])
+entry = "\n".join(entry_lines)
+if "## Update log" in existing_body:
+    new_body = existing_body.rstrip("\n") + "\n\n" + entry + "\n"
+else:
+    new_body = existing_body.rstrip("\n") + "\n\n## Update log\n\n" + entry + "\n"
+body_file.write_text(new_body, encoding="utf-8")
+PY
+    rm -f "$current_body_file" "$current_body_stderr" >/dev/null 2>&1 || true
+  fi
+
+  if [ "$replace_body" -eq 0 ]; then
+    validation_output=""
+    if ! validation_output="$("$script_dir/pr-body-check" --quiet --body-file="$body_file" 2>&1)"; then
+      local validation_failure=""
+      validation_failure="$(printf '%s\n' "$validation_output" | sed -n '1p')"
+      [ -n "$validation_failure" ] || validation_failure="PR body validation failed"
+      [ -n "$validation_output" ] && printf '%s\n' "$validation_output" >&2
+      printf 'fix: rerun with --replace-body only if intentional full PR body replacement is desired\n' >&2
+      rm -f "$body_file" >/dev/null 2>&1 || true
+      "$stop_fn" "failed to refresh existing PR #$pr_number body: $validation_failure"
+      return 1
+    fi
   fi
 
   if ! pr_edit_output="$(gh pr edit "$pr_number" --body-file="$body_file" 2>&1)"; then
@@ -847,6 +936,7 @@ repo_flow_submit_main() {
   local modified_paths_csv=""
   local message=""
   local custom_body_file=""
+  local replace_body=0
   local repo_root=""
   local current_branch=""
   local default_branch=""
@@ -868,6 +958,7 @@ repo_flow_submit_main() {
   local repo_flow_submit_child_pr_status=""
   local repo_flow_submit_child_pr_url=""
   local repo_flow_submit_child_pr_number=""
+  local existing_pr_number=""
   local watched="false"
   local ci_state="unknown"
 
@@ -944,6 +1035,12 @@ repo_flow_submit_main() {
         else
           repo_auto_flag_error "missing flag value" "--body-file" "use --body-file=<path>" || command_status=1
         fi
+        ;;
+      --replace-body)
+        replace_body=1
+        ;;
+      --replace-body=*)
+        repo_auto_flag_error "flag format not accepted" "--replace-body" "use --replace-body" || command_status=1
         ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then
@@ -1070,6 +1167,15 @@ repo_flow_submit_main() {
     command_status=1
   fi
 
+  if [ "$command_status" -eq 0 ] && [ "$replace_body" -eq 0 ] && [ -n "$custom_body_file" ]; then
+    existing_pr_number=$(gh pr view "$current_branch" --json number --jq '.number' 2>/dev/null || true)
+    if [ -n "$existing_pr_number" ]; then
+      printf 'fix: supplied full body files replace PR bodies; use --replace-body to intentionally replace the PR body\n' >&2
+      repo_flow_submit_stop "existing PR #$existing_pr_number requires --replace-body when --body-file is supplied"
+      command_status=1
+    fi
+  fi
+
   branch_before="$current_branch"
 
   if [ "$command_status" -eq 0 ] && [ "$modified" -eq 1 ] && repo_flow_submit_has_new_files; then
@@ -1176,11 +1282,11 @@ EOF
     if [ "$watch" -eq 1 ]; then
       if [ -z "$pr_number" ]; then
         existing_pr_number=$(gh pr view "$current_branch" --json number --jq '.number' 2>/dev/null || true)
-        if [ -n "$existing_pr_number" ]; then
+      if [ -n "$existing_pr_number" ]; then
           pr_status="existing"
           pr_number="$existing_pr_number"
           pr_url=$(gh pr view "$current_branch" --json url --jq '.url' 2>/dev/null || true)
-          if ! repo_flow_submit_refresh_existing_pr_body repo_flow_submit_stop "$pr_number" "$current_branch" "$default_branch" "$message" "$staged_files" "None" "$custom_body_file"; then
+          if ! repo_flow_submit_refresh_existing_pr_body repo_flow_submit_stop "$pr_number" "$current_branch" "$default_branch" "$message" "$staged_files" "None" "$custom_body_file" "$replace_body"; then
             pr_url=""
             command_status=1
           elif [ "$explain" -eq 1 ] && [ "$json" -eq 0 ]; then
@@ -1292,7 +1398,7 @@ EOF
         pr_number="$repo_flow_submit_child_pr_number"
       fi
       if [ "$command_status" -eq 0 ] && [ "$repo_flow_submit_child_pr_status" = "existing" ] && [ -n "$repo_flow_submit_child_pr_number" ]; then
-        if ! repo_flow_submit_refresh_existing_pr_body repo_flow_submit_stop "$repo_flow_submit_child_pr_number" "$current_branch" "$default_branch" "$message" "$staged_files" "None" "$custom_body_file"; then
+        if ! repo_flow_submit_refresh_existing_pr_body repo_flow_submit_stop "$repo_flow_submit_child_pr_number" "$current_branch" "$default_branch" "$message" "$staged_files" "None" "$custom_body_file" "$replace_body"; then
           pr_url=""
           command_status=1
         elif [ "$explain" -eq 1 ] && [ "$json" -eq 0 ]; then
