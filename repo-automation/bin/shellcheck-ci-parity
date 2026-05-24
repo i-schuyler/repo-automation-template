@@ -100,6 +100,7 @@ for path in sorted((repo_root / "repo-automation" / "lib").glob("*.sh")):
 
 for pattern in (
     "repo-automation/tests/lib/*.sh",
+    "repo-automation/tests/lib/contracts/*.sh",
     "repo-automation/tests/contracts/*.sh",
 ):
     matches = sorted(repo_root.glob(pattern))
