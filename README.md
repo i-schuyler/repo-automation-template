@@ -11,44 +11,30 @@ Primary users:
 - multi-repo maintainers who copy the same repo workflow conventions often
 - Codex and agent-assisted developers who need stable, explicit repo contracts
 
-## Current Helper Surface
+## Starter Surface
 
-The repo automation entry points live under `repo-automation/`:
+For a first pass in a new repo, start with:
 
-- `repo-automation/bin/codex-slice-preflight`
-- `repo-automation/bin/branch-cleanup`
-- `repo-automation/bin/pr-finish`
-- `repo-automation/bin/add-doc-pr`
-- `repo-automation/bin/pr-create`
-- `repo-automation/bin/repo-flow`
-- `repo-automation/bin/repo-doctor`
-- `repo-automation/bin/check-tooling`
-- `repo-automation/bin/check-portability`
-- `repo-automation/bin/run-tests`
+- `repo-automation/bin/codex-slice-preflight` for branch setup and safety checks
+- `repo-automation/bin/repo-flow` for submit / merge / watch flows
+- `repo-automation/bin/pr-finish` for the explicit merge/delete/sync step
+- `repo-automation/bin/repo-doctor` for read-only health checks
+- `repo-automation/bin/run-tests` for the standard test harness
+
+For the full helper reference, see:
+
+- [docs/INDEX.md](docs/INDEX.md)
+- [repo-automation/docs/helper-contracts.md](repo-automation/docs/helper-contracts.md)
+- [repo-automation/docs/script-routing.md](repo-automation/docs/script-routing.md)
+
+The complete machine-readable helper inventory is `repo-automation/helper-metadata.json`.
+
+Representative supporting helpers:
+
 - `repo-automation/bin/prepare-release`
-- `repo-automation/bin/repo-automation-install`
-- `repo-automation/bin/repo-automation-report-upstream`
 - `repo-automation/bin/automation-freshness`
-- `repo-automation/bin/github-settings-check`
-- `repo-automation/bin/failure-log`
 - `repo-automation/bin/touched-files`
-- `repo-automation/bin/ci-status`
-- `repo-automation/bin/ci-watch`
 - `repo-automation/bin/ci-log-dump`
-- `repo-automation/bin/ci-failure-artifacts`
-- `repo-automation/bin/contract-debt-report`
-- `repo-automation/bin/shellcheck-ci-parity`
-- `repo-automation/bin/status-packet`
-- `repo-automation/bin/post-codex-packet`
-- `repo-automation/bin/evidence-bundle`
-- `repo-automation/bin/starter-template-ready`
-- `repo-automation/lib/common.sh`
-- `repo-automation/tests/lib/test-common.sh`
-- `repo-automation/tests/lib/smoke-common.sh`
-- `repo-automation/tests/docs-check.sh`
-- `repo-automation/tests/contracts/`
-- `repo-automation/tests/smoke.sh`
-- `repo-automation/tests/version-consistency.sh`
 
 ## Current Maturity
 
