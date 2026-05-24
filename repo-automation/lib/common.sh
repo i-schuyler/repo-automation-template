@@ -25,6 +25,27 @@ repo_auto_flag_error() {
   return 1
 }
 
+repo_auto_parse_value_flag_equals() {
+  local arg="${1:-}"
+  local flag="${2:-}"
+  local fix="${3:-}"
+  local value_var="${4:-}"
+
+  case "$arg" in
+    "$flag=")
+      repo_auto_flag_error "empty flag value" "$flag" "$fix"
+      return 1
+      ;;
+    "$flag="*)
+      printf -v "$value_var" '%s' "${arg#"$flag="}"
+      return 0
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+}
+
 repo_auto_print_failure_footer() {
   local field=""
   local value=""
