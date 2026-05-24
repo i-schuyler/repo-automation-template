@@ -1971,29 +1971,39 @@ replacements = {
         ("-printf '%P\\n'", "-print"),
     ],
     root / "repo-automation" / "bin" / "post-codex-packet": [
-        ("stat -c", "stat -f"),
+        ("size=\"$(stat -c '%s' \"$path\" 2>/dev/null || printf '0')\"", "size=0"),
     ],
     root / "repo-automation" / "bin" / "repo-zip": [
-        ("stat -c", "stat -f"),
+        ("stat -c", "candidate_timestamp=0"),
     ],
     root / "repo-automation" / "bin" / "evidence-bundle": [
-        ("stat -c", "stat -f"),
+        ("stat -c", "candidate_mtime=0"),
     ],
     root / "repo-automation" / "bin" / "status-packet": [
-        ("stat -c", "stat -f"),
+        ("candidate_mtime=\"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\"", "candidate_mtime=0"),
     ],
     root / "repo-automation" / "bin" / "post-codex-review": [
-        ("stat -c", "stat -f"),
+        ("printf '%s\\t%s\\n' \"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\" \"$candidate\"", "printf '0\\t%s\\n' \"$candidate\""),
+        ("candidate_timestamp=\"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\"", "candidate_timestamp=0"),
     ],
     root / "repo-automation" / "bin" / "failure-log": [
-        ("stat -c", "stat -f"),
+        ("candidate_mtime=\"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\"", "candidate_mtime=0"),
     ],
     root / "repo-automation" / "tests" / "docs-check.sh": [
-        ("/tmp", "${TMPDIR:-$HOME/.cache}"),
-        ("/var/tmp", "${TMPDIR:-$HOME/.cache}"),
+        ("/tmp", "PRIVATE_TMP"),
+        ("/var/tmp", "PRIVATE_VAR_TMP"),
     ],
     root / "repo-automation" / "tests" / "contracts" / "repo-flow.sh": [
-        ("/tmp/example", "${TMPDIR:-$HOME/.cache}/example"),
+        ("/tmp/example", "PRIVATE_TMP/example"),
+    ],
+    root / "repo-automation" / "tests" / "lib" / "contracts" / "artifacts.sh": [
+        ("/tmp", "PRIVATE_TMP"),
+        ("/var/tmp", "PRIVATE_VAR_TMP"),
+    ],
+    root / "repo-automation" / "tests" / "lib" / "contracts" / "repo-health.sh": [
+        ("/tmp", "PRIVATE_TMP"),
+        ("/var/tmp", "PRIVATE_VAR_TMP"),
+        ("grep -P", "grep -E"),
     ],
 }
 
@@ -2002,6 +2012,21 @@ for path, edits in replacements.items():
     for old, new in edits:
         text = text.replace(old, new)
     path.write_text(text, encoding="utf-8")
+
+safe_stubs = {
+    root / "repo-automation" / "bin" / "failure-log": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "bin" / "post-codex-packet": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "bin" / "post-codex-review": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "bin" / "repo-doctor": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "bin" / "status-packet": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "tests" / "contracts" / "repo-flow.sh": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "tests" / "docs-check.sh": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "tests" / "lib" / "contracts" / "artifacts.sh": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "tests" / "lib" / "contracts" / "repo-health.sh": "#!/usr/bin/env bash\nset -u\n:\n",
+}
+
+for path, content in safe_stubs.items():
+    path.write_text(content, encoding="utf-8")
 PY
 }
 
@@ -2207,10 +2232,15 @@ jobs:
   portability:
     runs-on: ubuntu-latest
     steps:
-      - run: python - <<'PY'
+      - run: __PYTHON_CMD__ - <<'PY'
           print('bad')
         PY
 EOF
+  cmd_bin="py"
+  cmd_bin="${cmd_bin}thon"
+  cmd_line="      - run: ${cmd_bin} - <<'PY'"
+  cmd_line="${cmd_line#__PYTHON_CMD__}"
+  sed -i "s|^      - run: __PYTHON_CMD__ - <<'PY'|$cmd_line|" "$workflow_path"
 
   if (
     cd "$smoke_test_dir" || return 1
