@@ -2300,6 +2300,7 @@ smoke_check_contract_debt_report_contract() {
   local missing_contract_err="$smoke_test_base/contract-debt-missing-contract-$$.stderr"
   local gap_json="$smoke_test_base/contract-debt-gap-$$.json"
   local gap_err="$smoke_test_base/contract-debt-gap-$$.stderr"
+  local metadata_guard_err="$smoke_test_base/contract-debt-metadata-guard-$$.stderr"
   local json_gap_file="$smoke_test_dir/repo-automation/tests/contracts/ci-failure-artifacts.sh"
   local quiet_gap_file="$smoke_test_dir/repo-automation/tests/contracts/repo-doctor.sh"
   local invalid_meta_err="$smoke_test_base/contract-debt-invalid-meta-$$.stderr"
@@ -2427,6 +2428,37 @@ PY
     test_pass "contract-debt-report warns on large files"
   else
     test_fail "contract-debt-report warns on large files"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    python3 - "$smoke_test_dir/repo-automation/helper-metadata.json" <<'PY' >/dev/null 2>"$metadata_guard_err"
+from pathlib import Path
+import json
+import sys
+
+helpers = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("helpers")
+if not isinstance(helpers, list):
+    raise SystemExit(1)
+
+def supports_quiet(name):
+    for helper in helpers:
+      if isinstance(helper, dict) and helper.get("name") == name:
+        if "supports_quiet" not in helper:
+          raise SystemExit(1)
+        return helper["supports_quiet"]
+    raise SystemExit(1)
+
+if supports_quiet("check-tooling") is not True:
+    raise SystemExit(1)
+if supports_quiet("failure-log") is not False:
+    raise SystemExit(1)
+PY
+  ); then
+    test_pass "contract-debt-report helper metadata keeps named quiet support truth"
+  else
+    test_fail "contract-debt-report helper metadata keeps named quiet support truth"
     status=1
   fi
 
@@ -2838,7 +2870,7 @@ EOF
     status=1
   fi
 
-  rm -f "$help_out" "$help_err" "$unknown_err" "$outdir_space_err" "$outdir_empty_err" "$default_out" "$default_err" "$quiet_out" "$quiet_err" "$explain_out" "$explain_err" "$json_out" "$json_err" "$large_json" "$large_err" "$shared_coverage_json" "$shared_coverage_err" "$missing_shared_json" "$missing_shared_err" "$missing_doc_json" "$missing_doc_err" "$missing_contract_json" "$missing_contract_err" "$gap_json" "$gap_err" "$invalid_meta_json" "$invalid_meta_err" >/dev/null 2>&1 || true
+  rm -f "$help_out" "$help_err" "$unknown_err" "$outdir_space_err" "$outdir_empty_err" "$default_out" "$default_err" "$quiet_out" "$quiet_err" "$explain_out" "$explain_err" "$json_out" "$json_err" "$large_json" "$large_err" "$shared_coverage_json" "$shared_coverage_err" "$missing_shared_json" "$missing_shared_err" "$missing_doc_json" "$missing_doc_err" "$missing_contract_json" "$missing_contract_err" "$gap_json" "$gap_err" "$metadata_guard_err" "$invalid_meta_json" "$invalid_meta_err" >/dev/null 2>&1 || true
   rm -f "$seeded_large_file" >/dev/null 2>&1 || true
   return "$status"
 }
