@@ -177,8 +177,6 @@ smoke_check_touched_files_and_ci_contract() {
   local touched_head_empty_stderr="$smoke_test_base/touched-files-head-empty-$$.txt"
   local touched_base_unknown_stderr="$smoke_test_base/touched-files-base-unknown-$$.txt"
   local touched_positional_stderr="$smoke_test_base/touched-files-positional-$$.txt"
-  local touched_args_base_value="$smoke_test_base/touched-files-args-base-value-$$.txt"
-  local touched_args_head_value="$smoke_test_base/touched-files-args-head-value-$$.txt"
   local touched_args_empty_stderr="$smoke_test_base/touched-files-args-empty-$$.txt"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
