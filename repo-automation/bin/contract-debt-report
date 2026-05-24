@@ -208,6 +208,13 @@ def shell_function_body(text: str, function_name: str) -> str | None:
     return "\n".join(lines[start:end])
 
 
+def shell_function_definition_names(text: str) -> set[str]:
+    return {
+        match.group(1)
+        for match in re.finditer(r"^([A-Za-z_][A-Za-z0-9_]*)\(\)\s*\{\s*$", text, re.MULTILINE)
+    }
+
+
 def shared_contract_function_names(wrapper_text: str) -> list[str]:
     names = {match for match in re.findall(r"\b(smoke_check_[A-Za-z0-9_]+)\b", wrapper_text)}
     return sorted(names)
@@ -217,11 +224,14 @@ def contract_coverage_text(contract_file: Path) -> tuple[str, list[str]]:
     wrapper_text = contract_file.read_text(encoding="utf-8", errors="replace")
     coverage_parts = [wrapper_text]
     missing_functions: list[str] = []
+    local_function_names = shell_function_definition_names(wrapper_text)
     shared_contract_dir = repo_root / "repo-automation" / "tests" / "lib" / "contracts"
     shared_contract_texts: dict[Path, str] = {}
     for shared_contract_file in sorted(shared_contract_dir.glob("*.sh")):
         shared_contract_texts[shared_contract_file] = shared_contract_file.read_text(encoding="utf-8", errors="replace")
     for function_name in shared_contract_function_names(wrapper_text):
+        if function_name in local_function_names:
+            continue
         function_body = None
         for shared_text in shared_contract_texts.values():
             function_body = shell_function_body(shared_text, function_name)

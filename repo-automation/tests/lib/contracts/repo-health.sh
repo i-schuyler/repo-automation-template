@@ -2705,10 +2705,10 @@ PY
     cd "$smoke_test_dir" || return 1
     TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$missing_shared_json" 2>"$missing_shared_err"
   ) && [ ! -s "$missing_shared_err" ] && python3 -m json.tool "$missing_shared_json" >/dev/null &&
-    smoke_json_assert "$missing_shared_json" 'any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "check-tooling" and "missing shared contract function" in f.get("message", "") for f in data.get("findings", []))'; then
-    test_pass "contract-debt-report warns when a shared contract function is missing"
+    smoke_json_assert "$missing_shared_json" 'not any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "check-tooling" and "missing shared contract function" in f.get("message", "") for f in data.get("findings", [])) and sum(1 for f in data.get("findings", []) if f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "contract-debt-aa-missing-shared" and "missing shared contract function" in f.get("message", "")) == 1'; then
+    test_pass "contract-debt-report ignores wrapper-local smoke checks and warns on missing shared functions"
   else
-    test_fail "contract-debt-report warns when a shared contract function is missing"
+    test_fail "contract-debt-report ignores wrapper-local smoke checks and warns on missing shared functions"
     status=1
   fi
 
