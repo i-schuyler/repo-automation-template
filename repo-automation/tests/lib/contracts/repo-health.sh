@@ -1879,6 +1879,7 @@ for path in sorted((repo_root / "repo-automation" / "lib").glob("*.sh")):
 
 for pattern in (
     "repo-automation/tests/lib/*.sh",
+    "repo-automation/tests/lib/contracts/*.sh",
     "repo-automation/tests/contracts/*.sh",
 ):
     matches = sorted(repo_root.glob(pattern))
@@ -2169,7 +2170,8 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/check-portability >"$temp_out" 2>"$temp_err"
-  ) && grep -Fq 'warn:' "$temp_out" && grep -Fq 'portability-temp-path' "$temp_out" && grep -Fq '${TMPDIR:-$HOME/.cache}' "$temp_out" && [ ! -s "$temp_err" ]; then
+  ) && grep -Fq 'warn:' "$temp_out" && grep -Fq 'portability-temp-path' "$temp_out" &&
+    grep -Fq "\${TMPDIR:-\$HOME/.cache}" "$temp_out" && [ ! -s "$temp_err" ]; then
     test_pass "check-portability warns on tmp-path portability drift"
   else
     test_fail "check-portability warns on tmp-path portability drift"
@@ -2223,10 +2225,10 @@ EOF
     status=1
   fi
 
-  if grep -Fq 'repo-automation/bin/check-portability 2>&1 | tee "$check_portability_log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
-    grep -Fq 'repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn --log-file="$RUNNER_TEMP/repo-doctor.log"' "$smoke_repo_root/.github/workflows/ci.yml" &&
-    grep -Fq 'repo-automation/bin/ci-failure-artifacts --out-dir="$RUNNER_TEMP/ci-failure-artifacts"' "$smoke_repo_root/.github/workflows/ci.yml" &&
-    grep -Fq '${{ runner.temp }}/ci-failure-artifacts/**' "$smoke_repo_root/.github/workflows/ci.yml"; then
+  if grep -Fq "repo-automation/bin/check-portability 2>&1 | tee \"\$check_portability_log\"" "$smoke_repo_root/.github/workflows/ci.yml" &&
+    grep -Fq "repo-automation/bin/repo-doctor --quick --no-run-tests --json --json-level=warn --log-file=\"\$RUNNER_TEMP/repo-doctor.log\"" "$smoke_repo_root/.github/workflows/ci.yml" &&
+    grep -Fq "repo-automation/bin/ci-failure-artifacts --out-dir=\"\$RUNNER_TEMP/ci-failure-artifacts\"" "$smoke_repo_root/.github/workflows/ci.yml" &&
+    grep -Fq "\${{ runner.temp }}/ci-failure-artifacts/**" "$smoke_repo_root/.github/workflows/ci.yml"; then
     test_pass "ci workflow captures portability and failure artifacts"
   else
     test_fail "ci workflow captures portability and failure artifacts"
