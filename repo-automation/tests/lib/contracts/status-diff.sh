@@ -172,7 +172,12 @@ smoke_check_touched_files_and_ci_contract() {
   local touched_base_format_stderr="$smoke_test_base/touched-files-base-format-$$.txt"
   local touched_base_missing_stderr="$smoke_test_base/touched-files-base-missing-$$.txt"
   local touched_base_empty_stderr="$smoke_test_base/touched-files-base-empty-$$.txt"
+  local touched_head_format_stderr="$smoke_test_base/touched-files-head-format-$$.txt"
+  local touched_head_missing_stderr="$smoke_test_base/touched-files-head-missing-$$.txt"
+  local touched_head_empty_stderr="$smoke_test_base/touched-files-head-empty-$$.txt"
   local touched_base_unknown_stderr="$smoke_test_base/touched-files-base-unknown-$$.txt"
+  local touched_positional_stderr="$smoke_test_base/touched-files-positional-$$.txt"
+  local touched_args_empty_stderr="$smoke_test_base/touched-files-args-empty-$$.txt"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
 
@@ -187,6 +192,37 @@ smoke_check_touched_files_and_ci_contract() {
     test_pass "touched-files help shows strict value syntax"
   else
     test_fail "touched-files help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    # shellcheck source=/dev/null
+    . "$smoke_repo_root/repo-automation/lib/common.sh" || return 1
+    touched_args_base=""
+    touched_args_head=""
+    repo_auto_parse_value_flag_equals "--base=feature/demo" "--base" "use --base=<ref>" touched_args_base || return 1
+    repo_auto_parse_value_flag_equals "--head=release/demo" "--head" "use --head=<ref>" touched_args_head || return 1
+    [ "$touched_args_base" = "feature/demo" ] && [ "$touched_args_head" = "release/demo" ]
+  ); then
+    test_pass "touched-files parser seam preserves equals-form values"
+  else
+    test_fail "touched-files parser seam preserves equals-form values"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    # shellcheck source=/dev/null
+    . "$smoke_repo_root/repo-automation/lib/common.sh" || return 1
+    repo_auto_parse_value_flag_equals "--base=" "--base" "use --base=<ref>" touched_args_base
+  ) 2>"$touched_args_empty_stderr"; then
+    test_fail "touched-files parser seam rejects empty equals-form values"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_args_empty_stderr" "empty flag value" "--base" "use --base=<ref>"; then
+    test_pass "touched-files parser seam rejects empty equals-form values"
+  else
+    test_fail "touched-files parser seam rejects empty equals-form values"
     status=1
   fi
 
@@ -287,6 +323,19 @@ range touch
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --head main >/dev/null 2> "$touched_head_format_stderr"
+  ); then
+    test_fail "touched-files rejects --head <ref>"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_head_format_stderr" "flag format not accepted" "--head" "use --head=<ref>"; then
+    test_pass "touched-files rejects --head <ref>"
+  else
+    test_fail "touched-files rejects --head <ref>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/touched-files --base >/dev/null 2> "$touched_base_missing_stderr"
   ); then
     test_fail "touched-files rejects missing --base value"
@@ -295,6 +344,19 @@ range touch
     test_pass "touched-files rejects missing --base value"
   else
     test_fail "touched-files rejects missing --base value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --head >/dev/null 2> "$touched_head_missing_stderr"
+  ); then
+    test_fail "touched-files rejects missing --head value"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_head_missing_stderr" "missing flag value" "--head" "use --head=<ref>"; then
+    test_pass "touched-files rejects missing --head value"
+  else
+    test_fail "touched-files rejects missing --head value"
     status=1
   fi
 
@@ -313,6 +375,19 @@ range touch
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files --head= >/dev/null 2> "$touched_head_empty_stderr"
+  ); then
+    test_fail "touched-files rejects empty --head value"
+    status=1
+  elif smoke_assert_flag_error_shape "$touched_head_empty_stderr" "empty flag value" "--head" "use --head=<ref>"; then
+    test_pass "touched-files rejects empty --head value"
+  else
+    test_fail "touched-files rejects empty --head value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/touched-files --whatever >/dev/null 2> "$touched_base_unknown_stderr"
   ); then
     test_fail "touched-files rejects unknown flags"
@@ -321,6 +396,19 @@ range touch
     test_pass "touched-files rejects unknown flags"
   else
     test_fail "touched-files rejects unknown flags"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/touched-files positional >/dev/null 2> "$touched_positional_stderr"
+  ); then
+    test_fail "touched-files rejects positional arguments"
+    status=1
+  elif grep -Fxq 'STOP: unknown argument: positional' "$touched_positional_stderr"; then
+    test_pass "touched-files rejects positional arguments"
+  else
+    test_fail "touched-files rejects positional arguments"
     status=1
   fi
 

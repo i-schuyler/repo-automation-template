@@ -180,21 +180,13 @@ touched_files_main() {
         return 0
         ;;
       --base=)
-        repo_auto_flag_error "empty flag value" "--base" "use --base=<ref>" || return 1
+        repo_auto_parse_value_flag_equals "$arg" "--base" "use --base=<ref>" touched_files_base || return 1
         ;;
       --base=*)
-        touched_files_base="${arg#--base=}"
-        if [ -z "$touched_files_base" ]; then
-          repo_auto_flag_error "empty flag value" "--base" "use --base=<ref>" || return 1
-          return 1
-        fi
+        repo_auto_parse_value_flag_equals "$arg" "--base" "use --base=<ref>" touched_files_base || return 1
         ;;
       --head=*)
-        touched_files_head="${arg#--head=}"
-        if [ -z "$touched_files_head" ]; then
-          repo_auto_flag_error "empty flag value" "--head" "use --head=<ref>" || return 1
-          return 1
-        fi
+        repo_auto_parse_value_flag_equals "$arg" "--head" "use --head=<ref>" touched_files_head || return 1
         ;;
       --base)
         if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
