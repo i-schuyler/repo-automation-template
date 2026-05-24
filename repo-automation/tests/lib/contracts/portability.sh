@@ -234,7 +234,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/check-portability >"$allowed_out" 2>"$allowed_err"
-  ) && [ -s "$allowed_out" ] && [ ! -s "$allowed_err" ]; then
+  ) && grep -Fqx 'pass' "$allowed_out" && [ ! -s "$allowed_err" ]; then
     test_pass "check-portability allows python3 command tokens"
   else
     test_fail "check-portability allows python3 command tokens"
