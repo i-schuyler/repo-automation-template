@@ -18,6 +18,9 @@ smoke_check_failure_log_contract() {
   local kind_format_stderr="$smoke_test_base/failure-log-kind-format-$$.txt"
   local kind_missing_stderr="$smoke_test_base/failure-log-kind-missing-$$.txt"
   local kind_empty_stderr="$smoke_test_base/failure-log-kind-empty-$$.txt"
+  local lines_format_stderr="$smoke_test_base/failure-log-lines-format-$$.txt"
+  local lines_missing_stderr="$smoke_test_base/failure-log-lines-missing-$$.txt"
+  local lines_empty_stderr="$smoke_test_base/failure-log-lines-empty-$$.txt"
   local kind_unknown_stderr="$smoke_test_base/failure-log-kind-unknown-$$.txt"
 
   mkdir -p "$log_root" || return 1
@@ -117,6 +120,45 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" repo-automation/bin/failure-log --lines 2 >/dev/null 2> "$lines_format_stderr"
+  ); then
+    test_fail "failure-log rejects --lines <value>"
+    status=1
+  elif smoke_assert_flag_error_shape "$lines_format_stderr" "flag format not accepted" "--lines" "use --lines=<lines>"; then
+    test_pass "failure-log rejects --lines <value>"
+  else
+    test_fail "failure-log rejects --lines <value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" repo-automation/bin/failure-log --lines >/dev/null 2> "$lines_missing_stderr"
+  ); then
+    test_fail "failure-log rejects missing --lines value"
+    status=1
+  elif smoke_assert_flag_error_shape "$lines_missing_stderr" "missing flag value" "--lines" "use --lines=<lines>"; then
+    test_pass "failure-log rejects missing --lines value"
+  else
+    test_fail "failure-log rejects missing --lines value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$temp_root" repo-automation/bin/failure-log --lines= >/dev/null 2> "$lines_empty_stderr"
+  ); then
+    test_fail "failure-log rejects empty --lines value"
+    status=1
+  elif smoke_assert_flag_error_shape "$lines_empty_stderr" "empty flag value" "--lines" "use --lines=<lines>"; then
+    test_pass "failure-log rejects empty --lines value"
+  else
+    test_fail "failure-log rejects empty --lines value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     TMPDIR="$temp_root" repo-automation/bin/failure-log --whatever >/dev/null 2> "$kind_unknown_stderr"
   ); then
     test_fail "failure-log rejects unknown flags"
@@ -129,7 +171,7 @@ EOF
   fi
 
   rm -f "$latest_human" "$kind_json" >/dev/null 2>&1 || true
-  rm -f "$help_file" "$kind_format_stderr" "$kind_missing_stderr" "$kind_empty_stderr" "$kind_unknown_stderr" >/dev/null 2>&1 || true
+  rm -f "$help_file" "$kind_format_stderr" "$kind_missing_stderr" "$kind_empty_stderr" "$lines_format_stderr" "$lines_missing_stderr" "$lines_empty_stderr" "$kind_unknown_stderr" >/dev/null 2>&1 || true
   rm -f "$log_root"/run-tests-20260512-110000.log "$log_root"/run-tests-20260512-120000.log "$log_root"/repo-doctor-20260512-130000.log >/dev/null 2>&1 || true
   rmdir "$log_root" "$temp_root" >/dev/null 2>&1 || true
   return "$status"
