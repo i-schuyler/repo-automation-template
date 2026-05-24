@@ -189,11 +189,7 @@ failure_log_main() {
         failure_log_latest=1
         ;;
       --kind=*)
-        failure_log_kind="${arg#--kind=}"
-        if [ -z "$failure_log_kind" ]; then
-          repo_auto_flag_error "empty flag value" "--kind" "use --kind=<run-tests|repo-doctor|any>" || return 1
-          return 1
-        fi
+        repo_auto_parse_value_flag_equals "$arg" "--kind" "use --kind=<run-tests|repo-doctor|any>" failure_log_kind || return 1
         case "$failure_log_kind" in
           run-tests|repo-doctor|any)
             ;;
@@ -213,11 +209,7 @@ failure_log_main() {
         fi
         ;;
       --lines=*)
-        failure_log_lines="${arg#--lines=}"
-        if [ -z "$failure_log_lines" ]; then
-          repo_auto_flag_error "empty flag value" "--lines" "use --lines=<lines>" || return 1
-          return 1
-        fi
+        repo_auto_parse_value_flag_equals "$arg" "--lines" "use --lines=<lines>" failure_log_lines || return 1
         if ! repo_auto_is_positive_integer "$failure_log_lines"; then
           failure_log_output_stop "invalid --lines value: $failure_log_lines"
           return 1
