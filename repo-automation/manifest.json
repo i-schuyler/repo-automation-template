@@ -454,6 +454,11 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/contracts/portability.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/lib/contracts/ci.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
