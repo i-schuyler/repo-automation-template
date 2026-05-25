@@ -1,12 +1,10 @@
-# repo-automation/tests/lib/contracts/repo-health.sh
+# repo-automation/tests/lib/contracts/run-tests.sh
 
 # shellcheck shell=bash
 # shellcheck disable=SC2154
 # smoke_test_base, smoke_test_dir, and smoke_repo_root are shared harness
 # globals initialized by repo-automation/tests/lib/smoke-common.sh before
 # contract checks run.
-
-
 
 smoke_check_run_tests_contract() {
   local status=0
@@ -77,8 +75,11 @@ smoke_check_run_tests_contract() {
   local run_tests_shellcheck_stub_log="$smoke_test_base/run-tests-shellcheck-stub-$$.args"
   local run_tests_shellcheck_focus_out="$smoke_test_base/run-tests-shellcheck-focus-$$.txt"
   local run_tests_shellcheck_focus_log="$smoke_test_base/run-tests-shellcheck-focus-$$.log"
-  local run_tests_shellcheck_target="$smoke_test_dir/repo-automation/tests/lib/contracts/repo-health.sh"
-  local run_tests_shellcheck_target_backup="$smoke_test_base/run-tests-repo-health-backup-$$.sh"
+  local run_tests_shellcheck_target="$smoke_test_dir/repo-automation/tests/lib/contracts/run-tests.sh"
+  local run_tests_shellcheck_target_backup="$smoke_test_base/run-tests-run-tests-backup-$$.sh"
+  local run_tests_shellcheck_legacy_target_prefix="$smoke_test_dir/repo-automation/tests/lib/contracts/repo-"
+  local run_tests_shellcheck_legacy_target_suffix="health.sh"
+  local run_tests_shellcheck_legacy_target="$run_tests_shellcheck_legacy_target_prefix$run_tests_shellcheck_legacy_target_suffix"
   local run_tests_shellcheck_readme_backup="$smoke_test_base/run-tests-readme-backup-$$.md"
   local run_tests_shellcheck_docs_backup="$smoke_test_base/run-tests-docs-backup-$$"
   local run_tests_temp_disk_path="$smoke_test_dir/repo-automation/lib/temp-disk.sh"
@@ -374,7 +375,7 @@ EOF
 
   if grep -Fqx -- 'repo-automation/bin/check-portability' "$run_tests_shellcheck_stub_log" &&
     grep -Fqx -- 'repo-automation/bin/shellcheck-ci-parity' "$run_tests_shellcheck_stub_log" &&
-    ! grep -Fq -- 'repo-automation/tests/lib/contracts/repo-health.sh' "$run_tests_shellcheck_stub_log"; then
+    ! grep -Fq -- "$run_tests_shellcheck_legacy_target" "$run_tests_shellcheck_stub_log"; then
     test_pass "run-tests shellcheck uses generated paths and skips the old broad find"
   else
     test_fail "run-tests shellcheck uses generated paths and skips the old broad find"
@@ -1031,4 +1032,4 @@ EOF
 }
 
 
-# repo-automation/tests/lib/contracts/repo-health.sh EOF
+# repo-automation/tests/lib/contracts/run-tests.sh EOF
