@@ -303,6 +303,7 @@ repo_install_main() {
   local -a managed_files=(
     "repo-automation/lib/common.sh"
     "repo-automation/lib/repo-flow-json.sh"
+    "repo-automation/lib/repo-flow-submit-paths.sh"
     "repo-automation/lib/repo-flow-status.sh"
     "repo-automation/bin/branch-cleanup"
     "repo-automation/bin/codex-slice-preflight"
