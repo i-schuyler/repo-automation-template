@@ -489,6 +489,11 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/contracts/repo-doctor.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/lib/contracts/artifacts.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
