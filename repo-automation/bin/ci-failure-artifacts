@@ -382,31 +382,38 @@ if not primary_excerpt and source_file is not None and source_name != "repo-doct
     lines = read_text(source_file)
     primary_excerpt = "\n".join(lines[-12:]).strip()
 
-if source_file is not None and source_name != "repo-doctor.json" and source_file.name in {
+if not primary_excerpt:
+    primary_excerpt = "no failure log available"
+
+raw_source_names = {
     "run-tests.log",
     "shellcheck.log",
     "check-portability.log",
     "repo-doctor.log",
     "artifact-generation.log",
-}:
-    shutil.copyfile(source_file, artifact_paths["failure_log"])
-elif source_name == "repo-doctor.json":
-    # repo-doctor JSON is summarized separately; the raw failure log is optional.
-    pass
+}
+raw_source_note = ""
+if source_name in raw_source_names:
+    raw_source_note = f"raw source log available separately: {source_name}"
 
-if artifact_paths["failure_log"].is_file() and artifact_paths["failure_log"].stat().st_size > 0:
-    failure_lines = read_text(artifact_paths["failure_log"])
-else:
-    failure_lines = []
-
-if not primary_excerpt:
-    if failure_lines:
-        primary_excerpt = "\n".join(failure_lines[-12:]).strip()
-    else:
-        primary_excerpt = "no failure log available"
+failure_log_lines = [
+    "# CI failure summary",
+    "",
+    f"Primary failure source: `{source_name or 'unknown-ci'}`",
+    f"First failure label: `{primary_source_label}`",
+    f"Suggested next command: `{suggested_command(primary_source_label)}`",
+]
+if raw_source_note:
+    failure_log_lines.extend(["", raw_source_note])
+failure_log_lines.extend([
+    "",
+    "Primary excerpt:",
+    primary_excerpt.rstrip(),
+])
+artifact_paths["failure_log"].write_text("\n".join(failure_log_lines).rstrip() + "\n", encoding="utf-8")
 
 artifact_filenames = {
-    "failure_log": artifact_paths["failure_log"].name if source_file is not None and source_name != "repo-doctor.json" else "",
+    "failure_log": artifact_paths["failure_log"].name,
     "failure_excerpt": artifact_paths["failure_excerpt"].name,
     "policy_summary": artifact_paths["policy_summary"].name,
     "machine_summary": artifact_paths["machine_summary"].name,
@@ -461,6 +468,7 @@ if repo_doctor_object:
     )
 policy_lines.extend([
     "",
+    "failure-log.txt is a compact pointer/summary; raw source logs remain in their own artifacts when provided.",
     "repo-doctor is collected on failure and does not mask the original CI failure.",
     "check-portability advisory findings may be warnings unless blocking drift exists.",
 ])
