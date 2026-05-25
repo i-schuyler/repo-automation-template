@@ -429,6 +429,11 @@
       "kind": "library"
     },
     {
+      "path": "repo-automation/lib/run-tests-results.sh",
+      "owner": "repo-automation-template",
+      "kind": "library"
+    },
+    {
       "path": "repo-automation/tests/docs-check.sh",
       "owner": "repo-automation-template",
       "kind": "test"
@@ -529,6 +534,11 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/contracts/run-tests-results.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/lib/contracts/test-timeout.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
@@ -585,6 +595,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/run-tests-failure.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/run-tests-results.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },
