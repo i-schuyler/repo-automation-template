@@ -414,6 +414,11 @@
       "kind": "library"
     },
     {
+      "path": "repo-automation/lib/repo-flow-json.sh",
+      "owner": "repo-automation-template",
+      "kind": "library"
+    },
+    {
       "path": "repo-automation/lib/repo-flow-status.sh",
       "owner": "repo-automation-template",
       "kind": "library"
