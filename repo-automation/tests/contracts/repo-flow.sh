@@ -617,6 +617,31 @@ EOF
   return "$status"
 }
 
+smoke_check_repo_flow_status_card_helper_contract() {
+  local status=0
+  local helper_file=""
+
+  smoke_setup_temp_repo || return 1
+  helper_file="$smoke_test_dir/repo-automation/lib/repo-flow-status.sh"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    # shellcheck source=/dev/null
+    source "$helper_file" || return 1
+    [ "$(repo_flow_status_card_classify_checks '[{"name":"build","bucket":"pending","state":"IN_PROGRESS"}]')" = "pending" ] &&
+      [ "$(repo_flow_status_card_classify_checks '[{"name":"build","bucket":"fail","state":"FAILED"}]')" = "blocked" ] &&
+      [ "$(repo_flow_status_card_classify_checks '[{"name":"build","bucket":"pass","state":"SUCCESS"}]')" = "green" ] &&
+      [ "$(repo_flow_status_card_classify_checks '[]')" = "unknown" ]
+  ); then
+    test_pass "repo-flow status-card helper classifies checks deterministically"
+  else
+    test_fail "repo-flow status-card helper classifies checks deterministically"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_repo_flow_status_card_contract() {
   local status=0
   local help_out=""
@@ -3342,6 +3367,7 @@ smoke_main_impl() {
     smoke_run_named_check "smoke:repo-flow-status-card-feature-no-pr" smoke_check_repo_flow_status_card_feature_no_pr || status=1
     smoke_run_named_check "smoke:repo-flow-status-card-existing-pr" smoke_check_repo_flow_status_card_existing_pr || status=1
     smoke_run_named_check "smoke:repo-flow-status-card-skipped-checks" smoke_check_repo_flow_status_card_skipped_checks || status=1
+    smoke_run_named_check "smoke:repo-flow-status-card-helper" smoke_check_repo_flow_status_card_helper_contract || status=1
     smoke_run_named_check "smoke:repo-flow-status-card-contract" smoke_check_repo_flow_status_card_contract || status=1
     smoke_run_named_check "smoke:repo-flow-dry-run-json" smoke_check_repo_flow_dry_run_json || status=1
     smoke_run_named_check "smoke:repo-flow-existing-pr" smoke_check_repo_flow_existing_pr || status=1
@@ -3381,6 +3407,9 @@ smoke_main_impl() {
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-status-card-skipped-checks" smoke_check_repo_flow_status_card_skipped_checks || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-status-card-helper" smoke_check_repo_flow_status_card_helper_contract || status=1
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-status-card-contract" smoke_check_repo_flow_status_card_contract || status=1
