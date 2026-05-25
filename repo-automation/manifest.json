@@ -429,6 +429,11 @@
       "kind": "library"
     },
     {
+      "path": "repo-automation/lib/repo-flow-submit-child.sh",
+      "owner": "repo-automation-template",
+      "kind": "library"
+    },
+    {
       "path": "repo-automation/lib/repo-flow-status.sh",
       "owner": "repo-automation-template",
       "kind": "library"
