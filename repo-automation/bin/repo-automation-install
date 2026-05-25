@@ -305,6 +305,7 @@ repo_install_main() {
     "repo-automation/lib/repo-flow-json.sh"
     "repo-automation/lib/repo-flow-submit-paths.sh"
     "repo-automation/lib/repo-flow-submit-body.sh"
+    "repo-automation/lib/repo-flow-submit-child.sh"
     "repo-automation/lib/repo-flow-status.sh"
     "repo-automation/bin/branch-cleanup"
     "repo-automation/bin/codex-slice-preflight"
