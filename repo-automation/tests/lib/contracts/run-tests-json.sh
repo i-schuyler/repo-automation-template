@@ -35,7 +35,7 @@ smoke_check_run_tests_json_contract() {
     "fail one|fail|1|f"
     "skip one|skipped|0|s"
   )
-  RUN_TESTS_LOG_STATUS_VALUE="path" RUN_TESTS_LOG_FILE_VALUE="/tmp/run-tests.log" RUN_TESTS_LOG_FIX_VALUE="inspect log" RUN_TESTS_LOG_POLICY_VALUE="run-temp-cleaned-by-default" \
+  RUN_TESTS_LOG_STATUS_VALUE="path" RUN_TESTS_LOG_FILE_VALUE="run-tests.log" RUN_TESTS_LOG_FIX_VALUE="inspect log" RUN_TESTS_LOG_POLICY_VALUE="run-temp-cleaned-by-default" \
     run_tests_print_json "warn" 1 1 1 1 >"$json_out"
   if python3 - "$json_out" <<'PY'
 import json, sys
@@ -54,7 +54,7 @@ assert [check["status"] for check in data["checks"]] == ["pass", "warn", "fail",
 assert all(isinstance(check["timed_out"], bool) for check in data["checks"])
 assert data["log_status"] == "path"
 assert data["log_policy"] == "run-temp-cleaned-by-default"
-assert data["log_file"] == "/tmp/run-tests.log"
+assert data["log_file"] == "run-tests.log"
 assert data["log_fix"] == "inspect log"
 PY
   then
@@ -101,7 +101,7 @@ PY
     "fail one|fail|1|f"
     "skip one|skipped|0|s"
   )
-  RUN_TESTS_LOG_STATUS_VALUE="path" RUN_TESTS_LOG_FILE_VALUE="/tmp/log.txt" RUN_TESTS_LOG_FIX_VALUE="fix me" RUN_TESTS_LOG_POLICY_VALUE="kept" \
+  RUN_TESTS_LOG_STATUS_VALUE="path" RUN_TESTS_LOG_FILE_VALUE="log.txt" RUN_TESTS_LOG_FIX_VALUE="fix me" RUN_TESTS_LOG_POLICY_VALUE="kept" \
     run_tests_print_json "warn" 1 1 1 1 >"$json_out"
   if python3 - "$json_out" <<'PY'
 import json, sys
@@ -111,7 +111,7 @@ data = json.loads(path.read_text(encoding='utf-8'))
 assert [check["status"] for check in data["checks"]] == ["warn", "fail"]
 assert data["log_status"] == "path"
 assert data["log_policy"] == "kept"
-assert data["log_file"] == "/tmp/log.txt"
+assert data["log_file"] == "log.txt"
 assert data["log_fix"] == "fix me"
 PY
   then
@@ -130,7 +130,7 @@ PY
     "fail one|fail|1|f"
     "skip one|skipped|0|s"
   )
-  RUN_TESTS_LOG_STATUS_VALUE="path" RUN_TESTS_LOG_FILE_VALUE="/tmp/changed.log" RUN_TESTS_LOG_FIX_VALUE="" RUN_TESTS_LOG_POLICY_VALUE="changed-policy" \
+  RUN_TESTS_LOG_STATUS_VALUE="path" RUN_TESTS_LOG_FILE_VALUE="changed.log" RUN_TESTS_LOG_FIX_VALUE="" RUN_TESTS_LOG_POLICY_VALUE="changed-policy" \
     run_tests_print_json "warn" 1 1 1 1 >"$json_out"
   if python3 - "$json_out" <<'PY'
 import json, sys
@@ -141,7 +141,7 @@ assert [check["status"] for check in data["checks"]] == ["pass", "warn", "fail",
 assert data["selected_subsets"] == ["docs", "version", "smoke"]
 assert data["log_status"] == "path"
 assert data["log_policy"] == "changed-policy"
-assert data["log_file"] == "/tmp/changed.log"
+assert data["log_file"] == "changed.log"
 assert "log_fix" not in data
 assert all(isinstance(check["timed_out"], bool) for check in data["checks"])
 PY
