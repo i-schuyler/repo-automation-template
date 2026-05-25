@@ -7,19 +7,14 @@
   return 2 2>/dev/null || exit 2
 }
 
-repo_flow_status_card_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow status-card [--json] [--help]\n'
+# shellcheck source=/dev/null
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-flow-json.sh" || {
+  printf 'STOP: failed to source repo-flow json library\n' >&2
+  return 2 2>/dev/null || exit 2
 }
 
-repo_flow_status_card_json_escape() {
-  local value="${1:-}"
-
-  value=${value//\\/\\\\}
-  value=${value//\"/\\\"}
-  value=${value//$'\n'/\\n}
-  value=${value//$'\r'/\\r}
-  value=${value//$'\t'/\\t}
-  printf '%s' "$value"
+repo_flow_status_card_usage() {
+  printf 'Usage: repo-automation/bin/repo-flow status-card [--json] [--help]\n'
 }
 
 repo_flow_status_card_classify_checks() {
@@ -212,9 +207,9 @@ EOF
   if [ "$json" -eq 1 ]; then
     printf '{'
     printf '"mode":"status-card",'
-    printf '"branch":"%s",' "$(repo_flow_status_card_json_escape "$current_branch")"
-    printf '"default_branch":"%s",' "$(repo_flow_status_card_json_escape "$default_branch")"
-    printf '"worktree":"%s",' "$(repo_flow_status_card_json_escape "$worktree_status")"
+    printf '"branch":"%s",' "$(repo_flow_json_escape "$current_branch")"
+    printf '"default_branch":"%s",' "$(repo_flow_json_escape "$default_branch")"
+    printf '"worktree":"%s",' "$(repo_flow_json_escape "$worktree_status")"
     printf '"tracked_changed_files":%s,' "$tracked_changed_files"
     printf '"untracked_files":%s,' "$untracked_files"
     printf '"range_vs_default_files":%s,' "$range_vs_default_files"
@@ -222,15 +217,15 @@ EOF
     printf '"behind_count":%s,' "$behind_count"
     if [ -n "$pr_number" ]; then
       printf '"pr_number":%s,' "$pr_number"
-      printf '"pr_url":"%s",' "$(repo_flow_status_card_json_escape "$pr_url")"
-      printf '"pr_state":"%s",' "$(repo_flow_status_card_json_escape "$pr_state")"
+      printf '"pr_url":"%s",' "$(repo_flow_json_escape "$pr_url")"
+      printf '"pr_state":"%s",' "$(repo_flow_json_escape "$pr_state")"
     else
       printf '"pr_number":null,'
       printf '"pr_url":null,'
       printf '"pr_state":null,'
     fi
-    printf '"checks_state":"%s",' "$(repo_flow_status_card_json_escape "$checks_state")"
-    printf '"next_action":"%s",' "$(repo_flow_status_card_json_escape "$next_action")"
+    printf '"checks_state":"%s",' "$(repo_flow_json_escape "$checks_state")"
+    printf '"next_action":"%s",' "$(repo_flow_json_escape "$next_action")"
     printf '"overall_status":"pass"'
     printf '}\n'
     return 0
