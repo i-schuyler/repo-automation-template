@@ -399,6 +399,25 @@ EOF
   fi
 }
 
+test_cleanup_descendants() {
+  local parent_pid="${1:-}"
+  local descendant_pid=""
+
+  case "$parent_pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  while IFS= read -r descendant_pid; do
+    [ -n "$descendant_pid" ] || continue
+    test_kill_child_tree "$descendant_pid"
+    wait "$descendant_pid" >/dev/null 2>&1 || true
+  done <<EOF
+$(test_list_child_pids "$parent_pid")
+EOF
+}
+
 test_have_timeout() {
   if [ -n "$TEST_TIMEOUT_AVAILABLE" ]; then
     [ "$TEST_TIMEOUT_AVAILABLE" = "1" ]
@@ -506,6 +525,8 @@ test_run_with_timeout() {
     is_function=1
   fi
 
+  export -f test_cleanup_descendants test_list_child_pids test_kill_child_tree
+
   if [ "$is_function" -eq 1 ]; then
     if [ "$timeout_seconds" -gt 0 ]; then
       timeout_marker="${TEST_TEMP_ROOT}/timeout.$$.$RANDOM"
@@ -515,6 +536,7 @@ test_run_with_timeout() {
       # Keep cleanup ownership in the parent shell so a timed-out child cannot
       # delete shared smoke fixtures that later checks still need.
       trap - EXIT INT TERM
+      trap 'test_cleanup_descendants "$BASHPID"' EXIT INT TERM
       TEST_CLEANUP_RAN=1
       "$command_string"
     ) &
@@ -547,7 +569,7 @@ test_run_with_timeout() {
       fi
     fi
   else
-    shell_command="cd $(printf '%q' "$PWD") && eval $(printf '%q' "$command_string")"
+    shell_command="trap - EXIT INT TERM; trap 'test_cleanup_descendants \"\$BASHPID\"' EXIT INT TERM; cd $(printf '%q' "$PWD") && eval $(printf '%q' "$command_string")"
 
     if [ "$timeout_seconds" -gt 0 ] && test_have_timeout; then
       if test_timeout_has_kill_after; then

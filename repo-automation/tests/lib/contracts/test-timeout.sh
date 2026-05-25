@@ -14,11 +14,40 @@ smoke_timeout_slow() {
   sleep 2
 }
 
+smoke_timeout_spawn_descendant() {
+  local pid_file="${smoke_timeout_pid_file:-}"
+
+  sleep 20 &
+  printf '%s\n' "$!" > "$pid_file"
+}
+
+smoke_timeout_cleanup_pid() {
+  local pid="${1:-}"
+
+  case "$pid" in
+    ''|*[!0-9]*)
+      return 0
+      ;;
+  esac
+
+  if kill -0 "$pid" >/dev/null 2>&1; then
+    kill "$pid" >/dev/null 2>&1 || true
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+  fi
+}
+
 smoke_check_test_timeout_contract() {
   local status=0
   local timeout_root=""
   local success_result=0
   local timeout_result=0
+  local function_pid_file=""
+  local function_sleep_pid=""
+  local function_descendant_result=0
+  local external_pid_file=""
+  local external_sleep_pid=""
+  local external_descendant_result=0
+  local smoke_timeout_pid_file=""
 
   timeout_root="$(mktemp -d "${TEST_TEMP_ROOT}/test-timeout.XXXXXX")" || return 1
   test_register_temp_dir "$timeout_root" || return 1
@@ -49,6 +78,44 @@ smoke_check_test_timeout_contract() {
     test_fail "timeout runner times out cleanly"
     status=1
   fi
+
+  function_pid_file="$TEST_TEMP_ROOT/function-descendant.$$"
+  smoke_timeout_pid_file="$function_pid_file"
+  function_sleep_pid=""
+  if test_run_with_timeout 2 smoke_timeout_spawn_descendant; then
+    function_descendant_result=0
+  else
+    function_descendant_result=$?
+  fi
+  if [ -f "$function_pid_file" ]; then
+    function_sleep_pid="$(cat "$function_pid_file" 2>/dev/null || true)"
+  fi
+  if [ "$function_descendant_result" -eq 0 ] && [ "$TEST_LAST_TIMEOUT" -eq 0 ] && [ "${#TEST_CHILD_PIDS[@]}" -eq 0 ] && [ -n "$function_sleep_pid" ] && ! kill -0 "$function_sleep_pid" >/dev/null 2>&1; then
+    test_pass "timeout runner cleans function descendants on exit"
+  else
+    test_fail "timeout runner cleans function descendants on exit"
+    status=1
+  fi
+  smoke_timeout_cleanup_pid "$function_sleep_pid"
+  smoke_timeout_pid_file=""
+
+  external_pid_file="$TEST_TEMP_ROOT/external-descendant.$$"
+  external_sleep_pid=""
+  if test_run_with_timeout 2 "sleep 20 & bg_pid=\$!; printf '%s\n' \"\$bg_pid\" > \"$external_pid_file\"; :"; then
+    external_descendant_result=0
+  else
+    external_descendant_result=$?
+  fi
+  if [ -f "$external_pid_file" ]; then
+    external_sleep_pid="$(cat "$external_pid_file" 2>/dev/null || true)"
+  fi
+  if [ "$external_descendant_result" -eq 0 ] && [ "$TEST_LAST_TIMEOUT" -eq 0 ] && [ "${#TEST_CHILD_PIDS[@]}" -eq 0 ] && [ -n "$external_sleep_pid" ] && ! kill -0 "$external_sleep_pid" >/dev/null 2>&1; then
+    test_pass "timeout runner cleans external descendants on exit"
+  else
+    test_fail "timeout runner cleans external descendants on exit"
+    status=1
+  fi
+  smoke_timeout_cleanup_pid "$external_sleep_pid"
 
   return "$status"
 }
