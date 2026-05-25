@@ -406,6 +406,7 @@ repo_install_main() {
     "repo-automation/tests/lib/contracts/shellcheck.sh"
     "repo-automation/tests/lib/contracts/ci.sh"
     "repo-automation/tests/lib/contracts/repo-health.sh"
+    "repo-automation/tests/lib/contracts/repo-doctor.sh"
     "repo-automation/tests/lib/contracts/artifacts.sh"
     "repo-automation/tests/lib/contracts/install-release.sh"
     "repo-automation/tests/docs-check.sh"
