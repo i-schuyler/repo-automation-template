@@ -444,7 +444,17 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/contracts/failure-log.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/lib/contracts/status-diff.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/status-packet.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
     },

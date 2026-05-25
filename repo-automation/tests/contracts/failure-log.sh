@@ -7,7 +7,7 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/status-diff.sh"
+source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/failure-log.sh"
 
 smoke_main_impl() {
   local status=0
