@@ -19,6 +19,59 @@
   return 2 2>/dev/null || exit 2
 }
 
+repo_flow_submit_watch_pr_finish() {
+  # shellcheck disable=SC2154
+  if [ "$explain" -eq 1 ]; then
+    repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
+  fi
+
+  # shellcheck disable=SC2154
+  if [ "$diagnose_on_fail" -eq 1 ]; then
+    # shellcheck disable=SC2154
+    if [ "$explain" -eq 1 ]; then
+      PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
+    else
+      "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
+    fi
+  else
+    # shellcheck disable=SC2154
+    if [ "$explain" -eq 1 ]; then
+      PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
+    else
+      "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
+    fi
+  fi
+
+  command_status=$?
+  if [ "$command_status" -ne 0 ]; then
+    # shellcheck disable=SC2034
+    repo_flow_stop "pr-finish completion failed for PR #$pr_number"
+    # shellcheck disable=SC2034
+    final_status="blocked"
+    case "${repo_flow_stop_reason:-}" in
+      *timeout*|*timed\ out*|*TIMEOUT*)
+        # shellcheck disable=SC2034
+        ci_state="timeout"
+        ;;
+      *)
+        # shellcheck disable=SC2034
+        ci_state="fail"
+        ;;
+    esac
+  else
+    # shellcheck disable=SC2034
+    action_taken="watched-pr"
+    # shellcheck disable=SC2034
+    final_status="ready-for-review"
+    # shellcheck disable=SC2034
+    merged="false"
+    # shellcheck disable=SC2034
+    ci_state="pass"
+  fi
+
+  return "$command_status"
+}
+
 repo_flow_submit_create_pr() {
   local current_branch="$1"
   local default_branch="$2"

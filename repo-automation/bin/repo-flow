@@ -434,7 +434,7 @@ EOF
     if [ "$watch" -eq 1 ]; then
       if [ -z "$pr_number" ]; then
         existing_pr_number=$(gh pr view "$current_branch" --json number --jq '.number' 2>/dev/null || true)
-      if [ -n "$existing_pr_number" ]; then
+        if [ -n "$existing_pr_number" ]; then
           pr_status="existing"
           pr_number="$existing_pr_number"
           pr_url=$(gh pr view "$current_branch" --json url --jq '.url' 2>/dev/null || true)
@@ -455,40 +455,7 @@ EOF
         fi
       fi
       if [ "$command_status" -eq 0 ]; then
-        if [ "$explain" -eq 1 ]; then
-          repo_flow_info "completion timeout: ${watch_timeout_seconds}s"
-        fi
-        if [ "$diagnose_on_fail" -eq 1 ]; then
-          if [ "$explain" -eq 1 ]; then
-            PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail --explain
-          else
-            "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --diagnose-on-fail
-          fi
-        else
-          if [ "$explain" -eq 1 ]; then
-            PR_FINISH_SUPPRESS_FINAL_SUMMARY=1 "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds" --explain
-          else
-            "$script_dir/pr-finish" --watch --pr=current --timeout="$watch_timeout_seconds"
-          fi
-        fi
-        command_status=$?
-        if [ "$command_status" -ne 0 ]; then
-          repo_flow_stop "pr-finish completion failed for PR #$pr_number"
-          final_status="blocked"
-          case "${repo_flow_stop_reason:-}" in
-            *timeout*|*timed\ out*|*TIMEOUT*)
-              ci_state="timeout"
-              ;;
-            *)
-              ci_state="fail"
-              ;;
-          esac
-        else
-          action_taken="watched-pr"
-          final_status="ready-for-review"
-          merged="false"
-          ci_state="pass"
-        fi
+        repo_flow_submit_watch_pr_finish
       fi
     else
       if repo_flow_submit_run_child_repo_flow_main "$custom_body_file"; then
