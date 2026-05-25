@@ -439,6 +439,11 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/smoke-capture.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/lib/smoke-fixtures.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
