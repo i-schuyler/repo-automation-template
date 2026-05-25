@@ -7,6 +7,15 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 # shellcheck source=/dev/null
+run_tests_routing_lib="$(cd "$(dirname "$0")" && pwd)/../lib/run-tests-routing.sh"
+if [ ! -f "$run_tests_routing_lib" ]; then
+  repo_auto_stop "missing required library: repo-automation/lib/run-tests-routing.sh"
+  exit 1
+fi
+# shellcheck source=/dev/null
+source "$run_tests_routing_lib"
+unset run_tests_routing_lib
+# shellcheck source=/dev/null
 run_tests_temp_disk_lib="$(cd "$(dirname "$0")" && pwd)/../lib/temp-disk.sh"
 if [ ! -f "$run_tests_temp_disk_lib" ]; then
   repo_auto_stop "missing required library: repo-automation/lib/temp-disk.sh"
@@ -741,53 +750,9 @@ run_tests_print_json() {
   printf '}\n'
 }
 
-run_tests_collect_changed_files() {
-  local changed_ref_name="$1"
-  local -n changed_ref="$changed_ref_name"
-  local path
 
-  while IFS= read -r path; do
-    [ -n "$path" ] && changed_ref+=("$path")
-  done <<EOF
-$(
-  {
-    git diff --name-only --cached --diff-filter=ACDMR
-    git diff --name-only --diff-filter=ACDMR
-    git ls-files --others --exclude-standard
-  } | sed '/^$/d' | sort -u
-)
-EOF
-}
 
-run_tests_changed_needs_docs() {
-  case "$1" in
-    README.md|CHANGELOG.md|CONTRIBUTING.md|SUPPORT.md|docs/*|repo-automation/docs/*|.github/pull_request_template.md|.github/ISSUE_TEMPLATE/*)
-      return 0
-      ;;
-  esac
 
-  return 1
-}
-
-run_tests_changed_needs_version() {
-  case "$1" in
-    VERSION|README.md|CHANGELOG.md|docs/DECISIONS.md|docs/VERSIONING.md|examples/downstream/.repo-automation.conf.example|repo-automation/manifest.json|repo-automation/bin/repo-automation-install|repo-automation/tests/version-consistency.sh|repo-automation/bin/prepare-release)
-      return 0
-      ;;
-  esac
-
-  return 1
-}
-
-run_tests_changed_needs_smoke() {
-  case "$1" in
-    repo-automation/bin/*|repo-automation/lib/*|repo-automation/tests/*|repo-automation/manifest.json|.github/workflows/*)
-      return 0
-      ;;
-  esac
-
-  return 1
-}
 
 run_tests_print_results() {
   local status="${1:-0}"
