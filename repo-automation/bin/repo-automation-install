@@ -418,6 +418,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/failure-log.sh"
     "repo-automation/tests/contracts/run-tests.sh"
     "repo-automation/tests/contracts/touched-files.sh"
+    "repo-automation/tests/contracts/ci-status-watch.sh"
     "repo-automation/tests/contracts/ci-log-dump.sh"
     "repo-automation/tests/contracts/ci-failure-artifacts.sh"
     "repo-automation/tests/contracts/contract-debt-report.sh"

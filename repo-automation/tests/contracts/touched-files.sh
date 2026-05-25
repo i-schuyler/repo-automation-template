@@ -19,7 +19,7 @@ smoke_main_impl() {
   smoke_setup_temp_repo || return 1
 
   smoke_run_named_check "smoke:parser-args-contract" smoke_check_parser_args_contract || status=1
-  smoke_run_named_check "smoke:touched-files-ci-contract" smoke_check_touched_files_and_ci_contract || status=1
+  smoke_run_named_check "smoke:touched-files-contract" smoke_check_touched_files_contract || status=1
 
   return "$status"
 }
