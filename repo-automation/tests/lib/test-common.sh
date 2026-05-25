@@ -530,6 +530,7 @@ test_run_with_timeout() {
         fi
       ) &
       watchdog_pid=$!
+      test_register_child_pid "$watchdog_pid"
     fi
 
     wait "$child_pid"
@@ -539,6 +540,7 @@ test_run_with_timeout() {
     if [ "$timeout_seconds" -gt 0 ]; then
       kill "$watchdog_pid" >/dev/null 2>&1 || true
       wait "$watchdog_pid" >/dev/null 2>&1 || true
+      test_unregister_child_pid "$watchdog_pid"
       if [ -f "$timeout_marker" ]; then
         watchdog_timeout=1
         rm -f -- "$timeout_marker" >/dev/null 2>&1 || true
