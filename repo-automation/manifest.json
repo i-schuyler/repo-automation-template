@@ -519,6 +519,11 @@
       "kind": "test-support"
     },
     {
+      "path": "repo-automation/tests/lib/contracts/test-timeout.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
       "path": "repo-automation/tests/lib/contracts/run-tests-routing.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
@@ -565,6 +570,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/run-tests.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/test-timeout.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },
