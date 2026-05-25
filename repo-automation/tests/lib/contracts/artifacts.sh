@@ -437,9 +437,7 @@ EOF
     status=1
   fi
 
-  local review_pack_tmp_re='/t'"'mp'
-  local review_pack_var_tmp_re='/var/t'"'mp'
-  if ! grep -Eq "${review_pack_tmp_re}|${review_pack_var_tmp_re}" "$smoke_repo_root/repo-automation/docs/review-pack.md"; then
+  if ! grep -Eq '/tmp|/var/tmp' "$smoke_repo_root/repo-automation/docs/review-pack.md"; then
     test_pass "review-pack docs avoid private temp paths"
   else
     test_fail "review-pack docs avoid private temp paths"
