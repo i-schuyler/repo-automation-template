@@ -396,6 +396,7 @@ repo_install_main() {
   local -a optional_test_files=(
     "repo-automation/tests/lib/test-common.sh"
     "repo-automation/tests/lib/smoke-common.sh"
+    "repo-automation/tests/lib/smoke-registry.sh"
     "repo-automation/tests/lib/contracts/pr-workflow.sh"
     "repo-automation/tests/lib/contracts/report-upstream.sh"
     "repo-automation/tests/lib/contracts/failure-log.sh"
