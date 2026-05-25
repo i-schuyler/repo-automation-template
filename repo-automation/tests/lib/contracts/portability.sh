@@ -56,7 +56,7 @@ replacements = {
         ("/tmp", "PRIVATE_TMP"),
         ("/var/tmp", "PRIVATE_VAR_TMP"),
     ],
-    root / "repo-automation" / "tests" / "lib" / "contracts" / "repo-health.sh": [
+    root / "repo-automation" / "tests" / "lib" / "contracts" / "run-tests.sh": [
         ("/tmp", "PRIVATE_TMP"),
         ("/var/tmp", "PRIVATE_VAR_TMP"),
         ("grep -P", "grep -E"),
@@ -82,7 +82,7 @@ safe_stubs = {
     root / "repo-automation" / "tests" / "docs-check.sh": "#!/usr/bin/env bash\nset -u\n:\n",
     root / "repo-automation" / "tests" / "lib" / "contracts" / "artifacts.sh": "#!/usr/bin/env bash\nset -u\n:\n",
     root / "repo-automation" / "tests" / "lib" / "contracts" / "portability.sh": "#!/usr/bin/env bash\nset -u\n:\n",
-    root / "repo-automation" / "tests" / "lib" / "contracts" / "repo-health.sh": "#!/usr/bin/env bash\nset -u\n:\n",
+    root / "repo-automation" / "tests" / "lib" / "contracts" / "run-tests.sh": "#!/usr/bin/env bash\nset -u\n:\n",
 }
 
 for path, content in safe_stubs.items():
