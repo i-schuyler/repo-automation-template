@@ -26,6 +26,9 @@ smoke_help_requested=0
 # shellcheck source=/dev/null
 source "$smoke_common_dir/smoke-fixtures.sh"
 
+# shellcheck source=/dev/null
+source "$smoke_common_dir/smoke-capture.sh"
+
 smoke_usage() {
   printf 'Usage: %s [--quiet] [--explain] [--json] [--help]\n' "${TEST_OUTPUT_SCRIPT_PATH:-repo-automation/tests/smoke.sh}"
 }
@@ -71,7 +74,6 @@ smoke_parse_output_mode() {
 smoke_run_focused_contract_wrapper() {
   local body_function="${1:-}"
   local status=0
-  local smoke_output_capture=""
   local smoke_wrapper_path="${0#./}"
   local smoke_wrapper_script="${smoke_wrapper_path##*/}"
   local failure_line=""
@@ -98,21 +100,18 @@ smoke_run_focused_contract_wrapper() {
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     "$body_function" || status=1
   else
-    mkdir -p "$TEST_TEMP_ROOT" || return 1
-    smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/${smoke_wrapper_script}.XXXXXX")" || return 1
-    exec 3>&1 4>&2
-    exec >"$smoke_output_capture" 2>&1
+    smoke_capture_begin "$smoke_wrapper_script" || return 1
     "$body_function" || status=1
     if [ "$status" -ne 0 ] && [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
-      failure_line="$(test_extract_first_actionable_failure "$smoke_output_capture" || true)"
+      # shellcheck disable=SC2154 # Set by repo-automation/tests/lib/smoke-capture.sh.
+      failure_line="$(test_extract_first_actionable_failure "$smoke_capture_file" || true)"
       if [ -n "$failure_line" ]; then
         test_fail "$failure_line"
       else
         test_fail "$smoke_wrapper_script"
       fi
     fi
-    exec 1>&3 2>&4
-    rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
+    smoke_capture_cleanup || return 1
   fi
 
   if [ "$status" -ne 0 ] && [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
@@ -132,7 +131,6 @@ smoke_finish_output() {
 
 smoke_run() {
   local status=0
-  local smoke_output_capture=""
   local smoke_registry_lib="$smoke_repo_root/repo-automation/tests/lib/smoke-registry.sh"
 
   trap 'test_cleanup' EXIT INT TERM
@@ -153,13 +151,9 @@ smoke_run() {
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     smoke_run_all_contracts || status=1
   else
-    mkdir -p "$TEST_TEMP_ROOT" || return 1
-    smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/smoke.XXXXXX")" || return 1
-    exec 3>&1 4>&2
-    exec >"$smoke_output_capture" 2>&1
+    smoke_capture_begin smoke || return 1
     smoke_run_all_contracts || status=1
-    exec 1>&3 2>&4
-    rm -f -- "$smoke_output_capture" >/dev/null 2>&1 || true
+    smoke_capture_cleanup || return 1
   fi
 
   return "$status"

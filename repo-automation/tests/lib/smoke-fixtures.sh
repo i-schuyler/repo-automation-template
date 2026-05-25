@@ -109,6 +109,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/manifest.json" "$smoke_test_dir/repo-automation/manifest.json" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/smoke-common.sh" "$smoke_test_dir/repo-automation/tests/lib/smoke-common.sh" || return 1
+  cp "$smoke_repo_root/repo-automation/tests/lib/smoke-capture.sh" "$smoke_test_dir/repo-automation/tests/lib/smoke-capture.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/smoke-fixtures.sh" "$smoke_test_dir/repo-automation/tests/lib/smoke-fixtures.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/smoke-registry.sh" "$smoke_test_dir/repo-automation/tests/lib/smoke-registry.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/lib/contracts/" || return 1
