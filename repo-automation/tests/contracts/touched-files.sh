@@ -9,7 +9,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/parser-args.sh"
 # shellcheck source=/dev/null
-source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/status-diff.sh"
+source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/touched-files.sh"
 
 smoke_main_impl() {
   local status=0

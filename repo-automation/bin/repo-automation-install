@@ -398,7 +398,7 @@ repo_install_main() {
     "repo-automation/tests/lib/contracts/pr-workflow.sh"
     "repo-automation/tests/lib/contracts/report-upstream.sh"
     "repo-automation/tests/lib/contracts/failure-log.sh"
-    "repo-automation/tests/lib/contracts/status-diff.sh"
+    "repo-automation/tests/lib/contracts/touched-files.sh"
     "repo-automation/tests/lib/contracts/status-packet.sh"
     "repo-automation/tests/lib/contracts/parser-args.sh"
     "repo-automation/tests/lib/contracts/portability.sh"
