@@ -1,4 +1,4 @@
-# repo-automation/tests/lib/contracts/status-diff.sh
+# repo-automation/tests/lib/contracts/touched-files.sh
 
 # shellcheck shell=bash
 # shellcheck disable=SC2154
@@ -189,4 +189,4 @@ range touch
   return "$status"
 }
 
-# repo-automation/tests/lib/contracts/status-diff.sh EOF
+# repo-automation/tests/lib/contracts/touched-files.sh EOF

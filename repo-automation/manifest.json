@@ -449,7 +449,7 @@
       "kind": "test-support"
     },
     {
-      "path": "repo-automation/tests/lib/contracts/status-diff.sh",
+      "path": "repo-automation/tests/lib/contracts/touched-files.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
     },
