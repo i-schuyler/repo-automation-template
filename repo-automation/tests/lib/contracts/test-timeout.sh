@@ -16,9 +16,13 @@ smoke_timeout_slow() {
 
 smoke_timeout_spawn_descendant() {
   local pid_file="${smoke_timeout_pid_file:-}"
+  local smoke_timeout_spawned_pid=""
+
+  trap 'smoke_timeout_cleanup_pid "$smoke_timeout_spawned_pid"; trap - RETURN' RETURN
 
   sleep 20 &
-  printf '%s\n' "$!" > "$pid_file"
+  smoke_timeout_spawned_pid="$!"
+  printf '%s\n' "$smoke_timeout_spawned_pid" > "$pid_file"
 }
 
 smoke_timeout_cleanup_pid() {
