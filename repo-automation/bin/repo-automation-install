@@ -308,6 +308,7 @@ repo_install_main() {
     "repo-automation/lib/repo-flow-submit-preflight.sh"
     "repo-automation/lib/repo-flow-main-preflight.sh"
     "repo-automation/lib/repo-flow-main-branch.sh"
+    "repo-automation/lib/repo-flow-main-pr.sh"
     "repo-automation/lib/repo-flow-submit-pr.sh"
     "repo-automation/lib/repo-flow-merge.sh"
     "repo-automation/lib/repo-flow-submit-child.sh"
