@@ -90,4 +90,57 @@ repo_flow_merge_finish_pr() {
   return "$command_status"
 }
 
+# shellcheck disable=SC2034,SC2154
+repo_flow_merge_render_result() {
+  branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' "$current_branch")"
+
+  if [ "$repo_flow_json" -eq 1 ]; then
+    repo_flow_print_json \
+      "$mode" \
+      "${current_branch:-}" \
+      "${default_branch:-}" \
+      "clean" \
+      "0" \
+      "0" \
+      "skipped" \
+      "$pr_status" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "$final_status" \
+      "$action_taken" \
+      "$repo_flow_stop_reason"
+  elif [ "$repo_flow_explain" -eq 1 ]; then
+    if [ "$command_status" -eq 0 ]; then
+      repo_flow_info "final status: $final_status"
+    fi
+    repo_flow_submit_print_final_summary \
+      "$mode" \
+      "$branch_before" \
+      "$branch_after" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "none" \
+      "false" \
+      "$merged" \
+      "$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')" \
+      "false" \
+      "$ci_state" \
+      "$command_status" \
+      "$repo_flow_stop_reason" \
+      "${pr_finish_state_elapsed_seconds:-}"
+  elif [ "$command_status" -eq 0 ]; then
+    if [ -n "$pr_url" ]; then
+      printf '%s\n' "$pr_url"
+    else
+      printf 'pass\n'
+    fi
+  fi
+
+  if [ -n "$pr_finish_state_file" ] && [ -f "$pr_finish_state_file" ]; then
+    rm -f "$pr_finish_state_file" >/dev/null 2>&1 || true
+  fi
+
+  return "$command_status"
+}
+
 # repo-automation/lib/repo-flow-merge.sh EOF

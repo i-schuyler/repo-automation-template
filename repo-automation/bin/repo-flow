@@ -552,6 +552,7 @@ repo_flow_merge_main() {
   local remote_url=""
   local command_status=0
   local arg=""
+  # shellcheck disable=SC2034
   local branch_before=""
   local branch_after=""
   local pr_status="merged"
@@ -563,8 +564,16 @@ repo_flow_merge_main() {
   local merged="false"
   local mode="merge"
   # shellcheck disable=SC2034
-  local pr_finish_args=() pr_finish_state_pr_number="" pr_finish_state_pr_url="" pr_finish_state_merged=""
+  local pr_finish_args=()
+  # shellcheck disable=SC2034
   local pr_finish_state_file=""
+  # shellcheck disable=SC2034
+  local pr_finish_state_pr_number=""
+  # shellcheck disable=SC2034
+  local pr_finish_state_pr_url=""
+  # shellcheck disable=SC2034
+  local pr_finish_state_merged=""
+  # shellcheck disable=SC2034
   local pr_finish_state_elapsed_seconds=""
 
   while [ "$#" -gt 0 ]; do
@@ -704,54 +713,7 @@ repo_flow_merge_main() {
   if [ "$command_status" -eq 0 ]; then
     repo_flow_merge_finish_pr
   fi
-
-  branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' "$current_branch")"
-
-  if [ "$repo_flow_json" -eq 1 ]; then
-    repo_flow_print_json \
-      "$mode" \
-      "${current_branch:-}" \
-      "${default_branch:-}" \
-      "clean" \
-      "0" \
-      "0" \
-      "skipped" \
-      "$pr_status" \
-      "${pr_number:-}" \
-      "${pr_url:-}" \
-      "$final_status" \
-      "$action_taken" \
-      "$repo_flow_stop_reason"
-  elif [ "$repo_flow_explain" -eq 1 ]; then
-    if [ "$command_status" -eq 0 ]; then
-      repo_flow_info "final status: $final_status"
-    fi
-    repo_flow_submit_print_final_summary \
-      "$mode" \
-      "$branch_before" \
-      "$branch_after" \
-      "${pr_number:-}" \
-      "${pr_url:-}" \
-      "none" \
-      "false" \
-      "$merged" \
-      "$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')" \
-      "false" \
-      "$ci_state" \
-      "$command_status" \
-      "$repo_flow_stop_reason" \
-      "${pr_finish_state_elapsed_seconds:-}"
-  elif [ "$command_status" -eq 0 ]; then
-    if [ -n "$pr_url" ]; then
-      printf '%s\n' "$pr_url"
-    else
-      printf 'pass\n'
-    fi
-  fi
-
-  if [ -n "$pr_finish_state_file" ] && [ -f "$pr_finish_state_file" ]; then
-    rm -f "$pr_finish_state_file" >/dev/null 2>&1 || true
-  fi
+  repo_flow_merge_render_result
 
   return "$command_status"
 }
