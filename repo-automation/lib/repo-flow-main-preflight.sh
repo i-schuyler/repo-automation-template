@@ -99,11 +99,6 @@ repo_flow_main_preflight() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ]; then
-    repo_flow_info "branch status: current=$current_branch default=$default_branch worktree=clean"
-    repo_flow_info "ahead/behind: ahead=$ahead_count behind=$behind_count vs $remote_name/$default_branch"
-  fi
-
   return "$command_status"
 }
 
