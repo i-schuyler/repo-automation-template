@@ -434,6 +434,11 @@
       "kind": "library"
     },
     {
+      "path": "repo-automation/lib/repo-flow-merge.sh",
+      "owner": "repo-automation-template",
+      "kind": "library"
+    },
+    {
       "path": "repo-automation/lib/repo-flow-submit-child.sh",
       "owner": "repo-automation-template",
       "kind": "library"
