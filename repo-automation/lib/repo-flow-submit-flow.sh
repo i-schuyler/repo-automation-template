@@ -61,7 +61,11 @@ repo_flow_submit_validate_body_replacement() {
 
 # shellcheck disable=SC2034,SC2154
 repo_flow_submit_stage_and_commit() {
-  if [ "$modified" -eq 1 ] && repo_flow_submit_has_new_files; then
+  if [ "$submit_mode" = "all" ]; then
+    if ! repo_flow_submit_stage_all; then
+      return 1
+    fi
+  elif [ "$modified" -eq 1 ] && repo_flow_submit_has_new_files; then
     repo_flow_submit_stop "--modified only accepts tracked modified/deleted/renamed paths; use --paths=<path> or --staged for new files"
     return 1
   fi
@@ -94,20 +98,25 @@ repo_flow_submit_stage_and_commit() {
     repo_flow_submit_stop "no files are staged"
     return 1
   fi
+  staged_count="$(printf '%s\n' "$staged_files" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
 
-  if [ -n "$paths_csv" ]; then
+  if [ "$submit_mode" = "all" ]; then
+    requested_paths_csv="$staged_files"
+  elif [ -n "$paths_csv" ]; then
     requested_paths_csv="$paths_csv"
   elif [ "$modified" -eq 1 ] && [ "${#modified_paths[@]}" -gt 0 ]; then
     requested_paths_csv="$modified_paths_csv"
   else
     requested_paths_csv="$(printf '%s\n' "$staged_files" | sed '/^$/d' | paste -sd, -)"
   fi
-  if [ -n "$requested_paths_csv" ] && ! repo_flow_submit_check_unrequested_changes "$requested_paths_csv"; then
+  if [ "$submit_mode" != "all" ] && [ -n "$requested_paths_csv" ] && ! repo_flow_submit_check_unrequested_changes "$requested_paths_csv"; then
     return 1
   fi
 
   if [ "$explain" -eq 1 ]; then
     repo_flow_info "mode: submit"
+    repo_flow_info "submit mode: $submit_mode"
+    repo_flow_info "staged count: $staged_count"
     repo_flow_info "branch: $current_branch"
     repo_flow_info "default branch: $default_branch"
     repo_flow_info "commit message: $message"
@@ -201,6 +210,9 @@ repo_flow_submit_apply_child_result() {
 
 # shellcheck disable=SC2034,SC2154
 repo_flow_submit_complete_or_delegate() {
+  local repo_flow_submit_child_body_file=""
+  local repo_flow_submit_child_body_source_file=""
+
   if [ "$watch" -eq 1 ]; then
     if [ -z "$pr_number" ]; then
       repo_flow_submit_watch_existing_pr
@@ -221,10 +233,29 @@ repo_flow_submit_complete_or_delegate() {
     return "$command_status"
   fi
 
-  if repo_flow_submit_run_child_repo_flow_main "$custom_body_file"; then
+  if [ -z "$custom_body_file" ]; then
+    repo_flow_submit_child_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-pr-body.XXXXXX")" || {
+      repo_flow_submit_stop "failed to create temporary body file"
+      command_status=1
+      return "$command_status"
+    }
+    if ! repo_flow_submit_write_pr_body "$repo_flow_submit_child_body_file" "$current_branch" "$default_branch" "$(git log -1 --pretty=%s 2>/dev/null || true)" "$staged_files" "None"; then
+      rm -f "$repo_flow_submit_child_body_file" >/dev/null 2>&1 || true
+      return 1
+    fi
+    repo_flow_submit_child_body_source_file="$repo_flow_submit_child_body_file"
+  else
+    repo_flow_submit_child_body_source_file="$custom_body_file"
+  fi
+
+  if repo_flow_submit_run_child_repo_flow_main "$repo_flow_submit_child_body_source_file"; then
     :
   else
     command_status=$?
+  fi
+
+  if [ -n "$repo_flow_submit_child_body_file" ] && [ -f "$repo_flow_submit_child_body_file" ]; then
+    rm -f "$repo_flow_submit_child_body_file" >/dev/null 2>&1 || true
   fi
 
   if ! repo_flow_submit_apply_child_result; then
@@ -245,20 +276,28 @@ repo_flow_submit_render_result() {
   fi
 
   if [ "$repo_flow_explain" -eq 1 ]; then
-    repo_flow_submit_print_final_summary \
-      submit \
-      "$branch_before" \
-      "$branch_after" \
-      "${pr_number:-}" \
-      "${pr_url:-}" \
-      "$commit_sha" \
-      "$pushed" \
-      "$merged" \
-      "$status_count" \
-      "$watched" \
-      "$ci_state" \
-      "$command_status" \
-      "$repo_flow_stop_reason"
+    local -a summary_args=(
+      "script=repo-flow" \
+      "mode=submit" \
+      "rc=$command_status" \
+      "branch_before=$branch_before" \
+      "branch_after=$branch_after" \
+      "pr=${pr_number:-unknown}" \
+      "commit=$commit_sha" \
+      "pushed=$pushed" \
+      "merged=$merged" \
+      "status_count=$status_count" \
+      "watched=$watched" \
+      "ci=$ci_state" \
+      "url_or_stop=${pr_url:-${repo_flow_stop_reason:-pass}}"
+    )
+    if [ "$command_status" -eq 0 ] && [ -n "$submit_mode" ]; then
+      summary_args+=("submit_mode=$submit_mode")
+    fi
+    if [ "$command_status" -eq 0 ] && [ -n "$staged_count" ]; then
+      summary_args+=("staged_count=$staged_count")
+    fi
+    repo_auto_print_final_summary "${summary_args[@]}" >&2
   fi
 
   if [ "$repo_flow_explain" -eq 0 ] && [ "$command_status" -eq 0 ] && [ -n "$repo_flow_submit_child_stdout" ]; then
@@ -271,6 +310,18 @@ repo_flow_submit_render_result() {
 # shellcheck disable=SC2034,SC2154
 repo_flow_submit_flow() {
   repo_flow_submit_preflight
+
+  if [ "$command_status" -eq 0 ]; then
+    if [ "$all" -eq 1 ]; then
+      submit_mode="all"
+    elif [ "$modified" -eq 1 ]; then
+      submit_mode="modified"
+    elif [ -n "$paths_csv" ]; then
+      submit_mode="paths"
+    else
+      submit_mode="staged"
+    fi
+  fi
 
   if [ "$command_status" -eq 0 ] && [ "$replace_body" -eq 0 ] && [ -n "$custom_body_file" ]; then
     if ! repo_flow_submit_validate_body_replacement; then

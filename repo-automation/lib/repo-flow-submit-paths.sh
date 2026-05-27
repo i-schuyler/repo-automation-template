@@ -68,6 +68,15 @@ repo_flow_submit_stage_paths() {
   return 0
 }
 
+repo_flow_submit_stage_all() {
+  if ! git -C "${repo_root:-.}" add -A -- .; then
+    repo_flow_submit_stop "git add failed for all working tree changes"
+    return 1
+  fi
+
+  return 0
+}
+
 repo_flow_submit_collect_modified_paths() {
   local status=""
   local path=""

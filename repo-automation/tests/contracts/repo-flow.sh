@@ -2640,6 +2640,7 @@ smoke_check_repo_flow_submit_contract() {
   local invalid_abs_stderr=""
   local invalid_dotdot_stderr=""
   local missing_stderr=""
+  local missing_mode_stderr=""
   local staged_guard_stderr=""
   local modified_new_file_stderr=""
   local unrequested_dirty_stderr=""
@@ -2661,6 +2662,19 @@ smoke_check_repo_flow_submit_contract() {
   local review_pack_contract_explain_stderr=""
   local local_bash_path=""
   local ssh_stub_dir=""
+  local all_stdout=""
+  local all_stderr=""
+  local all_status_before=""
+  local all_status_after=""
+  local all_head_before=""
+  local all_head_after=""
+  local all_summary_block=""
+  local all_summary_line=""
+  local all_mode_line=""
+  local all_count_line=""
+  local all_failure_reason=""
+  local all_gh_stub_dir=""
+  local isolated_repo_dir=""
   local status_before=""
   local status_after=""
 
@@ -2668,6 +2682,7 @@ smoke_check_repo_flow_submit_contract() {
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   help_out="$smoke_test_base/repo-flow-submit-help.txt"
+  missing_mode_stderr="$smoke_test_base/repo-flow-submit-missing-mode.stderr"
   invalid_abs_stderr="$smoke_test_base/repo-flow-submit-invalid-abs.stderr"
   invalid_dotdot_stderr="$smoke_test_base/repo-flow-submit-invalid-dotdot.stderr"
   missing_stderr="$smoke_test_base/repo-flow-submit-missing.stderr"
@@ -2691,7 +2706,7 @@ smoke_check_repo_flow_submit_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
-  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
     if ! grep -Fq 'pr-finish --merge' "$help_out" && ! grep -Fq 'repo-flow merge' "$help_out"; then
       test_pass "repo-flow submit help shows strict syntax"
     else
@@ -2700,6 +2715,182 @@ smoke_check_repo_flow_submit_contract() {
     fi
   else
     test_fail "repo-flow submit help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --message=hi --explain >/dev/null 2> "$missing_mode_stderr"
+  ); then
+    test_fail "repo-flow submit omits submit mode summary fields when no submit mode is selected"
+    status=1
+  elif grep -Fxq 'STOP: either --all, --modified, --paths or --staged is required' "$missing_mode_stderr" &&
+    grep -Fxq '===== FINAL SUMMARY =====' "$missing_mode_stderr" &&
+    ! grep -Fq 'submit_mode=' "$missing_mode_stderr" &&
+    ! grep -Fq 'staged_count=' "$missing_mode_stderr"; then
+    test_pass "repo-flow submit omits submit mode summary fields when no submit mode is selected"
+  else
+    test_fail "repo-flow submit omits submit mode summary fields when no submit mode is selected"
+    status=1
+  fi
+
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-all" || return 1
+  isolated_repo_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-flow-submit-all.XXXXXX")" || return 1
+  git clone --quiet "$smoke_test_dir" "$isolated_repo_dir" || return 1
+  git -C "$isolated_repo_dir" checkout feature/repo-flow-submit-all >/dev/null 2>&1 || return 1
+  smoke_test_dir="$isolated_repo_dir" smoke_prepare_repo_flow_remote || return 1
+  printf '\nrepo-flow submit all modified line\n' >> "$isolated_repo_dir/README.md" || return 1
+  rm -f "$isolated_repo_dir/repo-automation/docs/repo-flow.md" || return 1
+  printf 'repo-flow submit all new file\n' > "$isolated_repo_dir/docs/repo-flow-submit-all.md" || return 1
+  all_gh_stub_dir="$smoke_test_base/repo-flow-submit-all-gh-stub"
+  mkdir -p "$all_gh_stub_dir" || return 1
+  cat > "$all_gh_stub_dir/gh" <<'EOF'
+#!/usr/bin/env bash
+set -u
+cmd="${1:-}"
+sub="${2:-}"
+shift 2 >/dev/null 2>&1 || true
+case "$cmd $sub" in
+  'auth status')
+    exit 0
+    ;;
+  'pr view')
+    exit 1
+    ;;
+  'pr create')
+    printf '%s\n' "${GH_STUB_PR_CREATE_URL:-https://github.com/i-schuyler/repo-automation-template/pull/801}"
+    ;;
+  'pr edit')
+    exit 0
+    ;;
+  *)
+    printf 'unexpected %s %s\n' "$cmd" "$sub" >&2
+    exit 1
+    ;;
+esac
+EOF
+  chmod +x "$all_gh_stub_dir/gh" || return 1
+  all_stdout="$smoke_test_base/repo-flow-submit-all.out"
+  all_stderr="$smoke_test_base/repo-flow-submit-all.stderr"
+  all_status_before="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
+  all_head_before="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$isolated_repo_dir" || return 1
+    env -i \
+      HOME="$HOME" \
+      TMPDIR="${TMPDIR:-$HOME/.cache}" \
+      PATH="$all_gh_stub_dir:$PATH" \
+      GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/801' \
+      "$local_bash_path" repo-automation/bin/repo-flow submit --all --message='repo-flow submit all commit' --explain > "$all_stdout" 2> "$all_stderr"
+  ); then
+    all_status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
+    all_head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
+    all_summary_block="$(awk '/^===== FINAL SUMMARY =====$/ { in_summary = 1; next } /^===== END =====$/ { in_summary = 0 } in_summary { print }' "$all_stderr")"
+    all_summary_line="$(grep -n -m1 '^===== FINAL SUMMARY =====$' "$all_stderr" | cut -d: -f1)"
+    all_mode_line="$(grep -n -m1 '^INFO: submit mode: all$' "$all_stderr" | cut -d: -f1)"
+    all_count_line="$(grep -n -m1 '^INFO: staged count: 3$' "$all_stderr" | cut -d: -f1)"
+    if [ "$all_status_before" = "$all_status_after" ]; then
+      all_failure_reason="worktree status did not change"
+    elif [ "$all_head_before" = "$all_head_after" ]; then
+      all_failure_reason="head did not advance"
+    elif [ -n "$all_status_after" ]; then
+      all_failure_reason="worktree not clean after submit"
+    elif [ -z "$all_summary_line" ]; then
+      all_failure_reason="missing final summary"
+    elif [ -z "$all_mode_line" ]; then
+      all_failure_reason="missing submit mode explain line"
+    elif [ -z "$all_count_line" ]; then
+      all_failure_reason="missing staged count explain line"
+    elif [ "$all_mode_line" -ge "$all_summary_line" ]; then
+      all_failure_reason="submit mode line appeared after final summary"
+    elif [ "$all_count_line" -ge "$all_summary_line" ]; then
+      all_failure_reason="staged count line appeared after final summary"
+    elif ! grep -Fxq 'submit_mode=all' "$all_stderr"; then
+      all_failure_reason="final summary missing submit_mode=all"
+    elif ! grep -Fxq 'staged_count=3' "$all_stderr"; then
+      all_failure_reason="final summary missing staged_count=3"
+    elif ! grep -Fq 'INFO: staged files:' "$all_stderr"; then
+      all_failure_reason="missing staged files explain section"
+    elif ! grep -Fq '  README.md' "$all_stderr"; then
+      all_failure_reason="missing README.md explain entry"
+    elif ! grep -Fq '  repo-automation/docs/repo-flow.md' "$all_stderr"; then
+      all_failure_reason="missing deleted path explain entry"
+    elif ! grep -Fq '  docs/repo-flow-submit-all.md' "$all_stderr"; then
+      all_failure_reason="missing new file explain entry"
+    elif grep -Eq 'README\.md|repo-automation/docs/repo-flow\.md|docs/repo-flow-submit-all\.md' <<<"$all_summary_block"; then
+      all_failure_reason="final summary includes staged filenames"
+    elif ! grep -Fxq 'INFO: PR body: generated fallback' "$all_stderr"; then
+      all_failure_reason="missing generated-fallback PR body explain line"
+    else
+      test_pass "repo-flow submit --all stages tracked, deleted, and new files"
+      all_failure_reason=""
+    fi
+    if [ -n "$all_failure_reason" ]; then
+      test_fail "repo-flow submit --all stages tracked, deleted, and new files ($all_failure_reason)"
+      status=1
+    else
+      :
+    fi
+  else
+    all_failure_reason="$(test_extract_first_actionable_failure "$all_stderr" 2>/dev/null || true)"
+    if [ -z "$all_failure_reason" ]; then
+      all_failure_reason="$(sed -n '1,8p' "$all_stderr" 2>/dev/null | tr '\n' '; ' | sed 's/[;[:space:]]*$//')"
+    fi
+    [ -n "$all_failure_reason" ] || all_failure_reason="command failed"
+    test_fail "repo-flow submit --all stages tracked, deleted, and new files ($all_failure_reason)"
+    if [ -s "$all_stderr" ]; then
+      printf '%s\n' "$all_failure_reason" >&2
+    fi
+    status=1
+  fi
+
+  rm -rf "$isolated_repo_dir" >/dev/null 2>&1 || true
+
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-all-conflicts" || return 1
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --all --modified --message=hi >/dev/null 2> "$invalid_abs_stderr"
+  ); then
+    test_fail "repo-flow submit rejects --all with --modified"
+    status=1
+  elif grep -Fxq 'STOP: use either --all or --modified, not both' "$invalid_abs_stderr" &&
+    ! grep -Fq 'submit_mode=' "$invalid_abs_stderr" &&
+    ! grep -Fq 'staged_count=' "$invalid_abs_stderr"; then
+    test_pass "repo-flow submit rejects --all with --modified"
+  else
+    test_fail "repo-flow submit rejects --all with --modified"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --all --paths=README.md --message=hi >/dev/null 2> "$invalid_dotdot_stderr"
+  ); then
+    test_fail "repo-flow submit rejects --all with --paths"
+    status=1
+  elif grep -Fxq 'STOP: use either --all or --paths, not both' "$invalid_dotdot_stderr" &&
+    ! grep -Fq 'submit_mode=' "$invalid_dotdot_stderr" &&
+    ! grep -Fq 'staged_count=' "$invalid_dotdot_stderr"; then
+    test_pass "repo-flow submit rejects --all with --paths"
+  else
+    test_fail "repo-flow submit rejects --all with --paths"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --all --staged --message=hi >/dev/null 2> "$missing_stderr"
+  ); then
+    test_fail "repo-flow submit rejects --all with --staged"
+    status=1
+  elif grep -Fxq 'STOP: use either --all or --staged, not both' "$missing_stderr" &&
+    ! grep -Fq 'submit_mode=' "$missing_stderr" &&
+    ! grep -Fq 'staged_count=' "$missing_stderr"; then
+    test_pass "repo-flow submit rejects --all with --staged"
+  else
+    test_fail "repo-flow submit rejects --all with --staged"
     status=1
   fi
 
