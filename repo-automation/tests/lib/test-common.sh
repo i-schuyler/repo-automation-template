@@ -133,6 +133,7 @@ test_extract_first_actionable_failure() {
 
   failure_line="$(
     awk '
+      /^FAIL: / { sub(/^FAIL: /, "", $0); print; exit }
       /^fail: / { sub(/^fail: /, "", $0); print; exit }
       /^STOP: / { print; exit }
       /^ERROR: / { print; exit }
