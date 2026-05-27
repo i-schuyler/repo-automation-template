@@ -291,10 +291,10 @@ repo_flow_submit_render_result() {
       "ci=$ci_state" \
       "url_or_stop=${pr_url:-${repo_flow_stop_reason:-pass}}"
     )
-    if [ -n "$submit_mode" ]; then
+    if [ "$command_status" -eq 0 ] && [ -n "$submit_mode" ]; then
       summary_args+=("submit_mode=$submit_mode")
     fi
-    if [ -n "$staged_count" ]; then
+    if [ "$command_status" -eq 0 ] && [ -n "$staged_count" ]; then
       summary_args+=("staged_count=$staged_count")
     fi
     repo_auto_print_final_summary "${summary_args[@]}" >&2
@@ -311,14 +311,16 @@ repo_flow_submit_render_result() {
 repo_flow_submit_flow() {
   repo_flow_submit_preflight
 
-  if [ "$all" -eq 1 ]; then
-    submit_mode="all"
-  elif [ "$modified" -eq 1 ]; then
-    submit_mode="modified"
-  elif [ -n "$paths_csv" ]; then
-    submit_mode="paths"
-  else
-    submit_mode="staged"
+  if [ "$command_status" -eq 0 ]; then
+    if [ "$all" -eq 1 ]; then
+      submit_mode="all"
+    elif [ "$modified" -eq 1 ]; then
+      submit_mode="modified"
+    elif [ -n "$paths_csv" ]; then
+      submit_mode="paths"
+    else
+      submit_mode="staged"
+    fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$replace_body" -eq 0 ] && [ -n "$custom_body_file" ]; then

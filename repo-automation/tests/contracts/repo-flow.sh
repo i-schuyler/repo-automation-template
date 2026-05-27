@@ -2640,6 +2640,7 @@ smoke_check_repo_flow_submit_contract() {
   local invalid_abs_stderr=""
   local invalid_dotdot_stderr=""
   local missing_stderr=""
+  local missing_mode_stderr=""
   local staged_guard_stderr=""
   local modified_new_file_stderr=""
   local unrequested_dirty_stderr=""
@@ -2681,6 +2682,7 @@ smoke_check_repo_flow_submit_contract() {
   # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   gh_stub_dir="$smoke_test_base/gh-stub"
   help_out="$smoke_test_base/repo-flow-submit-help.txt"
+  missing_mode_stderr="$smoke_test_base/repo-flow-submit-missing-mode.stderr"
   invalid_abs_stderr="$smoke_test_base/repo-flow-submit-invalid-abs.stderr"
   invalid_dotdot_stderr="$smoke_test_base/repo-flow-submit-invalid-dotdot.stderr"
   missing_stderr="$smoke_test_base/repo-flow-submit-missing.stderr"
@@ -2713,6 +2715,22 @@ smoke_check_repo_flow_submit_contract() {
     fi
   else
     test_fail "repo-flow submit help shows strict syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --message=hi --explain >/dev/null 2> "$missing_mode_stderr"
+  ); then
+    test_fail "repo-flow submit omits submit mode summary fields when no submit mode is selected"
+    status=1
+  elif grep -Fxq 'STOP: either --all, --modified, --paths or --staged is required' "$missing_mode_stderr" &&
+    grep -Fxq '===== FINAL SUMMARY =====' "$missing_mode_stderr" &&
+    ! grep -Fq 'submit_mode=' "$missing_mode_stderr" &&
+    ! grep -Fq 'staged_count=' "$missing_mode_stderr"; then
+    test_pass "repo-flow submit omits submit mode summary fields when no submit mode is selected"
+  else
+    test_fail "repo-flow submit omits submit mode summary fields when no submit mode is selected"
     status=1
   fi
 
@@ -2811,9 +2829,6 @@ EOF
     fi
     if [ -n "$all_failure_reason" ]; then
       test_fail "repo-flow submit --all stages tracked, deleted, and new files ($all_failure_reason)"
-      if [ -s "$all_stdout" ]; then
-        printf '%s\n' "$(sed -n '1,3p' "$all_stdout" | tr '\n' '; ' | sed 's/[;[:space:]]*$//')" >&2
-      fi
       status=1
     else
       :
@@ -2840,7 +2855,9 @@ EOF
   ); then
     test_fail "repo-flow submit rejects --all with --modified"
     status=1
-  elif grep -Fxq 'STOP: use either --all or --modified, not both' "$invalid_abs_stderr"; then
+  elif grep -Fxq 'STOP: use either --all or --modified, not both' "$invalid_abs_stderr" &&
+    ! grep -Fq 'submit_mode=' "$invalid_abs_stderr" &&
+    ! grep -Fq 'staged_count=' "$invalid_abs_stderr"; then
     test_pass "repo-flow submit rejects --all with --modified"
   else
     test_fail "repo-flow submit rejects --all with --modified"
@@ -2853,7 +2870,9 @@ EOF
   ); then
     test_fail "repo-flow submit rejects --all with --paths"
     status=1
-  elif grep -Fxq 'STOP: use either --all or --paths, not both' "$invalid_dotdot_stderr"; then
+  elif grep -Fxq 'STOP: use either --all or --paths, not both' "$invalid_dotdot_stderr" &&
+    ! grep -Fq 'submit_mode=' "$invalid_dotdot_stderr" &&
+    ! grep -Fq 'staged_count=' "$invalid_dotdot_stderr"; then
     test_pass "repo-flow submit rejects --all with --paths"
   else
     test_fail "repo-flow submit rejects --all with --paths"
@@ -2866,7 +2885,9 @@ EOF
   ); then
     test_fail "repo-flow submit rejects --all with --staged"
     status=1
-  elif grep -Fxq 'STOP: use either --all or --staged, not both' "$missing_stderr"; then
+  elif grep -Fxq 'STOP: use either --all or --staged, not both' "$missing_stderr" &&
+    ! grep -Fq 'submit_mode=' "$missing_stderr" &&
+    ! grep -Fq 'staged_count=' "$missing_stderr"; then
     test_pass "repo-flow submit rejects --all with --staged"
   else
     test_fail "repo-flow submit rejects --all with --staged"
