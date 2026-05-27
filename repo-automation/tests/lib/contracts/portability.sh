@@ -42,9 +42,6 @@ replacements = {
         ("printf '%s\\t%s\\n' \"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\" \"$candidate\"", "printf '0\\t%s\\n' \"$candidate\""),
         ("candidate_timestamp=\"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\"", "candidate_timestamp=0"),
     ],
-    root / "repo-automation" / "bin" / "failure-log": [
-        ("candidate_mtime=\"$(stat -c '%Y' \"$candidate\" 2>/dev/null || printf '0')\"", "candidate_mtime=0"),
-    ],
     root / "repo-automation" / "tests" / "docs-check.sh": [
         ("/tmp", "PRIVATE_TMP"),
         ("/var/tmp", "PRIVATE_VAR_TMP"),

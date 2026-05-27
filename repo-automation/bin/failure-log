@@ -67,6 +67,24 @@ failure_log_collect_candidates() {
   esac
 }
 
+failure_log_candidate_mtime() {
+  local candidate="$1"
+  local stat_format="-c"
+  local candidate_mtime=""
+
+  if candidate_mtime="$(stat "$stat_format" '%Y' "$candidate" 2>/dev/null)"; then
+    printf '%s\n' "$candidate_mtime"
+    return 0
+  fi
+
+  if candidate_mtime="$(stat -f '%m' "$candidate" 2>/dev/null)"; then
+    printf '%s\n' "$candidate_mtime"
+    return 0
+  fi
+
+  printf '0\n'
+}
+
 failure_log_pick_latest() {
   local root="$1"
   local candidate=""
@@ -76,7 +94,7 @@ failure_log_pick_latest() {
 
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
-    candidate_mtime="$(stat -c '%Y' "$candidate" 2>/dev/null || printf '0')"
+    candidate_mtime="$(failure_log_candidate_mtime "$candidate")"
     if [ "$candidate_mtime" -gt "$latest_mtime" ]; then
       latest_mtime="$candidate_mtime"
       latest_path="$candidate"
