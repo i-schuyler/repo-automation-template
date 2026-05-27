@@ -96,12 +96,12 @@ repo_flow_stop_reason=""
 
 repo_flow_usage() {
   printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
-  printf '       repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
   printf '       repo-automation/bin/repo-flow merge [--pr=<number|current|latest>] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
 }
 
 repo_flow_submit_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow submit [--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_merge_usage() {
@@ -126,6 +126,7 @@ repo_flow_submit_main() {
   local watch_timeout_seconds=900
   local diagnose_on_fail=0
   local explain=0
+  local all=0
   local staged=0
   local modified=0
   local paths_csv=""
@@ -157,6 +158,8 @@ repo_flow_submit_main() {
   local merged="false"
   # shellcheck disable=SC2034
   local status_count=0
+  local staged_count=0
+  local submit_mode=""
   local repo_flow_submit_child_stdout=""
   local repo_flow_submit_child_summary_value=""
   local repo_flow_submit_child_pr_status=""
@@ -209,6 +212,9 @@ repo_flow_submit_main() {
         else
           repo_auto_flag_error "missing flag value" "--paths" "use --paths=<path[,path...]>" || command_status=1
         fi
+        ;;
+      --all)
+        all=1
         ;;
       --staged)
         staged=1
@@ -271,6 +277,21 @@ repo_flow_submit_main() {
     fi
   fi
 
+  if [ "$command_status" -eq 0 ] && [ "$all" -eq 1 ] && [ "$modified" -eq 1 ]; then
+    repo_flow_submit_stop "use either --all or --modified, not both"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$all" -eq 1 ] && [ -n "$paths_csv" ]; then
+    repo_flow_submit_stop "use either --all or --paths, not both"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$all" -eq 1 ] && [ "$staged" -eq 1 ]; then
+    repo_flow_submit_stop "use either --all or --staged, not both"
+    command_status=1
+  fi
+
   if [ "$command_status" -eq 0 ] && [ "$staged" -eq 1 ] && [ -n "$paths_csv" ]; then
     repo_flow_submit_stop "use either --paths or --staged, not both"
     command_status=1
@@ -286,8 +307,8 @@ repo_flow_submit_main() {
     command_status=1
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$modified" -eq 0 ] && [ "$staged" -eq 0 ] && [ -z "$paths_csv" ]; then
-    repo_flow_submit_stop "either --modified, --paths or --staged is required"
+  if [ "$command_status" -eq 0 ] && [ "$all" -eq 0 ] && [ "$modified" -eq 0 ] && [ "$staged" -eq 0 ] && [ -z "$paths_csv" ]; then
+    repo_flow_submit_stop "either --all, --modified, --paths or --staged is required"
     command_status=1
   fi
 
