@@ -3537,6 +3537,89 @@ smoke_check_repo_flow_submit_unrequested_paths_contract() {
   return "$status"
 }
 
+smoke_check_repo_flow_focused_wrapper_failure_diagnostics() {
+  local status=0
+  local focused_wrapper_script=""
+  local focused_quiet_stderr=""
+  local focused_default_stderr=""
+  local focused_json_stderr=""
+  local focused_json_file=""
+  local local_bash_path=""
+
+  # shellcheck disable=SC2154 # smoke_test_base and smoke_repo_root are provided by the smoke harness.
+  focused_wrapper_script="$smoke_test_base/focused-wrapper-diagnostics.sh"
+  focused_quiet_stderr="$smoke_test_base/focused-wrapper-diagnostics.quiet.stderr"
+  focused_default_stderr="$smoke_test_base/focused-wrapper-diagnostics.default.stderr"
+  focused_json_stderr="$smoke_test_base/focused-wrapper-diagnostics.json.stderr"
+  focused_json_file="$smoke_test_base/focused-wrapper-diagnostics.json"
+  local_bash_path="$(command -v bash)" || return 1
+
+  cat > "$focused_wrapper_script" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "$smoke_repo_root/repo-automation/tests/lib/smoke-common.sh"
+
+focused_wrapper_inner_check() {
+  bash -lc 'printf "FAIL: focused inner failure\n" >&2; exit 1'
+}
+
+smoke_main_impl() {
+  smoke_run_named_check "smoke:focused-wrapper-inner-check" focused_wrapper_inner_check
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_main_impl "\$@"
+}
+
+smoke_main "\$@"
+EOF
+  chmod +x "$focused_wrapper_script" || return 1
+
+  if "$local_bash_path" "$focused_wrapper_script" --quiet > /dev/null 2> "$focused_quiet_stderr"; then
+    test_fail "focused wrapper diagnostics emits a failure in quiet mode"
+    status=1
+  elif grep -Fxq 'fail: smoke:focused-wrapper-inner-check: focused inner failure' "$focused_quiet_stderr"; then
+    test_pass "focused wrapper diagnostics emits a failure in quiet mode"
+  else
+    test_fail "focused wrapper diagnostics emits a failure in quiet mode"
+    status=1
+  fi
+
+  if "$local_bash_path" "$focused_wrapper_script" > /dev/null 2> "$focused_default_stderr"; then
+    test_fail "focused wrapper diagnostics emits a failure in default mode"
+    status=1
+  elif grep -Fxq 'fail: smoke:focused-wrapper-inner-check: focused inner failure' "$focused_default_stderr"; then
+    test_pass "focused wrapper diagnostics emits a failure in default mode"
+  else
+    test_fail "focused wrapper diagnostics emits a failure in default mode"
+    status=1
+  fi
+
+  if "$local_bash_path" "$focused_wrapper_script" --json > "$focused_json_file" 2> "$focused_json_stderr"; then
+    test_fail "focused wrapper diagnostics emits a failure in json mode"
+    status=1
+  elif python3 - "$focused_json_file" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+sys.exit(0 if data.get("first_failure", {}).get("check") == "smoke:focused-wrapper-inner-check" and data.get("first_failure", {}).get("message") == "focused inner failure" else 1)
+PY
+  then
+    test_pass "focused wrapper diagnostics emits a failure in json mode"
+  else
+    test_fail "focused wrapper diagnostics emits a failure in json mode"
+    status=1
+  fi
+
+  rm -f -- "$focused_wrapper_script" "$focused_quiet_stderr" "$focused_default_stderr" "$focused_json_stderr" "$focused_json_file" >/dev/null 2>&1 || true
+  return "$status"
+}
+
 
 smoke_main_impl() {
   local status=0
@@ -3578,6 +3661,7 @@ smoke_main_impl() {
     smoke_run_named_check "smoke:repo-flow-version-consistency-quiet-details" smoke_check_repo_flow_version_consistency_quiet_details || status=1
     smoke_run_named_check "smoke:repo-flow-merge-contract" smoke_check_repo_flow_merge_contract || status=1
     smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
+    smoke_run_named_check "smoke:repo-flow-focused-wrapper-failure-diagnostics" smoke_check_repo_flow_focused_wrapper_failure_diagnostics || status=1
     smoke_run_named_check "smoke:repo-flow-submit-unrequested-paths-contract" smoke_check_repo_flow_submit_unrequested_paths_contract || status=1
   else
     mkdir -p "$TEST_TEMP_ROOT" || return 1
@@ -3661,6 +3745,9 @@ smoke_main_impl() {
       fi
       if [ "$status" -eq 0 ]; then
         smoke_run_named_check "smoke:repo-flow-submit-contract" smoke_check_repo_flow_submit_contract || status=1
+      fi
+      if [ "$status" -eq 0 ]; then
+        smoke_run_named_check "smoke:repo-flow-focused-wrapper-failure-diagnostics" smoke_check_repo_flow_focused_wrapper_failure_diagnostics || status=1
       fi
       if [ "$status" -eq 0 ]; then
         smoke_run_named_check "smoke:repo-flow-submit-unrequested-paths-contract" smoke_check_repo_flow_submit_unrequested_paths_contract || status=1
