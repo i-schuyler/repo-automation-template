@@ -22,6 +22,8 @@ repo_flow_submit_print_final_summary() {
   local rc="${12}"
   local stop_reason="${13}"
   local elapsed_seconds="${14:-}"
+  local submit_mode="${15:-}"
+  local staged_count="${16:-}"
   local pr_summary="unknown"
   local url_or_stop="pass"
 
@@ -48,6 +50,12 @@ repo_flow_submit_print_final_summary() {
   )
   if [ -n "$elapsed_seconds" ]; then
     summary_args+=("elapsed_seconds=$elapsed_seconds")
+  fi
+  if [ -n "$submit_mode" ]; then
+    summary_args+=("submit_mode=$submit_mode")
+  fi
+  if [ -n "$staged_count" ]; then
+    summary_args+=("staged_count=$staged_count")
   fi
   repo_auto_print_final_summary "${summary_args[@]}" >&2
 }

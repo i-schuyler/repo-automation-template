@@ -267,37 +267,37 @@ repo_flow_submit_complete_or_delegate() {
 
 # shellcheck disable=SC2034,SC2154
 repo_flow_submit_render_result() {
+  local summary_submit_mode=""
+  local summary_staged_count=""
+
   if [ "$command_status" -eq 0 ]; then
     branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' "$current_branch")"
     status_count="$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+    summary_submit_mode="$submit_mode"
+    summary_staged_count="$staged_count"
   else
     branch_after="${current_branch:-}"
     status_count="$(git status --short 2>/dev/null | sed '/^$/d' | wc -l | tr -d '[:space:]')"
   fi
 
   if [ "$repo_flow_explain" -eq 1 ]; then
-    local -a summary_args=(
-      "script=repo-flow" \
-      "mode=submit" \
-      "rc=$command_status" \
-      "branch_before=$branch_before" \
-      "branch_after=$branch_after" \
-      "pr=${pr_number:-unknown}" \
-      "commit=$commit_sha" \
-      "pushed=$pushed" \
-      "merged=$merged" \
-      "status_count=$status_count" \
-      "watched=$watched" \
-      "ci=$ci_state" \
-      "url_or_stop=${pr_url:-${repo_flow_stop_reason:-pass}}"
-    )
-    if [ "$command_status" -eq 0 ] && [ -n "$submit_mode" ]; then
-      summary_args+=("submit_mode=$submit_mode")
-    fi
-    if [ "$command_status" -eq 0 ] && [ -n "$staged_count" ]; then
-      summary_args+=("staged_count=$staged_count")
-    fi
-    repo_auto_print_final_summary "${summary_args[@]}" >&2
+    repo_flow_submit_print_final_summary \
+      submit \
+      "$branch_before" \
+      "$branch_after" \
+      "${pr_number:-}" \
+      "${pr_url:-}" \
+      "$commit_sha" \
+      "$pushed" \
+      "$merged" \
+      "$status_count" \
+      "$watched" \
+      "$ci_state" \
+      "$command_status" \
+      "$repo_flow_stop_reason" \
+      "" \
+      "$summary_submit_mode" \
+      "$summary_staged_count"
   fi
 
   if [ "$repo_flow_explain" -eq 0 ] && [ "$command_status" -eq 0 ] && [ -n "$repo_flow_submit_child_stdout" ]; then
