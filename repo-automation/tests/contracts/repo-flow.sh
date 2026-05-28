@@ -213,14 +213,6 @@ EOF
   chmod +x "$wrapper_dir/gh" || return 1
 }
 
-smoke_assert_single_final_summary_block() {
-  local summary_file="$1"
-
-  [ "$(grep -Fc '===== FINAL SUMMARY =====' "$summary_file" 2>/dev/null || printf '0')" = "1" ] &&
-    grep -Fxq '===== FINAL SUMMARY =====' "$summary_file" &&
-    grep -Fxq '===== END =====' "$summary_file"
-}
-
 smoke_write_repo_flow_ssh_stub() {
   local ssh_stub_dir="$1"
 
@@ -2670,7 +2662,6 @@ smoke_check_repo_flow_submit_contract() {
   local all_status_after=""
   local all_head_before=""
   local all_head_after=""
-  local all_summary_block=""
   local all_summary_line=""
   local all_mode_line=""
   local all_count_line=""
@@ -2728,9 +2719,9 @@ smoke_check_repo_flow_submit_contract() {
     test_fail "repo-flow submit omits submit mode summary fields when no submit mode is selected"
     status=1
   elif grep -Fxq 'STOP: either --all, --modified, --paths or --staged is required' "$missing_mode_stderr" &&
-    grep -Fxq '===== FINAL SUMMARY =====' "$missing_mode_stderr" &&
-    ! grep -Fq 'submit_mode=' "$missing_mode_stderr" &&
-    ! grep -Fq 'staged_count=' "$missing_mode_stderr"; then
+    smoke_assert_single_final_summary_block "$missing_mode_stderr" &&
+    smoke_assert_final_summary_field_absent "$missing_mode_stderr" submit_mode &&
+    smoke_assert_final_summary_field_absent "$missing_mode_stderr" staged_count; then
     test_pass "repo-flow submit omits submit mode summary fields when no submit mode is selected"
   else
     test_fail "repo-flow submit omits submit mode summary fields when no submit mode is selected"
@@ -2791,7 +2782,6 @@ EOF
   ); then
     all_status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
     all_head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
-    all_summary_block="$(awk '/^===== FINAL SUMMARY =====$/ { in_summary = 1; next } /^===== END =====$/ { in_summary = 0 } in_summary { print }' "$all_stderr")"
     all_summary_line="$(grep -n -m1 '^===== FINAL SUMMARY =====$' "$all_stderr" | cut -d: -f1)"
     all_mode_line="$(grep -n -m1 '^INFO: submit mode: all$' "$all_stderr" | cut -d: -f1)"
     all_count_line="$(grep -n -m1 '^INFO: staged count: 3$' "$all_stderr" | cut -d: -f1)"
@@ -2811,9 +2801,11 @@ EOF
       all_failure_reason="submit mode line appeared after final summary"
     elif [ "$all_count_line" -ge "$all_summary_line" ]; then
       all_failure_reason="staged count line appeared after final summary"
-    elif ! grep -Fxq 'submit_mode=all' "$all_stderr"; then
+    elif ! smoke_assert_single_final_summary_block "$all_stderr"; then
+      all_failure_reason="missing final summary"
+    elif ! smoke_assert_final_summary_field "$all_stderr" submit_mode all; then
       all_failure_reason="final summary missing submit_mode=all"
-    elif ! grep -Fxq 'staged_count=3' "$all_stderr"; then
+    elif ! smoke_assert_final_summary_field "$all_stderr" staged_count 3; then
       all_failure_reason="final summary missing staged_count=3"
     elif ! grep -Fq 'INFO: staged files:' "$all_stderr"; then
       all_failure_reason="missing staged files explain section"
@@ -2823,7 +2815,7 @@ EOF
       all_failure_reason="missing deleted path explain entry"
     elif ! grep -Fq '  docs/repo-flow-submit-all.md' "$all_stderr"; then
       all_failure_reason="missing new file explain entry"
-    elif grep -Eq 'README\.md|repo-automation/docs/repo-flow\.md|docs/repo-flow-submit-all\.md' <<<"$all_summary_block"; then
+    elif ! smoke_assert_final_summary_block_lacks_regex "$all_stderr" 'README\.md|repo-automation/docs/repo-flow\.md|docs/repo-flow-submit-all\.md'; then
       all_failure_reason="final summary includes staged filenames"
     elif ! grep -Fxq 'INFO: PR body: generated fallback' "$all_stderr"; then
       all_failure_reason="missing generated-fallback PR body explain line"
@@ -2861,8 +2853,8 @@ EOF
     test_fail "repo-flow submit rejects --all with --modified"
     status=1
   elif grep -Fxq 'STOP: use either --all or --modified, not both' "$invalid_abs_stderr" &&
-    ! grep -Fq 'submit_mode=' "$invalid_abs_stderr" &&
-    ! grep -Fq 'staged_count=' "$invalid_abs_stderr"; then
+    smoke_assert_final_summary_field_absent "$invalid_abs_stderr" submit_mode &&
+    smoke_assert_final_summary_field_absent "$invalid_abs_stderr" staged_count; then
     test_pass "repo-flow submit rejects --all with --modified"
   else
     test_fail "repo-flow submit rejects --all with --modified"
@@ -2876,8 +2868,8 @@ EOF
     test_fail "repo-flow submit rejects --all with --paths"
     status=1
   elif grep -Fxq 'STOP: use either --all or --paths, not both' "$invalid_dotdot_stderr" &&
-    ! grep -Fq 'submit_mode=' "$invalid_dotdot_stderr" &&
-    ! grep -Fq 'staged_count=' "$invalid_dotdot_stderr"; then
+    smoke_assert_final_summary_field_absent "$invalid_dotdot_stderr" submit_mode &&
+    smoke_assert_final_summary_field_absent "$invalid_dotdot_stderr" staged_count; then
     test_pass "repo-flow submit rejects --all with --paths"
   else
     test_fail "repo-flow submit rejects --all with --paths"
@@ -2891,8 +2883,8 @@ EOF
     test_fail "repo-flow submit rejects --all with --staged"
     status=1
   elif grep -Fxq 'STOP: use either --all or --staged, not both' "$missing_stderr" &&
-    ! grep -Fq 'submit_mode=' "$missing_stderr" &&
-    ! grep -Fq 'staged_count=' "$missing_stderr"; then
+    smoke_assert_final_summary_field_absent "$missing_stderr" submit_mode &&
+    smoke_assert_final_summary_field_absent "$missing_stderr" staged_count; then
     test_pass "repo-flow submit rejects --all with --staged"
   else
     test_fail "repo-flow submit rejects --all with --staged"
@@ -3184,20 +3176,18 @@ EOF
     GH_STUB_PR_VIEW_BODY_FILE="$alias_reuse_body_file" \
     repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit alias reuse commit' --explain > "$alias_reuse_stdout" 2> "$alias_reuse_stderr"
   ) && [ ! -s "$alias_reuse_stdout" ] &&
-    summary_count="$(grep -Fc '===== FINAL SUMMARY =====' "$alias_reuse_stderr" 2>/dev/null || printf '0')" &&
-    [ "$summary_count" = "1" ] &&
     smoke_assert_single_final_summary_block "$alias_reuse_stderr" &&
-    grep -Fxq 'script=repo-flow' "$alias_reuse_stderr" &&
-    grep -Fxq 'mode=submit' "$alias_reuse_stderr" &&
-    grep -Fxq 'rc=0' "$alias_reuse_stderr" &&
-    grep -Fxq 'branch_before=feature/repo-flow-submit-validation' "$alias_reuse_stderr" &&
-    grep -Fxq 'branch_after=feature/repo-flow-submit-validation' "$alias_reuse_stderr" &&
-    grep -Fxq 'pr=904' "$alias_reuse_stderr" &&
-    grep -Eq '^commit=[0-9a-f]{7,40}$' "$alias_reuse_stderr" &&
-    grep -Fxq 'pushed=true' "$alias_reuse_stderr" &&
-    grep -Fxq 'merged=false' "$alias_reuse_stderr" &&
-    grep -Eq '^status_count=[0-9]+$' "$alias_reuse_stderr" &&
-    grep -Fxq 'url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/904' "$alias_reuse_stderr"; then
+    smoke_assert_final_summary_field "$alias_reuse_stderr" script repo-flow &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" mode submit &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" rc 0 &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" branch_before feature/repo-flow-submit-validation &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" branch_after feature/repo-flow-submit-validation &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" pr 904 &&
+    smoke_assert_final_summary_field_regex "$alias_reuse_stderr" commit '[0-9a-f]{7,40}' &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" pushed true &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" merged false &&
+    smoke_assert_final_summary_field_regex "$alias_reuse_stderr" status_count '[0-9]+' &&
+    smoke_assert_final_summary_field "$alias_reuse_stderr" url_or_stop https://github.com/i-schuyler/repo-automation-template/pull/904; then
     test_pass "repo-flow submit accepts a GitHub SSH alias through the delegated PR reuse path"
   else
     test_fail "repo-flow submit accepts a GitHub SSH alias through the delegated PR reuse path"

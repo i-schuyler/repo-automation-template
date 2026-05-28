@@ -184,6 +184,83 @@ PY
   return 1
 }
 
+smoke_extract_final_summary_block() {
+  local summary_file="$1"
+
+  awk '
+    /^===== FINAL SUMMARY =====$/ {
+      if (seen_summary) {
+        exit 1
+      }
+      seen_summary=1
+      in_summary=1
+      next
+    }
+    /^===== END =====$/ {
+      if (in_summary) {
+        seen_end=1
+        in_summary=0
+      }
+      next
+    }
+    in_summary { print }
+    END {
+      if (seen_summary == 1 && seen_end == 1 && in_summary == 0) {
+        exit 0
+      }
+      exit 1
+    }
+  ' "$summary_file"
+}
+
+smoke_assert_single_final_summary_block() {
+  local summary_file="$1"
+
+  smoke_extract_final_summary_block "$summary_file" >/dev/null
+}
+
+smoke_assert_final_summary_field() {
+  local summary_file="$1"
+  local field="$2"
+  local expected_value="$3"
+  local summary_block=""
+
+  summary_block="$(smoke_extract_final_summary_block "$summary_file")" || return 1
+  printf '%s\n' "$summary_block" | grep -Fxq -- "$field=$expected_value"
+}
+
+smoke_assert_final_summary_field_regex() {
+  local summary_file="$1"
+  local field="$2"
+  local value_regex="$3"
+  local summary_block=""
+
+  summary_block="$(smoke_extract_final_summary_block "$summary_file")" || return 1
+  printf '%s\n' "$summary_block" | grep -Eq "^${field}=${value_regex}$"
+}
+
+smoke_assert_final_summary_field_absent() {
+  local summary_file="$1"
+  local field="$2"
+
+  if grep -Fq -- "$field=" "$summary_file"; then
+    return 1
+  fi
+  return 0
+}
+
+smoke_assert_final_summary_block_lacks_regex() {
+  local summary_file="$1"
+  local forbidden_regex="$2"
+  local summary_block=""
+
+  summary_block="$(smoke_extract_final_summary_block "$summary_file")" || return 1
+  if printf '%s\n' "$summary_block" | grep -Eq "$forbidden_regex"; then
+    return 1
+  fi
+  return 0
+}
+
 smoke_assert_flag_error_shape() {
   local stderr_file="$1"
   local reason="$2"
