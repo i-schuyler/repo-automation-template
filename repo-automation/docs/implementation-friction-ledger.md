@@ -40,7 +40,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 | `grep-awk-summary-assertions` | 1 | mitigated | PR #181 | PR #181 added shared FINAL SUMMARY assertion helpers and converted targeted repo-flow submit assertions. | continue using shared helpers for new summary contracts |
 | `submit-fixture-shared-state` | 2 | mitigated-monitoring | PR #180 | PR #180 added gh-stub reset support; broader one-subtle-scenario-per-temp-repo topology remains deferred. | only revisit if fixture leakage or ambiguity recurs |
 | `quiet-failure-diagnostics-collapse` | 0 | resolved | PR #179 | PR #179 added uppercase `FAIL:` extraction and focused wrapper regression coverage. | none unless a similar failure detail collapse recurs |
-| `manifest-registration-drift` | 5 | active | PR #183 | New repo-automation docs file was indexed but not added to `repo-automation/manifest.json` or `repo-automation/bin/repo-automation-install`, causing CI/starter-template readiness failure. | when adding any new `repo-automation/*` file, check manifest and installer registration before submit; consider adding this as a future prompt/check reminder if it recurs |
+| `manifest-registration-drift` | 3 | mitigated-monitoring | PR #183 | New repo-automation docs file was indexed but not added to `repo-automation/manifest.json` or `repo-automation/bin/repo-automation-install`, causing CI/starter-template readiness failure. Guardrails now include `managed-file-check`, `managed-file-add`, `version-consistency.sh` manifest-vs-installer coverage, and the AGENTS.md reminder. | keep using the existing guardrails when repo-automation files change; revisit only if drift recurs |
 | `actions-checkout-node24` | 0 | resolved | PR #185 | CI checkout updated from `actions/checkout@v4` to `actions/checkout@v6` to clear the Node.js 20 compatibility warning. | none unless checkout compatibility warnings recur |
 
 ## Per-Slice Signals
@@ -51,7 +51,8 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-05-28 / PR #182 / submit-summary-consolidation / ids=summary-rendering-split-paths|summary-helper-long-positional-call / score_delta=0 / signal=consolidated duplicate FINAL SUMMARY construction; noted optional-field positional-call friction
 - 2026-05-27 / PR #183 / implementation-friction-ledger repair / ids=manifest-registration-drift / score_delta=+0 / signal=manifest registration was fixed, then installer coverage drift was discovered and repaired in the same PR
 - 2026-05-28 / PR #185 / ci-checkout-update / ids=none / score_delta=0 / signal=updated checkout to actions/checkout@v6; no material friction
-- 2026-05-28 / PR #185 / smoke-temp-dir-hygiene / ids=none / score_delta=0 / signal=cleaned child-owned smoke temp dirs on successful runs while preserving failed artifacts
+- 2026-05-28 / PR #186 / smoke-temp-dir-hygiene / ids=none / score_delta=0 / signal=cleaned child-owned smoke temp dirs on successful runs while preserving failed artifacts
+- 2026-05-28 / managed-file-guardrail-calibration / ids=manifest-registration-drift / score_delta=-2 / signal=surfaced repo-automation managed-file guardrails in AGENTS.md and recalibrated drift from active blocker to monitored
 
 ## Maintenance Notes
 

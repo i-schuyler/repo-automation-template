@@ -6,6 +6,8 @@ Use repo-relative paths with `patch`/`apply_patch`. If patching fails or path ha
 
 Use `${TMPDIR:-$HOME/.cache}` for temp files; never assume `/tmp`.
 
+When adding, moving, or deleting files under `repo-automation/`, keep managed-file coverage aligned with `repo-automation/bin/managed-file-add`, `repo-automation/bin/managed-file-check --changed --quiet`, and `repo-automation/tests/version-consistency.sh --quiet`.
+
 Do not run tests, commit, push, merge, tag, publish releases, or perform GitHub write operations unless explicitly asked.
 
 For implementation PRs, update `repo-automation/docs/implementation-friction-ledger.md`.
