@@ -1432,6 +1432,7 @@ smoke_check_repo_flow_submit_body_file_create_refresh() {
   create_body_copy_file="$smoke_test_base/repo-flow-submit-body-file-create-body.md"
   edit_body_copy_file="$smoke_test_base/repo-flow-submit-body-file-edit-body.md"
   body_file="$smoke_test_base/repo-flow-submit-body-file-valid.md"
+  smoke_reset_gh_stub_state || return 1
   smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
   smoke_prepare_repo_flow_remote || return 1
   smoke_prepare_repo_flow_branch "feature/repo-flow-submit-body-file" || return 1
@@ -1497,6 +1498,7 @@ EOF
     status=1
   fi
 
+  smoke_reset_gh_stub_state || return 1
   printf '\nrepo-flow submit body-file refresh line\n' >> "$smoke_test_dir/docs/testing.md" || return 1
   git -C "$smoke_test_dir" add docs/testing.md || return 1
 
@@ -2700,6 +2702,7 @@ smoke_check_repo_flow_submit_contract() {
   review_pack_contract_explain_stdout="$smoke_test_base/review-pack-contract-explain.out"
   review_pack_contract_explain_stderr="$smoke_test_base/review-pack-contract-explain.stderr"
   ssh_stub_dir="$smoke_test_base/ssh-stub"
+  smoke_reset_gh_stub_state || return 1
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   local_bash_path="$(command -v bash)" || return 1
 
@@ -2744,6 +2747,7 @@ smoke_check_repo_flow_submit_contract() {
   rm -f "$isolated_repo_dir/repo-automation/docs/repo-flow.md" || return 1
   printf 'repo-flow submit all new file\n' > "$isolated_repo_dir/docs/repo-flow-submit-all.md" || return 1
   all_gh_stub_dir="$smoke_test_base/repo-flow-submit-all-gh-stub"
+  smoke_reset_gh_stub_state || return 1
   mkdir -p "$all_gh_stub_dir" || return 1
   cat > "$all_gh_stub_dir/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -2847,6 +2851,7 @@ EOF
   fi
 
   rm -rf "$isolated_repo_dir" >/dev/null 2>&1 || true
+  smoke_reset_gh_stub_state || return 1
 
   smoke_prepare_repo_flow_branch "feature/repo-flow-submit-all-conflicts" || return 1
   if (
@@ -3136,6 +3141,7 @@ EOF
   alias_reuse_stdout="$smoke_test_base/repo-flow-submit-alias-reuse.out"
   alias_reuse_stderr="$smoke_test_base/repo-flow-submit-alias-reuse.stderr"
   repo_flow_gh_stub_dir="$smoke_test_base/repo-flow-gh-stub"
+  smoke_reset_gh_stub_state || return 1
   smoke_write_repo_flow_gh_stub "$repo_flow_gh_stub_dir" || return 1
   cat > "$alias_reuse_body_file" <<'EOF'
 ## Scope
