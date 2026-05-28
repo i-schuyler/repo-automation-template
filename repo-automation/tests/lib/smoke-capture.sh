@@ -26,10 +26,11 @@ smoke_capture_restore() {
 }
 
 smoke_capture_cleanup() {
+  local preserve="${1:-0}"
   local capture_file="$smoke_capture_file"
 
   smoke_capture_restore || return 1
-  if [ -n "$capture_file" ]; then
+  if [ "$preserve" -eq 0 ] && [ -n "$capture_file" ]; then
     rm -f -- "$capture_file" >/dev/null 2>&1 || true
   fi
   smoke_capture_file=""
