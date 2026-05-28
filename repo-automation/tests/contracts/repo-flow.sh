@@ -2663,8 +2663,12 @@ smoke_check_repo_flow_submit_contract() {
   local all_head_before=""
   local all_head_after=""
   local all_summary_line=""
+  local all_summary_block=""
   local all_mode_line=""
   local all_count_line=""
+  local all_url_or_stop_line=""
+  local all_submit_mode_line=""
+  local all_staged_count_line=""
   local all_failure_reason=""
   local all_gh_stub_dir=""
   local isolated_repo_dir=""
@@ -2782,9 +2786,13 @@ EOF
   ); then
     all_status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
     all_head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
+    all_summary_block="$(smoke_extract_final_summary_block "$all_stderr")" || return 1
     all_summary_line="$(grep -n -m1 '^===== FINAL SUMMARY =====$' "$all_stderr" | cut -d: -f1)"
     all_mode_line="$(grep -n -m1 '^INFO: submit mode: all$' "$all_stderr" | cut -d: -f1)"
     all_count_line="$(grep -n -m1 '^INFO: staged count: 3$' "$all_stderr" | cut -d: -f1)"
+    all_url_or_stop_line="$(printf '%s\n' "$all_summary_block" | grep -n -m1 '^url_or_stop=' | cut -d: -f1)"
+    all_submit_mode_line="$(printf '%s\n' "$all_summary_block" | grep -n -m1 '^submit_mode=all$' | cut -d: -f1)"
+    all_staged_count_line="$(printf '%s\n' "$all_summary_block" | grep -n -m1 '^staged_count=3$' | cut -d: -f1)"
     if [ "$all_status_before" = "$all_status_after" ]; then
       all_failure_reason="worktree status did not change"
     elif [ "$all_head_before" = "$all_head_after" ]; then
@@ -2807,6 +2815,10 @@ EOF
       all_failure_reason="final summary missing submit_mode=all"
     elif ! smoke_assert_final_summary_field "$all_stderr" staged_count 3; then
       all_failure_reason="final summary missing staged_count=3"
+    elif [ -z "$all_url_or_stop_line" ] || [ -z "$all_submit_mode_line" ] || [ -z "$all_staged_count_line" ]; then
+      all_failure_reason="final summary missing submit mode ordering"
+    elif [ "$all_url_or_stop_line" -ge "$all_submit_mode_line" ] || [ "$all_submit_mode_line" -ge "$all_staged_count_line" ]; then
+      all_failure_reason="final summary submit fields are out of order"
     elif ! grep -Fq 'INFO: staged files:' "$all_stderr"; then
       all_failure_reason="missing staged files explain section"
     elif ! grep -Fq '  README.md' "$all_stderr"; then

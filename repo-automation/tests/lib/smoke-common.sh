@@ -243,10 +243,7 @@ smoke_assert_final_summary_field_absent() {
   local summary_file="$1"
   local field="$2"
 
-  if grep -Fq -- "$field=" "$summary_file"; then
-    return 1
-  fi
-  return 0
+  ! grep -Fq -- "$field=" "$summary_file"
 }
 
 smoke_assert_final_summary_block_lacks_regex() {
