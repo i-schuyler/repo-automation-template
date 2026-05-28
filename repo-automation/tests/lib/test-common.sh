@@ -268,10 +268,10 @@ test_run_named_check() {
   capture_file="$(mktemp "${TEST_TEMP_ROOT}/named-check.XXXXXX")" || return 1
 
   if test_run_with_timeout "$timeout_seconds" "$scenario_function" >"$capture_file" 2>&1; then
-    rm -f -- "$capture_file" >/dev/null 2>&1 || true
     if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ]; then
       return 1
     fi
+    rm -f -- "$capture_file" >/dev/null 2>&1 || true
     if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
       test_pass "$TEST_CURRENT_CHECK"
     fi
@@ -290,7 +290,6 @@ test_run_named_check() {
       fi
     fi
   fi
-  rm -f -- "$capture_file" >/dev/null 2>&1 || true
 
   return 1
 }
@@ -419,6 +418,26 @@ $(test_list_child_pids "$parent_pid")
 EOF
 }
 
+test_cleanup_registered_temp_dirs_from() {
+  local start_index="${1:-0}"
+  local temp_dir
+  local idx="$start_index"
+
+  while [ "$idx" -lt "${#TEST_TEMP_DIRS[@]}" ]; do
+    temp_dir="${TEST_TEMP_DIRS[$idx]}"
+    case "$temp_dir" in
+      "$TEST_TEMP_ROOT"/*|"$TEST_TEMP_ROOT")
+        rm -rf -- "$temp_dir" >/dev/null 2>&1 || true
+        ;;
+    esac
+    idx=$((idx + 1))
+  done
+}
+
+test_cleanup_registered_temp_dirs() {
+  test_cleanup_registered_temp_dirs_from 0
+}
+
 test_have_timeout() {
   if [ -n "$TEST_TIMEOUT_AVAILABLE" ]; then
     [ "$TEST_TIMEOUT_AVAILABLE" = "1" ]
@@ -481,7 +500,6 @@ test_warn_timeout_once() {
 }
 
 test_cleanup() {
-  local temp_dir
   local child_pid
 
   if [ "$TEST_CLEANUP_RAN" -eq 1 ]; then
@@ -493,13 +511,11 @@ test_cleanup() {
     test_kill_registered_child_pid "$child_pid"
   done
 
-  for temp_dir in "${TEST_TEMP_DIRS[@]}"; do
-    case "$temp_dir" in
-      "$TEST_TEMP_ROOT"/*|"$TEST_TEMP_ROOT")
-        rm -rf -- "$temp_dir" >/dev/null 2>&1 || true
-        ;;
-    esac
-  done
+  if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ] || [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
+    return 0
+  fi
+
+  test_cleanup_registered_temp_dirs
 
   return 0
 }
@@ -514,6 +530,7 @@ test_run_with_timeout() {
   local exit_code=0
   local is_function=0
   local watchdog_timeout=0
+  local temp_dir_count_before=0
 
   TEST_LAST_TIMEOUT=0
 
@@ -532,6 +549,7 @@ test_run_with_timeout() {
     if [ "$timeout_seconds" -gt 0 ]; then
       timeout_marker="${TEST_TEMP_ROOT}/timeout.$$.$RANDOM"
     fi
+    temp_dir_count_before="${#TEST_TEMP_DIRS[@]}"
 
     (
       # Keep cleanup ownership in the parent shell so a timed-out child cannot
@@ -540,6 +558,11 @@ test_run_with_timeout() {
       trap 'test_cleanup_descendants "$BASHPID"' EXIT INT TERM
       TEST_CLEANUP_RAN=1
       "$command_string"
+      exit_code=$?
+      if [ "$exit_code" -eq 0 ]; then
+        test_cleanup_registered_temp_dirs_from "$temp_dir_count_before"
+      fi
+      exit "$exit_code"
     ) &
     child_pid=$!
     test_register_child_pid "$child_pid"

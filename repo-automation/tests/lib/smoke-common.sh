@@ -114,7 +114,7 @@ smoke_run_focused_contract_wrapper() {
         test_fail "$smoke_wrapper_script"
       fi
     fi
-    smoke_capture_cleanup || return 1
+    smoke_capture_cleanup "$status" || return 1
   fi
 
   if [ "$status" -ne 0 ] && [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
@@ -156,7 +156,7 @@ smoke_run() {
   else
     smoke_capture_begin smoke || return 1
     smoke_run_all_contracts || status=1
-    smoke_capture_cleanup || return 1
+    smoke_capture_cleanup "$status" || return 1
   fi
 
   return "$status"

@@ -40,11 +40,29 @@ smoke_timeout_cleanup_pid() {
   fi
 }
 
+smoke_timeout_cleanup_success_temp_dir() {
+  local temp_dir="${smoke_timeout_success_temp_dir:-}"
+
+  mkdir -p "$temp_dir" || return 1
+  test_register_temp_dir "$temp_dir" || return 1
+}
+
+smoke_timeout_preserve_failure_temp_dir() {
+  local temp_dir="${smoke_timeout_failure_temp_dir:-}"
+
+  mkdir -p "$temp_dir" || return 1
+  test_register_temp_dir "$temp_dir" || return 1
+  test_fail "timeout runner preserves failed temp artifacts"
+  return 1
+}
+
 smoke_check_test_timeout_contract() {
   local status=0
   local timeout_root=""
   local success_result=0
   local timeout_result=0
+  local success_temp_dir=""
+  local failure_temp_dir=""
   local function_pid_file=""
   local function_sleep_pid=""
   local function_descendant_result=0
@@ -56,6 +74,34 @@ smoke_check_test_timeout_contract() {
   timeout_root="$(mktemp -d "${TEST_TEMP_ROOT}/test-timeout.XXXXXX")" || return 1
   test_register_temp_dir "$timeout_root" || return 1
   TEST_TEMP_ROOT="$timeout_root"
+
+  success_temp_dir="$TEST_TEMP_ROOT/success-cleanup.$$"
+  smoke_timeout_success_temp_dir="$success_temp_dir"
+  if test_run_with_timeout 2 smoke_timeout_cleanup_success_temp_dir; then
+    success_result=0
+  else
+    success_result=$?
+  fi
+  if [ "$success_result" -eq 0 ] && [ "$TEST_LAST_TIMEOUT" -eq 0 ] && [ "${#TEST_CHILD_PIDS[@]}" -eq 0 ] && [ ! -e "$success_temp_dir" ]; then
+    test_pass "timeout runner cleans registered temp dirs on success"
+  else
+    test_fail "timeout runner cleans registered temp dirs on success"
+    status=1
+  fi
+
+  failure_temp_dir="$TEST_TEMP_ROOT/failure-preserve.$$"
+  smoke_timeout_failure_temp_dir="$failure_temp_dir"
+  if test_run_with_timeout 2 smoke_timeout_preserve_failure_temp_dir; then
+    timeout_result=0
+  else
+    timeout_result=$?
+  fi
+  if [ "$timeout_result" -ne 0 ] && [ "$TEST_LAST_TIMEOUT" -eq 0 ] && [ "${#TEST_CHILD_PIDS[@]}" -eq 0 ] && [ -d "$failure_temp_dir" ]; then
+    test_pass "timeout runner preserves failed temp artifacts"
+  else
+    test_fail "timeout runner preserves failed temp artifacts"
+    status=1
+  fi
 
   if test_run_with_timeout 2 smoke_timeout_success; then
     success_result=0
@@ -120,6 +166,15 @@ smoke_check_test_timeout_contract() {
     status=1
   fi
   smoke_timeout_cleanup_pid "$external_sleep_pid"
+
+  outside_root="$(mktemp -d "${TEST_TEMP_ROOT%/*}/test-timeout-outside.XXXXXX")" || return 1
+  if test_register_temp_dir "$outside_root"; then
+    test_fail "timeout runner refuses temp dirs outside test root"
+    status=1
+  else
+    test_pass "timeout runner refuses temp dirs outside test root"
+  fi
+  rm -rf -- "$outside_root" >/dev/null 2>&1 || true
 
   return "$status"
 }
