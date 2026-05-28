@@ -25,7 +25,7 @@ Future execution mode is expected to:
 - validate the handoff
 - run preflight
 - run a blocking Codex adapter/profile
-- classify Codex completion by child-process completion plus final output file
+- classify Codex completion by child-process completion plus a recognizable final output contract
 - validate PR body when submit is enabled
 - explicitly submit through repo-flow only when the CLI invocation authorizes submit
 - return blocker or PR-review handoff
@@ -48,7 +48,7 @@ Profile examples:
 
 ## Safety rules
 
-- no private prompt text in public docs
+- no private prompt text or private workflow language in public docs
 - generated logs/artifacts outside the repo root by default
 - no tracked session metadata by default
 - merge remains explicit and outside `slice-handoff`

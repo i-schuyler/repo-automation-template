@@ -816,7 +816,7 @@
     {
       "name": "slice-handoff plan-only",
       "state": "planned",
-      "route": "slice-handoff plan-only",
+      "route": "slice-handoff --plan-only",
       "public": false,
       "workflow_role": "workflow"
     }
