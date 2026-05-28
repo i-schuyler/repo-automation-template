@@ -228,7 +228,7 @@ for entry in helper_metadata.get('helpers', []):
 
 planned_routes = helper_metadata.get('planned_routes', [])
 planned_names = {entry.get('name') for entry in planned_routes if isinstance(entry, dict)}
-for planned_name in {'submit', 'autopilot plan-only'}:
+for planned_name in {'submit', 'slice-handoff plan-only'}:
     if planned_name not in planned_names:
         fail(f'helper metadata missing planned route row: {planned_name}')
 

@@ -15,6 +15,7 @@ It summarizes the public surface and points to the deeper source-of-truth docs:
 - exit-code / stream contract: `repo-automation/docs/exit-code-stream-contract.md`
 - command shape: `repo-automation/docs/command-shape.md`
 - output modes: `repo-automation/docs/output-modes.md`
+- slice handoff: `repo-automation/docs/slice-handoff.md`
 - managed files: `repo-automation/docs/managed-files.md`
 
 Use the linked doc for route-specific or contract-specific rules.
@@ -40,7 +41,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | --- | --- | --- | --- | --- |
 | `submit` | implemented | `repo-flow submit` | no | guarded explicit-path commit / PR helper |
 | `merge` | implemented | `repo-flow merge` | no | explicit review-gated merge/delete/sync helper |
-| `autopilot plan-only` | planned | plan-only | no | placeholder for later autopilot planning flow |
+| `slice-handoff plan-only` | planned | slice-handoff plan-only | no | placeholder for later slice-handoff planning flow |
 
 `repo-flow status-card` is the public read-only status screen that lives under the `repo-flow` helper.
 PR-first review remains the normal path; `review-pack` is a fallback artifact helper when you explicitly need a lean packet, full evidence bundle, or prompt artifact.

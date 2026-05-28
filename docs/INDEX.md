@@ -76,6 +76,10 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 58. [Source Provenance](../repo-automation/docs/source-provenance.md)
 59. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 
+## Planned Helpers
+
+- [Slice Handoff](../repo-automation/docs/slice-handoff.md)
+
 ## Downstream Examples
 
 - [Example Downstream Config](../examples/downstream/.repo-automation.conf.example)
