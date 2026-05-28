@@ -1,0 +1,59 @@
+# Implementation Friction Ledger
+
+## Purpose
+
+This is a lightweight repo-maintainer ledger for recurring implementation friction. It is not a replacement for tests, issues, PR review, or private project current-state planning.
+
+## Update Contract
+
+- Every implementation PR should update this ledger.
+- If material friction occurred, update the relevant scored item and add a per-slice signal.
+- If no material friction occurred, add a compact per-slice signal with `none` and `score_delta=0`.
+- Do not duplicate long friction narratives in the Codex UI report; the ledger diff is the durable record.
+- Codex UI report should only include a compact line naming ledger IDs changed or saying no material friction.
+- Do not add noise for formatting-only or typo-only PRs unless friction actually occurred.
+- Keep entries compact and reviewer-readable.
+
+## Scoring Rules
+
+- +1 mild friction: extra attention, mild ambiguity, or small manual review overhead.
+- +2 repeated friction: repeated manual assertion, repeated fixture ambiguity, repeated command-shape uncertainty.
+- +3 validation friction: caused failed local validation, same-PR repair, or non-obvious debugging.
+- +5 trust/flow blocker: blocked submit/merge/CI, produced misleading operator output, or caused a high-risk wrong workflow step.
+- -1 to -3 mitigation credit: reduce score when a PR clearly reduces the friction class.
+- `resolved`: use status `resolved` when the issue no longer needs active prioritization but should remain historically visible.
+
+## Score Thresholds
+
+- score 0: resolved or historical.
+- score 1–2: monitor.
+- score 3–4: consider when nearby code is touched.
+- score 5–7: candidate stabilization slice.
+- score 8+: prioritize unless higher-risk work is active.
+
+## Scored Friction Items
+
+| ID | Score | Status | Last seen | Evidence | Suggested next action |
+| --- | ---: | --- | --- | --- | --- |
+| `summary-helper-long-positional-call` | 3 | active | PR #182 | Submit summary helper now accepts optional trailing fields; Codex noted long positional helper calls make optional fields easy to get wrong. | consider named-arg style wrapper or option parser if the interface grows again |
+| `summary-rendering-split-paths` | 1 | mitigated | PR #182 | PR #182 consolidated duplicate submit FINAL SUMMARY construction through the shared helper. | monitor for new duplicate summary construction |
+| `grep-awk-summary-assertions` | 1 | mitigated | PR #181 | PR #181 added shared FINAL SUMMARY assertion helpers and converted targeted repo-flow submit assertions. | continue using shared helpers for new summary contracts |
+| `submit-fixture-shared-state` | 2 | mitigated-monitoring | PR #180 | PR #180 added gh-stub reset support; broader one-subtle-scenario-per-temp-repo topology remains deferred. | only revisit if fixture leakage or ambiguity recurs |
+| `quiet-failure-diagnostics-collapse` | 0 | resolved | PR #179 | PR #179 added uppercase `FAIL:` extraction and focused wrapper regression coverage. | none unless a similar failure detail collapse recurs |
+
+## Per-Slice Signals
+
+- 2026-05-28 / PR #179 / focused-diagnostics / ids=quiet-failure-diagnostics-collapse / score_delta=0 / signal=added focused wrapper diagnostics coverage and collapsed nested uppercase failure reporting
+- 2026-05-28 / PR #180 / submit-fixture-isolation / ids=submit-fixture-shared-state / score_delta=-1 / signal=added gh-stub state reset to reduce leakage risk
+- 2026-05-28 / PR #181 / final-summary-assertions / ids=grep-awk-summary-assertions / score_delta=-1 / signal=added shared FINAL SUMMARY assertion helpers and converted targeted submit checks
+- 2026-05-28 / PR #182 / submit-summary-consolidation / ids=summary-rendering-split-paths|summary-helper-long-positional-call / score_delta=0 / signal=consolidated duplicate FINAL SUMMARY construction; noted optional-field positional-call friction
+- 2026-05-28 / PR TBD / implementation-friction-ledger / ids=none / score_delta=0 / signal=initialized ledger and seeded PR #179-#182 signals
+
+## Maintenance Notes
+
+- Keep entries compact.
+- Prefer updating existing IDs over creating near-duplicates.
+- Create a new ID only for a distinct recurring friction pattern.
+- If a score reaches 5+, consider whether it should influence the next stabilization priority.
+- If a row grows too large, split details into an issue or design note later.
+- This file should remain implementation-specific and public-repo-safe.

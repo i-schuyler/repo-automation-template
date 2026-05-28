@@ -74,6 +74,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 56. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
 57. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
 58. [Source Provenance](../repo-automation/docs/source-provenance.md)
+59. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 
 ## Downstream Examples
 
