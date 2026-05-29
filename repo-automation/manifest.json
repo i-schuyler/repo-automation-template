@@ -194,6 +194,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/slice-handoff.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/review-pack.md",
       "owner": "repo-automation-template",
       "kind": "doc"

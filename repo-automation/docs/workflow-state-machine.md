@@ -30,4 +30,4 @@ Rules:
 - `repo-flow merge` is the explicit merge/delete/sync step after review.
 - `review-pack` is a fallback uploadable review packet; use the PR-first review path before it. It is lean by default, and `--full` opts into the heavier evidence bundle/repo-zip artifact.
 - `review-pack --target=codex` and `repair-prompt --target=codex` create artifacts only and do not invoke Codex.
-- `repo-flow autopilot --plan-only` is read-only and does not mutate repo state.
+- `slice-handoff --plan-only` is read-only and does not mutate repo state.

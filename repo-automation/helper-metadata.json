@@ -814,9 +814,9 @@
       "workflow_role": "workflow"
     },
     {
-      "name": "autopilot plan-only",
+      "name": "slice-handoff plan-only",
       "state": "planned",
-      "route": "plan-only",
+      "route": "slice-handoff --plan-only",
       "public": false,
       "workflow_role": "workflow"
     }

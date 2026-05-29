@@ -367,6 +367,7 @@ repo_install_main() {
     "repo-automation/docs/artifact-safety.md"
     "repo-automation/docs/repair-prompt.md"
     "repo-automation/docs/review-pack.md"
+    "repo-automation/docs/slice-handoff.md"
     "repo-automation/docs/implementation-friction-ledger.md"
     "repo-automation/docs/config-schema.md"
     "repo-automation/docs/exit-code-stream-contract.md"
