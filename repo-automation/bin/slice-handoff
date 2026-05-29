@@ -1,0 +1,286 @@
+#!/usr/bin/env bash
+# repo-automation/bin/slice-handoff
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+slice_handoff_quiet=0
+slice_handoff_file=""
+slice_handoff_plan_only=0
+slice_handoff_submit_mode=""
+slice_handoff_pr_body_file=""
+
+slice_handoff_usage() {
+  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> --plan-only [--quiet] [--help]\n'
+}
+
+slice_handoff_fail() {
+  printf 'fail: %s\n' "$1" >&2
+  printf 'fix: %s\n' "$2" >&2
+}
+
+slice_handoff_cleanup_temp_files() {
+  if [ -n "$slice_handoff_pr_body_file" ]; then
+    rm -f -- "$slice_handoff_pr_body_file" >/dev/null 2>&1 || true
+  fi
+}
+
+slice_handoff_validate_file() {
+  if [ -z "$slice_handoff_file" ]; then
+    slice_handoff_fail "missing required --file" "use --file=<path> with a readable handoff file"
+    return 1
+  fi
+
+  if [ ! -e "$slice_handoff_file" ]; then
+    slice_handoff_fail "file does not exist: $slice_handoff_file" "provide an existing handoff file"
+    return 1
+  fi
+
+  if [ -d "$slice_handoff_file" ]; then
+    slice_handoff_fail "file is a directory: $slice_handoff_file" "provide a regular readable handoff file"
+    return 1
+  fi
+
+  if [ ! -f "$slice_handoff_file" ]; then
+    slice_handoff_fail "file is not a regular file: $slice_handoff_file" "provide a regular readable handoff file"
+    return 1
+  fi
+
+  if [ ! -r "$slice_handoff_file" ]; then
+    slice_handoff_fail "file is not readable: $slice_handoff_file" "fix file permissions or choose a readable handoff file"
+    return 1
+  fi
+
+  return 0
+}
+
+slice_handoff_validate_handoff() {
+  local validation_output=""
+
+  validation_output="$(
+    python3 - "$slice_handoff_file" "$slice_handoff_pr_body_file" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+def fail(reason: str, fix: str) -> None:
+    print(f"fail: {reason}", file=sys.stderr)
+    print(f"fix: {fix}", file=sys.stderr)
+    raise SystemExit(1)
+
+path = Path(sys.argv[1])
+pr_body_path = Path(sys.argv[2])
+
+try:
+    text = path.read_text(encoding='utf-8')
+except OSError as exc:
+    fail(f"cannot read handoff file: {path}", f"fix file access and rerun slice-handoff ({exc})")
+
+lines = text.splitlines()
+try:
+    slice_index = lines.index('# Slice Handoff')
+except ValueError:
+    fail('missing required heading: # Slice Handoff', 'add # Slice Handoff after the envelope')
+
+try:
+    prompt_index = lines.index('## Codex Prompt')
+except ValueError:
+    fail('missing required heading: ## Codex Prompt', 'add ## Codex Prompt under # Slice Handoff')
+
+if prompt_index < slice_index:
+    fail('invalid section order', 'place # Slice Handoff before ## Codex Prompt')
+
+envelope = {}
+for raw in lines[:slice_index]:
+    line = raw.strip()
+    if not line:
+        continue
+    if line.startswith('#'):
+        fail('unexpected heading before # Slice Handoff', 'keep the envelope above # Slice Handoff and use key: value lines only')
+    if ':' not in line:
+        fail(f'invalid envelope line: {raw}', 'use key: value lines before # Slice Handoff')
+    key, value = line.split(':', 1)
+    key = key.strip()
+    value = value.strip()
+    if not key:
+        fail('empty envelope key', 'use key: value lines before # Slice Handoff')
+    envelope[key] = value
+
+schema = envelope.get('schema', '')
+if 'schema' not in envelope:
+    fail('missing schema', 'set schema: repo-automation-slice-handoff/v1')
+elif schema != 'repo-automation-slice-handoff/v1':
+    fail('invalid schema', 'set schema: repo-automation-slice-handoff/v1')
+
+branch = envelope.get('branch', '')
+if not branch:
+    fail('missing branch', 'set a non-empty branch in the envelope')
+if branch == 'main' or branch.startswith('-') or '..' in branch or re.search(r'\s', branch) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]*', branch):
+    fail(f'invalid branch: {branch}', 'use a conservative feature branch name without whitespace or shell metacharacters')
+
+title = envelope.get('title', '')
+if not title:
+    fail('missing title', 'set a non-empty title in the envelope')
+
+codex_profile = envelope.get('codex_profile', '')
+if not codex_profile:
+    fail('missing codex_profile', 'set codex_profile to default, lean, medium, high, repair, or review')
+elif codex_profile not in {'default', 'lean', 'medium', 'high', 'repair', 'review'}:
+    fail(f'invalid codex_profile: {codex_profile}', 'use one of default, lean, medium, high, repair, or review')
+
+submit_mode = envelope.get('submit_mode', '')
+if not submit_mode:
+    fail('missing submit_mode', 'set submit_mode to none or repo-flow-submit-all')
+elif submit_mode not in {'none', 'repo-flow-submit-all'}:
+    fail(f'invalid submit_mode: {submit_mode}', 'use submit_mode: none or submit_mode: repo-flow-submit-all')
+
+commit_message = envelope.get('commit_message', '')
+if submit_mode == 'repo-flow-submit-all' and not commit_message:
+    fail('missing commit_message', 'set commit_message when submit_mode is repo-flow-submit-all')
+
+if '## PR Body' in lines[:prompt_index]:
+    fail('invalid section order', 'place ## PR Body after ## Codex Prompt if submit_mode is repo-flow-submit-all')
+
+body_index = None
+for index in range(prompt_index + 1, len(lines)):
+    if lines[index] == '## PR Body':
+        body_index = index
+        break
+
+prompt_lines = lines[prompt_index + 1:body_index if body_index is not None else len(lines)]
+prompt_text = '\n'.join(prompt_lines).strip()
+if not prompt_text:
+    fail('missing Codex Prompt payload', 'add prompt text under ## Codex Prompt')
+
+blocked_phrases = [
+    'use previous chat',
+    'as discussed',
+    'from above',
+    'you know the context',
+    'same as before',
+    'approved in chat',
+    'see attached',
+    'use the uploaded file',
+    'whatever chatgpt said',
+    'choose the best architecture',
+    'do the rest',
+]
+prompt_lower = prompt_text.lower()
+for phrase in blocked_phrases:
+    if phrase in prompt_lower:
+        fail(f'unsafe placeholder text in Codex Prompt: {phrase}', 'replace the placeholder prompt with concrete slice instructions')
+
+blocked_lifecycle = [
+    'create a pr',
+    'merge',
+    'repo-flow submit',
+    'branch:',
+    'checkout',
+]
+for phrase in blocked_lifecycle:
+    if phrase in prompt_lower:
+        fail(f'Codex Prompt contains lifecycle instruction: {phrase}', 'remove execution and workflow instructions from the prompt')
+
+if submit_mode == 'repo-flow-submit-all':
+    if body_index is None:
+        fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
+    pr_body_text = '\n'.join(lines[body_index + 1:]).strip('\n')
+    if not pr_body_text.strip():
+        fail('missing PR body payload', 'add PR body text under ## PR Body')
+    try:
+        pr_body_path.write_text(pr_body_text + '\n', encoding='utf-8')
+    except OSError as exc:
+        fail('unable to write PR body temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
+else:
+    pr_body_path.write_text('', encoding='utf-8')
+
+print(f'submit_mode={submit_mode}')
+PY
+  )" || return 1
+
+  slice_handoff_submit_mode="${validation_output#submit_mode=}"
+
+  if [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
+    if ! "$script_dir/pr-body-check" --body-file="$slice_handoff_pr_body_file" >/dev/null; then
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+slice_handoff_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        slice_handoff_usage
+        return 0
+        ;;
+      --quiet)
+        slice_handoff_quiet=1
+        ;;
+      --plan-only)
+        slice_handoff_plan_only=1
+        ;;
+      --file=*)
+        slice_handoff_file="${arg#--file=}"
+        if [ -z "$slice_handoff_file" ]; then
+          slice_handoff_fail "empty flag value: --file" "use --file=<path>"
+          return 1
+        fi
+        ;;
+      --file)
+        slice_handoff_fail "missing flag value: --file" "use --file=<path>"
+        return 1
+        ;;
+      --execute)
+        slice_handoff_fail "unsupported flag: --execute" "use --plan-only; execute mode is not implemented"
+        return 1
+        ;;
+      --submit=*)
+        slice_handoff_fail "unsupported flag: --submit" "slice-handoff only accepts --plan-only for now"
+        return 1
+        ;;
+      --*)
+        slice_handoff_fail "unknown flag: $arg" "run repo-automation/bin/slice-handoff --help"
+        return 1
+        ;;
+      *)
+        slice_handoff_fail "unknown argument: $arg" "run repo-automation/bin/slice-handoff --help"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$slice_handoff_plan_only" -ne 1 ]; then
+    slice_handoff_fail "missing required --plan-only" "pass --plan-only to validate the handoff without executing it"
+    return 1
+  fi
+
+  slice_handoff_validate_file || return 1
+
+  mkdir -p "${TMPDIR:-$HOME/.cache}" || return 1
+  slice_handoff_pr_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body.XXXXXX")" || return 1
+  trap 'slice_handoff_cleanup_temp_files' EXIT INT TERM
+
+  slice_handoff_validate_handoff || return 1
+
+  if [ "$slice_handoff_quiet" -eq 0 ]; then
+    printf 'pass\n'
+  fi
+  return 0
+}
+
+slice_handoff_main "$@"
+# repo-automation/bin/slice-handoff EOF

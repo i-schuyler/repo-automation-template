@@ -53,6 +53,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-05-28 / PR #185 / ci-checkout-update / ids=none / score_delta=0 / signal=updated checkout to actions/checkout@v6; no material friction
 - 2026-05-28 / PR #186 / smoke-temp-dir-hygiene / ids=none / score_delta=0 / signal=cleaned child-owned smoke temp dirs on successful runs while preserving failed artifacts
 - 2026-05-28 / managed-file-guardrail-calibration / ids=manifest-registration-drift / score_delta=-2 / signal=surfaced repo-automation managed-file guardrails in AGENTS.md and recalibrated drift from active blocker to monitored
+- 2026-05-29 / slice-handoff-plan-only-validator / ids=none / score_delta=0 / signal=implemented non-executing slice-handoff plan-only helper with contract coverage
 
 ## Maintenance Notes
 

@@ -421,6 +421,27 @@
       "config_keys": []
     },
     {
+      "name": "slice-handoff",
+      "path": "repo-automation/bin/slice-handoff",
+      "doc_path": "repo-automation/docs/slice-handoff.md",
+      "contract_test_path": "repo-automation/tests/contracts/slice-handoff.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "instant",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": false,
+      "artifact_helper": false,
+      "umbrella_helper": false,
+      "workflow_role": "workflow",
+      "config_keys": []
+    },
+    {
       "name": "review-pack",
       "path": "repo-automation/bin/review-pack",
       "doc_path": "repo-automation/docs/review-pack.md",
@@ -815,7 +836,7 @@
     },
     {
       "name": "slice-handoff plan-only",
-      "state": "planned",
+      "state": "implemented",
       "route": "slice-handoff --plan-only",
       "public": false,
       "workflow_role": "workflow"
