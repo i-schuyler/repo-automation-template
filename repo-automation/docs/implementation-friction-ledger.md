@@ -46,6 +46,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 | `slice-handoff-smoke-fixture-coverage` | 3 | mitigated-monitoring | PR #189 | helper metadata referenced slice-handoff, but smoke fixture did not copy/chmod it into the temp repo. | keep metadata-driven helper-bin fixture copying in place for new public helpers |
 | `smoke-registry-contract-path-guard` | 2 | mitigated-monitoring | PR #189 | metadata `contract_test_path` can drift from the full smoke registry. | keep validating repeated registration surfaces instead of relying on manual updates |
 | `full-smoke-timeout-budget-drift` | 1 | active | PR #190 | full smoke exceeded the default run-tests timeout while focused contracts passed; `--timeout=300` was needed to complete the suite. | defer smoke/run-tests timeout-budget separation until a dedicated stabilization slice |
+| `metadata-object-drift-slice-handoff` | 3 | active | PR #190 | helper metadata drifted onto the wrong object (`add-doc-pr`) before the focused slice-handoff metadata assertion caught it. | keep object-specific metadata assertions near the affected contract |
 
 ## Per-Slice Signals
 
@@ -61,6 +62,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-05-29 / PR #189 / slice-handoff-plan-validator / ids=ci-evidence-pr-lookup-brittle / score_delta=+3 / issue=CI failed but ci-log-dump --pr could not recover the failed PR run; repo inference and PR run lookup were too brittle / fix=hardened ci-log-dump repo inference and PR run lookup, then repaired any proven PR #189 failure / lesson=ChatGPT investigates CI evidence first; Codex repairs from proven evidence
 - 2026-05-29 / slice-handoff-smoke-fixture-coverage / ids=slice-handoff-smoke-fixture-coverage|smoke-registry-contract-path-guard / score_delta=+5 / issue=helper metadata referenced slice-handoff, but smoke fixture did not copy/chmod it into the temp repo; metadata contract_test_path can drift from full smoke registry / fix=metadata-driven helper-bin smoke fixture copying plus slice-handoff registry coverage and a metadata contract path guard / lesson=new public helpers need metadata, managed files, installer, shellcheck parity, smoke fixture, and smoke registry coverage; derive or validate repeated registration surfaces
 - 2026-05-29 / slice-handoff-local-artifacts / ids=full-smoke-timeout-budget-drift / score_delta=+1 / issue=full smoke exceeded the default run-tests timeout while focused contracts passed / fix=current slice validated with `run-tests --quiet --timeout=300`; defer smoke/run-tests timeout-budget separation / lesson=distinguish outer smoke-suite timeout from named smoke-check timeout before blaming the active contract
+- 2026-05-29 / slice-handoff-local-artifacts / ids=metadata-object-drift-slice-handoff / score_delta=+3 / issue=helper metadata drifted onto the wrong object (`add-doc-pr`) before the focused slice-handoff metadata assertion caught it / fix=added object-specific metadata assertion and restored the intended slice-handoff helper flags / lesson=assert the intended JSON object, not just matching keys
 
 ## Maintenance Notes
 

@@ -59,6 +59,13 @@ smoke_check_slice_handoff_contract() {
 
   mkdir -p "$smoke_check_root" || return 1
 
+  if smoke_slice_handoff_assert_metadata; then
+    test_pass "slice-handoff metadata matches helper object"
+  else
+    test_fail "slice-handoff metadata matches helper object"
+    status=1
+  fi
+
   submit_body="$(cat <<'EOF'
 ## Scope
 
