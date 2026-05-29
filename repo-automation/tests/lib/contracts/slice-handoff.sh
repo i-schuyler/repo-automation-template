@@ -55,6 +55,7 @@ smoke_slice_handoff_write_file() {
   local commit_message="$6"
   local prompt_text="$7"
   local pr_body_text="${8:-}"
+  local review_request_text="${9:-}"
 
   {
     printf 'schema: repo-automation-slice-handoff/v1\n'
@@ -78,6 +79,14 @@ smoke_slice_handoff_write_file() {
     if [ -n "$pr_body_text" ]; then
       printf '\n## PR Body\n'
       printf '%s\n' "$pr_body_text"
+    fi
+    if [ -n "$review_request_text" ]; then
+      if [ -z "$pr_body_text" ]; then
+        printf '\n## PR Review Request\n'
+      else
+        printf '\n## PR Review Request\n'
+      fi
+      printf '%s\n' "$review_request_text"
     fi
   } > "$path"
 }

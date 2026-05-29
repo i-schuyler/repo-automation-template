@@ -99,6 +99,47 @@ def fail(reason: str, fix: str) -> None:
     print(f"fix: {fix}", file=sys.stderr)
     raise SystemExit(1)
 
+def strip_list_marker(line: str) -> str:
+    candidate = line.lstrip()
+    if candidate.startswith(('- ', '* ', '+ ')):
+        return candidate[2:]
+    match = re.match(r'^\d+[.)]\s+(.*)$', candidate)
+    if match:
+        return match.group(1)
+    return candidate
+
+def find_section(lines, heading):
+    try:
+        return lines.index(heading)
+    except ValueError:
+        return None
+
+def reject_lifecycle_instruction(line: str) -> None:
+    normalized = strip_list_marker(line).strip().lower()
+    if not normalized:
+        return
+
+    if normalized.startswith('out of scope:'):
+        normalized = normalized[len('out of scope:'):].strip()
+        if not normalized:
+            return
+
+    if normalized.startswith(('do not ', "don't ")):
+        return
+
+    checks = [
+        (r'^(?:please\s+)?create a pr\b', 'create a pr'),
+        (r'^(?:please\s+)?merge this\b', 'merge this'),
+        (r'^(?:please\s+)?run repo-flow submit\b', 'repo-flow submit'),
+        (r'^(?:please\s+)?checkout main\b', 'checkout'),
+    ]
+    for pattern, phrase in checks:
+        if re.match(pattern, normalized):
+            fail(f'Codex Prompt contains lifecycle instruction: {phrase}', 'remove execution and workflow instructions from the prompt')
+
+    if re.match(r'^branch:\s+\S', normalized):
+        fail('Codex Prompt contains lifecycle instruction: branch:', 'remove execution and workflow instructions from the prompt')
+
 path = Path(sys.argv[1])
 prompt_path = Path(sys.argv[2])
 pr_body_path = Path(sys.argv[3])
@@ -121,6 +162,13 @@ except ValueError:
 
 if prompt_index < slice_index:
     fail('invalid section order', 'place # Slice Handoff before ## Codex Prompt')
+
+review_index = find_section(lines, '## PR Review Request')
+body_index = find_section(lines, '## PR Body')
+if review_index is not None and review_index < prompt_index:
+    fail('invalid section order', 'place ## PR Review Request after ## Codex Prompt')
+if body_index is not None and review_index is not None and review_index < body_index:
+    fail('invalid section order', 'place ## PR Review Request after ## PR Body when submit_mode is repo-flow-submit-all')
 
 envelope = {}
 for raw in lines[:slice_index]:
@@ -173,13 +221,13 @@ if submit_mode == 'repo-flow-submit-all' and not commit_message:
 if '## PR Body' in lines[:prompt_index]:
     fail('invalid section order', 'place ## PR Body after ## Codex Prompt if submit_mode is repo-flow-submit-all')
 
-body_index = None
-for index in range(prompt_index + 1, len(lines)):
-    if lines[index] == '## PR Body':
-        body_index = index
-        break
+prompt_end = len(lines)
+if body_index is not None:
+    prompt_end = body_index
+elif review_index is not None:
+    prompt_end = review_index
 
-prompt_lines = lines[prompt_index + 1:body_index if body_index is not None else len(lines)]
+prompt_lines = lines[prompt_index + 1:prompt_end]
 prompt_text = '\n'.join(prompt_lines)
 if not prompt_text.strip():
     fail('missing Codex Prompt payload', 'add prompt text under ## Codex Prompt')
@@ -202,21 +250,14 @@ for phrase in blocked_phrases:
     if phrase in prompt_lower:
         fail(f'unsafe placeholder text in Codex Prompt: {phrase}', 'replace the placeholder prompt with concrete slice instructions')
 
-blocked_lifecycle = [
-    'create a pr',
-    'merge',
-    'repo-flow submit',
-    'branch:',
-    'checkout',
-]
-for phrase in blocked_lifecycle:
-    if phrase in prompt_lower:
-        fail(f'Codex Prompt contains lifecycle instruction: {phrase}', 'remove execution and workflow instructions from the prompt')
+for raw_line in prompt_lines:
+    reject_lifecycle_instruction(raw_line)
 
 if submit_mode == 'repo-flow-submit-all':
     if body_index is None:
         fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
-    pr_body_text = '\n'.join(lines[body_index + 1:])
+    pr_body_end = review_index if review_index is not None else len(lines)
+    pr_body_text = '\n'.join(lines[body_index + 1:pr_body_end])
     if not pr_body_text.strip():
         fail('missing PR body payload', 'add PR body text under ## PR Body')
     try:
