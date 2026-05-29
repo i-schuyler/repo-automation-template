@@ -27,6 +27,11 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_infer_stop="$smoke_test_base/ci-log-dump-infer-stop-$$.txt"
   local ci_log_infer_json="$smoke_test_base/ci-log-dump-infer-json-$$.json"
   local ci_log_infer_json_err="$smoke_test_base/ci-log-dump-infer-json-$$.stderr"
+  local ci_log_run_view_log="$smoke_test_base/ci-log-dump-run-view-$$.log"
+  local ci_log_run_list_log="$smoke_test_base/ci-log-dump-run-list-$$.log"
+  local ci_log_pr_no_run_json="$smoke_test_base/ci-log-dump-pr-no-run-$$.json"
+  local ci_log_pr_no_run_err="$smoke_test_base/ci-log-dump-pr-no-run-$$.stderr"
+  local ci_log_repo_infer_json="$smoke_test_base/ci-log-dump-repo-infer-$$.json"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$ci_log_out_dir" || return 1
@@ -209,6 +214,68 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
+  if (
+    cd "$smoke_test_dir" || return 1
+    : > "$ci_log_run_list_log"
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
+    GH_STUB_RUN_LIST_BRANCH_PR_JSON='[]' \
+    GH_STUB_RUN_LIST_SHA_PR_JSON='[
+      {"databaseId":701,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-321","status":"completed","workflowName":"ci"},
+      {"databaseId":702,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-321","status":"completed","workflowName":"ci"}
+    ]' \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_json"
+  ) && python3 -m json.tool "$ci_log_json" >/dev/null && \
+    smoke_json_assert "$ci_log_json" 'data.get("pr") == "123" and data.get("run_id") == "702" and data.get("first_failure_label") == "fail: contract/smoke" and "FAIL: smoke:slice-handoff-contract" in data.get("first_failure_excerpt", "")' && \
+    grep -Fq -- '--commit current-sha-321' "$ci_log_run_list_log"; then
+    test_pass "ci-log-dump PR lookup resolves failed run by head SHA"
+  else
+    test_fail "ci-log-dump PR lookup resolves failed run by head SHA"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    : > "$ci_log_run_list_log"
+    GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
+    GH_STUB_RUN_LIST_BRANCH_PR_JSON='[]' \
+    GH_STUB_RUN_LIST_SHA_PR_JSON='[]' \
+    GH_STUB_RUN_LIST_SHA_JSON='[]' \
+    GH_STUB_RUN_LIST_JSON='[]' \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    GH_STUB_RUN_VIEW_FAILED_LOG='should not fetch logs' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --machine-json > "$ci_log_pr_no_run_json" 2> "$ci_log_pr_no_run_err"
+  ); then
+    test_fail "ci-log-dump PR no-run machine-json explains lookup modes"
+    status=1
+  elif [ ! -s "$ci_log_pr_no_run_err" ] && python3 -m json.tool "$ci_log_pr_no_run_json" >/dev/null && \
+    smoke_json_assert "$ci_log_pr_no_run_json" 'data.get("overall_status") == "fail" and "head_branch=resolved:feature/demo" in data.get("stop_reason", "") and "head_sha=resolved:current-sha-321" in data.get("stop_reason", "") and "lookup_modes_tried=sha-pull_request,branch-pull_request,sha-any,repo-failed-head-sha" in data.get("stop_reason", "")'; then
+    test_pass "ci-log-dump PR no-run machine-json explains lookup modes"
+  else
+    test_fail "ci-log-dump PR no-run machine-json explains lookup modes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    : > "$ci_log_run_list_log"
+    : > "$ci_log_run_view_log"
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
+    GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --run-id=777 --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_json"
+  ) && python3 -m json.tool "$ci_log_json" >/dev/null && \
+    smoke_json_assert "$ci_log_json" 'data.get("run_id") == "777" and data.get("first_failure_label") == "fail: contract/smoke"' && \
+    [ ! -s "$ci_log_run_list_log" ] && [ -e "$ci_log_run_view_log" ]; then
+    test_pass "ci-log-dump run-id bypasses PR lookup and fetches logs directly"
+  else
+    test_fail "ci-log-dump run-id bypasses PR lookup and fetches logs directly"
+    status=1
+  fi
+
   local ci_log_retry_run_list_marker="$smoke_test_base/ci-log-dump-run-list-retry-$$.marker"
   local ci_log_retry_run_view_marker="$smoke_test_base/ci-log-dump-run-view-retry-$$.marker"
   if (
@@ -238,6 +305,34 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     test_pass "ci-log-dump explain output is detailed"
   else
     test_fail "ci-log-dump explain output is detailed"
+    status=1
+  fi
+
+  local ci_log_remote_url=""
+  local ci_log_infer_ok=1
+  for ci_log_remote_url in \
+    'git@github.com:owner/repo.git' \
+    'https://github.com/owner/repo.git' \
+    'git@github.com-work:owner/repo.git' \
+    'ssh://git@github.com/owner/repo.git'
+  do
+    if (
+      cd "$smoke_test_dir" || return 1
+      git remote set-url origin "$ci_log_remote_url" || return 1
+      GH_STUB_RUN_LIST_JSON='[
+        {"databaseId":333,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"push","headBranch":"branch/new","headSha":"sha-333","status":"completed","workflowName":"ci"}
+      ]' GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --latest-failed --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_repo_infer_json"
+    ) && python3 -m json.tool "$ci_log_repo_infer_json" >/dev/null && \
+      smoke_json_assert "$ci_log_repo_infer_json" 'data.get("repo") == "owner/repo" and data.get("run_id") == "333"'; then
+      :
+    else
+      ci_log_infer_ok=0
+    fi
+  done
+  if [ "$ci_log_infer_ok" -eq 1 ]; then
+    test_pass "ci-log-dump infers repo from GitHub remote forms"
+  else
+    test_fail "ci-log-dump infers repo from GitHub remote forms"
     status=1
   fi
 
@@ -296,7 +391,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
-  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" "$ci_log_quiet" >/dev/null 2>&1 || true
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" "$ci_log_quiet" "$ci_log_run_view_log" "$ci_log_run_list_log" "$ci_log_pr_no_run_json" "$ci_log_pr_no_run_err" "$ci_log_repo_infer_json" >/dev/null 2>&1 || true
   find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
   rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
   return "$status"

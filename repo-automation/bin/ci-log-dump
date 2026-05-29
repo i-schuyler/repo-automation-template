@@ -24,6 +24,10 @@ ci_log_dump_first_failure_recommended_fix=""
 ci_log_dump_gh_failure_message=""
 ci_log_dump_stop_reason=""
 ci_log_dump_log_path=""
+ci_log_dump_pr_head_branch=""
+ci_log_dump_pr_head_sha=""
+ci_log_dump_pr_lookup_modes=""
+ci_log_dump_selected_run_id=""
 
 ci_log_dump_print_final_summary() {
   local rc="${1:-0}"
@@ -107,17 +111,37 @@ ci_log_dump_stop() {
 ci_log_dump_repo_from_remote() {
   local remote_url
   local repo
+  local host
+  local path
 
   remote_url="$(git remote get-url origin 2>/dev/null || true)"
   case "$remote_url" in
     git@github.com:*)
       repo="${remote_url#git@github.com:}"
       ;;
+    git@github*:*)
+      host="${remote_url%%:*}"
+      case "$host" in
+        git@github|git@github-*|git@github.com|git@github.com-*)
+          repo="${remote_url#*:}"
+          ;;
+        *)
+          return 1
+          ;;
+      esac
+      ;;
     https://github.com/*)
       repo="${remote_url#https://github.com/}"
       ;;
     http://github.com/*)
       repo="${remote_url#http://github.com/}"
+      ;;
+    ssh://git@github.com/*)
+      repo="${remote_url#ssh://git@github.com/}"
+      ;;
+    ssh://git@github-*/*|ssh://git@github.com-*/*)
+      path="${remote_url#ssh://git@}"
+      repo="${path#*/}"
       ;;
     *)
       return 1
@@ -127,6 +151,14 @@ ci_log_dump_repo_from_remote() {
   repo="${repo%.git}"
   repo="${repo%/}"
   case "$repo" in
+    /*|*//*)
+      return 1
+      ;;
+  esac
+  case "$repo" in
+    */*/*)
+      return 1
+      ;;
     */*)
       printf '%s\n' "$repo"
       return 0
@@ -240,17 +272,116 @@ PY
   return 1
 }
 
+ci_log_dump_gh_optional_json() {
+  local stdout_file="$1"
+  shift
+
+  : >"$stdout_file"
+  if "$@" >"$stdout_file" 2>/dev/null && [ -s "$stdout_file" ] && python3 - "$stdout_file" >/dev/null 2>&1 <<'PY'; then
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+json.loads(path.read_text(encoding='utf-8'))
+PY
+    return 0
+  fi
+
+  : >"$stdout_file"
+  return 1
+}
+
 ci_log_dump_pick_head_branch() {
   ci_log_dump_gh_output "resolving head branch for PR #$1" 0 gh pr view "$1" --repo "$ci_log_dump_repo" --json headRefName --jq '.headRefName'
+}
+
+ci_log_dump_pick_head_sha() {
+  local pr_number="$1"
+  local sha_file
+  local sha=""
+
+  sha_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  if gh pr view "$pr_number" --repo "$ci_log_dump_repo" --json headRefOid --jq '.headRefOid' >"$sha_file" 2>/dev/null; then
+    sha="$(sed -n '1p' "$sha_file" | tr -d '[:space:]')"
+  fi
+  rm -f "$sha_file" >/dev/null 2>&1 || true
+  printf '%s' "$sha"
+}
+
+ci_log_dump_record_lookup_mode() {
+  local mode="$1"
+  if [ -z "$ci_log_dump_pr_lookup_modes" ]; then
+    ci_log_dump_pr_lookup_modes="$mode"
+  else
+    ci_log_dump_pr_lookup_modes="$ci_log_dump_pr_lookup_modes,$mode"
+  fi
+}
+
+ci_log_dump_pick_run_id_from_json() {
+  local runs_file="$1"
+  local expected_sha="$2"
+  local expected_branch="$3"
+  local expected_event="$4"
+
+  python3 - "$runs_file" "$expected_sha" "$expected_branch" "$expected_event" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+expected_sha = sys.argv[2]
+expected_branch = sys.argv[3]
+expected_event = sys.argv[4]
+items = json.loads(path.read_text(encoding='utf-8'))
+matches = []
+for item in items:
+    if item.get('conclusion') != 'failure':
+        continue
+    if expected_sha:
+        item_sha = str(item.get('headSha', ''))
+        if item_sha and item_sha != expected_sha:
+            continue
+    if expected_branch and str(item.get('headBranch', '')) != expected_branch:
+        continue
+    if expected_event and str(item.get('event', '')) != expected_event:
+        continue
+    matches.append(item)
+if matches:
+    print(str(max(matches, key=lambda item: item.get('createdAt', '')).get('databaseId', '')))
+PY
 }
 
 ci_log_dump_pick_run_id_for_branch() {
   local branch_name="$1"
   local event_name="$2"
+  local expected_sha="${3:-}"
   local gh_output
 
-  gh_output="$(ci_log_dump_gh_output "listing failed runs for branch $branch_name ($event_name)" 1 gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName)" || return 1
-  printf '%s' "$gh_output" | python3 -c 'import json,sys; items=json.load(sys.stdin); print(next((str(i.get("databaseId","")) for i in items if i.get("conclusion")=="failure"), items[0].get("databaseId","") if items else ""))'
+  gh_output="$(ci_log_dump_gh_output "listing failed runs for branch $branch_name ($event_name)" 1 gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,headSha,status,workflowName)" || return 1
+  GH_OUTPUT_JSON="$gh_output" python3 - "$expected_sha" "$branch_name" "$event_name" <<'PY'
+import json
+import os
+import sys
+
+expected_sha = sys.argv[1]
+expected_branch = sys.argv[2]
+expected_event = sys.argv[3]
+items = json.loads(os.environ.get('GH_OUTPUT_JSON', '[]'))
+matches = []
+for item in items:
+    if item.get('conclusion') != 'failure':
+        continue
+    item_sha = str(item.get('headSha', ''))
+    if expected_sha and item_sha and item_sha != expected_sha:
+        continue
+    if expected_branch and str(item.get('headBranch', '')) != expected_branch:
+        continue
+    if expected_event and str(item.get('event', '')) != expected_event:
+        continue
+    matches.append(item)
+print(str(max(matches, key=lambda item: item.get('createdAt', '')).get('databaseId', '')) if matches else '')
+PY
 }
 
 ci_log_dump_pick_latest_failed_run() {
@@ -258,6 +389,80 @@ ci_log_dump_pick_latest_failed_run() {
 
   gh_output="$(ci_log_dump_gh_output "listing latest failed runs for repository $ci_log_dump_repo" 1 gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName)" || return 1
   printf '%s' "$gh_output" | python3 -c 'import json,sys; items=json.load(sys.stdin); failed=[item for item in items if item.get("conclusion")=="failure"]; print(max(failed, key=lambda item: item.get("createdAt","")).get("databaseId","") if failed else "")'
+}
+
+ci_log_dump_pick_run_id_for_pr() {
+  local pr_number="$1"
+  local run_id=""
+  local runs_file
+
+  ci_log_dump_selected_run_id=""
+  ci_log_dump_pr_lookup_modes=""
+  ci_log_dump_pr_head_branch="$(ci_log_dump_pick_head_branch "$pr_number" 2>/dev/null || true)"
+  [ -n "$ci_log_dump_pr_head_branch" ] || return 1
+
+  ci_log_dump_pr_head_sha="$(ci_log_dump_pick_head_sha "$pr_number" 2>/dev/null || true)"
+
+  if [ -n "$ci_log_dump_pr_head_sha" ]; then
+    runs_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+    ci_log_dump_record_lookup_mode "sha-pull_request"
+    if ci_log_dump_gh_optional_json "$runs_file" gh run list --repo "$ci_log_dump_repo" --commit "$ci_log_dump_pr_head_sha" --event pull_request --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,headSha,status,workflowName; then
+      run_id="$(ci_log_dump_pick_run_id_from_json "$runs_file" "$ci_log_dump_pr_head_sha" "" pull_request)"
+    fi
+    rm -f "$runs_file" >/dev/null 2>&1 || true
+    [ -n "$run_id" ] && {
+      ci_log_dump_selected_run_id="$run_id"
+      return 0
+    }
+  fi
+
+  ci_log_dump_record_lookup_mode "branch-pull_request"
+  run_id="$(ci_log_dump_pick_run_id_for_branch "$ci_log_dump_pr_head_branch" pull_request "$ci_log_dump_pr_head_sha")" || return 1
+  [ -n "$run_id" ] && {
+    ci_log_dump_selected_run_id="$run_id"
+    return 0
+  }
+
+  if [ -n "$ci_log_dump_pr_head_sha" ]; then
+    runs_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+    ci_log_dump_record_lookup_mode "sha-any"
+    if ci_log_dump_gh_optional_json "$runs_file" gh run list --repo "$ci_log_dump_repo" --commit "$ci_log_dump_pr_head_sha" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,headSha,status,workflowName; then
+      run_id="$(ci_log_dump_pick_run_id_from_json "$runs_file" "$ci_log_dump_pr_head_sha" "" "")"
+    fi
+    rm -f "$runs_file" >/dev/null 2>&1 || true
+    [ -n "$run_id" ] && {
+      ci_log_dump_selected_run_id="$run_id"
+      return 0
+    }
+
+    runs_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+    ci_log_dump_record_lookup_mode "repo-failed-head-sha"
+    if ci_log_dump_gh_optional_json "$runs_file" gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,headSha,status,workflowName; then
+      run_id="$(ci_log_dump_pick_run_id_from_json "$runs_file" "$ci_log_dump_pr_head_sha" "" "")"
+    fi
+    rm -f "$runs_file" >/dev/null 2>&1 || true
+    [ -n "$run_id" ] && {
+      ci_log_dump_selected_run_id="$run_id"
+      return 0
+    }
+  fi
+
+  return 0
+}
+
+ci_log_dump_pr_no_run_message() {
+  local branch_status="unresolved"
+  local sha_status="unresolved"
+  local modes="${ci_log_dump_pr_lookup_modes:-none}"
+
+  if [ -n "$ci_log_dump_pr_head_branch" ]; then
+    branch_status="resolved:$ci_log_dump_pr_head_branch"
+  fi
+  if [ -n "$ci_log_dump_pr_head_sha" ]; then
+    sha_status="resolved:$ci_log_dump_pr_head_sha"
+  fi
+
+  printf 'no failed run found for PR #%s (head_branch=%s; head_sha=%s; lookup_modes_tried=%s)' "$ci_log_dump_pr" "$branch_status" "$sha_status" "$modes"
 }
 
 ci_log_dump_tail_excerpt() {
@@ -271,20 +476,34 @@ ci_log_dump_first_failure_details() {
   local excerpt=""
   local fix=""
 
-  parsed="$(python3 - "$log_path" <<'PY'
+parsed="$(python3 - "$log_path" <<'PY'
 import json
 import pathlib
 import re
 import sys
 
 path = pathlib.Path(sys.argv[1])
-lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+raw_lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+ansi = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+lines = [ansi.sub('', line) for line in raw_lines]
 
 def compact(text):
     return re.sub(r'\s+', ' ', text).strip()
 
-def find(patterns):
-    for index, line in enumerate(lines):
+def actionable(line):
+    lower = line.lower()
+    if '\x1b[36;1m' in line or '^[[36;1m' in line or '##[group]Run ' in line:
+        return False
+    if re.search(r'\bSC\d{4}\b', line):
+        return True
+    if re.search(r'(?i)(^|[\s:])(fail|error|stop|first failure):', line):
+        return True
+    if '##[error]' in lower:
+        return True
+    return False
+
+def find(patterns, candidates):
+    for index, line in candidates:
         for label, pattern, fix in patterns:
             if pattern.search(line):
                 print(json.dumps({
@@ -297,19 +516,23 @@ def find(patterns):
 
 taxonomy = [
     ('fail: github-access', re.compile(r'(?i)(GitHub API failure|gh auth|TLS handshake timeout|rate limit|connection refused|connection reset|network is unreachable|temporary failure|Service Unavailable|Bad Gateway|Gateway Timeout|could not resolve host|EOF)'), 'check gh auth status and your network, then rerun'),
-    ('fail: shellcheck', re.compile(r'(?i)(\bshellcheck\b|\bSC\d{4}\b)'), 'run shellcheck on the reported file and line'),
+    ('fail: shellcheck', re.compile(r'(?i)(\bshellcheck[: ]|\bSC\d{4}\b|fail: shellcheck)'), 'run shellcheck on the reported file and line'),
     ('fail: docs-check', re.compile(r'(?i)(\bdocs-check\b|broken link|missing doc|docs/INDEX\.md|documentation)'), 'fix the broken doc or index entry, then rerun docs-check'),
     ('fail: version-consistency', re.compile(r'(?i)(\bversion-consistency\b|version mismatch|\bVERSION\b|REPO_AUTOMATION_VERSION|INSTALLED_VERSION_OR_REF)'), 'update the versioned files together, then rerun version-consistency'),
     ('fail: managed-files', re.compile(r'(?i)(\bmanaged-files\b|managed file|managed-file|manifest|installer coverage)'), 'fix the managed-file inventory, then rerun managed-file-check'),
-    ('fail: output-contract', re.compile(r'(?i)(\boutput-contract\b|stdout/stderr|valid JSON|machine-json|JSON contract|stream contract|contract drift)'), 'compare stdout/stderr behavior, then rerun the contract test'),
-    ('fail: run-tests', re.compile(r'(?i)(\brun-tests\b|smoke:|test failed|FAIL: )'), 'inspect the failing test slice, then rerun that test'),
+    ('fail: contract/smoke', re.compile(r'(?i)(\bcontract\b|smoke:\S+)'), 'rerun the named contract or smoke test'),
+    ('fail: run-tests', re.compile(r'(?i)(\brun-tests\b|test failed)'), 'inspect the failing test slice, then rerun that test'),
+    ('fail: generic-ci', re.compile(r'(?i)(^|[\s:])(FAIL|ERROR|STOP): '), 'capture the failing step and classify it manually'),
 ]
 
-if not find(taxonomy):
+actionable_lines = [(index, line) for index, line in enumerate(lines) if actionable(line)]
+search_lines = actionable_lines if actionable_lines else list(enumerate(lines))
+
+if not find(taxonomy, search_lines):
     fallback_patterns = [
         ('fail: unknown-ci', re.compile(r'(?i)^(FAIL|ERROR|STOP): '), 'capture the failing step and classify it manually'),
     ]
-    if not find(fallback_patterns):
+    if not find(fallback_patterns, search_lines):
         if lines:
             print(json.dumps({
                 'label': 'fail: unknown-ci',
@@ -551,8 +774,7 @@ ci_log_dump_main() {
       return 1
     }
   elif [ -n "$ci_log_dump_pr" ]; then
-    target_repo="$(ci_log_dump_pick_head_branch "$ci_log_dump_pr" 2>/dev/null || true)"
-    [ -n "$target_repo" ] || {
+    ci_log_dump_pick_run_id_for_pr "$ci_log_dump_pr" || {
       if [ -n "$ci_log_dump_gh_failure_message" ]; then
         ci_log_dump_stop "$ci_log_dump_gh_failure_message"
       else
@@ -560,12 +782,9 @@ ci_log_dump_main() {
       fi
       return 1
     }
-    run_id="$(ci_log_dump_pick_run_id_for_branch "$target_repo" pull_request)" || {
-      if [ -n "$ci_log_dump_gh_failure_message" ]; then
-        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
-      else
-        ci_log_dump_stop "no failed pull_request run found for PR #$ci_log_dump_pr"
-      fi
+    run_id="$ci_log_dump_selected_run_id"
+    [ -n "$run_id" ] || {
+      ci_log_dump_stop "$(ci_log_dump_pr_no_run_message)"
       return 1
     }
   else

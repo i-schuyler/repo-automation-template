@@ -154,6 +154,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/slice-handoff",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/review-pack",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -245,6 +250,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/repair-prompt.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/slice-handoff.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },
@@ -650,6 +660,11 @@
     },
     {
       "path": "repo-automation/tests/lib/contracts/install-release.sh",
+      "owner": "repo-automation-template",
+      "kind": "test-support"
+    },
+    {
+      "path": "repo-automation/tests/lib/contracts/slice-handoff.sh",
       "owner": "repo-automation-template",
       "kind": "test-support"
     },

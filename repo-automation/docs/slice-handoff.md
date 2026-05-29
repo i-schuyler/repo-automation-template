@@ -1,8 +1,8 @@
 # Slice Handoff
 
-`slice-handoff` is a planned public-safe validated handoff runner for a bounded AI-assisted implementation slice.
+`slice-handoff` is a public-safe validated handoff runner for a bounded AI-assisted implementation slice.
 
-## Planned mode
+## Plan-only mode
 
 The first implementation mode is `--plan-only`.
 

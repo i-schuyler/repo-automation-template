@@ -15,6 +15,109 @@ smoke_collect_lib_paths() {
   done
 }
 
+smoke_copy_metadata_helper_bins() {
+  local metadata_path="$smoke_repo_root/repo-automation/helper-metadata.json"
+  local rel_path=""
+  local source_path=""
+  local target_path=""
+  local target_dir=""
+  local helper_paths=""
+  local helper_paths_cache=""
+  local metadata_cksum=""
+
+  if [ ! -f "$metadata_path" ]; then
+    printf 'fail: missing helper metadata: %s\n' "$metadata_path" >&2
+    return 1
+  fi
+
+  metadata_cksum="$(cksum "$metadata_path" | awk '{print $1 "." $2}')" || return 1
+  helper_paths_cache="$TEST_TEMP_ROOT/helper-bin-paths.$metadata_cksum"
+
+  if [ -f "$helper_paths_cache" ]; then
+    helper_paths="$(cat "$helper_paths_cache")" || return 1
+  else
+    helper_paths="$(python3 - "$metadata_path" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata_path = pathlib.Path(sys.argv[1])
+data = json.loads(metadata_path.read_text(encoding='utf-8'))
+for helper in data.get('helpers', []):
+    if not isinstance(helper, dict):
+        continue
+    path = helper.get('path')
+    if isinstance(path, str) and path.startswith('repo-automation/bin/'):
+        print(path)
+PY
+)" || return 1
+    printf '%s\n' "$helper_paths" > "$helper_paths_cache" || return 1
+  fi
+
+  while IFS= read -r rel_path; do
+    [ -n "$rel_path" ] || continue
+    source_path="$smoke_repo_root/$rel_path"
+    target_path="$smoke_test_dir/$rel_path"
+    target_dir="$(dirname "$target_path")"
+
+    if [ ! -f "$source_path" ]; then
+      printf 'fail: helper metadata references missing bin file: %s\n' "$rel_path" >&2
+      return 1
+    fi
+
+    mkdir -p "$target_dir" || return 1
+    cp "$source_path" "$target_path" || return 1
+    chmod +x "$target_path" || return 1
+  done <<EOF
+$helper_paths
+EOF
+}
+
+smoke_template_source_newer() {
+  local marker_file="$1"
+  local newer_path=""
+
+  newer_path="$(find \
+    "$smoke_repo_root/AGENTS.md" \
+    "$smoke_repo_root/.github" \
+    "$smoke_repo_root/docs" \
+    "$smoke_repo_root/examples" \
+    "$smoke_repo_root/repo-automation" \
+    -newer "$marker_file" -print -quit 2>/dev/null || true)"
+  [ -n "$newer_path" ]
+}
+
+smoke_restore_template_repo() {
+  local template_root="$TEST_TEMP_ROOT/smoke-template"
+  local marker_file="$template_root/.ready"
+
+  [ -f "$marker_file" ] || return 1
+  [ -d "$template_root/smoke" ] || return 1
+  [ -d "$template_root/smoke-remote.git" ] || return 1
+  if smoke_template_source_newer "$marker_file"; then
+    return 1
+  fi
+
+  rm -rf -- "$smoke_test_dir" "$smoke_remote_dir" >/dev/null 2>&1 || return 1
+  cp -R "$template_root/smoke" "$smoke_test_dir" || return 1
+  cp -R "$template_root/smoke-remote.git" "$smoke_remote_dir" || return 1
+  smoke_assert_fixture_integrity || return 1
+  return 0
+}
+
+smoke_store_template_repo() {
+  local template_root="$TEST_TEMP_ROOT/smoke-template"
+  local template_tmp="$TEST_TEMP_ROOT/smoke-template.$$"
+
+  rm -rf -- "$template_tmp" >/dev/null 2>&1 || return 1
+  mkdir -p "$template_tmp" || return 1
+  cp -R "$smoke_test_dir" "$template_tmp/smoke" || return 1
+  cp -R "$smoke_remote_dir" "$template_tmp/smoke-remote.git" || return 1
+  : > "$template_tmp/.ready" || return 1
+  rm -rf -- "$template_root" >/dev/null 2>&1 || return 1
+  mv "$template_tmp" "$template_root" || return 1
+}
+
 smoke_assert_fixture_integrity() {
   local rel_path=""
   local source_path=""
@@ -68,43 +171,14 @@ smoke_setup_temp_repo() {
 
   export smoke_repo_root smoke_test_base smoke_test_dir smoke_remote_dir smoke_expected_origin_url smoke_timeout_seconds
 
+  if smoke_restore_template_repo; then
+    return 0
+  fi
+
   mkdir -p "$smoke_test_dir/repo-automation/bin" "$smoke_test_dir/repo-automation/lib" "$smoke_test_dir/repo-automation/tests/lib" "$smoke_test_dir/repo-automation/tests/lib/contracts" "$smoke_test_dir/repo-automation/tests/contracts" "$smoke_test_dir/repo-automation/tests" || return 1
   cp "$smoke_repo_root/AGENTS.md" "$smoke_test_dir/AGENTS.md" || return 1
   cp "$smoke_repo_root"/repo-automation/lib/*.sh "$smoke_test_dir/repo-automation/lib/" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/branch-cleanup" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/pr-finish" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/add-doc-pr" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/pr-body-check" "$smoke_test_dir/repo-automation/bin/pr-body-check" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/pr-create" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/repo-flow" "$smoke_test_dir/repo-automation/bin/repo-flow" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/automation-freshness" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/repo-doctor" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/github-settings-check" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/managed-file-check" "$smoke_test_dir/repo-automation/bin/managed-file-check" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/managed-file-add" "$smoke_test_dir/repo-automation/bin/managed-file-add" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/failure-log" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/touched-files" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-status" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/ci-watch" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/ci-log-dump" "$smoke_test_dir/repo-automation/bin/ci-log-dump" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/ci-failure-artifacts" "$smoke_test_dir/repo-automation/bin/ci-failure-artifacts" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/contract-debt-report" "$smoke_test_dir/repo-automation/bin/contract-debt-report" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/check-portability" "$smoke_test_dir/repo-automation/bin/check-portability" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/status-packet" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/post-codex-review" "$smoke_test_dir/repo-automation/bin/post-codex-review" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/post-codex-packet" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/review-pack" "$smoke_test_dir/repo-automation/bin/review-pack" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/repair-prompt" "$smoke_test_dir/repo-automation/bin/repair-prompt" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/repo-zip" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/evidence-bundle" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/starter-template-ready" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/prepare-release" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/repo-automation-install" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/check-tooling" "$smoke_test_dir/repo-automation/bin/check-tooling" || return 1
-  cp "$smoke_repo_root/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/bin/run-tests" || return 1
+  smoke_copy_metadata_helper_bins || return 1
   cp "$smoke_repo_root/repo-automation/helper-metadata.json" "$smoke_test_dir/repo-automation/helper-metadata.json" || return 1
   cp "$smoke_repo_root/repo-automation/manifest.json" "$smoke_test_dir/repo-automation/manifest.json" || return 1
   cp "$smoke_repo_root/repo-automation/tests/lib/test-common.sh" "$smoke_test_dir/repo-automation/tests/lib/test-common.sh" || return 1
@@ -118,7 +192,7 @@ smoke_setup_temp_repo() {
   cp "$smoke_repo_root/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" || return 1
   cp "$smoke_repo_root/repo-automation/tests/contracts"/*.sh "$smoke_test_dir/repo-automation/tests/contracts/" || return 1
-  chmod +x "$smoke_test_dir/repo-automation/bin/branch-cleanup" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/pr-finish" "$smoke_test_dir/repo-automation/bin/add-doc-pr" "$smoke_test_dir/repo-automation/bin/pr-body-check" "$smoke_test_dir/repo-automation/bin/pr-create" "$smoke_test_dir/repo-automation/bin/repo-flow" "$smoke_test_dir/repo-automation/bin/automation-freshness" "$smoke_test_dir/repo-automation/bin/github-settings-check" "$smoke_test_dir/repo-automation/bin/managed-file-check" "$smoke_test_dir/repo-automation/bin/managed-file-add" "$smoke_test_dir/repo-automation/bin/starter-template-ready" "$smoke_test_dir/repo-automation/bin/prepare-release" "$smoke_test_dir/repo-automation/bin/repo-automation-report-upstream" "$smoke_test_dir/repo-automation/bin/repo-doctor" "$smoke_test_dir/repo-automation/bin/check-tooling" "$smoke_test_dir/repo-automation/bin/check-portability" "$smoke_test_dir/repo-automation/bin/failure-log" "$smoke_test_dir/repo-automation/bin/touched-files" "$smoke_test_dir/repo-automation/bin/ci-status" "$smoke_test_dir/repo-automation/bin/ci-watch" "$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity" "$smoke_test_dir/repo-automation/bin/contract-debt-report" "$smoke_test_dir/repo-automation/bin/status-packet" "$smoke_test_dir/repo-automation/bin/post-codex-review" "$smoke_test_dir/repo-automation/bin/post-codex-packet" "$smoke_test_dir/repo-automation/bin/review-pack" "$smoke_test_dir/repo-automation/bin/repair-prompt" "$smoke_test_dir/repo-automation/bin/repo-zip" "$smoke_test_dir/repo-automation/bin/evidence-bundle" "$smoke_test_dir/repo-automation/bin/ci-failure-artifacts" "$smoke_test_dir/repo-automation/bin/repo-automation-install" "$smoke_test_dir/repo-automation/bin/run-tests" "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
+  chmod +x "$smoke_test_dir/repo-automation/tests/docs-check.sh" "$smoke_test_dir/repo-automation/tests/smoke.sh" "$smoke_test_dir/repo-automation/tests/version-consistency.sh" "$smoke_test_dir/repo-automation/tests/contracts"/*.sh || return 1
 
   (
     cd "$smoke_test_dir" || return 1
@@ -300,6 +374,7 @@ EOF
     return 0
   ) || return 1
 
+  smoke_store_template_repo || return 1
   smoke_assert_fixture_integrity || return 1
 }
 

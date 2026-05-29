@@ -328,6 +328,7 @@ repo_install_main() {
     "repo-automation/bin/check-portability"
     "repo-automation/bin/github-settings-check"
     "repo-automation/bin/managed-file-check"
+    "repo-automation/bin/slice-handoff"
     "repo-automation/bin/managed-file-add"
     "repo-automation/bin/failure-log"
     "repo-automation/bin/touched-files"
@@ -439,6 +440,7 @@ repo_install_main() {
     "repo-automation/tests/lib/contracts/repo-doctor.sh"
     "repo-automation/tests/lib/contracts/artifacts.sh"
     "repo-automation/tests/lib/contracts/install-release.sh"
+    "repo-automation/tests/lib/contracts/slice-handoff.sh"
     "repo-automation/tests/docs-check.sh"
     "repo-automation/tests/smoke.sh"
     "repo-automation/tests/contracts/add-doc-pr.sh"
@@ -479,6 +481,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/codex-slice-preflight.sh"
     "repo-automation/tests/contracts/prepare-release.sh"
     "repo-automation/tests/contracts/automation-freshness.sh"
+    "repo-automation/tests/contracts/slice-handoff.sh"
     "repo-automation/tests/version-consistency.sh"
     "repo-automation/bin/run-tests"
   )

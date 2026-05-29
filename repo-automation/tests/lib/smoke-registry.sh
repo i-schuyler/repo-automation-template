@@ -31,6 +31,7 @@ smoke_contract_names=(
   "smoke:post-codex-packet-contract"
   "smoke:review-pack-contract"
   "smoke:pr-finish-watch-exit"
+  "smoke:slice-handoff-contract"
   "smoke:repo-zip-contract"
   "smoke:evidence-bundle-contract"
   "smoke:repair-prompt-contract"
@@ -70,6 +71,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/post-codex-packet.sh"
   "repo-automation/tests/contracts/review-pack.sh"
   "repo-automation/tests/contracts/pr-finish-watch.sh"
+  "repo-automation/tests/contracts/slice-handoff.sh"
   "repo-automation/tests/contracts/repo-zip.sh"
   "repo-automation/tests/contracts/evidence-bundle.sh"
   "repo-automation/tests/contracts/repair-prompt.sh"
@@ -85,9 +87,55 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/automation-freshness.sh"
 )
 
+smoke_metadata_contract_paths=(
+  "${smoke_contract_scripts[@]}"
+  # repo-flow has a focused contract, but remains out of full smoke because it
+  # exceeds the smoke named-check timeout in the full registry.
+  "repo-automation/tests/contracts/repo-flow.sh"
+)
+
+smoke_validate_metadata_contract_registry() {
+  local metadata_path="$smoke_repo_root/repo-automation/helper-metadata.json"
+  local missing_paths=""
+
+  missing_paths="$(python3 - "$metadata_path" "${smoke_metadata_contract_paths[@]}" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata_path = pathlib.Path(sys.argv[1])
+registered = set(sys.argv[2:])
+data = json.loads(metadata_path.read_text(encoding='utf-8'))
+missing = []
+for helper in data.get('helpers', []):
+    if not isinstance(helper, dict):
+        continue
+    path = helper.get('contract_test_path')
+    if isinstance(path, str) and path and path not in registered:
+        missing.append(path)
+for path in sorted(set(missing)):
+    print(path)
+PY
+)" || return 1
+
+  if [ -n "$missing_paths" ]; then
+    while IFS= read -r missing_path; do
+      [ -n "$missing_path" ] || continue
+      printf 'fail: helper metadata contract_test_path missing from smoke registry: %s\n' "$missing_path" >&2
+    done <<EOF
+$missing_paths
+EOF
+    return 1
+  fi
+
+  return 0
+}
+
 smoke_run_all_contracts() {
   local status=0
   local i=0
+
+  smoke_validate_metadata_contract_registry || return 1
 
   for i in "${!smoke_contract_scripts[@]}"; do
     smoke_run_named_check "${smoke_contract_names[$i]}" "${smoke_contract_scripts[$i]}" || status=1
