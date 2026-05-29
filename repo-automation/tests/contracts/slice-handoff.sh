@@ -31,6 +31,19 @@ smoke_check_slice_handoff_contract() {
   local smoke_check_root="$smoke_test_base/slice-handoff"
   local valid_none_file="$smoke_check_root/valid-none.md"
   local valid_submit_file="$smoke_check_root/valid-submit.md"
+  local valid_none_out_dir="$smoke_test_base/out-valid-none"
+  local valid_submit_out_dir="$smoke_test_base/out-valid-submit"
+  local valid_quiet_out_dir="$smoke_test_base/out-quiet"
+  local invalid_out_dir="$smoke_test_base/out-invalid-validation"
+  local inside_repo_out_dir="$smoke_repo_root/slice-handoff-out-inside-repo"
+  local expected_none_stdout
+  local expected_submit_stdout
+  local expected_none_prompt
+  local expected_submit_prompt
+  local expected_submit_body
+  local expected_none_summary
+  local expected_quiet_summary
+  local expected_submit_summary
   local missing_schema_file="$smoke_check_root/missing-schema.md"
   local invalid_schema_file="$smoke_check_root/invalid-schema.md"
   local missing_branch_file="$smoke_check_root/missing-branch.md"
@@ -76,6 +89,14 @@ None.
 Review the PR and continue the slice.
 EOF
 )"
+  expected_none_prompt="$(printf '%s' "$valid_prompt")"
+  expected_submit_prompt="$(printf '%s' "$submit_prompt")"
+  expected_submit_body="$(printf '%s' "$submit_body")"
+  expected_none_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=' "$valid_none_out_dir")"
+  expected_quiet_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=' "$valid_quiet_out_dir")"
+  expected_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md' "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_none_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\nsummary_path=%s/slice-handoff-summary.txt' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
+  expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
@@ -98,6 +119,56 @@ EOF
     status=1
   fi
 
+  if (
+    rm -rf -- "$valid_none_out_dir" &&
+      smoke_slice_handoff_expect_success "out-dir-none" "$expected_none_stdout" "" --file="$valid_none_file" --plan-only --out-dir="$valid_none_out_dir" &&
+      smoke_slice_handoff_assert_text_file "$valid_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_none_out_dir/slice-handoff-summary.txt" "$expected_none_summary"
+  ); then
+    :
+  else
+    test_fail "out-dir-none artifacts"
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$valid_submit_out_dir" &&
+      smoke_slice_handoff_expect_success "out-dir-submit" "$expected_submit_stdout" "" --file="$valid_submit_file" --plan-only --out-dir="$valid_submit_out_dir" &&
+      smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/pr-body.md" "$expected_submit_body" &&
+      smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/slice-handoff-summary.txt" "$expected_submit_summary"
+  ); then
+    :
+  else
+    test_fail "out-dir-submit artifacts"
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$valid_quiet_out_dir" &&
+      smoke_slice_handoff_run "$smoke_test_base/slice-handoff-quiet-out.out" "$smoke_test_base/slice-handoff-quiet-out.err" --file="$valid_none_file" --plan-only --quiet --out-dir="$valid_quiet_out_dir" &&
+      [ ! -s "$smoke_test_base/slice-handoff-quiet-out.out" ] &&
+      [ ! -s "$smoke_test_base/slice-handoff-quiet-out.err" ] &&
+      smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/slice-handoff-summary.txt" "$expected_quiet_summary"
+  ); then
+    :
+  else
+    test_fail "out-dir-quiet artifacts"
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$inside_repo_out_dir" &&
+      smoke_slice_handoff_expect_failure "out-dir-inside-repo" "out-dir must be outside the repo root" "choose a directory outside the current repo root" --file="$valid_none_file" --plan-only --out-dir="$inside_repo_out_dir" &&
+      [ ! -e "$inside_repo_out_dir" ]
+  ); then
+    :
+  else
+    test_fail "out-dir-inside-repo artifacts"
+    status=1
+  fi
+
   if smoke_slice_handoff_expect_failure "missing-file" "missing required --file" "use --file=<path> with a readable handoff file" --plan-only; then
     :
   else
@@ -111,6 +182,24 @@ EOF
   fi
 
   if smoke_slice_handoff_expect_failure "empty-file" "empty flag value: --file" "use --file=<path>" --file= --plan-only; then
+    :
+  else
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "missing-out-dir-value" "missing flag value: --out-dir" "use --out-dir=<path>" --file="$valid_none_file" --plan-only --out-dir; then
+    :
+  else
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "empty-out-dir" "empty flag value: --out-dir" "use --out-dir=<path>" --file="$valid_none_file" --plan-only --out-dir=; then
+    :
+  else
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "positional-out-dir" "unknown argument: out-dir" "run repo-automation/bin/slice-handoff --help" --file="$valid_none_file" --plan-only out-dir; then
     :
   else
     status=1
@@ -275,6 +364,17 @@ PY
   ) && smoke_slice_handoff_expect_failure "lifecycle-reject" "Codex Prompt contains lifecycle instruction: create a pr" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
     :
   else
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$invalid_out_dir" &&
+      smoke_slice_handoff_expect_failure "out-dir-validation-fail" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --plan-only --out-dir="$invalid_out_dir" &&
+      [ ! -e "$invalid_out_dir" ]
+  ); then
+    :
+  else
+    test_fail "out-dir-validation-fail artifacts"
     status=1
   fi
 

@@ -14,11 +14,22 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 slice_handoff_quiet=0
 slice_handoff_file=""
 slice_handoff_plan_only=0
+slice_handoff_out_dir=""
+slice_handoff_out_dir_abs=""
+slice_handoff_out_dir_prompt=""
+slice_handoff_out_dir_summary=""
+slice_handoff_out_dir_pr_body=""
+slice_handoff_branch=""
+slice_handoff_title=""
+slice_handoff_codex_profile=""
+slice_handoff_commit_message=""
 slice_handoff_submit_mode=""
+slice_handoff_prompt_file=""
 slice_handoff_pr_body_file=""
+slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
-  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> --plan-only [--quiet] [--help]\n'
+  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> --plan-only [--out-dir=<path>] [--quiet] [--help]\n'
 }
 
 slice_handoff_fail() {
@@ -27,9 +38,22 @@ slice_handoff_fail() {
 }
 
 slice_handoff_cleanup_temp_files() {
+  if [ -n "$slice_handoff_prompt_file" ]; then
+    rm -f -- "$slice_handoff_prompt_file" >/dev/null 2>&1 || true
+  fi
   if [ -n "$slice_handoff_pr_body_file" ]; then
     rm -f -- "$slice_handoff_pr_body_file" >/dev/null 2>&1 || true
   fi
+}
+
+slice_handoff_cleanup_out_dir_temp_files() {
+  local path=""
+
+  for path in "$@"; do
+    if [ -n "$path" ]; then
+      rm -f -- "$path" >/dev/null 2>&1 || true
+    fi
+  done
 }
 
 slice_handoff_validate_file() {
@@ -65,7 +89,7 @@ slice_handoff_validate_handoff() {
   local validation_output=""
 
   validation_output="$(
-    python3 - "$slice_handoff_file" "$slice_handoff_pr_body_file" <<'PY'
+    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -76,7 +100,8 @@ def fail(reason: str, fix: str) -> None:
     raise SystemExit(1)
 
 path = Path(sys.argv[1])
-pr_body_path = Path(sys.argv[2])
+prompt_path = Path(sys.argv[2])
+pr_body_path = Path(sys.argv[3])
 
 try:
     text = path.read_text(encoding='utf-8')
@@ -155,8 +180,8 @@ for index in range(prompt_index + 1, len(lines)):
         break
 
 prompt_lines = lines[prompt_index + 1:body_index if body_index is not None else len(lines)]
-prompt_text = '\n'.join(prompt_lines).strip()
-if not prompt_text:
+prompt_text = '\n'.join(prompt_lines)
+if not prompt_text.strip():
     fail('missing Codex Prompt payload', 'add prompt text under ## Codex Prompt')
 
 blocked_phrases = [
@@ -191,7 +216,7 @@ for phrase in blocked_lifecycle:
 if submit_mode == 'repo-flow-submit-all':
     if body_index is None:
         fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
-    pr_body_text = '\n'.join(lines[body_index + 1:]).strip('\n')
+    pr_body_text = '\n'.join(lines[body_index + 1:])
     if not pr_body_text.strip():
         fail('missing PR body payload', 'add PR body text under ## PR Body')
     try:
@@ -201,11 +226,40 @@ if submit_mode == 'repo-flow-submit-all':
 else:
     pr_body_path.write_text('', encoding='utf-8')
 
+try:
+    prompt_path.write_text(prompt_text + '\n', encoding='utf-8')
+except OSError as exc:
+    fail('unable to write Codex prompt temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
+
 print(f'submit_mode={submit_mode}')
+print(f'branch={branch}')
+print(f'title={title}')
+print(f'codex_profile={codex_profile}')
+print(f'commit_message={commit_message}')
 PY
   )" || return 1
 
-  slice_handoff_submit_mode="${validation_output#submit_mode=}"
+  while IFS= read -r validation_line; do
+    case "$validation_line" in
+      submit_mode=*)
+        slice_handoff_submit_mode="${validation_line#submit_mode=}"
+        ;;
+      branch=*)
+        slice_handoff_branch="${validation_line#branch=}"
+        ;;
+      title=*)
+        slice_handoff_title="${validation_line#title=}"
+        ;;
+      codex_profile=*)
+        slice_handoff_codex_profile="${validation_line#codex_profile=}"
+        ;;
+      commit_message=*)
+        slice_handoff_commit_message="${validation_line#commit_message=}"
+        ;;
+    esac
+  done <<EOF
+$validation_output
+EOF
 
   if [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
     if ! "$script_dir/pr-body-check" --body-file="$slice_handoff_pr_body_file" >/dev/null; then
@@ -231,6 +285,17 @@ slice_handoff_main() {
         ;;
       --plan-only)
         slice_handoff_plan_only=1
+        ;;
+      --out-dir=*)
+        slice_handoff_out_dir="${arg#--out-dir=}"
+        if [ -z "$slice_handoff_out_dir" ]; then
+          slice_handoff_fail "empty flag value: --out-dir" "use --out-dir=<path>"
+          return 1
+        fi
+        ;;
+      --out-dir)
+        slice_handoff_fail "missing flag value: --out-dir" "use --out-dir=<path>"
+        return 1
         ;;
       --file=*)
         slice_handoff_file="${arg#--file=}"
@@ -271,13 +336,122 @@ slice_handoff_main() {
   slice_handoff_validate_file || return 1
 
   mkdir -p "${TMPDIR:-$HOME/.cache}" || return 1
+  slice_handoff_prompt_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-prompt.XXXXXX")" || return 1
   slice_handoff_pr_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body.XXXXXX")" || return 1
   trap 'slice_handoff_cleanup_temp_files' EXIT INT TERM
 
   slice_handoff_validate_handoff || return 1
 
+  if [ -n "$slice_handoff_out_dir" ]; then
+    slice_handoff_out_dir_abs="$(
+      python3 - "$slice_handoff_out_dir" "$slice_handoff_repo_root" <<'PY'
+from pathlib import Path
+import sys
+
+out_dir = Path(sys.argv[1]).expanduser().resolve(strict=False)
+repo_root = Path(sys.argv[2]).resolve(strict=True)
+
+try:
+    out_dir.relative_to(repo_root)
+except ValueError:
+    pass
+else:
+    print('fail: out-dir must be outside the repo root', file=sys.stderr)
+    print('fix: choose a directory outside the current repo root', file=sys.stderr)
+    raise SystemExit(1)
+
+print(out_dir)
+PY
+    )" || return 1
+
+    if ! mkdir -p "$slice_handoff_out_dir_abs"; then
+      slice_handoff_fail "unable to create out-dir: $slice_handoff_out_dir_abs" "fix filesystem permissions or choose a writable directory outside the repo root"
+      return 1
+    fi
+
+    slice_handoff_out_dir_prompt="$slice_handoff_out_dir_abs/codex-prompt.md"
+    slice_handoff_out_dir_summary="$slice_handoff_out_dir_abs/slice-handoff-summary.txt"
+    slice_handoff_out_dir_pr_body=""
+    slice_handoff_out_dir_prompt_tmp=""
+    slice_handoff_out_dir_summary_tmp=""
+    slice_handoff_out_dir_pr_body_tmp=""
+
+    if ! slice_handoff_out_dir_prompt_tmp="$(mktemp "$slice_handoff_out_dir_abs/.codex-prompt.XXXXXX")"; then
+      slice_handoff_fail "unable to create codex prompt artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+    if ! cp -- "$slice_handoff_prompt_file" "$slice_handoff_out_dir_prompt_tmp"; then
+      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp"
+      slice_handoff_fail "unable to write codex prompt artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
+    if [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
+      slice_handoff_out_dir_pr_body="$slice_handoff_out_dir_abs/pr-body.md"
+      if ! slice_handoff_out_dir_pr_body_tmp="$(mktemp "$slice_handoff_out_dir_abs/.pr-body.XXXXXX")"; then
+        slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp"
+        slice_handoff_fail "unable to create PR body artifact" "fix filesystem permissions and rerun slice-handoff"
+        return 1
+      fi
+      if ! cp -- "$slice_handoff_pr_body_file" "$slice_handoff_out_dir_pr_body_tmp"; then
+        slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp"
+        slice_handoff_fail "unable to write PR body artifact" "fix filesystem permissions and rerun slice-handoff"
+        return 1
+      fi
+    fi
+
+    if ! slice_handoff_out_dir_summary_tmp="$(mktemp "$slice_handoff_out_dir_abs/.slice-handoff-summary.XXXXXX")"; then
+      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp"
+      slice_handoff_fail "unable to create summary artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
+    {
+      printf 'schema=repo-automation-slice-handoff/v1\n'
+      printf 'branch=%s\n' "$slice_handoff_branch"
+      printf 'title=%s\n' "$slice_handoff_title"
+      printf 'codex_profile=%s\n' "$slice_handoff_codex_profile"
+      printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
+      printf 'commit_message=%s\n' "$slice_handoff_commit_message"
+      printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
+      printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
+    } >"$slice_handoff_out_dir_summary_tmp" || {
+      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_summary_tmp"
+      slice_handoff_fail "unable to write summary artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    }
+
+    if ! mv -f -- "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_prompt"; then
+      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_summary_tmp"
+      slice_handoff_fail "unable to finalize codex prompt artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
+    if [ -n "$slice_handoff_out_dir_pr_body" ]; then
+      if ! mv -f -- "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_pr_body"; then
+        slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_summary_tmp" "$slice_handoff_out_dir_prompt"
+        slice_handoff_fail "unable to finalize PR body artifact" "fix filesystem permissions and rerun slice-handoff"
+        return 1
+      fi
+    fi
+
+    if ! mv -f -- "$slice_handoff_out_dir_summary_tmp" "$slice_handoff_out_dir_summary"; then
+      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_summary_tmp" "$slice_handoff_out_dir_prompt" "$slice_handoff_out_dir_pr_body"
+      slice_handoff_fail "unable to finalize summary artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+  fi
+
   if [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'
+    if [ -n "$slice_handoff_out_dir_abs" ]; then
+      printf 'out_dir=%s\n' "$slice_handoff_out_dir_abs"
+      printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
+      if [ -n "$slice_handoff_out_dir_pr_body" ]; then
+        printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
+      fi
+      printf 'summary_path=%s\n' "$slice_handoff_out_dir_summary"
+    fi
   fi
   return 0
 }

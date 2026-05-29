@@ -56,6 +56,13 @@ smoke_slice_handoff_assert_error_shape() {
     grep -Fxq "fix: $fix" "$stderr_file"
 }
 
+smoke_slice_handoff_assert_text_file() {
+  local path="$1"
+  local expected="$2"
+
+  [ "$(cat "$path" 2>/dev/null || true)" = "$expected" ]
+}
+
 smoke_slice_handoff_run() {
   local stdout_file="$1"
   local stderr_file="$2"
