@@ -8,6 +8,14 @@ The first implementation mode is `--plan-only`.
 
 `--plan-only` validates the handoff and may generate local artifacts, but it does not run Codex, create branches, commit, push, create PRs, watch CI, merge, delete branches, tag, release, publish, or write session metadata into tracked repo files.
 
+Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
+
+- `codex-prompt.md`
+- `slice-handoff-summary.txt`
+- `pr-body.md` when `submit_mode: repo-flow-submit-all`
+
+The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set.
+
 ## Envelope and payloads
 
 - envelope: branch, title, `codex_profile`, `commit_message`, submit mode, watch/timeout fields, and prompt preset identifiers

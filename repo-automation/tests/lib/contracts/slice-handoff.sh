@@ -10,6 +10,42 @@ smoke_slice_handoff_script() {
   printf '%s/repo-automation/bin/slice-handoff' "$smoke_repo_root"
 }
 
+smoke_slice_handoff_assert_metadata() {
+  python3 - "$smoke_repo_root/repo-automation/helper-metadata.json" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata_path = pathlib.Path(sys.argv[1])
+data = json.loads(metadata_path.read_text(encoding='utf-8'))
+for helper in data.get('helpers', []):
+    if not isinstance(helper, dict):
+        continue
+    if helper.get('name') != 'slice-handoff':
+        continue
+    checks = [
+        ('path', 'repo-automation/bin/slice-handoff'),
+        ('writes_files', True),
+        ('artifact_helper', True),
+        ('writes_git', False),
+        ('uses_github', False),
+        ('supports_json', False),
+    ]
+    mismatches = [
+        f"{key}={helper.get(key)!r} expected {expected!r}"
+        for key, expected in checks
+        if helper.get(key) != expected
+    ]
+    if mismatches:
+        print('fail: slice-handoff metadata mismatch: ' + '; '.join(mismatches), file=sys.stderr)
+        sys.exit(1)
+    sys.exit(0)
+
+print('fail: missing slice-handoff metadata object', file=sys.stderr)
+sys.exit(1)
+PY
+}
+
 smoke_slice_handoff_write_file() {
   local path="$1"
   local branch="$2"
@@ -54,6 +90,13 @@ smoke_slice_handoff_assert_error_shape() {
   [ "$(wc -l < "$stderr_file" | tr -d '[:space:]')" = "2" ] &&
     grep -Fxq "fail: $reason" "$stderr_file" &&
     grep -Fxq "fix: $fix" "$stderr_file"
+}
+
+smoke_slice_handoff_assert_text_file() {
+  local path="$1"
+  local expected="$2"
+
+  [ "$(cat "$path" 2>/dev/null || true)" = "$expected" ]
 }
 
 smoke_slice_handoff_run() {
