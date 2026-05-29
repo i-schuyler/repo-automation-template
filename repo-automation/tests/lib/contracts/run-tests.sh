@@ -61,6 +61,16 @@ smoke_check_run_tests_contract() {
   local run_tests_timeout_format_stderr="$smoke_test_base/run-tests-timeout-format-$$.stderr"
   local run_tests_timeout_missing_stderr="$smoke_test_base/run-tests-timeout-missing-$$.stderr"
   local run_tests_timeout_empty_stderr="$smoke_test_base/run-tests-timeout-empty-$$.stderr"
+  local run_tests_smoke_timeout_format_stderr="$smoke_test_base/run-tests-smoke-timeout-format-$$.stderr"
+  local run_tests_smoke_timeout_missing_stderr="$smoke_test_base/run-tests-smoke-timeout-missing-$$.stderr"
+  local run_tests_smoke_timeout_empty_stderr="$smoke_test_base/run-tests-smoke-timeout-empty-$$.stderr"
+  local run_tests_smoke_timeout_zero_stderr="$smoke_test_base/run-tests-smoke-timeout-zero-$$.stderr"
+  local run_tests_smoke_timeout_word_stderr="$smoke_test_base/run-tests-smoke-timeout-word-$$.stderr"
+  local run_tests_smoke_timeout_stub_dir="$smoke_test_base/run-tests-smoke-timeout-stub-$$"
+  local run_tests_smoke_timeout_stub_log="$smoke_test_base/run-tests-smoke-timeout-stub-$$.args"
+  local run_tests_smoke_timeout_out="$smoke_test_base/run-tests-smoke-timeout-$$.txt"
+  local run_tests_smoke_timeout_err="$smoke_test_base/run-tests-smoke-timeout-$$.stderr"
+  local run_tests_smoke_timeout_log="$smoke_test_base/run-tests-smoke-timeout-$$.log"
   local run_tests_log_file_format_stderr="$smoke_test_base/run-tests-log-file-format-$$.stderr"
   local run_tests_log_file_missing_stderr="$smoke_test_base/run-tests-log-file-missing-$$.stderr"
   local run_tests_log_file_empty_stderr="$smoke_test_base/run-tests-log-file-empty-$$.stderr"
@@ -104,6 +114,7 @@ smoke_check_run_tests_contract() {
     repo-automation/bin/run-tests --help > "$run_tests_help"
   ) && \
     grep -Fq -- '--timeout=<seconds>' "$run_tests_help" && \
+    grep -Fq -- '--smoke-timeout=<seconds>' "$run_tests_help" && \
     grep -Fq -- '--log-file=<path>' "$run_tests_help" && \
     grep -Fq -- '--json-level=fail|warn|all' "$run_tests_help" && \
     ! grep -Fq -- '--timeout SECONDS' "$run_tests_help" && \
@@ -897,6 +908,94 @@ EOF
     status=1
   fi
 
+  mkdir -p "$run_tests_smoke_timeout_stub_dir" || return 1
+  cat > "$run_tests_smoke_timeout_stub_dir/timeout" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+: "${RUN_TESTS_TIMEOUT_STUB_LOG:?}"
+printf '%s\n' "${1:-}" >> "$RUN_TESTS_TIMEOUT_STUB_LOG"
+case "${RUN_TESTS_TIMEOUT_STUB_MODE:-pass}" in
+  pass)
+    exit 0
+    ;;
+  expire)
+    printf 'RUNNING: smoke:late-contract\n'
+    exit 124
+    ;;
+  *)
+    printf 'unexpected timeout stub mode\n' >&2
+    exit 2
+    ;;
+esac
+EOF
+  chmod +x "$run_tests_smoke_timeout_stub_dir/timeout" || return 1
+
+  : > "$run_tests_smoke_timeout_stub_log"
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+  ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
+    grep -Fxq '300s' "$run_tests_smoke_timeout_stub_log"; then
+    test_pass "run-tests defaults outer smoke timeout to 300 seconds"
+  else
+    test_fail "run-tests defaults outer smoke timeout to 300 seconds"
+    status=1
+  fi
+
+  : > "$run_tests_smoke_timeout_stub_log"
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet --smoke-timeout=7 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+  ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
+    grep -Fxq '7s' "$run_tests_smoke_timeout_stub_log"; then
+    test_pass "run-tests accepts --smoke-timeout and applies it to smoke"
+  else
+    test_fail "run-tests accepts --smoke-timeout and applies it to smoke"
+    status=1
+  fi
+
+  : > "$run_tests_smoke_timeout_stub_log"
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet --timeout=9 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+  ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
+    grep -Fxq '9s' "$run_tests_smoke_timeout_stub_log"; then
+    test_pass "run-tests applies explicit --timeout to smoke when smoke-timeout is omitted"
+  else
+    test_fail "run-tests applies explicit --timeout to smoke when smoke-timeout is omitted"
+    status=1
+  fi
+
+  : > "$run_tests_smoke_timeout_stub_log"
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet --timeout=9 --smoke-timeout=11 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+  ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
+    grep -Fxq '11s' "$run_tests_smoke_timeout_stub_log" &&
+    ! grep -Fxq '9s' "$run_tests_smoke_timeout_stub_log"; then
+    test_pass "run-tests --smoke-timeout overrides smoke timeout when both timeout flags are supplied"
+  else
+    test_fail "run-tests --smoke-timeout overrides smoke timeout when both timeout flags are supplied"
+    status=1
+  fi
+
+  : > "$run_tests_smoke_timeout_stub_log"
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" RUN_TESTS_TIMEOUT_STUB_MODE=expire repo-automation/bin/run-tests --smoke --quiet --smoke-timeout=1 --log-file="$run_tests_smoke_timeout_log" > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+  ); then
+    test_fail "run-tests reports outer smoke suite timeout blame"
+    status=1
+  elif grep -Fq 'fail: repo-automation/tests/smoke.sh - smoke suite timed out after 1s' "$run_tests_smoke_timeout_out" &&
+    ! grep -Fq 'timed out during smoke:late-contract' "$run_tests_smoke_timeout_out" &&
+    ! grep -Fq 'fail: repo-automation/tests/smoke.sh - timed out after 1s' "$run_tests_smoke_timeout_out"; then
+    test_pass "run-tests reports outer smoke suite timeout blame"
+  else
+    test_fail "run-tests reports outer smoke suite timeout blame"
+    status=1
+  fi
+
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/run-tests --timeout 200 >/dev/null 2> "$run_tests_timeout_format_stderr"
@@ -933,6 +1032,71 @@ EOF
     test_pass "run-tests rejects empty --timeout value"
   else
     test_fail "run-tests rejects empty --timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --smoke-timeout 200 >/dev/null 2> "$run_tests_smoke_timeout_format_stderr"
+  ); then
+    test_fail "run-tests rejects --smoke-timeout <seconds>"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_smoke_timeout_format_stderr" "flag format not accepted" "--smoke-timeout" "use --smoke-timeout=<seconds>"; then
+    test_pass "run-tests rejects --smoke-timeout <seconds>"
+  else
+    test_fail "run-tests rejects --smoke-timeout <seconds>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --smoke-timeout >/dev/null 2> "$run_tests_smoke_timeout_missing_stderr"
+  ); then
+    test_fail "run-tests rejects missing --smoke-timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_smoke_timeout_missing_stderr" "missing flag value" "--smoke-timeout" "use --smoke-timeout=<seconds>"; then
+    test_pass "run-tests rejects missing --smoke-timeout value"
+  else
+    test_fail "run-tests rejects missing --smoke-timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --smoke-timeout= >/dev/null 2> "$run_tests_smoke_timeout_empty_stderr"
+  ); then
+    test_fail "run-tests rejects empty --smoke-timeout value"
+    status=1
+  elif smoke_assert_flag_error_shape "$run_tests_smoke_timeout_empty_stderr" "empty flag value" "--smoke-timeout" "use --smoke-timeout=<seconds>"; then
+    test_pass "run-tests rejects empty --smoke-timeout value"
+  else
+    test_fail "run-tests rejects empty --smoke-timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --smoke-timeout=0 >/dev/null 2> "$run_tests_smoke_timeout_zero_stderr"
+  ); then
+    test_fail "run-tests rejects non-positive --smoke-timeout value"
+    status=1
+  elif grep -Fxq 'STOP: invalid --smoke-timeout value: 0' "$run_tests_smoke_timeout_zero_stderr"; then
+    test_pass "run-tests rejects non-positive --smoke-timeout value"
+  else
+    test_fail "run-tests rejects non-positive --smoke-timeout value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/run-tests --smoke-timeout=soon >/dev/null 2> "$run_tests_smoke_timeout_word_stderr"
+  ); then
+    test_fail "run-tests rejects non-integer --smoke-timeout value"
+    status=1
+  elif grep -Fxq 'STOP: invalid --smoke-timeout value: soon' "$run_tests_smoke_timeout_word_stderr"; then
+    test_pass "run-tests rejects non-integer --smoke-timeout value"
+  else
+    test_fail "run-tests rejects non-integer --smoke-timeout value"
     status=1
   fi
 
@@ -1027,7 +1191,8 @@ EOF
     status=1
   fi
 
-  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_temp_disk_backup" "$run_tests_missing_temp_disk_out" "$run_tests_missing_temp_disk_err" "$run_tests_invalid_clean_stale_out" "$run_tests_invalid_clean_stale_err" "$run_tests_secret_config_marker" "$run_tests_secret_config_json" "$run_tests_secret_config_json_err" "$run_tests_secret_config_explain" "$run_tests_secret_config_explain_err" "$run_tests_secret_config_quiet" "$run_tests_secret_config_quiet_err" "$run_tests_secret_config_source_out" "$run_tests_secret_config_source_err" "$run_tests_secret_config_source_marker" >/dev/null 2>&1 || true
+  rm -f "$run_tests_help" "$run_tests_default_out" "$run_tests_quiet_out" "$run_tests_quiet_err" "$run_tests_explain_out" "$run_tests_json" "$run_tests_json_err" "$run_tests_log_file" "$run_tests_no_log_file" "$run_tests_no_log_out" "$run_tests_failure_log" "$run_tests_failure_out" "$run_tests_timeout_format_stderr" "$run_tests_timeout_missing_stderr" "$run_tests_timeout_empty_stderr" "$run_tests_smoke_timeout_format_stderr" "$run_tests_smoke_timeout_missing_stderr" "$run_tests_smoke_timeout_empty_stderr" "$run_tests_smoke_timeout_zero_stderr" "$run_tests_smoke_timeout_word_stderr" "$run_tests_smoke_timeout_stub_log" "$run_tests_smoke_timeout_out" "$run_tests_smoke_timeout_err" "$run_tests_smoke_timeout_log" "$run_tests_log_file_format_stderr" "$run_tests_log_file_missing_stderr" "$run_tests_log_file_empty_stderr" "$run_tests_json_level_format_stderr" "$run_tests_json_level_missing_stderr" "$run_tests_json_level_empty_stderr" "$run_tests_unknown_stderr" "$run_tests_temp_disk_backup" "$run_tests_missing_temp_disk_out" "$run_tests_missing_temp_disk_err" "$run_tests_invalid_clean_stale_out" "$run_tests_invalid_clean_stale_err" "$run_tests_secret_config_marker" "$run_tests_secret_config_json" "$run_tests_secret_config_json_err" "$run_tests_secret_config_explain" "$run_tests_secret_config_explain_err" "$run_tests_secret_config_quiet" "$run_tests_secret_config_quiet_err" "$run_tests_secret_config_source_out" "$run_tests_secret_config_source_err" "$run_tests_secret_config_source_marker" >/dev/null 2>&1 || true
+  rm -rf "$run_tests_smoke_timeout_stub_dir" >/dev/null 2>&1 || true
   return "$status"
 }
 
