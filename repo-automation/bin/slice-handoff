@@ -19,6 +19,7 @@ slice_handoff_out_dir_abs=""
 slice_handoff_out_dir_prompt=""
 slice_handoff_out_dir_summary=""
 slice_handoff_out_dir_pr_body=""
+slice_handoff_out_dir_review_request=""
 slice_handoff_branch=""
 slice_handoff_title=""
 slice_handoff_codex_profile=""
@@ -26,6 +27,7 @@ slice_handoff_commit_message=""
 slice_handoff_submit_mode=""
 slice_handoff_prompt_file=""
 slice_handoff_pr_body_file=""
+slice_handoff_review_request_file=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
@@ -43,6 +45,9 @@ slice_handoff_cleanup_temp_files() {
   fi
   if [ -n "$slice_handoff_pr_body_file" ]; then
     rm -f -- "$slice_handoff_pr_body_file" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$slice_handoff_review_request_file" ]; then
+    rm -f -- "$slice_handoff_review_request_file" >/dev/null 2>&1 || true
   fi
 }
 
@@ -89,7 +94,7 @@ slice_handoff_validate_handoff() {
   local validation_output=""
 
   validation_output="$(
-    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" <<'PY'
+    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" "$slice_handoff_review_request_file" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -143,6 +148,7 @@ def reject_lifecycle_instruction(line: str) -> None:
 path = Path(sys.argv[1])
 prompt_path = Path(sys.argv[2])
 pr_body_path = Path(sys.argv[3])
+review_request_path = Path(sys.argv[4])
 
 try:
     text = path.read_text(encoding='utf-8')
@@ -253,6 +259,19 @@ for phrase in blocked_phrases:
 for raw_line in prompt_lines:
     reject_lifecycle_instruction(raw_line)
 
+default_review_request = (
+    'Please review this PR before merge:\n'
+    '\n'
+    '<PR_URL>\n'
+    '\n'
+    f'Slice: {title}\n'
+    f'Branch: {branch}\n'
+    '\n'
+    'Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.\n'
+    '\n'
+    'Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describe one same-branch repair direction.'
+)
+
 if submit_mode == 'repo-flow-submit-all':
     if body_index is None:
         fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
@@ -266,6 +285,18 @@ if submit_mode == 'repo-flow-submit-all':
         fail('unable to write PR body temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
 else:
     pr_body_path.write_text('', encoding='utf-8')
+
+if review_index is not None:
+    review_request_text = '\n'.join(lines[review_index + 1:])
+    if not review_request_text.strip():
+        fail('missing PR Review Request payload', 'add text under ## PR Review Request')
+else:
+    review_request_text = default_review_request
+
+try:
+    review_request_path.write_text(review_request_text + '\n', encoding='utf-8')
+except OSError as exc:
+    fail('unable to write PR review request temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
 
 try:
     prompt_path.write_text(prompt_text + '\n', encoding='utf-8')
@@ -379,6 +410,7 @@ slice_handoff_main() {
   mkdir -p "${TMPDIR:-$HOME/.cache}" || return 1
   slice_handoff_prompt_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-prompt.XXXXXX")" || return 1
   slice_handoff_pr_body_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body.XXXXXX")" || return 1
+  slice_handoff_review_request_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-review-request.XXXXXX")" || return 1
   trap 'slice_handoff_cleanup_temp_files' EXIT INT TERM
 
   slice_handoff_validate_handoff || return 1
@@ -413,9 +445,11 @@ PY
     slice_handoff_out_dir_prompt="$slice_handoff_out_dir_abs/codex-prompt.md"
     slice_handoff_out_dir_summary="$slice_handoff_out_dir_abs/slice-handoff-summary.txt"
     slice_handoff_out_dir_pr_body=""
+    slice_handoff_out_dir_review_request="$slice_handoff_out_dir_abs/review-request.txt"
     slice_handoff_out_dir_prompt_tmp=""
     slice_handoff_out_dir_summary_tmp=""
     slice_handoff_out_dir_pr_body_tmp=""
+    slice_handoff_out_dir_review_request_tmp=""
 
     if ! slice_handoff_out_dir_prompt_tmp="$(mktemp "$slice_handoff_out_dir_abs/.codex-prompt.XXXXXX")"; then
       slice_handoff_fail "unable to create codex prompt artifact" "fix filesystem permissions and rerun slice-handoff"
@@ -441,8 +475,36 @@ PY
       fi
     fi
 
+    if ! slice_handoff_out_dir_review_request_tmp="$(mktemp "$slice_handoff_out_dir_abs/.review-request.XXXXXX")"; then
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
+      slice_handoff_fail "unable to create review request artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+    if ! cp -- "$slice_handoff_review_request_file" "$slice_handoff_out_dir_review_request_tmp"; then
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
+      slice_handoff_fail "unable to write review request artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
     if ! slice_handoff_out_dir_summary_tmp="$(mktemp "$slice_handoff_out_dir_abs/.slice-handoff-summary.XXXXXX")"; then
-      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp"
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
       slice_handoff_fail "unable to create summary artifact" "fix filesystem permissions and rerun slice-handoff"
       return 1
     fi
@@ -456,28 +518,71 @@ PY
       printf 'commit_message=%s\n' "$slice_handoff_commit_message"
       printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
       printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
+      printf 'review_request_path=%s\n' "$slice_handoff_out_dir_review_request"
     } >"$slice_handoff_out_dir_summary_tmp" || {
-      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_summary_tmp"
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
       slice_handoff_fail "unable to write summary artifact" "fix filesystem permissions and rerun slice-handoff"
       return 1
     }
 
     if ! mv -f -- "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_prompt"; then
-      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp" "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_summary_tmp"
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
       slice_handoff_fail "unable to finalize codex prompt artifact" "fix filesystem permissions and rerun slice-handoff"
       return 1
     fi
 
     if [ -n "$slice_handoff_out_dir_pr_body" ]; then
       if ! mv -f -- "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_pr_body"; then
-        slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_pr_body_tmp" "$slice_handoff_out_dir_summary_tmp" "$slice_handoff_out_dir_prompt"
+        slice_handoff_cleanup_out_dir_temp_files \
+          "$slice_handoff_out_dir_prompt_tmp" \
+          "$slice_handoff_out_dir_pr_body_tmp" \
+          "$slice_handoff_out_dir_review_request_tmp" \
+          "$slice_handoff_out_dir_summary_tmp" \
+          "$slice_handoff_out_dir_prompt" \
+          "$slice_handoff_out_dir_pr_body" \
+          "$slice_handoff_out_dir_review_request"
         slice_handoff_fail "unable to finalize PR body artifact" "fix filesystem permissions and rerun slice-handoff"
         return 1
       fi
     fi
 
+    if ! mv -f -- "$slice_handoff_out_dir_review_request_tmp" "$slice_handoff_out_dir_review_request"; then
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
+      slice_handoff_fail "unable to finalize review request artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
     if ! mv -f -- "$slice_handoff_out_dir_summary_tmp" "$slice_handoff_out_dir_summary"; then
-      slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_summary_tmp" "$slice_handoff_out_dir_prompt" "$slice_handoff_out_dir_pr_body"
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request" \
+        "$slice_handoff_out_dir_summary"
       slice_handoff_fail "unable to finalize summary artifact" "fix filesystem permissions and rerun slice-handoff"
       return 1
     fi
@@ -491,6 +596,7 @@ PY
       if [ -n "$slice_handoff_out_dir_pr_body" ]; then
         printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
       fi
+      printf 'review_request_path=%s\n' "$slice_handoff_out_dir_review_request"
       printf 'summary_path=%s\n' "$slice_handoff_out_dir_summary"
     fi
   fi
