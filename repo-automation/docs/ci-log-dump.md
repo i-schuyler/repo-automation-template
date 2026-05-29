@@ -4,13 +4,17 @@
 
 ## What It Does
 
-- resolves the target repo from `--repo=OWNER/REPO` or the current repo's `origin` remote
-- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by PR head branch, or by the current branch
+- resolves the target repo from `--repo=OWNER/REPO` or the current repo's GitHub `origin` remote, including common HTTPS, SSH, and GitHub SSH-alias forms
+- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by PR head SHA/branch, or by the current branch
 - defaults to failed-only log output
 - writes the log to the configured output directory
 - prints a human summary or machine JSON
 
 `--latest-failed` selects the most recent failed workflow run for the target repo regardless of branch.
+
+For `--pr=<number>`, the helper resolves the PR head branch and, when supported by the local GitHub CLI, the PR head SHA. It prefers failed `pull_request` runs for that SHA, then falls back to branch/event lookup, then to failed runs filtered by the PR head SHA. It does not select an unrelated failed run when the PR head SHA is known.
+
+For `--run-id=<id>`, the helper treats the run id as authoritative and fetches that run directly without PR or branch lookup.
 
 ## Usage
 
@@ -37,3 +41,5 @@ The saved file name uses the format `actions_run_<run-id>_<timestamp>.log`.
 `--machine-json` emits a single JSON object with the repo, PR number when present, run id, saved path, file size, and tail excerpt. With `--first-failure`, it also includes `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`.
 
 `--quiet` suppresses clean-success output. `--explain` prints the detailed human summary and ends with a final summary block even on early STOP. `--machine-json` stays JSON-only. Default success is the saved path only.
+
+When no failed run is found for a PR, STOP output includes whether the PR head branch and head SHA were resolved and which lookup modes were attempted.
