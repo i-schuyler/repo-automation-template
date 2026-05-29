@@ -129,9 +129,9 @@ def reject_lifecycle_instruction(line: str) -> None:
 
     checks = [
         (r'^(?:please\s+)?create a pr\b', 'create a pr'),
-        (r'^(?:please\s+)?merge this\b', 'merge this'),
-        (r'^(?:please\s+)?run repo-flow submit\b', 'repo-flow submit'),
-        (r'^(?:please\s+)?checkout main\b', 'checkout'),
+        (r'^(?:please\s+)?merge\b', 'merge'),
+        (r'^(?:please\s+)?(?:(?:run|git)\s+)?(?:repo-automation/bin/)?repo-flow submit\b', 'repo-flow submit'),
+        (r'^(?:please\s+)?(?:(?:git\s+)?checkout)\b', 'checkout'),
     ]
     for pattern, phrase in checks:
         if re.match(pattern, normalized):

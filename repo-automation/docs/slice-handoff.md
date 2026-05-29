@@ -13,9 +13,10 @@ Use `--out-dir=<path>` to write normalized local artifacts outside the repo root
 - `codex-prompt.md`
 - `slice-handoff-summary.txt`
 - `pr-body.md` when `submit_mode: repo-flow-submit-all`
-- `## PR Review Request` is recognized as a boundary but is not emitted as an artifact yet
 
 The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set.
+
+`## PR Review Request` is recognized as a boundary but is not emitted as an artifact yet.
 
 ## Envelope and payloads
 

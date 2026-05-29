@@ -422,7 +422,35 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge this.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge" "Codex Prompt contains lifecycle instruction: merge this" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-this" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+    :
+  else
+    status=1
+  fi
+
+  if (
+    python3 - "$valid_none_file" "$lifecycle_file" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge the PR.', 1)
+Path(sys.argv[2]).write_text(text, encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-pr" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+    :
+  else
+    status=1
+  fi
+
+  if (
+    python3 - "$valid_none_file" "$lifecycle_file" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge after CI passes.', 1)
+Path(sys.argv[2]).write_text(text, encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-after-ci" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
     :
   else
     status=1
@@ -465,6 +493,48 @@ text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slic
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
   ) && smoke_slice_handoff_expect_failure "lifecycle-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+    :
+  else
+    status=1
+  fi
+
+  if (
+    python3 - "$valid_none_file" "$lifecycle_file" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Checkout feature/foo.', 1)
+Path(sys.argv[2]).write_text(text, encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout-feature" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+    :
+  else
+    status=1
+  fi
+
+  if (
+    python3 - "$valid_none_file" "$lifecycle_file" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'git checkout main', 1)
+Path(sys.argv[2]).write_text(text, encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_failure "lifecycle-git-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+    :
+  else
+    status=1
+  fi
+
+  if (
+    python3 - "$valid_none_file" "$lifecycle_file" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'repo-flow submit --all', 1)
+Path(sys.argv[2]).write_text(text, encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_failure "lifecycle-submit-all" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
     :
   else
     status=1
