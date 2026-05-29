@@ -43,6 +43,8 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 | `manifest-registration-drift` | 3 | mitigated-monitoring | PR #183 | New repo-automation docs file was indexed but not added to `repo-automation/manifest.json` or `repo-automation/bin/repo-automation-install`, causing CI/starter-template readiness failure. Guardrails now include `managed-file-check`, `managed-file-add`, `version-consistency.sh` manifest-vs-installer coverage, and the AGENTS.md reminder. | keep using the existing guardrails when repo-automation files change; revisit only if drift recurs |
 | `actions-checkout-node24` | 0 | resolved | PR #185 | CI checkout updated from `actions/checkout@v4` to `actions/checkout@v6` to clear the Node.js 20 compatibility warning. | none unless checkout compatibility warnings recur |
 | `ci-evidence-pr-lookup-brittle` | 3 | mitigated-monitoring | PR #189 | slice-handoff-plan-validator CI failed but `ci-log-dump --pr` could not recover the failed PR run; repo inference and PR run lookup were too brittle. | keep ChatGPT/operator workflows evidence-first: resolve CI evidence before Codex repairs, using run-id fallback when needed |
+| `slice-handoff-smoke-fixture-coverage` | 3 | mitigated-monitoring | PR #189 | helper metadata referenced slice-handoff, but smoke fixture did not copy/chmod it into the temp repo. | keep metadata-driven helper-bin fixture copying in place for new public helpers |
+| `smoke-registry-contract-path-guard` | 2 | mitigated-monitoring | PR #189 | metadata `contract_test_path` can drift from the full smoke registry. | keep validating repeated registration surfaces instead of relying on manual updates |
 
 ## Per-Slice Signals
 
@@ -56,6 +58,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-05-28 / managed-file-guardrail-calibration / ids=manifest-registration-drift / score_delta=-2 / signal=surfaced repo-automation managed-file guardrails in AGENTS.md and recalibrated drift from active blocker to monitored
 - 2026-05-29 / slice-handoff-plan-only-validator / ids=none / score_delta=0 / signal=implemented non-executing slice-handoff plan-only helper with contract coverage
 - 2026-05-29 / PR #189 / slice-handoff-plan-validator / ids=ci-evidence-pr-lookup-brittle / score_delta=+3 / issue=CI failed but ci-log-dump --pr could not recover the failed PR run; repo inference and PR run lookup were too brittle / fix=hardened ci-log-dump repo inference and PR run lookup, then repaired any proven PR #189 failure / lesson=ChatGPT investigates CI evidence first; Codex repairs from proven evidence
+- 2026-05-29 / slice-handoff-smoke-fixture-coverage / ids=slice-handoff-smoke-fixture-coverage|smoke-registry-contract-path-guard / score_delta=+5 / issue=helper metadata referenced slice-handoff, but smoke fixture did not copy/chmod it into the temp repo; metadata contract_test_path can drift from full smoke registry / fix=metadata-driven helper-bin smoke fixture copying plus slice-handoff registry coverage and a metadata contract path guard / lesson=new public helpers need metadata, managed files, installer, shellcheck parity, smoke fixture, and smoke registry coverage; derive or validate repeated registration surfaces
 
 ## Maintenance Notes
 

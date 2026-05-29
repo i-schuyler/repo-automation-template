@@ -32,7 +32,7 @@
       "name": "automation-freshness",
       "path": "repo-automation/bin/automation-freshness",
       "doc_path": "repo-automation/docs/managed-files.md",
-      "contract_test_path": "repo-automation/tests/lib/smoke-common.sh",
+      "contract_test_path": "repo-automation/tests/contracts/automation-freshness.sh",
       "kind": "script",
       "public": true,
       "phone_safe": true,
