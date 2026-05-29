@@ -16,6 +16,8 @@ Use `--out-dir=<path>` to write normalized local artifacts outside the repo root
 
 The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set.
 
+`## PR Review Request` is recognized as a boundary but is not emitted as an artifact yet.
+
 ## Envelope and payloads
 
 - envelope: branch, title, `codex_profile`, `commit_message`, submit mode, watch/timeout fields, and prompt preset identifiers
