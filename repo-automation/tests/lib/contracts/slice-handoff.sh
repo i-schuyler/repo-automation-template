@@ -46,6 +46,23 @@ sys.exit(1)
 PY
 }
 
+smoke_slice_handoff_assert_planned_route() {
+  python3 - "$smoke_repo_root/repo-automation/helper-metadata.json" <<'PY'
+import json
+import pathlib
+import sys
+
+metadata_path = pathlib.Path(sys.argv[1])
+data = json.loads(metadata_path.read_text(encoding='utf-8'))
+for entry in data.get('planned_routes', []):
+    if isinstance(entry, dict) and entry.get('name') == 'slice-handoff dry-run' and entry.get('route') == 'slice-handoff --dry-run':
+        sys.exit(0)
+
+print('fail: missing slice-handoff dry-run planned route row', file=sys.stderr)
+sys.exit(1)
+PY
+}
+
 smoke_slice_handoff_write_file() {
   local path="$1"
   local branch="$2"

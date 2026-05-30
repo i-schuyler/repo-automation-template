@@ -48,6 +48,7 @@ The installer writes config and docs into the target repo only. It does not use 
 
 `repo-automation/bin/repo-automation-install` generates downstream `.repo-automation.conf` with the same public-safe key shape.
 Unsupported remote origins normalize `EXPECTED_REMOTE_URL` to an empty string.
+Local-only `.repo-automation.local.conf` overrides may set `EXPECTED_REMOTE_URL` to a safe GitHub SSH host alias or to an empty string for local-clone use.
 
 ## Validation behavior
 

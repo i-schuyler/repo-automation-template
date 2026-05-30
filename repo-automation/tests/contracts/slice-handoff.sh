@@ -73,6 +73,13 @@ smoke_check_slice_handoff_contract() {
     status=1
   fi
 
+  if smoke_slice_handoff_assert_planned_route; then
+    test_pass "slice-handoff dry-run planned route matches helper metadata"
+  else
+    test_fail "slice-handoff dry-run planned route matches helper metadata"
+    status=1
+  fi
+
   submit_body="$(cat <<'EOF'
 ## Scope
 
@@ -148,19 +155,19 @@ EOF
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
 
-  if smoke_slice_handoff_expect_success "valid-none" "pass" "" --file="$valid_none_file" --plan-only; then
+  if smoke_slice_handoff_expect_success "valid-none" "pass" "" --file="$valid_none_file" --dry-run; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_success "quiet-success" "" "" --file="$valid_none_file" --plan-only --quiet; then
+  if smoke_slice_handoff_expect_success "quiet-success" "" "" --file="$valid_none_file" --dry-run --quiet; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_success "valid-submit" "pass" "" --file="$valid_submit_file" --plan-only; then
+  if smoke_slice_handoff_expect_success "valid-submit" "pass" "" --file="$valid_submit_file" --dry-run; then
     :
   else
     status=1
@@ -168,7 +175,7 @@ EOF
 
   if (
     rm -rf -- "$valid_none_out_dir" &&
-      smoke_slice_handoff_expect_success "out-dir-none" "$expected_none_stdout" "" --file="$valid_none_file" --plan-only --out-dir="$valid_none_out_dir" &&
+      smoke_slice_handoff_expect_success "out-dir-none" "$expected_none_stdout" "" --file="$valid_none_file" --dry-run --out-dir="$valid_none_out_dir" &&
       smoke_slice_handoff_assert_text_file "$valid_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$valid_none_out_dir/review-request.txt" "$expected_default_review_request" &&
       smoke_slice_handoff_assert_text_file "$valid_none_out_dir/slice-handoff-summary.txt" "$expected_none_summary"
@@ -181,7 +188,7 @@ EOF
 
   if (
     rm -rf -- "$valid_submit_out_dir" &&
-      smoke_slice_handoff_expect_success "out-dir-submit" "$expected_submit_stdout" "" --file="$valid_submit_file" --plan-only --out-dir="$valid_submit_out_dir" &&
+      smoke_slice_handoff_expect_success "out-dir-submit" "$expected_submit_stdout" "" --file="$valid_submit_file" --dry-run --out-dir="$valid_submit_out_dir" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/pr-body.md" "$expected_submit_body" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/review-request.txt" "$expected_submit_default_review_request" &&
@@ -196,7 +203,7 @@ EOF
   if (
     rm -rf -- "$valid_submit_out_dir" &&
       smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
-      smoke_slice_handoff_expect_success "out-dir-submit-review-request" "$expected_explicit_review_stdout" "" --file="$valid_submit_file" --plan-only --out-dir="$valid_submit_out_dir" &&
+      smoke_slice_handoff_expect_success "out-dir-submit-review-request" "$expected_explicit_review_stdout" "" --file="$valid_submit_file" --dry-run --out-dir="$valid_submit_out_dir" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/pr-body.md" "$expected_submit_review_body" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/review-request.txt" "$review_request_text" &&
@@ -215,13 +222,13 @@ EOF
   if (
     rm -rf -- "$valid_quiet_out_dir" &&
       smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" "" "$review_request_text" &&
-      smoke_slice_handoff_run "$smoke_test_base/slice-handoff-quiet-out-review.out" "$smoke_test_base/slice-handoff-quiet-out-review.err" --file="$valid_none_file" --plan-only --quiet --out-dir="$valid_quiet_out_dir" &&
+      smoke_slice_handoff_run "$smoke_test_base/slice-handoff-quiet-out-review.out" "$smoke_test_base/slice-handoff-quiet-out-review.err" --file="$valid_none_file" --dry-run --quiet --out-dir="$valid_quiet_out_dir" &&
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out-review.out" ] &&
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out-review.err" ] &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/review-request.txt" "$review_request_text" &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/slice-handoff-summary.txt" "$expected_quiet_summary" &&
-      smoke_slice_handoff_expect_success "out-dir-none-review-request-stdout" "$expected_none_review_stdout" "" --file="$valid_none_file" --plan-only --out-dir="$valid_quiet_out_dir"
+      smoke_slice_handoff_expect_success "out-dir-none-review-request-stdout" "$expected_none_review_stdout" "" --file="$valid_none_file" --dry-run --out-dir="$valid_quiet_out_dir"
   ); then
     :
   else
@@ -232,7 +239,7 @@ EOF
   if (
     rm -rf -- "$valid_quiet_out_dir" &&
       smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" &&
-      smoke_slice_handoff_run "$smoke_test_base/slice-handoff-quiet-out.out" "$smoke_test_base/slice-handoff-quiet-out.err" --file="$valid_none_file" --plan-only --quiet --out-dir="$valid_quiet_out_dir" &&
+      smoke_slice_handoff_run "$smoke_test_base/slice-handoff-quiet-out.out" "$smoke_test_base/slice-handoff-quiet-out.err" --file="$valid_none_file" --dry-run --quiet --out-dir="$valid_quiet_out_dir" &&
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out.out" ] &&
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out.err" ] &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
@@ -247,7 +254,7 @@ EOF
 
   if (
     rm -rf -- "$inside_repo_out_dir" &&
-      smoke_slice_handoff_expect_failure "out-dir-inside-repo" "out-dir must be outside the repo root" "choose a directory outside the current repo root" --file="$valid_none_file" --plan-only --out-dir="$inside_repo_out_dir" &&
+      smoke_slice_handoff_expect_failure "out-dir-inside-repo" "out-dir must be outside the repo root" "choose a directory outside the current repo root" --file="$valid_none_file" --dry-run --out-dir="$inside_repo_out_dir" &&
       [ ! -e "$inside_repo_out_dir" ]
   ); then
     :
@@ -256,61 +263,67 @@ EOF
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "missing-file" "missing required --file" "use --file=<path> with a readable handoff file" --plan-only; then
+  if smoke_slice_handoff_expect_failure "missing-file" "missing required --file" "use --file=<path> with a readable handoff file" --dry-run; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "file-format" "missing flag value: --file" "use --file=<path>" --file "$valid_none_file" --plan-only; then
+  if smoke_slice_handoff_expect_failure "file-format" "missing flag value: --file" "use --file=<path>" --file "$valid_none_file" --dry-run; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "empty-file" "empty flag value: --file" "use --file=<path>" --file= --plan-only; then
+  if smoke_slice_handoff_expect_failure "empty-file" "empty flag value: --file" "use --file=<path>" --file= --dry-run; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "missing-out-dir-value" "missing flag value: --out-dir" "use --out-dir=<path>" --file="$valid_none_file" --plan-only --out-dir; then
+  if smoke_slice_handoff_expect_failure "missing-out-dir-value" "missing flag value: --out-dir" "use --out-dir=<path>" --file="$valid_none_file" --dry-run --out-dir; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "empty-out-dir" "empty flag value: --out-dir" "use --out-dir=<path>" --file="$valid_none_file" --plan-only --out-dir=; then
+  if smoke_slice_handoff_expect_failure "empty-out-dir" "empty flag value: --out-dir" "use --out-dir=<path>" --file="$valid_none_file" --dry-run --out-dir=; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "positional-out-dir" "unknown argument: out-dir" "run repo-automation/bin/slice-handoff --help" --file="$valid_none_file" --plan-only out-dir; then
+  if smoke_slice_handoff_expect_failure "positional-out-dir" "unknown argument: out-dir" "run repo-automation/bin/slice-handoff --help" --file="$valid_none_file" --dry-run out-dir; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "missing-plan-only" "missing required --plan-only" "pass --plan-only to validate the handoff without executing it" --file="$valid_none_file"; then
+  if smoke_slice_handoff_expect_failure "missing-dry-run" "missing required --dry-run" "pass --dry-run to validate the handoff without executing it" --file="$valid_none_file"; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "unknown-flag" "unknown flag: --whatever" "run repo-automation/bin/slice-handoff --help" --file="$valid_none_file" --plan-only --whatever; then
+  if smoke_slice_handoff_expect_failure "plan-only-reject" "unsupported flag: --plan-only" "use --dry-run" --file="$valid_none_file" --plan-only; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "execute-flag" "unsupported flag: --execute" "use --plan-only; execute mode is not implemented" --file="$valid_none_file" --plan-only --execute; then
+  if smoke_slice_handoff_expect_failure "unknown-flag" "unknown flag: --whatever" "run repo-automation/bin/slice-handoff --help" --file="$valid_none_file" --dry-run --whatever; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "submit-flag" "unsupported flag: --submit" "slice-handoff only accepts --plan-only for now" --file="$valid_none_file" --plan-only --submit=repo-flow-submit-all; then
+  if smoke_slice_handoff_expect_failure "execute-flag" "unsupported flag: --execute" "use --dry-run; execute mode is not implemented" --file="$valid_none_file" --dry-run --execute; then
+    :
+  else
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "submit-flag" "unsupported flag: --submit" "use --dry-run; slice-handoff does not implement submit behavior" --file="$valid_none_file" --dry-run --submit=repo-flow-submit-all; then
     :
   else
     status=1
@@ -325,7 +338,7 @@ source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 filtered = [line for line in source if not line.startswith('schema: ')]
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-schema" "missing schema" "set schema: repo-automation-slice-handoff/v1" --file="$missing_schema_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "missing-schema" "missing schema" "set schema: repo-automation-slice-handoff/v1" --file="$missing_schema_file" --dry-run; then
     :
   else
     status=1
@@ -339,7 +352,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('schema: repo-automation-slice-handoff/v1', 'schema: repo-automation-slice-handoff/v2', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "invalid-schema" "invalid schema" "set schema: repo-automation-slice-handoff/v1" --file="$invalid_schema_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "invalid-schema" "invalid schema" "set schema: repo-automation-slice-handoff/v1" --file="$invalid_schema_file" --dry-run; then
     :
   else
     status=1
@@ -354,7 +367,7 @@ source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 filtered = [line for line in source if not line.startswith('branch: ')]
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-branch" "missing branch" "set a non-empty branch in the envelope" --file="$missing_branch_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "missing-branch" "missing branch" "set a non-empty branch in the envelope" --file="$missing_branch_file" --dry-run; then
     :
   else
     status=1
@@ -368,7 +381,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('branch: feature/slice-handoff-smoke', 'branch: -bad branch', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "invalid-branch" "invalid branch: -bad branch" "use a conservative feature branch name without whitespace or shell metacharacters" --file="$invalid_branch_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "invalid-branch" "invalid branch: -bad branch" "use a conservative feature branch name without whitespace or shell metacharacters" --file="$invalid_branch_file" --dry-run; then
     :
   else
     status=1
@@ -382,7 +395,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('codex_profile: default', 'codex_profile: ../profile', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "invalid-profile" "invalid codex_profile: ../profile" "use one of default, lean, medium, high, repair, or review" --file="$invalid_profile_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "invalid-profile" "invalid codex_profile: ../profile" "use one of default, lean, medium, high, repair, or review" --file="$invalid_profile_file" --dry-run; then
     :
   else
     status=1
@@ -397,7 +410,7 @@ source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 filtered = [line for line in source if not line.startswith('commit_message: ')]
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-commit-message" "missing commit_message" "set commit_message when submit_mode is repo-flow-submit-all" --file="$missing_commit_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "missing-commit-message" "missing commit_message" "set commit_message when submit_mode is repo-flow-submit-all" --file="$missing_commit_file" --dry-run; then
     :
   else
     status=1
@@ -420,7 +433,7 @@ for line in source:
     filtered.append(line)
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-pr-body" "missing ## PR Body" "add ## PR Body when submit_mode is repo-flow-submit-all" --file="$missing_pr_body_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "missing-pr-body" "missing ## PR Body" "add ## PR Body when submit_mode is repo-flow-submit-all" --file="$missing_pr_body_file" --dry-run; then
     :
   else
     status=1
@@ -448,7 +461,7 @@ Implement the slice exactly as specified.
     encoding='utf-8',
 )
 PY
-  ) && smoke_slice_handoff_expect_failure "empty-review-request" "missing PR Review Request payload" "add text under ## PR Review Request" --file="$empty_review_request_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "empty-review-request" "missing PR Review Request payload" "add text under ## PR Review Request" --file="$empty_review_request_file" --dry-run; then
     :
   else
     status=1
@@ -462,7 +475,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Use previous chat and do the rest.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "placeholder-reject" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "placeholder-reject" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --dry-run; then
     :
   else
     status=1
@@ -476,7 +489,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Please create a PR and merge it after checkout.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-reject" "Codex Prompt contains lifecycle instruction: create a pr" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-reject" "Codex Prompt contains lifecycle instruction: create a pr" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -490,7 +503,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge this.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-this" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-this" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -504,7 +517,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge the PR.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-pr" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-pr" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -518,7 +531,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge after CI passes.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-after-ci" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-after-ci" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -532,7 +545,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Run repo-flow submit.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-run-submit" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-run-submit" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -546,7 +559,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Branch: feature/foo', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-branch" "Codex Prompt contains lifecycle instruction: branch:" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-branch" "Codex Prompt contains lifecycle instruction: branch:" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -560,7 +573,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Checkout main.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -574,7 +587,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Checkout feature/foo.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout-feature" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout-feature" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -588,7 +601,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'git checkout main', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-git-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-git-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -602,7 +615,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'repo-flow submit --all', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-submit-all" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_failure "lifecycle-submit-all" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -616,7 +629,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', '- Do not merge.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_success "lifecycle-negate-merge" "pass" "" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_success "lifecycle-negate-merge" "pass" "" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -630,7 +643,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', '- Do not create a PR.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_success "lifecycle-negate-create" "pass" "" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_success "lifecycle-negate-create" "pass" "" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -644,7 +657,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', '- Do not run repo-flow submit.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_success "lifecycle-negate-run-submit" "pass" "" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_success "lifecycle-negate-run-submit" "pass" "" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -658,7 +671,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', '- Do not checkout branches.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_success "lifecycle-negate-checkout" "pass" "" --file="$lifecycle_file" --plan-only; then
+  ) && smoke_slice_handoff_expect_success "lifecycle-negate-checkout" "pass" "" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -666,7 +679,7 @@ PY
 
   if (
     rm -rf -- "$invalid_out_dir" &&
-      smoke_slice_handoff_expect_failure "out-dir-validation-fail" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --plan-only --out-dir="$invalid_out_dir" &&
+      smoke_slice_handoff_expect_failure "out-dir-validation-fail" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --dry-run --out-dir="$invalid_out_dir" &&
       [ ! -e "$invalid_out_dir" ]
   ); then
     :

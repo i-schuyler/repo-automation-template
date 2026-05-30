@@ -2,11 +2,11 @@
 
 `slice-handoff` is a public-safe validated handoff runner for a bounded AI-assisted implementation slice.
 
-## Plan-only mode
+## Dry-run mode
 
-The first implementation mode is `--plan-only`.
+The non-executing mode is `--dry-run`.
 
-`--plan-only` validates the handoff and may generate local artifacts, but it does not run Codex, create branches, commit, push, create PRs, watch CI, merge, delete branches, tag, release, publish, or write session metadata into tracked repo files.
+`--dry-run` validates the handoff and may generate local artifacts, but it does not run Codex, create branches, commit, push, create PRs, watch CI, merge, delete branches, tag, release, publish, or write session metadata into tracked repo files.
 
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 

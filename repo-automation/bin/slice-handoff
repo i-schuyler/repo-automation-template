@@ -13,7 +13,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 slice_handoff_quiet=0
 slice_handoff_file=""
-slice_handoff_plan_only=0
+slice_handoff_dry_run=0
 slice_handoff_out_dir=""
 slice_handoff_out_dir_abs=""
 slice_handoff_out_dir_prompt=""
@@ -31,7 +31,7 @@ slice_handoff_review_request_file=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
-  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> --plan-only [--out-dir=<path>] [--quiet] [--help]\n'
+  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> --dry-run [--out-dir=<path>] [--quiet] [--help]\n'
 }
 
 slice_handoff_fail() {
@@ -356,7 +356,11 @@ slice_handoff_main() {
         slice_handoff_quiet=1
         ;;
       --plan-only)
-        slice_handoff_plan_only=1
+        slice_handoff_fail "unsupported flag: --plan-only" "use --dry-run"
+        return 1
+        ;;
+      --dry-run)
+        slice_handoff_dry_run=1
         ;;
       --out-dir=*)
         slice_handoff_out_dir="${arg#--out-dir=}"
@@ -381,11 +385,11 @@ slice_handoff_main() {
         return 1
         ;;
       --execute)
-        slice_handoff_fail "unsupported flag: --execute" "use --plan-only; execute mode is not implemented"
+        slice_handoff_fail "unsupported flag: --execute" "use --dry-run; execute mode is not implemented"
         return 1
         ;;
       --submit=*)
-        slice_handoff_fail "unsupported flag: --submit" "slice-handoff only accepts --plan-only for now"
+        slice_handoff_fail "unsupported flag: --submit" "use --dry-run; slice-handoff does not implement submit behavior"
         return 1
         ;;
       --*)
@@ -400,8 +404,8 @@ slice_handoff_main() {
     shift
   done
 
-  if [ "$slice_handoff_plan_only" -ne 1 ]; then
-    slice_handoff_fail "missing required --plan-only" "pass --plan-only to validate the handoff without executing it"
+  if [ "$slice_handoff_dry_run" -ne 1 ]; then
+    slice_handoff_fail "missing required --dry-run" "pass --dry-run to validate the handoff without executing it"
     return 1
   fi
 

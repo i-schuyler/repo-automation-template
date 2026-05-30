@@ -835,9 +835,9 @@
       "workflow_role": "workflow"
     },
     {
-      "name": "slice-handoff plan-only",
+      "name": "slice-handoff dry-run",
       "state": "implemented",
-      "route": "slice-handoff --plan-only",
+      "route": "slice-handoff --dry-run",
       "public": false,
       "workflow_role": "workflow"
     }

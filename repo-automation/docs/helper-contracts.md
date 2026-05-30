@@ -41,7 +41,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | --- | --- | --- | --- | --- |
 | `submit` | implemented | `repo-flow submit` | no | guarded explicit-path commit / PR helper |
 | `merge` | implemented | `repo-flow merge` | no | explicit review-gated merge/delete/sync helper |
-| `slice-handoff plan-only` | implemented | `slice-handoff --plan-only` | no | non-executing slice-handoff validator |
+| `slice-handoff dry-run` | implemented | `slice-handoff --dry-run` | no | non-executing slice-handoff validator |
 
 `repo-flow status-card` is the public read-only status screen that lives under the `repo-flow` helper.
 PR-first review remains the normal path; `review-pack` is a fallback artifact helper when you explicitly need a lean packet, full evidence bundle, or prompt artifact.
