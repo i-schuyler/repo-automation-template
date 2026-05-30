@@ -11,7 +11,7 @@ The non-executing mode is `--dry-run`.
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
 - `codex-prompt.md`
-- `dry-run-preview.txt` non-executing public-safe preview of the future execution shape, including argv-style planned command shapes
+- `dry-run-preview.txt` non-executing public-safe preview of the future execution shape, including the planned run-dir lifecycle shape, the active-run-dir placeholder, the marker file name, the stale-cleanup argv, and the preflight argv
 - `slice-handoff-summary.txt`
 - `review-request.txt`
 - `pr-body.md` when `submit_mode: repo-flow-submit-all`
@@ -35,6 +35,8 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 Future execution mode is expected to:
 
 - validate the handoff
+- create and preserve a marked active run directory for the lifetime of the future execution
+- clean up stale marked run dirs through `slice-run-dir` without touching unmarked directories
 - run preflight
 - run a blocking Codex adapter/profile through `codex-run` (this slice is not wired to execute through it yet)
 - classify Codex completion by child-process completion plus a recognizable final output contract

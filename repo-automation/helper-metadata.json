@@ -463,6 +463,27 @@
       "config_keys": []
     },
     {
+      "name": "slice-run-dir",
+      "path": "repo-automation/bin/slice-run-dir",
+      "doc_path": "repo-automation/docs/slice-run-dir.md",
+      "contract_test_path": "repo-automation/tests/contracts/slice-run-dir.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "mutating",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": true,
+      "artifact_helper": true,
+      "umbrella_helper": false,
+      "workflow_role": "artifact",
+      "config_keys": []
+    },
+    {
       "name": "review-pack",
       "path": "repo-automation/bin/review-pack",
       "doc_path": "repo-automation/docs/review-pack.md",

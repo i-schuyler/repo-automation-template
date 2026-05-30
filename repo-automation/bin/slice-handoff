@@ -57,6 +57,7 @@ slice_handoff_write_dry_run_preview() {
   local preview_path="$2"
   local pr_body_path="$3"
   local submit_mode="$4"
+  local planned_run_dir_root="${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs"
 
   slice_handoff_write_argv_block() {
     local label="$1"
@@ -84,13 +85,26 @@ slice_handoff_write_dry_run_preview() {
     printf 'review_request_path=%s\n' "$slice_handoff_out_dir_review_request"
     printf 'summary_path=%s\n' "$slice_handoff_out_dir_summary"
     printf 'preview_path=%s\n' "$preview_path"
+    printf 'planned_run_dir_root=%s\n' "$planned_run_dir_root"
+    printf 'planned_active_run_dir=<active-run-dir>\n'
+    printf 'planned_marker_file_name=.repo-automation-slice-run\n'
     printf '\nPlanned execution shapes\n'
+    slice_handoff_write_argv_block \
+      planned_run_dir_cleanup_argv \
+      repo-automation/bin/slice-run-dir \
+      --cleanup-stale \
+      "--root=$planned_run_dir_root" \
+      --max-age-days=7 \
+      --keep=10 \
+      "--preserve-path=<active-run-dir>" \
+      --json
     slice_handoff_write_argv_block \
       planned_preflight_argv \
       repo-automation/bin/codex-slice-preflight \
       "--branch=$slice_handoff_branch" \
       --clean-test-cache \
-      --explain
+      "--preserve-path=<active-run-dir>" \
+      --json
     printf 'planned_codex_adapter_shape=profile=%s; adapter execution is not implemented in this slice\n' "$slice_handoff_codex_profile"
     if [ "$submit_mode" = "repo-flow-submit-all" ]; then
       slice_handoff_write_argv_block \
