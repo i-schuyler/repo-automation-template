@@ -690,21 +690,21 @@ preflight_main() {
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
-    git pull --ff-only || {
+    git pull --ff-only >/dev/null || {
       preflight_stop "git pull --ff-only failed on $default_branch"
       command_status=1
     }
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
-    git remote prune "$remote_name" || {
+    git remote prune "$remote_name" >/dev/null || {
       preflight_stop "git remote prune failed for $remote_name"
       command_status=1
     }
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
-    git fetch "$remote_name" --prune || {
+    git fetch "$remote_name" --prune >/dev/null || {
       preflight_stop "git fetch --prune failed for $remote_name"
       command_status=1
     }

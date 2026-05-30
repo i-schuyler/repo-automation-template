@@ -37,7 +37,7 @@ When `--dry-run` is omitted, `slice-handoff` currently runs execution phase 1:
 - validate the handoff
 - create and preserve a marked active run directory for the lifetime of the future execution
 - clean up stale marked run dirs through `slice-run-dir` without touching unmarked directories
-- run preflight with JSON child diagnostics
+- run preflight with JSON child diagnostics from the checked-out repo root
 - stop before Codex execution
 
 Execution phase 1 writes child logs and artifacts under the active run dir:
@@ -55,6 +55,8 @@ Execution phase 1 writes child logs and artifacts under the active run dir:
 - `codex-prompt.md`
 - `review-request.txt`
 - `pr-body.md` when submit is enabled
+
+The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 
 Failure returns a compact blocker with the failing step, command, exit code, artifact paths, excerpt, and `fix=paste this blocker into ChatGPT`.
 

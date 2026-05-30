@@ -7,6 +7,10 @@
 # contract checks run.
 
 smoke_slice_handoff_script() {
+  if [ -n "${smoke_test_dir:-}" ] && [ -x "$smoke_test_dir/repo-automation/bin/slice-handoff" ]; then
+    printf '%s/repo-automation/bin/slice-handoff' "$smoke_test_dir"
+    return 0
+  fi
   printf '%s/repo-automation/bin/slice-handoff' "$smoke_repo_root"
 }
 
@@ -60,6 +64,31 @@ for entry in data.get('planned_routes', []):
 
 print('fail: missing slice-handoff dry-run planned route row', file=sys.stderr)
 sys.exit(1)
+PY
+}
+
+smoke_slice_handoff_prepare_execution_repo() {
+  local config_path="$smoke_test_dir/.repo-automation.conf"
+  local execution_remote_dir=""
+
+  execution_remote_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-remote.XXXXXX")" || return 1
+  git -C "$smoke_test_dir" init --bare "$execution_remote_dir" >/dev/null 2>&1 || return 1
+  git -C "$smoke_test_dir" push "$execution_remote_dir" main:main >/dev/null 2>&1 || return 1
+
+  git -C "$smoke_test_dir" remote set-url origin "$execution_remote_dir" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree .repo-automation.conf || return 1
+  python3 - "$smoke_expected_origin_url" "$config_path" <<'PY' || return 1
+from pathlib import Path
+import sys
+
+expected = sys.argv[1]
+config_path = Path(sys.argv[2])
+text = config_path.read_text(encoding='utf-8')
+old = f'EXPECTED_REMOTE_URL="{expected}"'
+new = 'EXPECTED_REMOTE_URL=""'
+if old not in text:
+    raise SystemExit(1)
+config_path.write_text(text.replace(old, new, 1), encoding='utf-8')
 PY
 }
 
@@ -161,6 +190,7 @@ smoke_slice_handoff_assert_execution_run_dir() {
   local prompt_text="$5"
   local review_request_text="$6"
   local expected_pr_body="${7:-}"
+  local expected_repo_root="${8:-}"
 
   [ -d "$run_dir" ] || return 1
   for path in \
@@ -231,6 +261,9 @@ PY
   grep -Fxq "branch=$branch" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "title=$title" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "submit_mode=$submit_mode" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  if [ -n "$expected_repo_root" ]; then
+    grep -Fxq "preflight_repo_root=$expected_repo_root" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  fi
   grep -Fxq "cleanup_json_path=$run_dir/slice-run-dir-cleanup.json" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "cleanup_stdout_path=$run_dir/slice-run-dir-cleanup.stdout" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "cleanup_stderr_path=$run_dir/slice-run-dir-cleanup.stderr" "$run_dir/slice-handoff-execution-summary.txt" || return 1
@@ -245,10 +278,35 @@ PY
 smoke_slice_handoff_run() {
   local stdout_file="$1"
   local stderr_file="$2"
+  local script_path=""
+  local capture_stdout="$stdout_file"
+  local capture_stderr="$stderr_file"
+  local capture_stdout_tmp=""
+  local capture_stderr_tmp=""
+  local command_status=0
 
   shift 2
   mkdir -p "$(dirname "$stdout_file")" "$(dirname "$stderr_file")" || return 1
-  "$(smoke_slice_handoff_script)" "$@" >"$stdout_file" 2>"$stderr_file"
+  script_path="$(smoke_slice_handoff_script)"
+  if [ -n "${smoke_test_dir:-}" ] && [ "$script_path" = "$smoke_test_dir/repo-automation/bin/slice-handoff" ]; then
+    capture_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-stdout.XXXXXX")" || return 1
+    capture_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-stderr.XXXXXX")" || {
+      rm -f -- "$capture_stdout_tmp" >/dev/null 2>&1 || true
+      return 1
+    }
+    capture_stdout="$capture_stdout_tmp"
+    capture_stderr="$capture_stderr_tmp"
+    (
+      cd "$smoke_test_dir" || return 1
+      "$script_path" "$@"
+    ) >"$capture_stdout" 2>"$capture_stderr"
+    command_status=$?
+    mv -f -- "$capture_stdout" "$stdout_file" || command_status=1
+    mv -f -- "$capture_stderr" "$stderr_file" || command_status=1
+    return "$command_status"
+  else
+    "$script_path" "$@" >"$stdout_file" 2>"$stderr_file"
+  fi
 }
 
 smoke_slice_handoff_expect_failure() {

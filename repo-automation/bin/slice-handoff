@@ -30,9 +30,6 @@ slice_handoff_prompt_file=""
 slice_handoff_pr_body_file=""
 slice_handoff_review_request_file=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
-slice_handoff_preflight_repo_dir=""
-slice_handoff_preflight_remote_dir=""
-slice_handoff_preflight_git_wrapper_dir=""
 
 slice_handoff_usage() {
   printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--out-dir=<path>] [--quiet] [--help]\n'
@@ -52,15 +49,6 @@ slice_handoff_cleanup_temp_files() {
   fi
   if [ -n "$slice_handoff_review_request_file" ]; then
     rm -f -- "$slice_handoff_review_request_file" >/dev/null 2>&1 || true
-  fi
-  if [ -n "$slice_handoff_preflight_git_wrapper_dir" ]; then
-    rm -rf -- "$slice_handoff_preflight_git_wrapper_dir" >/dev/null 2>&1 || true
-  fi
-  if [ -n "$slice_handoff_preflight_remote_dir" ]; then
-    rm -rf -- "$slice_handoff_preflight_remote_dir" >/dev/null 2>&1 || true
-  fi
-  if [ -n "$slice_handoff_preflight_repo_dir" ]; then
-    rm -rf -- "$slice_handoff_preflight_repo_dir" >/dev/null 2>&1 || true
   fi
 }
 
@@ -102,60 +90,6 @@ slice_handoff_copy_atomic_file() {
   fi
   rm -f -- "$tmp_file" >/dev/null 2>&1 || true
   return 1
-}
-
-slice_handoff_prepare_preflight_repo() {
-  local source_root="$1"
-  local temp_root="${TMPDIR:-$HOME/.cache}"
-  local config_path=""
-  local real_git_path=""
-  local commit_message="slice-handoff execution snapshot"
-
-  slice_handoff_preflight_repo_dir="$(mktemp -d "$temp_root/slice-handoff-preflight-repo.XXXXXX")" || return 1
-  if ! git -C "$source_root" ls-files -z | tar -C "$source_root" --null -T - -cf - | tar -C "$slice_handoff_preflight_repo_dir" -xf -; then
-    return 1
-  fi
-
-  config_path="$slice_handoff_preflight_repo_dir/.repo-automation.conf"
-  if [ -f "$config_path" ]; then
-    python3 - "$config_path" <<'PY' || return 1
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-text = path.read_text(encoding='utf-8')
-text = text.replace('EXPECTED_REMOTE_URL="git@github.com:i-schuyler/repo-automation-template.git"', 'EXPECTED_REMOTE_URL=""', 1)
-path.write_text(text, encoding='utf-8')
-PY
-  fi
-
-  real_git_path="$(command -v git)" || return 1
-  slice_handoff_preflight_remote_dir="$(mktemp -d "$temp_root/slice-handoff-preflight-remote.XXXXXX")" || return 1
-  (
-    cd "$slice_handoff_preflight_repo_dir" || return 1
-    git init -b main >/dev/null 2>&1 || return 1
-    git config user.name "repo-automation-test" || return 1
-    git config user.email "repo-automation-test@example.com" || return 1
-    git add -A || return 1
-    git commit -m "$commit_message" >/dev/null 2>&1 || return 1
-    git init --bare --initial-branch=main "$slice_handoff_preflight_remote_dir" >/dev/null 2>&1 || return 1
-    git remote add origin "$slice_handoff_preflight_remote_dir" || return 1
-    git push -u origin main >/dev/null 2>&1 || return 1
-    git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
-  ) || return 1
-
-  slice_handoff_preflight_git_wrapper_dir="$(mktemp -d "$temp_root/slice-handoff-preflight-git.XXXXXX")" || return 1
-  cat > "$slice_handoff_preflight_git_wrapper_dir/git" <<EOF
-#!/usr/bin/env bash
-set -u
-real_git="$real_git_path"
-if [ "\${1:-}" = "pull" ] && [ "\${2:-}" = "--ff-only" ]; then
-  shift 2
-  exec "\$real_git" pull --ff-only "\$@" >/dev/null
-fi
-exec "\$real_git" "\$@"
-EOF
-  chmod +x "$slice_handoff_preflight_git_wrapper_dir/git" || return 1
 }
 
 slice_handoff_json_value() {
@@ -246,6 +180,7 @@ branch=$slice_handoff_branch
 title=$slice_handoff_title
 codex_profile=$slice_handoff_codex_profile
 submit_mode=$slice_handoff_submit_mode
+preflight_repo_root=$slice_handoff_repo_root
 run_dir=$run_dir
 cleanup_json_path=$cleanup_json_path
 cleanup_stdout_path=$cleanup_stdout_path
@@ -764,8 +699,6 @@ slice_handoff_run_execution_phase() {
   local create_stderr_tmp=""
   local cleanup_stdout_tmp=""
   local cleanup_stderr_tmp=""
-  local preflight_stdout_tmp=""
-  local preflight_stderr_tmp=""
   local create_stdout_path=""
   local create_stderr_path=""
   local cleanup_stdout_path=""
@@ -851,34 +784,19 @@ slice_handoff_run_execution_phase() {
     slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "" "" "" || true
     return 1
   fi
-  if ! slice_handoff_prepare_preflight_repo "$slice_handoff_repo_root"; then
-    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "" "" "" || true
-    slice_handoff_print_execution_blocker "preflight" "repo snapshot preparation" 1 "$cleanup_stdout_path" "$cleanup_stderr_path" "unable to prepare a clean preflight repository snapshot"
-    return 1
-  fi
-  preflight_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-preflight.XXXXXX.stdout")" || return 1
-  preflight_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-preflight.XXXXXX.stderr")" || {
-    rm -f -- "$preflight_stdout_tmp" >/dev/null 2>&1 || true
-    return 1
-  }
   preflight_stdout_path="$active_run_dir/preflight.stdout"
   preflight_stderr_path="$active_run_dir/preflight.stderr"
   preflight_json_path="$active_run_dir/preflight.json"
   preflight_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" --clean-test-cache "--preserve-path=$active_run_dir" --json)"
 
   if ! (
-    cd "$slice_handoff_preflight_repo_dir" || return 1
-    PATH="$slice_handoff_preflight_git_wrapper_dir:$PATH" \
-      slice_handoff_run_json_child "preflight" "$preflight_command_summary" rc 0 "$preflight_stdout_tmp" "$preflight_stderr_tmp" \
-        repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" --clean-test-cache "--preserve-path=$active_run_dir" --json
+    cd "$slice_handoff_repo_root" || return 1
+    slice_handoff_run_json_child "preflight" "$preflight_command_summary" rc 0 "$preflight_stdout_path" "$preflight_stderr_path" \
+      repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" --clean-test-cache "--preserve-path=$active_run_dir" --json
   ); then
     preflight_phase_failed=1
   fi
 
-  if ! mv -f -- "$preflight_stdout_tmp" "$preflight_stdout_path" || ! mv -f -- "$preflight_stderr_tmp" "$preflight_stderr_path"; then
-    slice_handoff_print_execution_blocker "preflight" "$preflight_command_summary" 1 "$preflight_stdout_path" "$preflight_stderr_path" "unable to finalize preflight artifacts"
-    return 1
-  fi
   if ! cp -- "$preflight_stdout_path" "$preflight_json_path"; then
     slice_handoff_print_execution_blocker "preflight" "$preflight_command_summary" 1 "$preflight_stdout_path" "$preflight_stderr_path" "unable to copy preflight JSON artifact"
     return 1

@@ -39,7 +39,7 @@ smoke_check_slice_handoff_contract() {
   local execution_submit_out_dir="$execution_artifact_root/out-execution-submit"
   local execution_quiet_out_dir="$execution_artifact_root/out-execution-quiet"
   local invalid_out_dir="$smoke_test_base/out-invalid-validation"
-  local inside_repo_out_dir="$smoke_repo_root/slice-handoff-out-inside-repo"
+  local inside_repo_out_dir="$smoke_test_dir/slice-handoff-out-inside-repo"
   local expected_none_stdout
   local expected_submit_stdout
   local expected_none_prompt
@@ -73,6 +73,7 @@ smoke_check_slice_handoff_contract() {
   local empty_review_request_file="$smoke_check_root/empty-review-request.md"
   local placeholder_file="$smoke_check_root/placeholder.md"
   local lifecycle_file="$smoke_check_root/lifecycle.md"
+  local execution_smoke_test_dir=""
   local valid_prompt="Implement the slice exactly as specified."
   local submit_prompt="Implement the slice and prepare the PR body."
   local review_request_text
@@ -429,12 +430,17 @@ EOF
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
+  execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-fixture.XXXXXX")" || return 1
+  cp -R "$smoke_test_dir"/. "$execution_smoke_test_dir" || return 1
+  smoke_test_dir="$execution_smoke_test_dir"
+  smoke_slice_handoff_prepare_execution_repo || return 1
+  inside_repo_out_dir="$smoke_test_dir/slice-handoff-out-inside-repo"
 
   if (
     rm -rf -- "$execution_none_out_dir" &&
       smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" --file="$valid_none_file" --out-dir="$execution_none_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" "feature/slice-handoff-smoke")" &&
-      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-smoke" "Slice handoff smoke" "$expected_none_prompt" "$expected_default_review_request" &&
+      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-smoke" "Slice handoff smoke" "$expected_none_prompt" "$expected_default_review_request" "" "$smoke_test_dir" &&
       smoke_slice_handoff_assert_text_file "$execution_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_none_out_dir/dry-run-preview.txt" "$expected_execution_none_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_none_out_dir/review-request.txt" "$expected_default_review_request" &&
@@ -451,7 +457,7 @@ EOF
       smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
       smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$valid_submit_file" --out-dir="$execution_submit_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" "feature/slice-handoff-submit")" &&
-      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-submit" "Slice handoff submit smoke" "$expected_submit_prompt" "$review_request_text" "$expected_submit_body" &&
+      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-submit" "Slice handoff submit smoke" "$expected_submit_prompt" "$review_request_text" "$expected_submit_body" "$smoke_test_dir" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/dry-run-preview.txt" "$expected_execution_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/pr-body.md" "$expected_submit_body" &&
