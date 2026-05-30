@@ -58,6 +58,16 @@ slice_handoff_write_dry_run_preview() {
   local pr_body_path="$3"
   local submit_mode="$4"
 
+  slice_handoff_write_argv_block() {
+    local label="$1"
+    shift
+    printf '%s:\n' "$label"
+    while [ "$#" -gt 0 ]; do
+      printf '%s\n' "- $1"
+      shift
+    done
+  }
+
   {
     printf 'dry_run_mode=enabled\n'
     printf 'branch=%s\n' "$slice_handoff_branch"
@@ -75,15 +85,32 @@ slice_handoff_write_dry_run_preview() {
     printf 'summary_path=%s\n' "$slice_handoff_out_dir_summary"
     printf 'preview_path=%s\n' "$preview_path"
     printf '\nPlanned execution shapes\n'
-    printf 'planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=%s --clean-test-cache --explain\n' "$slice_handoff_branch"
+    slice_handoff_write_argv_block \
+      planned_preflight_argv \
+      repo-automation/bin/codex-slice-preflight \
+      "--branch=$slice_handoff_branch" \
+      --clean-test-cache \
+      --explain
     printf 'planned_codex_adapter_shape=profile=%s; adapter execution is not implemented in this slice\n' "$slice_handoff_codex_profile"
     if [ "$submit_mode" = "repo-flow-submit-all" ]; then
-      printf 'planned_pr_body_validation_command=repo-automation/bin/pr-body-check --body-file=%s\n' "$pr_body_path"
-      printf 'planned_repo_flow_submit_command=repo-automation/bin/repo-flow submit --all --message=%s --body-file=%s --watch --timeout=900 --diagnose-on-fail --explain\n' \
-        "$slice_handoff_commit_message" "$pr_body_path"
+      slice_handoff_write_argv_block \
+        planned_pr_body_validation_argv \
+        repo-automation/bin/pr-body-check \
+        "--body-file=$pr_body_path"
+      slice_handoff_write_argv_block \
+        planned_repo_flow_submit_argv \
+        repo-automation/bin/repo-flow \
+        submit \
+        --all \
+        "--message=$slice_handoff_commit_message" \
+        "--body-file=$pr_body_path" \
+        --watch \
+        --timeout=900 \
+        --diagnose-on-fail \
+        --explain
     else
-      printf 'planned_pr_body_validation_command=not_applicable\n'
-      printf 'planned_repo_flow_submit_command=not_applicable\n'
+      printf 'planned_pr_body_validation_argv=not_applicable\n'
+      printf 'planned_repo_flow_submit_argv=not_applicable\n'
     fi
     printf '\nPlanned artifact/log/metadata paths\n'
     printf 'preflight_log_path=not_created_by_dry_run\n'

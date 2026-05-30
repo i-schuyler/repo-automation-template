@@ -164,10 +164,14 @@ summary_path=$valid_none_out_dir/slice-handoff-summary.txt
 preview_path=$valid_none_out_dir/dry-run-preview.txt
 
 Planned execution shapes
-planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=feature/slice-handoff-smoke --clean-test-cache --explain
+planned_preflight_argv:
+- repo-automation/bin/codex-slice-preflight
+- --branch=feature/slice-handoff-smoke
+- --clean-test-cache
+- --explain
 planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
-planned_pr_body_validation_command=not_applicable
-planned_repo_flow_submit_command=not_applicable
+planned_pr_body_validation_argv=not_applicable
+planned_repo_flow_submit_argv=not_applicable
 
 Planned artifact/log/metadata paths
 preflight_log_path=not_created_by_dry_run
@@ -194,10 +198,14 @@ summary_path=$valid_quiet_out_dir/slice-handoff-summary.txt
 preview_path=$valid_quiet_out_dir/dry-run-preview.txt
 
 Planned execution shapes
-planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=feature/slice-handoff-smoke --clean-test-cache --explain
+planned_preflight_argv:
+- repo-automation/bin/codex-slice-preflight
+- --branch=feature/slice-handoff-smoke
+- --clean-test-cache
+- --explain
 planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
-planned_pr_body_validation_command=not_applicable
-planned_repo_flow_submit_command=not_applicable
+planned_pr_body_validation_argv=not_applicable
+planned_repo_flow_submit_argv=not_applicable
 
 Planned artifact/log/metadata paths
 preflight_log_path=not_created_by_dry_run
@@ -224,10 +232,25 @@ summary_path=$valid_submit_out_dir/slice-handoff-summary.txt
 preview_path=$valid_submit_out_dir/dry-run-preview.txt
 
 Planned execution shapes
-planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=feature/slice-handoff-submit --clean-test-cache --explain
+planned_preflight_argv:
+- repo-automation/bin/codex-slice-preflight
+- --branch=feature/slice-handoff-submit
+- --clean-test-cache
+- --explain
 planned_codex_adapter_shape=profile=review; adapter execution is not implemented in this slice
-planned_pr_body_validation_command=repo-automation/bin/pr-body-check --body-file=$valid_submit_out_dir/pr-body.md
-planned_repo_flow_submit_command=repo-automation/bin/repo-flow submit --all --message=chore: slice-handoff smoke --body-file=$valid_submit_out_dir/pr-body.md --watch --timeout=900 --diagnose-on-fail --explain
+planned_pr_body_validation_argv:
+- repo-automation/bin/pr-body-check
+- --body-file=$valid_submit_out_dir/pr-body.md
+planned_repo_flow_submit_argv:
+- repo-automation/bin/repo-flow
+- submit
+- --all
+- --message=chore: slice-handoff smoke
+- --body-file=$valid_submit_out_dir/pr-body.md
+- --watch
+- --timeout=900
+- --diagnose-on-fail
+- --explain
 
 Planned artifact/log/metadata paths
 preflight_log_path=not_created_by_dry_run
