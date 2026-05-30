@@ -30,6 +30,6 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | fallback review-pack for Codex | `review-pack --target=codex` | yes | yes | no | no | no | `repair-prompt` |
 | repair-prompt | `repair-prompt` | yes | yes | no | no | no | `add-doc-pr` |
 | guarded submit | `repo-flow submit` | no | yes | yes | yes | maybe | `repo-flow merge`; uses `pr-create` for canonical PR body validation and appends update logs to existing PR bodies by default |
-| slice-handoff plan-only | `slice-handoff --plan-only` | yes | no | no | no | no | `status-packet` |
+| slice-handoff dry-run | `slice-handoff --dry-run` | yes | no | no | no | no | `status-packet` |
 
 `review-pack --target=codex` and `repair-prompt --target=codex` are artifact-only routes; they do not invoke Codex.
