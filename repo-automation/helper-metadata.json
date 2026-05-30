@@ -421,6 +421,27 @@
       "config_keys": []
     },
     {
+      "name": "codex-run",
+      "path": "repo-automation/bin/codex-run",
+      "doc_path": "repo-automation/docs/codex-run.md",
+      "contract_test_path": "repo-automation/tests/contracts/codex-run.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": false,
+      "check_cost_tier": "mutating",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": false,
+      "artifact_helper": true,
+      "umbrella_helper": false,
+      "workflow_role": "artifact",
+      "config_keys": []
+    },
+    {
       "name": "slice-handoff",
       "path": "repo-automation/bin/slice-handoff",
       "doc_path": "repo-automation/docs/slice-handoff.md",
@@ -820,6 +841,13 @@
     }
   ],
   "planned_routes": [
+    {
+      "name": "codex-run",
+      "state": "implemented",
+      "route": "codex-run",
+      "public": false,
+      "workflow_role": "artifact"
+    },
     {
       "name": "submit",
       "state": "implemented",

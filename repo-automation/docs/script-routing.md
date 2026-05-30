@@ -14,6 +14,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | first-run tooling audit | `check-tooling` | yes | no | no | no | no | `repo-doctor` |
 | portability drift audit | `check-portability` | yes | no | no | no | yes | `repo-doctor` |
 | post-Codex review packet | `post-codex-packet` | no | yes | no | no | no | `status-packet` |
+| Codex adapter | `codex-run` | no | yes | no | no | no | `slice-handoff` |
 | current status packet | `status-packet` | yes | no | no | no | no | `ci-status` |
 | CI status check | `ci-status` | yes | no | no | yes | no | `ci-watch` |
 | CI watch | `ci-watch` | no | no | no | yes | no | `failure-log` |

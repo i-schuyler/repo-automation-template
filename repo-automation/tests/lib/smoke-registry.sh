@@ -43,6 +43,7 @@ smoke_contract_names=(
   "smoke:branch-cleanup-preflight"
   "smoke:check-tooling"
   "smoke:codex-slice-preflight"
+  "smoke:codex-run-contract"
   "smoke:prepare-release-contract"
   "smoke:automation-freshness-contract"
 )
@@ -83,6 +84,7 @@ smoke_contract_scripts=(
   "repo-automation/tests/contracts/branch-cleanup-preflight.sh"
   "repo-automation/tests/contracts/check-tooling.sh"
   "repo-automation/tests/contracts/codex-slice-preflight.sh"
+  "repo-automation/tests/contracts/codex-run.sh"
   "repo-automation/tests/contracts/prepare-release.sh"
   "repo-automation/tests/contracts/automation-freshness.sh"
 )
