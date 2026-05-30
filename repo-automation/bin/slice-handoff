@@ -18,6 +18,7 @@ slice_handoff_out_dir=""
 slice_handoff_out_dir_abs=""
 slice_handoff_out_dir_prompt=""
 slice_handoff_out_dir_summary=""
+slice_handoff_out_dir_preview=""
 slice_handoff_out_dir_pr_body=""
 slice_handoff_out_dir_review_request=""
 slice_handoff_branch=""
@@ -49,6 +50,54 @@ slice_handoff_cleanup_temp_files() {
   if [ -n "$slice_handoff_review_request_file" ]; then
     rm -f -- "$slice_handoff_review_request_file" >/dev/null 2>&1 || true
   fi
+}
+
+slice_handoff_write_dry_run_preview() {
+  local preview_tmp="$1"
+  local preview_path="$2"
+  local pr_body_path="$3"
+  local submit_mode="$4"
+
+  {
+    printf 'dry_run_mode=enabled\n'
+    printf 'branch=%s\n' "$slice_handoff_branch"
+    printf 'title=%s\n' "$slice_handoff_title"
+    printf 'codex_profile=%s\n' "$slice_handoff_codex_profile"
+    printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
+    printf 'commit_message=%s\n' "$slice_handoff_commit_message"
+    printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
+    if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+      printf 'pr_body_path=%s\n' "$pr_body_path"
+    else
+      printf 'pr_body_path=not_applicable\n'
+    fi
+    printf 'review_request_path=%s\n' "$slice_handoff_out_dir_review_request"
+    printf 'summary_path=%s\n' "$slice_handoff_out_dir_summary"
+    printf 'preview_path=%s\n' "$preview_path"
+    printf '\nPlanned execution shapes\n'
+    printf 'planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=%s --clean-test-cache --explain\n' "$slice_handoff_branch"
+    printf 'planned_codex_adapter_shape=profile=%s; adapter execution is not implemented in this slice\n' "$slice_handoff_codex_profile"
+    if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+      printf 'planned_pr_body_validation_command=repo-automation/bin/pr-body-check --body-file=%s\n' "$pr_body_path"
+      printf 'planned_repo_flow_submit_command=repo-automation/bin/repo-flow submit --all --message=%s --body-file=%s --watch --timeout=900 --diagnose-on-fail --explain\n' \
+        "$slice_handoff_commit_message" "$pr_body_path"
+    else
+      printf 'planned_pr_body_validation_command=not_applicable\n'
+      printf 'planned_repo_flow_submit_command=not_applicable\n'
+    fi
+    printf '\nPlanned artifact/log/metadata paths\n'
+    printf 'preflight_log_path=not_created_by_dry_run\n'
+    printf 'codex_execution_log_path=not_created_by_dry_run\n'
+    printf 'codex_final_output_path=not_written_by_dry_run\n'
+    printf 'session_metadata_path=not_written_by_dry_run\n'
+    printf 'submit_log_path=not_created_by_dry_run\n'
+    printf '\nExpected future final outcomes\n'
+    if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+      printf 'expected_future_final_outcomes=blocker or PR URL / FINAL SUMMARY / review request\n'
+    else
+      printf 'expected_future_final_outcomes=blocker or review request\n'
+    fi
+  } >"$preview_tmp"
 }
 
 slice_handoff_cleanup_out_dir_temp_files() {
@@ -448,10 +497,12 @@ PY
 
     slice_handoff_out_dir_prompt="$slice_handoff_out_dir_abs/codex-prompt.md"
     slice_handoff_out_dir_summary="$slice_handoff_out_dir_abs/slice-handoff-summary.txt"
+    slice_handoff_out_dir_preview="$slice_handoff_out_dir_abs/dry-run-preview.txt"
     slice_handoff_out_dir_pr_body=""
     slice_handoff_out_dir_review_request="$slice_handoff_out_dir_abs/review-request.txt"
     slice_handoff_out_dir_prompt_tmp=""
     slice_handoff_out_dir_summary_tmp=""
+    slice_handoff_out_dir_preview_tmp=""
     slice_handoff_out_dir_pr_body_tmp=""
     slice_handoff_out_dir_review_request_tmp=""
 
@@ -513,6 +564,34 @@ PY
       return 1
     fi
 
+    if ! slice_handoff_out_dir_preview_tmp="$(mktemp "$slice_handoff_out_dir_abs/.dry-run-preview.XXXXXX")"; then
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request"
+      slice_handoff_fail "unable to create dry-run preview artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
+    if ! slice_handoff_write_dry_run_preview "$slice_handoff_out_dir_preview_tmp" "$slice_handoff_out_dir_preview" "$slice_handoff_out_dir_pr_body" "$slice_handoff_submit_mode"; then
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_preview_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request" \
+        "$slice_handoff_out_dir_preview"
+      slice_handoff_fail "unable to write dry-run preview artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
     {
       printf 'schema=repo-automation-slice-handoff/v1\n'
       printf 'branch=%s\n' "$slice_handoff_branch"
@@ -529,6 +608,7 @@ PY
         "$slice_handoff_out_dir_pr_body_tmp" \
         "$slice_handoff_out_dir_review_request_tmp" \
         "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_preview_tmp" \
         "$slice_handoff_out_dir_prompt" \
         "$slice_handoff_out_dir_pr_body" \
         "$slice_handoff_out_dir_review_request"
@@ -542,6 +622,7 @@ PY
         "$slice_handoff_out_dir_pr_body_tmp" \
         "$slice_handoff_out_dir_review_request_tmp" \
         "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_preview_tmp" \
         "$slice_handoff_out_dir_prompt" \
         "$slice_handoff_out_dir_pr_body" \
         "$slice_handoff_out_dir_review_request"
@@ -556,6 +637,7 @@ PY
           "$slice_handoff_out_dir_pr_body_tmp" \
           "$slice_handoff_out_dir_review_request_tmp" \
           "$slice_handoff_out_dir_summary_tmp" \
+          "$slice_handoff_out_dir_preview_tmp" \
           "$slice_handoff_out_dir_prompt" \
           "$slice_handoff_out_dir_pr_body" \
           "$slice_handoff_out_dir_review_request"
@@ -570,6 +652,7 @@ PY
         "$slice_handoff_out_dir_pr_body_tmp" \
         "$slice_handoff_out_dir_review_request_tmp" \
         "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_preview_tmp" \
         "$slice_handoff_out_dir_prompt" \
         "$slice_handoff_out_dir_pr_body" \
         "$slice_handoff_out_dir_review_request"
@@ -583,11 +666,29 @@ PY
         "$slice_handoff_out_dir_pr_body_tmp" \
         "$slice_handoff_out_dir_review_request_tmp" \
         "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_preview_tmp" \
         "$slice_handoff_out_dir_prompt" \
         "$slice_handoff_out_dir_pr_body" \
         "$slice_handoff_out_dir_review_request" \
+        "$slice_handoff_out_dir_preview" \
         "$slice_handoff_out_dir_summary"
       slice_handoff_fail "unable to finalize summary artifact" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
+    if ! mv -f -- "$slice_handoff_out_dir_preview_tmp" "$slice_handoff_out_dir_preview"; then
+      slice_handoff_cleanup_out_dir_temp_files \
+        "$slice_handoff_out_dir_prompt_tmp" \
+        "$slice_handoff_out_dir_pr_body_tmp" \
+        "$slice_handoff_out_dir_review_request_tmp" \
+        "$slice_handoff_out_dir_summary_tmp" \
+        "$slice_handoff_out_dir_preview_tmp" \
+        "$slice_handoff_out_dir_prompt" \
+        "$slice_handoff_out_dir_pr_body" \
+        "$slice_handoff_out_dir_review_request" \
+        "$slice_handoff_out_dir_preview" \
+        "$slice_handoff_out_dir_summary"
+      slice_handoff_fail "unable to finalize dry-run preview artifact" "fix filesystem permissions and rerun slice-handoff"
       return 1
     fi
   fi
@@ -597,6 +698,7 @@ PY
     if [ -n "$slice_handoff_out_dir_abs" ]; then
       printf 'out_dir=%s\n' "$slice_handoff_out_dir_abs"
       printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
+      printf 'preview_path=%s\n' "$slice_handoff_out_dir_preview"
       if [ -n "$slice_handoff_out_dir_pr_body" ]; then
         printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
       fi
