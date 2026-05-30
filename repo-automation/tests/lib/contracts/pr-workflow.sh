@@ -1199,6 +1199,10 @@ smoke_check_branch_cleanup_json() {
 smoke_check_preflight_json() {
   local status=0
   local preflight_json="$smoke_test_dir/preflight.json"
+  local preflight_cleanup_json="$smoke_test_dir/preflight-cleanup.json"
+  local preflight_cleanup_json_err="$smoke_test_dir/preflight-cleanup.err"
+  local preflight_cleanup_preserve_json="$smoke_test_dir/preflight-cleanup-preserve.json"
+  local preflight_cleanup_preserve_err="$smoke_test_dir/preflight-cleanup-preserve.err"
   local preflight_wrapper_json="$smoke_test_base/preflight-wrapper.json"
   local preflight_wrapper_stderr="$smoke_test_base/preflight-wrapper.stderr"
   local preflight_help="$smoke_test_dir/preflight-help.txt"
@@ -1222,6 +1226,9 @@ smoke_check_preflight_json() {
   local preflight_low_disk_explain_stderr="$smoke_test_base/preflight-low-disk.err"
   local preflight_clean_tmpdir="$smoke_test_base/preflight-clean-tmp"
   local preflight_clean_home="$smoke_test_base/preflight-clean-home"
+  local preflight_clean_json_tmpdir="$smoke_test_base/preflight-clean-json-tmp"
+  local preflight_clean_json_home="$smoke_test_base/preflight-clean-json-home"
+  local preflight_clean_json_preserve_inside_path="$preflight_clean_json_tmpdir/repo-automation/active-run"
   local preflight_clean_stdout="$smoke_test_base/preflight-clean.out"
   local preflight_clean_stderr="$smoke_test_base/preflight-clean.err"
   local preflight_preserve_equal_path="$preflight_clean_tmpdir/repo-automation"
@@ -1289,6 +1296,89 @@ EOF
     test_pass "preflight json is parseable"
   else
     test_fail "preflight json is parseable"
+    status=1
+  fi
+
+  mkdir -p "$preflight_clean_json_tmpdir/repo-automation-template-tests" \
+    "$preflight_clean_json_tmpdir/repo-automation-template" \
+    "$preflight_clean_json_tmpdir/repo-automation" \
+    "$preflight_clean_json_tmpdir/repo-automation-log-dump" \
+    "$preflight_clean_json_home/.cache/repo-automation-template-tests" \
+    "$preflight_clean_json_home/.cache/repo-automation-template" \
+    "$preflight_clean_json_home/.cache/repo-automation" \
+    "$preflight_clean_json_home/.cache/repo-automation-log-dump" \
+    "$preflight_clean_json_home/projects/repo-automation-template" \
+    "$preflight_clean_json_home/Downloads" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation-template-tests/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation-template/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation-log-dump/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation-template-tests/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation-template/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation-log-dump/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_json_home/projects/repo-automation-template/keep.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_json_home/Downloads/keep.txt" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_json_tmpdir" HOME="$preflight_clean_json_home" \
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --json > "$preflight_cleanup_json" 2> "$preflight_cleanup_json_err"
+  ) && python3 -m json.tool "$preflight_cleanup_json" >/dev/null &&
+    [ ! -s "$preflight_cleanup_json_err" ] &&
+    ! grep -Fxq 'pass' "$preflight_cleanup_json" &&
+    ! grep -Fq 'INFO:' "$preflight_cleanup_json" &&
+    smoke_json_assert "$preflight_cleanup_json" 'data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 8 and data.get("cleanup_deleted_paths") and data.get("cleanup_preserved_path") is None and data.get("cleanup_skipped_paths") is None and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""'; then
+    test_pass "preflight clean-test-cache json is machine-readable"
+  else
+    test_fail "preflight clean-test-cache json is machine-readable"
+    status=1
+  fi
+
+  mkdir -p "$preflight_clean_json_tmpdir/repo-automation-template-tests" \
+    "$preflight_clean_json_tmpdir/repo-automation-template" \
+    "$preflight_clean_json_tmpdir/repo-automation" \
+    "$preflight_clean_json_tmpdir/repo-automation-log-dump" \
+    "$preflight_clean_json_home/.cache/repo-automation-template-tests" \
+    "$preflight_clean_json_home/.cache/repo-automation-template" \
+    "$preflight_clean_json_home/.cache/repo-automation" \
+    "$preflight_clean_json_home/.cache/repo-automation-log-dump" \
+    "$preflight_clean_json_home/projects/repo-automation-template" \
+    "$preflight_clean_json_home/Downloads" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation-template-tests/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation-template/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_json_tmpdir/repo-automation-log-dump/marker.txt" || return 1
+  mkdir -p "$preflight_clean_json_preserve_inside_path" || return 1
+  printf 'tmp nested preserve marker\n' > "$preflight_clean_json_preserve_inside_path/keep.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation-template-tests/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation-template/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_json_home/.cache/repo-automation-log-dump/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_json_home/projects/repo-automation-template/keep.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_json_home/Downloads/keep.txt" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_json_tmpdir" HOME="$preflight_clean_json_home" \
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path="$preflight_clean_json_preserve_inside_path" --json > "$preflight_cleanup_preserve_json" 2> "$preflight_cleanup_preserve_err"
+  ) && python3 -m json.tool "$preflight_cleanup_preserve_json" >/dev/null &&
+    [ ! -s "$preflight_cleanup_preserve_err" ] &&
+    smoke_json_assert "$preflight_cleanup_preserve_json" 'data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 7 and data.get("cleanup_preserved_path", "").endswith("/repo-automation/active-run") and data.get("cleanup_skipped_paths", "").endswith("/repo-automation") and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""' &&
+    [ -e "$preflight_clean_json_tmpdir/repo-automation/active-run/keep.txt" ] &&
+    [ ! -e "$preflight_clean_json_tmpdir/repo-automation-template-tests/marker.txt" ] &&
+    [ ! -e "$preflight_clean_json_tmpdir/repo-automation-template/marker.txt" ] &&
+    [ -e "$preflight_clean_json_tmpdir/repo-automation/marker.txt" ] &&
+    [ ! -e "$preflight_clean_json_tmpdir/repo-automation-log-dump/marker.txt" ] &&
+    [ ! -e "$preflight_clean_json_home/.cache/repo-automation-template-tests/marker.txt" ] &&
+    [ ! -e "$preflight_clean_json_home/.cache/repo-automation-template/marker.txt" ] &&
+    [ ! -e "$preflight_clean_json_home/.cache/repo-automation/marker.txt" ] &&
+    [ ! -e "$preflight_clean_json_home/.cache/repo-automation-log-dump/marker.txt" ] &&
+    [ -e "$preflight_clean_json_home/projects/repo-automation-template/keep.txt" ] &&
+    [ -e "$preflight_clean_json_home/Downloads/keep.txt" ]; then
+    test_pass "preflight clean-test-cache json preserves the nested path"
+  else
+    test_fail "preflight clean-test-cache json preserves the nested path"
     status=1
   fi
 

@@ -67,6 +67,26 @@ preflight_json_escape() {
   printf '%s' "$value"
 }
 
+preflight_json_string_or_null() {
+  local value="${1-}"
+
+  if [ -n "$value" ]; then
+    printf '"%s"' "$(preflight_json_escape "$value")"
+  else
+    printf 'null'
+  fi
+}
+
+preflight_json_number_or_null() {
+  local value="${1-}"
+
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+  else
+    printf 'null'
+  fi
+}
+
 preflight_human_bytes() {
   local bytes="${1:-}"
 
@@ -246,6 +266,12 @@ preflight_clean_test_cache() {
   preflight_cleanup_deleted_count=0
   preflight_cleanup_deleted_paths=""
   preflight_cleanup_skipped_paths=""
+  preflight_cleanup_preserved_path=""
+  preflight_cleanup_free_before_bytes=""
+  preflight_cleanup_free_after_bytes=""
+  if [ -n "$preserve_path" ]; then
+    preflight_cleanup_preserved_path="$preserve_path"
+  fi
   preflight_disk_status="pass"
 
   if preflight_disk_guard_collect "$root"; then
@@ -328,16 +354,26 @@ preflight_print_json() {
   local cleanup_mode="$6"
   local cleanup_json="$7"
   local stop_reason="$8"
+  local exit_code="$9"
+  local disk_value="${10:-skip}"
 
   printf '{'
   printf '"branch":"%s",' "$(preflight_json_escape "$branch")"
   printf '"mode":"%s",' "$(preflight_json_escape "$preflight_mode")"
+  printf '"rc":%s,' "$exit_code"
+  printf '"disk":"%s",' "$(preflight_json_escape "$disk_value")"
   printf '"default_branch":"%s",' "$(preflight_json_escape "$default_branch")"
   printf '"remote_name":"%s",' "$(preflight_json_escape "$remote_name")"
   printf '"current_branch":"%s",' "$(preflight_json_escape "$current_branch")"
   printf '"divergence":"%s",' "$(preflight_json_escape "$divergence")"
   printf '"branch_cleanup_mode":"%s",' "$(preflight_json_escape "$cleanup_mode")"
   printf '"branch_cleanup_status":%s,' "${cleanup_json:-null}"
+  printf '"cleanup_deleted_count":%s,' "${preflight_cleanup_deleted_count:-0}"
+  printf '"cleanup_deleted_paths":%s,' "$(preflight_json_string_or_null "${preflight_cleanup_deleted_paths:-}")"
+  printf '"cleanup_preserved_path":%s,' "$(preflight_json_string_or_null "${preflight_cleanup_preserved_path:-}")"
+  printf '"cleanup_skipped_paths":%s,' "$(preflight_json_string_or_null "${preflight_cleanup_skipped_paths:-}")"
+  printf '"cleanup_free_before_bytes":%s,' "$(preflight_json_number_or_null "${preflight_cleanup_free_before_bytes:-}")"
+  printf '"cleanup_free_after_bytes":%s,' "$(preflight_json_number_or_null "${preflight_cleanup_free_after_bytes:-}")"
   printf '"stop_reason":"%s"' "$(preflight_json_escape "$stop_reason")"
   printf '}\n'
 }
@@ -476,7 +512,19 @@ preflight_main() {
   if [ "$command_status" -eq 0 ] && [ "$clean_test_cache" -eq 1 ]; then
     preflight_clean_test_cache || command_status=1
     if [ "$branch_value_set" -eq 0 ]; then
-      if [ "$preflight_explain" -eq 1 ]; then
+      if [ "$preflight_json" -eq 1 ]; then
+        preflight_print_json \
+          "" \
+          "" \
+          "" \
+          "" \
+          "" \
+          "$preflight_mode" \
+          "${cleanup_json:-null}" \
+          "${preflight_stop_reason:-}" \
+          "$command_status" \
+          "${preflight_disk_status:-skip}"
+      elif [ "$preflight_explain" -eq 1 ]; then
         preflight_print_cleanup_info
         local -a summary_lines=(
           "script=codex-slice-preflight"
@@ -746,7 +794,9 @@ preflight_main() {
       "${divergence:-}" \
       "${active_cleanup_mode:-}" \
       "${cleanup_json:-null}" \
-      "$preflight_stop_reason"
+      "$preflight_stop_reason" \
+      "$command_status" \
+      "${preflight_disk_status:-skip}"
   elif [ "$preflight_explain" -eq 1 ]; then
     local explain_mode="$preflight_mode"
     if [ "$clean_test_cache" -eq 1 ] && [ "$branch_value_set" -eq 1 ]; then
