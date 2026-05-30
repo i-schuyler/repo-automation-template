@@ -1,0 +1,470 @@
+#!/usr/bin/env bash
+# repo-automation/bin/codex-run
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+codex_run_quiet=0
+codex_run_explain=0
+codex_run_prompt_file=""
+codex_run_out_dir=""
+codex_run_out_dir_abs=""
+codex_run_profile="default"
+codex_run_cd=""
+codex_run_cd_abs=""
+codex_run_sandbox="workspace-write"
+codex_run_approval="never"
+codex_run_timeout="0"
+codex_run_timeout_enforced="not_requested"
+codex_run_repo_root=""
+codex_run_codex_path=""
+codex_run_stdout_path=""
+codex_run_stderr_path=""
+codex_run_final_output_path=""
+codex_run_summary_path=""
+codex_run_exit_code=0
+codex_run_result="pass"
+codex_run_final_output_status="missing"
+codex_run_failure_step=""
+codex_run_failure_log=""
+codex_run_failure_excerpt=""
+
+codex_run_usage() {
+  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--ask-for-approval=<policy>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
+}
+
+codex_run_fail() {
+  printf 'fail: %s\n' "$1" >&2
+  printf 'fix: %s\n' "$2" >&2
+}
+
+codex_run_flag_value_error() {
+  local reason="$1"
+  local flag="$2"
+  local fix="$3"
+
+  repo_auto_flag_error "$reason" "$flag" "$fix" || true
+}
+
+codex_run_is_conservative_token() {
+  case "${1:-}" in
+    ''|[-]*|*[!A-Za-z0-9._-]*)
+      return 1
+      ;;
+  esac
+
+  return 0
+}
+
+codex_run_resolve_existing_dir() {
+  local input_path="$1"
+  local resolved_path=""
+
+  resolved_path="$(
+    python3 - "$input_path" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1]).expanduser()
+try:
+    resolved = path.resolve(strict=True)
+except OSError as exc:
+    print(f"fail: path does not exist or is not accessible: {path}", file=sys.stderr)
+    print("fix: provide an existing directory path", file=sys.stderr)
+    raise SystemExit(1)
+
+if not resolved.is_dir():
+    print(f"fail: path is not a directory: {resolved}", file=sys.stderr)
+    print("fix: provide an existing directory path", file=sys.stderr)
+    raise SystemExit(1)
+
+print(resolved)
+PY
+  )" || return 1
+
+  printf '%s\n' "$resolved_path"
+}
+
+codex_run_resolve_out_dir() {
+  local input_path="$1"
+  local repo_root="$2"
+  local resolved_path=""
+
+  resolved_path="$(
+    python3 - "$input_path" "$repo_root" <<'PY'
+from pathlib import Path
+import sys
+
+out_dir = Path(sys.argv[1]).expanduser().resolve(strict=False)
+repo_root = Path(sys.argv[2]).resolve(strict=True)
+
+try:
+    out_dir.relative_to(repo_root)
+except ValueError:
+    pass
+else:
+    print('fail: out-dir must be outside the repo root', file=sys.stderr)
+    print('fix: choose a directory outside the current repo root', file=sys.stderr)
+    raise SystemExit(1)
+
+print(out_dir)
+PY
+  )" || return 1
+
+  printf '%s\n' "$resolved_path"
+}
+
+codex_run_first_excerpt() {
+  local path="$1"
+
+  if [ -f "$path" ] && [ -s "$path" ]; then
+    awk 'NF { print; count++; if (count == 8) exit }' "$path"
+    return 0
+  fi
+
+  printf '(no output)\n'
+}
+
+codex_run_write_summary() {
+  cat > "$codex_run_summary_path" <<EOF
+script=codex-run
+result=$codex_run_result
+exit_code=$codex_run_exit_code
+prompt_file=$codex_run_prompt_file
+out_dir=$codex_run_out_dir_abs
+cd=$codex_run_cd_abs
+profile=$codex_run_profile
+sandbox=$codex_run_sandbox
+approval=$codex_run_approval
+timeout=$codex_run_timeout
+timeout_enforced=$codex_run_timeout_enforced
+codex_path=$codex_run_codex_path
+stdout_path=$codex_run_stdout_path
+stderr_path=$codex_run_stderr_path
+final_output_path=$codex_run_final_output_path
+final_output_status=$codex_run_final_output_status
+EOF
+}
+
+codex_run_print_final_summary() {
+  local rc="$1"
+  local final_output_value="$2"
+  local summary_value="$3"
+  local status_value="$4"
+
+  printf '===== FINAL SUMMARY =====\n'
+  printf 'script=codex-run\n'
+  printf 'mode=run\n'
+  printf 'rc=%s\n' "$rc"
+  printf 'profile=%s\n' "$codex_run_profile"
+  printf 'sandbox=%s\n' "$codex_run_sandbox"
+  printf 'approval=%s\n' "$codex_run_approval"
+  printf 'final_output=%s\n' "$final_output_value"
+  printf 'summary=%s\n' "$summary_value"
+  printf 'status=%s\n' "$status_value"
+  printf '===== END =====\n'
+}
+
+codex_run_print_failure_block() {
+  local step="$1"
+  local exit_code="$2"
+  local log_path="$3"
+  local excerpt_path="$4"
+
+  printf 'fail: codex-run failed\n'
+  printf 'step: %s\n' "$step"
+  printf 'exit_code: %s\n' "$exit_code"
+  printf 'excerpt:\n'
+  codex_run_first_excerpt "$excerpt_path"
+  printf 'log: %s\n' "$log_path"
+  printf 'fix: paste this blocker into ChatGPT\n'
+}
+
+codex_run_main() {
+  local arg=""
+  local codex_cmd=()
+  local final_output_value="none"
+  local summary_value="none"
+  local status_value="fail"
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        codex_run_usage
+        return 0
+        ;;
+      --quiet)
+        codex_run_quiet=1
+        ;;
+      --explain)
+        codex_run_explain=1
+        ;;
+      --json)
+        codex_run_flag_value_error "unsupported flag" "--json" "use --quiet or --explain; JSON output is not implemented yet"
+        return 1
+        ;;
+      --prompt-file=*)
+        codex_run_prompt_file="${arg#--prompt-file=}"
+        if [ -z "$codex_run_prompt_file" ]; then
+          codex_run_flag_value_error "empty flag value" "--prompt-file" "use --prompt-file=<path>"
+          return 1
+        fi
+        ;;
+      --prompt-file)
+        codex_run_flag_value_error "missing flag value" "--prompt-file" "use --prompt-file=<path>"
+        return 1
+        ;;
+      --out-dir=*)
+        codex_run_out_dir="${arg#--out-dir=}"
+        if [ -z "$codex_run_out_dir" ]; then
+          codex_run_flag_value_error "empty flag value" "--out-dir" "use --out-dir=<path>"
+          return 1
+        fi
+        ;;
+      --out-dir)
+        codex_run_flag_value_error "missing flag value" "--out-dir" "use --out-dir=<path>"
+        return 1
+        ;;
+      --profile=*)
+        codex_run_profile="${arg#--profile=}"
+        if [ -z "$codex_run_profile" ]; then
+          codex_run_flag_value_error "empty flag value" "--profile" "use --profile=<name>"
+          return 1
+        fi
+        ;;
+      --profile)
+        codex_run_flag_value_error "missing flag value" "--profile" "use --profile=<name>"
+        return 1
+        ;;
+      --cd=*)
+        codex_run_cd="${arg#--cd=}"
+        if [ -z "$codex_run_cd" ]; then
+          codex_run_flag_value_error "empty flag value" "--cd" "use --cd=<path>"
+          return 1
+        fi
+        ;;
+      --cd)
+        codex_run_flag_value_error "missing flag value" "--cd" "use --cd=<path>"
+        return 1
+        ;;
+      --sandbox=*)
+        codex_run_sandbox="${arg#--sandbox=}"
+        if [ -z "$codex_run_sandbox" ]; then
+          codex_run_flag_value_error "empty flag value" "--sandbox" "use --sandbox=<mode>"
+          return 1
+        fi
+        ;;
+      --sandbox)
+        codex_run_flag_value_error "missing flag value" "--sandbox" "use --sandbox=<mode>"
+        return 1
+        ;;
+      --ask-for-approval=*)
+        codex_run_approval="${arg#--ask-for-approval=}"
+        if [ -z "$codex_run_approval" ]; then
+          codex_run_flag_value_error "empty flag value" "--ask-for-approval" "use --ask-for-approval=<policy>"
+          return 1
+        fi
+        ;;
+      --ask-for-approval)
+        codex_run_flag_value_error "missing flag value" "--ask-for-approval" "use --ask-for-approval=<policy>"
+        return 1
+        ;;
+      --timeout=*)
+        codex_run_timeout="${arg#--timeout=}"
+        if [ -z "$codex_run_timeout" ]; then
+          codex_run_flag_value_error "empty flag value" "--timeout" "use --timeout=<seconds>"
+          return 1
+        fi
+        ;;
+      --timeout)
+        codex_run_flag_value_error "missing flag value" "--timeout" "use --timeout=<seconds>"
+        return 1
+        ;;
+      --*)
+        codex_run_fail "unknown flag: $arg" "run repo-automation/bin/codex-run --help"
+        return 1
+        ;;
+      *)
+        codex_run_fail "unknown argument: $arg" "run repo-automation/bin/codex-run --help"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$codex_run_prompt_file" ]; then
+    codex_run_fail "missing required --prompt-file" "use --prompt-file=<path> with a readable prompt file"
+    return 1
+  fi
+
+  if [ -z "$codex_run_out_dir" ]; then
+    codex_run_fail "missing required --out-dir" "use --out-dir=<path> for the adapter artifacts"
+    return 1
+  fi
+
+  if [ ! -e "$codex_run_prompt_file" ]; then
+    codex_run_fail "prompt file does not exist: $codex_run_prompt_file" "provide an existing prompt file"
+    return 1
+  fi
+
+  if [ -d "$codex_run_prompt_file" ]; then
+    codex_run_fail "prompt file is a directory: $codex_run_prompt_file" "provide a regular readable prompt file"
+    return 1
+  fi
+
+  if [ ! -f "$codex_run_prompt_file" ]; then
+    codex_run_fail "prompt file is not a regular file: $codex_run_prompt_file" "provide a regular readable prompt file"
+    return 1
+  fi
+
+  if [ ! -r "$codex_run_prompt_file" ]; then
+    codex_run_fail "prompt file is not readable: $codex_run_prompt_file" "fix file permissions or choose a readable prompt file"
+    return 1
+  fi
+
+  if [ ! -s "$codex_run_prompt_file" ]; then
+    codex_run_fail "prompt file is empty: $codex_run_prompt_file" "provide a non-empty prompt file"
+    return 1
+  fi
+
+  if ! codex_run_is_conservative_token "$codex_run_profile"; then
+    codex_run_fail "invalid profile: $codex_run_profile" "use a conservative profile name without spaces, paths, or shell metacharacters"
+    return 1
+  fi
+
+  if ! codex_run_is_conservative_token "$codex_run_sandbox"; then
+    codex_run_fail "invalid sandbox: $codex_run_sandbox" "use a conservative sandbox mode without spaces, paths, or shell metacharacters"
+    return 1
+  fi
+
+  if ! codex_run_is_conservative_token "$codex_run_approval"; then
+    codex_run_fail "invalid ask-for-approval policy: $codex_run_approval" "use a conservative approval policy without spaces, paths, or shell metacharacters"
+    return 1
+  fi
+
+  case "$codex_run_timeout" in
+    ''|*[!0-9]*)
+      codex_run_fail "invalid timeout: $codex_run_timeout" "use --timeout=<seconds> with a non-negative integer"
+      return 1
+      ;;
+  esac
+
+  codex_run_repo_root="$(repo_auto_repo_root)" || return 1
+  codex_run_out_dir_abs="$(codex_run_resolve_out_dir "$codex_run_out_dir" "$codex_run_repo_root")" || return 1
+  if [ ! -d "$codex_run_out_dir_abs" ]; then
+    if ! mkdir -p "$codex_run_out_dir_abs"; then
+      codex_run_fail "unable to create out-dir: $codex_run_out_dir_abs" "fix filesystem permissions or choose a writable directory outside the current repo root"
+      return 1
+    fi
+  fi
+
+  codex_run_cd="${codex_run_cd:-$codex_run_repo_root}"
+  codex_run_cd_abs="$(codex_run_resolve_existing_dir "$codex_run_cd")" || return 1
+
+  if [ "$codex_run_profile" = "default" ]; then
+    :
+  else
+    codex_run_codex_path=""
+  fi
+
+  codex_run_codex_path="$(command -v codex 2>/dev/null || true)"
+  if [ -z "$codex_run_codex_path" ]; then
+    codex_run_fail "codex command not found on PATH" "install Codex or adjust PATH so repo-automation/bin/codex-run can invoke codex exec"
+    return 1
+  fi
+
+  codex_run_stdout_path="$codex_run_out_dir_abs/codex.stdout"
+  codex_run_stderr_path="$codex_run_out_dir_abs/codex.stderr"
+  codex_run_final_output_path="$codex_run_out_dir_abs/codex-final.txt"
+  codex_run_summary_path="$codex_run_out_dir_abs/codex-run-summary.txt"
+
+  codex_run_timeout_enforced="not_enforced"
+
+  if [ "$codex_run_explain" -eq 1 ]; then
+    printf 'INFO: codex-run profile=%s sandbox=%s approval=%s timeout=%s\n' \
+      "$codex_run_profile" "$codex_run_sandbox" "$codex_run_approval" "$codex_run_timeout"
+    printf 'INFO: codex-run prompt=%s\n' "$codex_run_prompt_file"
+    printf 'INFO: codex-run out-dir=%s\n' "$codex_run_out_dir_abs"
+    printf 'INFO: codex-run cd=%s\n' "$codex_run_cd_abs"
+    printf 'INFO: codex-run timeout_enforced=%s\n' "$codex_run_timeout_enforced"
+  fi
+
+  codex_cmd=("$codex_run_codex_path" exec)
+  if [ "$codex_run_profile" != "default" ]; then
+    codex_cmd+=("--profile" "$codex_run_profile")
+  fi
+  codex_cmd+=(
+    "--cd" "$codex_run_cd_abs"
+    "--sandbox" "$codex_run_sandbox"
+    "--ask-for-approval" "$codex_run_approval"
+    "--output-last-message" "$codex_run_final_output_path"
+    -
+  )
+
+  if [ "$codex_run_explain" -eq 1 ]; then
+    printf 'INFO: codex-run executing codex exec\n'
+  fi
+
+  "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
+  codex_run_exit_code=$?
+
+  if [ "$codex_run_exit_code" -ne 0 ]; then
+    codex_run_result="fail"
+    codex_run_failure_step="codex"
+    codex_run_failure_log="$codex_run_stderr_path"
+    if [ ! -s "$codex_run_failure_log" ] && [ -s "$codex_run_stdout_path" ]; then
+      codex_run_failure_log="$codex_run_stdout_path"
+    fi
+    codex_run_failure_excerpt="$(codex_run_first_excerpt "$codex_run_failure_log")"
+    codex_run_write_summary || return 1
+    codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_log" "$codex_run_failure_log" >&2
+    if [ "$codex_run_explain" -eq 1 ]; then
+      codex_run_print_final_summary 1 none "$codex_run_summary_path" fail
+    fi
+    return 1
+  fi
+
+  if [ -s "$codex_run_final_output_path" ]; then
+    codex_run_final_output_status="present"
+    final_output_value="$codex_run_final_output_path"
+    codex_run_result="pass"
+    codex_run_write_summary || return 1
+    if [ "$codex_run_quiet" -eq 0 ] && [ "$codex_run_explain" -eq 0 ]; then
+      printf 'pass\n'
+      printf 'final_output_path=%s\n' "$codex_run_final_output_path"
+      printf 'summary_path=%s\n' "$codex_run_summary_path"
+    fi
+    if [ "$codex_run_explain" -eq 1 ]; then
+      printf 'INFO: codex-run final output=%s\n' "$codex_run_final_output_path"
+      codex_run_print_final_summary 0 "$codex_run_final_output_path" "$codex_run_summary_path" pass
+    fi
+    return 0
+  fi
+
+  codex_run_result="fail"
+  codex_run_failure_step="final-output-contract"
+  codex_run_failure_log="$codex_run_final_output_path"
+  codex_run_failure_excerpt="codex exec exited 0 but final output file is missing or empty"
+  codex_run_write_summary || return 1
+  printf 'fail: codex-run failed\n' >&2
+  printf 'step: %s\n' "$codex_run_failure_step" >&2
+  printf 'exit_code: %s\n' "$codex_run_exit_code" >&2
+  printf 'excerpt:\n%s\n' "$codex_run_failure_excerpt" >&2
+  printf 'log: %s\n' "$codex_run_failure_log" >&2
+  printf 'fix: paste this blocker into ChatGPT\n' >&2
+  if [ "$codex_run_explain" -eq 1 ]; then
+    codex_run_print_final_summary 1 none "$codex_run_summary_path" fail
+  fi
+  return 1
+}
+
+codex_run_main "$@"
+# repo-automation/bin/codex-run EOF

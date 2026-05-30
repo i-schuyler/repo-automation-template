@@ -36,7 +36,7 @@ Future execution mode is expected to:
 
 - validate the handoff
 - run preflight
-- run a blocking Codex adapter/profile
+- run a blocking Codex adapter/profile through `codex-run` (this slice is not wired to execute through it yet)
 - classify Codex completion by child-process completion plus a recognizable final output contract
 - validate PR body when submit is enabled
 - explicitly submit through repo-flow only when the CLI invocation authorizes submit
