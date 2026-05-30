@@ -460,7 +460,9 @@
       "artifact_helper": true,
       "umbrella_helper": false,
       "workflow_role": "workflow",
-      "config_keys": []
+      "config_keys": [
+        "EXPECTED_REMOTE_URL"
+      ]
     },
     {
       "name": "slice-run-dir",

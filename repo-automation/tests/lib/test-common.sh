@@ -21,6 +21,7 @@ TEST_EVENT_CHECK=()
 TEST_EVENT_MESSAGE=()
 TEST_FIRST_FAILURE_INDEX=-1
 TEST_FIRST_WARNING_INDEX=-1
+TEST_CLEANUP_OWNER_BASHPID="${BASHPID:-$$}"
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/common.sh"
@@ -232,6 +233,7 @@ test_run_named_check() {
   local scenario_function="${2:-}"
   local timeout_seconds="${smoke_timeout_seconds:-0}"
   local capture_file=""
+  local preserved_capture_file=""
   local failure_line=""
 
   if [ -z "$check_name" ] || [ -z "$scenario_function" ]; then
@@ -282,11 +284,13 @@ test_run_named_check() {
     if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
       test_fail "$TEST_CURRENT_CHECK timed out"
     else
-      failure_line="$(test_extract_first_actionable_failure "$capture_file" || true)"
+      preserved_capture_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-automation-template-named-check.XXXXXX")" || preserved_capture_file="$capture_file"
+      cp -- "$capture_file" "$preserved_capture_file" >/dev/null 2>&1 || preserved_capture_file="$capture_file"
+      failure_line="$(test_extract_first_actionable_failure "$preserved_capture_file" || true)"
       if [ -n "$failure_line" ]; then
         test_fail "$failure_line"
       else
-        test_fail "$TEST_CURRENT_CHECK"
+        test_fail "$TEST_CURRENT_CHECK (log: $preserved_capture_file)"
       fi
     fi
   fi
@@ -506,6 +510,10 @@ test_cleanup() {
     return 0
   fi
   TEST_CLEANUP_RAN=1
+
+  if [ "${TEST_CLEANUP_OWNER_BASHPID:-}" != "${BASHPID:-$$}" ]; then
+    return 0
+  fi
 
   for child_pid in "${TEST_CHILD_PIDS[@]}"; do
     test_kill_registered_child_pid "$child_pid"

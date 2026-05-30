@@ -74,6 +74,7 @@ smoke_slice_handoff_write_file() {
   local pr_body_text="${8:-}"
   local review_request_text="${9:-}"
 
+  mkdir -p "$(dirname "$path")" || return 1
   {
     printf 'schema: repo-automation-slice-handoff/v1\n'
     if [ -n "$branch" ]; then
@@ -125,11 +126,128 @@ smoke_slice_handoff_assert_text_file() {
   [ "$(cat "$path" 2>/dev/null || true)" = "$expected" ]
 }
 
+smoke_slice_handoff_extract_field() {
+  local path="$1"
+  local field="$2"
+
+  awk -F= -v field="$field" '$1 == field {sub("^[^=]*=", "", $0); print $0; exit}' "$path"
+}
+
+smoke_slice_handoff_assert_execution_stdout() {
+  local stdout_file="$1"
+  local stderr_file="$2"
+  local expected_branch="$3"
+  local run_dir=""
+
+  [ ! -s "$stderr_file" ] || return 1
+  [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" = "6" ] || return 1
+  grep -Fxq 'pass' "$stdout_file" || return 1
+  grep -Fxq 'mode=execution-preflight' "$stdout_file" || return 1
+  grep -Fxq "branch=$expected_branch" "$stdout_file" || return 1
+  grep -Eq '^run_dir=.+' "$stdout_file" || return 1
+  grep -Fxq 'preflight_status=pass' "$stdout_file" || return 1
+  grep -Fxq 'next=codex-run not implemented in this slice' "$stdout_file" || return 1
+
+  run_dir="$(smoke_slice_handoff_extract_field "$stdout_file" run_dir)"
+  [ -n "$run_dir" ] || return 1
+  printf '%s\n' "$run_dir"
+}
+
+smoke_slice_handoff_assert_execution_run_dir() {
+  local run_dir="$1"
+  local submit_mode="$2"
+  local branch="$3"
+  local title="$4"
+  local prompt_text="$5"
+  local review_request_text="$6"
+  local expected_pr_body="${7:-}"
+
+  [ -d "$run_dir" ] || return 1
+  for path in \
+    slice-run-dir-create.json \
+    slice-run-dir-create.stdout \
+    slice-run-dir-create.stderr \
+    slice-run-dir-cleanup.json \
+    slice-run-dir-cleanup.stdout \
+    slice-run-dir-cleanup.stderr \
+    preflight.json \
+    preflight.stdout \
+    preflight.stderr \
+    slice-handoff-summary.txt \
+    slice-handoff-execution-summary.txt \
+    codex-prompt.md \
+    review-request.txt
+  do
+    [ -f "$run_dir/$path" ] || return 1
+  done
+
+  if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+    [ -f "$run_dir/pr-body.md" ] || return 1
+    [ -n "$expected_pr_body" ] || return 1
+    [ "$(cat "$run_dir/pr-body.md" 2>/dev/null || true)" = "$expected_pr_body" ] || return 1
+  else
+    [ ! -e "$run_dir/pr-body.md" ] || return 1
+  fi
+  [ ! -e "$run_dir/dry-run-preview.txt" ] || return 1
+
+  python3 - "$run_dir/slice-run-dir-create.json" "$run_dir/slice-run-dir-cleanup.json" "$run_dir/preflight.json" <<'PY' >/dev/null || return 1
+from pathlib import Path
+import json
+import sys
+
+create_path = Path(sys.argv[1])
+cleanup_path = Path(sys.argv[2])
+preflight_path = Path(sys.argv[3])
+create = json.loads(create_path.read_text(encoding='utf-8'))
+cleanup = json.loads(cleanup_path.read_text(encoding='utf-8'))
+preflight = json.loads(preflight_path.read_text(encoding='utf-8'))
+if not isinstance(create, dict) or not isinstance(cleanup, dict) or not isinstance(preflight, dict):
+    raise SystemExit(1)
+if create.get('run_dir') != str(create_path.parent):
+    raise SystemExit(1)
+if cleanup.get('mode') != 'cleanup-stale' or cleanup.get('apply') is not True:
+    raise SystemExit(1)
+if cleanup.get('preserve_path') != str(cleanup_path.parent):
+    raise SystemExit(1)
+if preflight.get('rc') != 0:
+    raise SystemExit(1)
+PY
+
+  smoke_slice_handoff_assert_text_file "$run_dir/codex-prompt.md" "$prompt_text" || return 1
+  smoke_slice_handoff_assert_text_file "$run_dir/review-request.txt" "$review_request_text" || return 1
+  grep -Fxq "schema=repo-automation-slice-handoff/v1" "$run_dir/slice-handoff-summary.txt" || return 1
+  grep -Fxq "branch=$branch" "$run_dir/slice-handoff-summary.txt" || return 1
+  grep -Fxq "title=$title" "$run_dir/slice-handoff-summary.txt" || return 1
+  grep -Fxq "submit_mode=$submit_mode" "$run_dir/slice-handoff-summary.txt" || return 1
+  grep -Fxq "codex_prompt_path=$run_dir/codex-prompt.md" "$run_dir/slice-handoff-summary.txt" || return 1
+  grep -Fxq "review_request_path=$run_dir/review-request.txt" "$run_dir/slice-handoff-summary.txt" || return 1
+  if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+    grep -Fxq "pr_body_path=$run_dir/pr-body.md" "$run_dir/slice-handoff-summary.txt" || return 1
+  else
+    grep -Fxq "pr_body_path=" "$run_dir/slice-handoff-summary.txt" || return 1
+  fi
+  grep -Fxq "schema=repo-automation-slice-handoff-execution/v1" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "mode=execution-preflight" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "branch=$branch" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "title=$title" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "submit_mode=$submit_mode" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "cleanup_json_path=$run_dir/slice-run-dir-cleanup.json" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "cleanup_stdout_path=$run_dir/slice-run-dir-cleanup.stdout" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "cleanup_stderr_path=$run_dir/slice-run-dir-cleanup.stderr" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "preflight_json_path=$run_dir/preflight.json" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "preflight_stdout_path=$run_dir/preflight.stdout" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "preflight_stderr_path=$run_dir/preflight.stderr" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "result=pass" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "next=codex-run not implemented in this slice" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  return 0
+}
+
 smoke_slice_handoff_run() {
   local stdout_file="$1"
   local stderr_file="$2"
 
   shift 2
+  mkdir -p "$(dirname "$stdout_file")" "$(dirname "$stderr_file")" || return 1
   "$(smoke_slice_handoff_script)" "$@" >"$stdout_file" 2>"$stderr_file"
 }
 

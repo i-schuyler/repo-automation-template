@@ -34,6 +34,10 @@ smoke_check_slice_handoff_contract() {
   local valid_none_out_dir="$smoke_test_base/out-valid-none"
   local valid_submit_out_dir="$smoke_test_base/out-valid-submit"
   local valid_quiet_out_dir="$smoke_test_base/out-quiet"
+  local execution_artifact_root="${TMPDIR:-$HOME/.cache}/slice-handoff-execution"
+  local execution_none_out_dir="$execution_artifact_root/out-execution-none"
+  local execution_submit_out_dir="$execution_artifact_root/out-execution-submit"
+  local execution_quiet_out_dir="$execution_artifact_root/out-execution-quiet"
   local invalid_out_dir="$smoke_test_base/out-invalid-validation"
   local inside_repo_out_dir="$smoke_repo_root/slice-handoff-out-inside-repo"
   local expected_none_stdout
@@ -53,6 +57,12 @@ smoke_check_slice_handoff_contract() {
   local expected_submit_preview
   local expected_none_review_stdout
   local expected_explicit_review_stdout
+  local expected_execution_none_preview
+  local expected_execution_none_summary
+  local expected_execution_submit_preview
+  local expected_execution_submit_summary
+  local expected_execution_quiet_preview
+  local expected_execution_quiet_summary
   local missing_schema_file="$smoke_check_root/missing-schema.md"
   local invalid_schema_file="$smoke_check_root/invalid-schema.md"
   local missing_branch_file="$smoke_check_root/missing-branch.md"
@@ -305,6 +315,12 @@ EOF
   expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
   expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
   expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_execution_none_preview="${expected_none_preview//$valid_none_out_dir/$execution_none_out_dir}"
+  expected_execution_none_summary="${expected_none_summary//$valid_none_out_dir/$execution_none_out_dir}"
+  expected_execution_submit_preview="${expected_submit_preview//$valid_submit_out_dir/$execution_submit_out_dir}"
+  expected_execution_submit_summary="${expected_submit_summary//$valid_submit_out_dir/$execution_submit_out_dir}"
+  expected_execution_quiet_preview="${expected_quiet_preview//$valid_quiet_out_dir/$execution_quiet_out_dir}"
+  expected_execution_quiet_summary="${expected_quiet_summary//$valid_quiet_out_dir/$execution_quiet_out_dir}"
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
@@ -411,6 +427,64 @@ EOF
     status=1
   fi
 
+  smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
+  smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
+
+  if (
+    rm -rf -- "$execution_none_out_dir" &&
+      smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" --file="$valid_none_file" --out-dir="$execution_none_out_dir" &&
+      run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" "feature/slice-handoff-smoke")" &&
+      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-smoke" "Slice handoff smoke" "$expected_none_prompt" "$expected_default_review_request" &&
+      smoke_slice_handoff_assert_text_file "$execution_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$execution_none_out_dir/dry-run-preview.txt" "$expected_execution_none_preview" &&
+      smoke_slice_handoff_assert_text_file "$execution_none_out_dir/review-request.txt" "$expected_default_review_request" &&
+      smoke_slice_handoff_assert_text_file "$execution_none_out_dir/slice-handoff-summary.txt" "$expected_execution_none_summary"
+  ); then
+    :
+  else
+    test_fail "execution-none artifacts"
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$execution_submit_out_dir" &&
+      smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
+      smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$valid_submit_file" --out-dir="$execution_submit_out_dir" &&
+      run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" "feature/slice-handoff-submit")" &&
+      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-submit" "Slice handoff submit smoke" "$expected_submit_prompt" "$review_request_text" "$expected_submit_body" &&
+      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
+      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/dry-run-preview.txt" "$expected_execution_submit_preview" &&
+      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/pr-body.md" "$expected_submit_body" &&
+      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/review-request.txt" "$review_request_text" &&
+      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/slice-handoff-summary.txt" "$expected_execution_submit_summary"
+  ); then
+    :
+  else
+    test_fail "execution-submit artifacts"
+    status=1
+  fi
+
+  smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
+
+  if (
+    rm -rf -- "$execution_quiet_out_dir" &&
+      smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-quiet.out" "$execution_artifact_root/slice-handoff-execution-quiet.err" --file="$valid_none_file" --quiet --out-dir="$execution_quiet_out_dir" &&
+      [ ! -s "$execution_artifact_root/slice-handoff-execution-quiet.out" ] &&
+      [ ! -s "$execution_artifact_root/slice-handoff-execution-quiet.err" ] &&
+      smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/dry-run-preview.txt" "$expected_execution_quiet_preview" &&
+      smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/review-request.txt" "$expected_default_review_request" &&
+      smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/slice-handoff-summary.txt" "$expected_execution_quiet_summary"
+  ); then
+    :
+  else
+    test_fail "execution-quiet artifacts"
+    status=1
+  fi
+
+  smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
+  smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
+
   if (
     rm -rf -- "$inside_repo_out_dir" &&
       smoke_slice_handoff_expect_failure "out-dir-inside-repo" "out-dir must be outside the repo root" "choose a directory outside the current repo root" --file="$valid_none_file" --dry-run --out-dir="$inside_repo_out_dir" &&
@@ -458,12 +532,6 @@ EOF
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "missing-dry-run" "missing required --dry-run" "pass --dry-run to validate the handoff without executing it" --file="$valid_none_file"; then
-    :
-  else
-    status=1
-  fi
-
   if smoke_slice_handoff_expect_failure "plan-only-reject" "unsupported flag: --plan-only" "use --dry-run" --file="$valid_none_file" --plan-only; then
     :
   else
@@ -476,7 +544,7 @@ EOF
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "execute-flag" "unsupported flag: --execute" "use --dry-run; execute mode is not implemented" --file="$valid_none_file" --dry-run --execute; then
+  if smoke_slice_handoff_expect_failure "execute-flag" "unsupported flag: --execute" "use the default execution mode without --execute" --file="$valid_none_file" --dry-run --execute; then
     :
   else
     status=1
@@ -487,6 +555,9 @@ EOF
   else
     status=1
   fi
+
+  smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
+  smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
 
   if (
     python3 - "$valid_none_file" "$missing_schema_file" <<'PY'
