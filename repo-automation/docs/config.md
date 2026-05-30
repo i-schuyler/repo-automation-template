@@ -71,6 +71,8 @@ That installed context is what downstream users can paste into bug reports when 
 
 `repo-automation/bin/repo-automation-install` generates downstream `.repo-automation.conf` and keeps the same variable shape. `EXPECTED_REMOTE_URL` is only populated when the target origin is a supported GitHub SSH remote; missing, local, file-based, HTTPS, or otherwise unsupported target origins are normalized to an empty `EXPECTED_REMOTE_URL=""` so downstream config stays public-safe. Downstream maintainers can fill it in later if they want stricter remote matching.
 
+If you need a local-only GitHub SSH host alias such as `git@github.com-i-schuyler:i-schuyler/repo-automation-template.git`, put it in `.repo-automation.local.conf`. You can also set `EXPECTED_REMOTE_URL=""` there to skip strict remote matching in a local clone.
+
 Installer smoke tests should also audit the generated downstream config and helper outputs against the downstream install contract in a temporary repo before any real downstream rollout.
 
 ## Version Drift

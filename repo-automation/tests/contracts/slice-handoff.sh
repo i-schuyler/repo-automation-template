@@ -73,6 +73,13 @@ smoke_check_slice_handoff_contract() {
     status=1
   fi
 
+  if smoke_slice_handoff_assert_planned_route; then
+    test_pass "slice-handoff dry-run planned route matches helper metadata"
+  else
+    test_fail "slice-handoff dry-run planned route matches helper metadata"
+    status=1
+  fi
+
   submit_body="$(cat <<'EOF'
 ## Scope
 

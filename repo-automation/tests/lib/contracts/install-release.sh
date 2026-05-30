@@ -844,6 +844,22 @@ PY
 
   if (
     cd "$install_target" || return 1
+    # shellcheck disable=SC1091
+    source repo-automation/lib/common.sh &&
+      repo_auto_load_config >/dev/null &&
+      EXPECTED_REMOTE_URL="git@github.com:i-schuyler/repo-automation-template.git" repo_auto_validate_required_config >/dev/null &&
+      EXPECTED_REMOTE_URL="git@github.com-i-schuyler:i-schuyler/repo-automation-template.git" repo_auto_validate_required_config >/dev/null &&
+      EXPECTED_REMOTE_URL="" repo_auto_validate_required_config >/dev/null &&
+      ! EXPECTED_REMOTE_URL="https://github.com/i-schuyler/repo-automation-template.git" repo_auto_validate_required_config >/dev/null
+  ); then
+    test_pass "repo-automation-install config validation accepts canonical and GitHub SSH alias EXPECTED_REMOTE_URL values"
+  else
+    test_fail "repo-automation-install config validation accepts canonical and GitHub SSH alias EXPECTED_REMOTE_URL values"
+    status=1
+  fi
+
+  if (
+    cd "$install_target" || return 1
     repo-automation/bin/repo-doctor --quick --no-run-tests >/dev/null
   ); then
     test_pass "repo-automation-install target repo-doctor quick/no-run-tests succeeds"

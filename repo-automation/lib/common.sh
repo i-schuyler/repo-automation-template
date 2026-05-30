@@ -335,7 +335,7 @@ repo_auto_validate_required_config() {
   done
 
   if [ -n "$EXPECTED_REMOTE_URL" ]; then
-    [[ "$EXPECTED_REMOTE_URL" =~ ^git@github.com:[^[:space:]]+/.+\.git$ ]] || {
+    [[ "$EXPECTED_REMOTE_URL" =~ ^git@github\.com(-[A-Za-z0-9][A-Za-z0-9-]*)?:[^[:space:]/]+/[^[:space:]/]+\.git$ ]] || {
       repo_auto_stop "invalid EXPECTED_REMOTE_URL"
       return 1
     }

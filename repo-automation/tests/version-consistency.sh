@@ -227,10 +227,26 @@ for entry in helper_metadata.get('helpers', []):
         fail(f'helper metadata contract_test_path missing on disk: {contract_path}')
 
 planned_routes = helper_metadata.get('planned_routes', [])
-planned_names = {entry.get('name') for entry in planned_routes if isinstance(entry, dict)}
-for planned_name in {'submit', 'slice-handoff plan-only'}:
-    if planned_name not in planned_names:
-        fail(f'helper metadata missing planned route row: {planned_name}')
+if not planned_routes:
+    fail('helper metadata planned_routes must not be empty')
+planned_names = set()
+required_route_fields = {'name', 'state', 'route', 'public', 'workflow_role'}
+for entry in planned_routes:
+    if not isinstance(entry, dict):
+        fail('helper metadata planned route entries must be objects')
+    missing_fields = sorted(required_route_fields - set(entry))
+    if missing_fields:
+        fail(f'helper metadata planned route entry missing fields for {entry.get("name", "<unknown>")}: {", ".join(missing_fields)}')
+    if not isinstance(entry.get('name'), str) or not entry.get('name'):
+        fail('helper metadata planned route name must be a non-empty string')
+    if not isinstance(entry.get('state'), str) or not entry.get('state'):
+        fail('helper metadata planned route state must be a non-empty string')
+    if not isinstance(entry.get('route'), str) or not entry.get('route'):
+        fail('helper metadata planned route route must be a non-empty string')
+    planned_names.add(entry.get('name'))
+
+if len(planned_names) != len(planned_routes):
+    fail('helper metadata planned route names must be unique')
 
 installer_paths = set()
 coverage_sections = {
