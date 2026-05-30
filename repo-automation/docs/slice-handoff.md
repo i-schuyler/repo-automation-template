@@ -11,7 +11,7 @@ The non-executing mode is `--dry-run`.
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
 - `codex-prompt.md`
-- `dry-run-preview.txt` non-executing public-safe preview of the future execution shape
+- `dry-run-preview.txt` non-executing public-safe preview of the future execution shape, including argv-style planned command shapes
 - `slice-handoff-summary.txt`
 - `review-request.txt`
 - `pr-body.md` when `submit_mode: repo-flow-submit-all`
