@@ -24,11 +24,13 @@ preflight_disk_guard_mountpoint=""
 preflight_disk_guard_filesystem=""
 preflight_cleanup_deleted_count=0
 preflight_cleanup_deleted_paths=""
+preflight_cleanup_skipped_paths=""
+preflight_cleanup_preserved_path=""
 preflight_cleanup_free_before_bytes=""
 preflight_cleanup_free_after_bytes=""
 
 preflight_usage() {
-  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--check-only] [--delete-safe-stale] [--clean-test-cache] [--json] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--check-only] [--delete-safe-stale] [--clean-test-cache] [--preserve-path=<path>] [--json] [--explain] [--help]\n'
 }
 
 preflight_flag_error() {
@@ -105,6 +107,54 @@ preflight_command_string() {
   done
 
   printf '%s' "${quoted% }"
+}
+
+preflight_resolve_existing_path() {
+  local input_path="$1"
+  local resolved_path=""
+
+  resolved_path="$(
+    python3 - "$input_path" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1]).expanduser()
+try:
+    resolved = path.resolve(strict=True)
+except OSError:
+    print(f"fail: preserve path does not exist or is not accessible: {path}", file=sys.stderr)
+    print("fix: provide an existing preserve path", file=sys.stderr)
+    raise SystemExit(1)
+
+print(resolved)
+PY
+  )" || return 1
+
+  printf '%s\n' "$resolved_path"
+}
+
+preflight_paths_overlap() {
+  local candidate_path="$1"
+  local preserve_path="$2"
+
+  python3 - "$candidate_path" "$preserve_path" <<'PY'
+from pathlib import Path
+import sys
+
+candidate = Path(sys.argv[1]).expanduser().resolve(strict=False)
+preserve = Path(sys.argv[2]).expanduser().resolve(strict=True)
+
+def contains(parent, child):
+    try:
+        child.relative_to(parent)
+    except ValueError:
+        return False
+    return True
+
+if candidate == preserve or contains(candidate, preserve) or contains(preserve, candidate):
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 preflight_disk_guard_collect() {
@@ -191,9 +241,11 @@ preflight_clean_test_cache() {
   local root="${TMPDIR:-$HOME/.cache}"
   local path=""
   local seen=""
+  local preserve_path="${preflight_cleanup_preserved_path:-}"
 
   preflight_cleanup_deleted_count=0
   preflight_cleanup_deleted_paths=""
+  preflight_cleanup_skipped_paths=""
   preflight_disk_status="pass"
 
   if preflight_disk_guard_collect "$root"; then
@@ -208,6 +260,14 @@ preflight_clean_test_cache() {
         ;;
     esac
     seen="${seen}${path}"$'\n'
+    if [ -n "$preserve_path" ] && preflight_paths_overlap "$path" "$preserve_path"; then
+      if [ -n "$preflight_cleanup_skipped_paths" ]; then
+        preflight_cleanup_skipped_paths="$preflight_cleanup_skipped_paths, $path"
+      else
+        preflight_cleanup_skipped_paths="$path"
+      fi
+      continue
+    fi
     if [ -e "$path" ]; then
       rm -rf -- "$path" || return 1
       if [ -n "$preflight_cleanup_deleted_paths" ]; then
@@ -232,6 +292,8 @@ preflight_append_cleanup_summary_lines() {
 
   summary_lines_ref+=("cleanup_deleted_count=${preflight_cleanup_deleted_count:-0}")
   if [ "$include_details" -eq 1 ]; then
+    summary_lines_ref+=("cleanup_preserved_path=${preflight_cleanup_preserved_path:-none}")
+    summary_lines_ref+=("cleanup_skipped_paths=${preflight_cleanup_skipped_paths:-none}")
     summary_lines_ref+=("cleanup_deleted_paths=${preflight_cleanup_deleted_paths:-none}")
     if [ -n "${preflight_cleanup_free_before_bytes:-}" ]; then
       summary_lines_ref+=("cleanup_free_before_bytes=${preflight_cleanup_free_before_bytes:-}")
@@ -250,6 +312,8 @@ preflight_print_cleanup_info() {
   fi
 
   preflight_info "clean-test-cache removed: ${preflight_cleanup_deleted_paths:-none}"
+  preflight_info "clean-test-cache preserved: ${preflight_cleanup_preserved_path:-none}"
+  preflight_info "clean-test-cache skipped: ${preflight_cleanup_skipped_paths:-none}"
   if [ -n "${preflight_cleanup_free_before_bytes:-}" ] && [ -n "${preflight_cleanup_free_after_bytes:-}" ]; then
     preflight_info "clean-test-cache free: before=$(preflight_human_bytes "$preflight_cleanup_free_before_bytes") after=$(preflight_human_bytes "$preflight_cleanup_free_after_bytes")"
   fi
@@ -305,6 +369,8 @@ preflight_main() {
   local check_only=0
   local delete_safe_stale=0
   local clean_test_cache=0
+  local preserve_path=""
+  local preserve_path_abs=""
   local command_status=0
   local repo_root=""
   local current_branch=""
@@ -366,6 +432,18 @@ preflight_main() {
         clean_test_cache=1
         preflight_mode="clean-test-cache"
         ;;
+      --preserve-path=)
+        preflight_flag_error "empty flag value" "--preserve-path" "use --preserve-path=<path>" || command_status=1
+        ;;
+      --preserve-path=*)
+        preserve_path="${arg#--preserve-path=}"
+        if [ -z "$preserve_path" ]; then
+          preflight_flag_error "empty flag value" "--preserve-path" "use --preserve-path=<path>" || command_status=1
+        fi
+        ;;
+      --preserve-path)
+        preflight_flag_error "missing flag value" "--preserve-path" "use --preserve-path=<path>" || command_status=1
+        ;;
       --json)
         preflight_json=1
         ;;
@@ -382,7 +460,20 @@ preflight_main() {
     esac
   done
 
-  if [ "$clean_test_cache" -eq 1 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$clean_test_cache" -eq 1 ] && [ -n "$preserve_path" ]; then
+    preserve_path_abs="$(preflight_resolve_existing_path "$preserve_path")" || {
+      command_status=1
+    }
+    if [ "$command_status" -eq 0 ]; then
+      preflight_cleanup_preserved_path="$preserve_path_abs"
+    fi
+  fi
+
+  if [ "$command_status" -ne 0 ] && [ "$clean_test_cache" -eq 1 ] && [ -n "$preserve_path" ]; then
+    return 1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$clean_test_cache" -eq 1 ]; then
     preflight_clean_test_cache || command_status=1
     if [ "$branch_value_set" -eq 0 ]; then
       if [ "$preflight_explain" -eq 1 ]; then
@@ -700,7 +791,7 @@ preflight_main() {
     fi
     if [ "$clean_test_cache" -eq 1 ]; then
       summary_lines+=("cleanup=cleaned")
-      preflight_append_cleanup_summary_lines summary_lines 0
+      preflight_append_cleanup_summary_lines summary_lines 1
     fi
     summary_lines+=("url_or_stop=${preflight_stop_reason:-pass}")
     repo_auto_print_final_summary "${summary_lines[@]}" >&2

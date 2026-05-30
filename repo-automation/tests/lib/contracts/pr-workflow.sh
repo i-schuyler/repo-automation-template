@@ -1207,6 +1207,9 @@ smoke_check_preflight_json() {
   local branch_missing_stderr="$smoke_test_dir/preflight-branch-missing.stderr"
   local branch_empty_stderr="$smoke_test_dir/preflight-branch-empty.stderr"
   local branch_unknown_stderr="$smoke_test_dir/preflight-branch-unknown.stderr"
+  local preserve_missing_stderr="$smoke_test_dir/preflight-preserve-missing.stderr"
+  local preserve_empty_stderr="$smoke_test_dir/preflight-preserve-empty.stderr"
+  local preserve_missing_path_stderr="$smoke_test_dir/preflight-preserve-missing-path.stderr"
   local preflight_explain_stdout="$smoke_test_dir/preflight-explain.out"
   local preflight_explain_stderr="$smoke_test_dir/preflight-explain.err"
   local preflight_alias_explain_stderr="$smoke_test_dir/preflight-alias-explain.err"
@@ -1221,6 +1224,8 @@ smoke_check_preflight_json() {
   local preflight_clean_home="$smoke_test_base/preflight-clean-home"
   local preflight_clean_stdout="$smoke_test_base/preflight-clean.out"
   local preflight_clean_stderr="$smoke_test_base/preflight-clean.err"
+  local preflight_preserve_equal_path="$preflight_clean_tmpdir/repo-automation"
+  local preflight_preserve_inside_path="$preflight_clean_tmpdir/repo-automation/active-run"
   local preflight_clean_branch="feature/preflight-clean-cache-branch"
   local preflight_clean_branch_stderr="$smoke_test_base/preflight-clean-branch.err"
   local preflight_clean_branch_repo="$smoke_test_base/preflight-clean-repo-$$"
@@ -1302,7 +1307,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --help > "$preflight_help"
-  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && grep -Fq -- '--explain' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
+  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && grep -Fq -- '--preserve-path=<path>' "$preflight_help" && grep -Fq -- '--explain' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
     test_pass "preflight help shows strict branch syntax"
   else
     test_fail "preflight help shows strict branch syntax"
@@ -1448,6 +1453,9 @@ PY
   printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template/marker.txt" || return 1
   printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation/marker.txt" || return 1
   printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" || return 1
+  mkdir -p "$preflight_preserve_equal_path" "$preflight_preserve_inside_path" || return 1
+  printf 'tmp preserve marker\n' > "$preflight_preserve_equal_path/keep.txt" || return 1
+  printf 'tmp nested preserve marker\n' > "$preflight_preserve_inside_path/keep.txt" || return 1
   printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" || return 1
   printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template/marker.txt" || return 1
   printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation/marker.txt" || return 1
@@ -1458,13 +1466,37 @@ PY
   if (
     cd "$smoke_test_dir" || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
-    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --explain > "$preflight_clean_stdout" 2> "$preflight_clean_stderr"
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path="$preflight_clean_tmpdir/missing-preserve" --explain > "$preflight_clean_stdout" 2> "$preserve_missing_path_stderr"
+  ); then
+    test_fail "preflight rejects missing preserve path before cleanup"
+    status=1
+  elif grep -Fq 'preserve path does not exist or is not accessible:' "$preserve_missing_path_stderr" &&
+    [ -e "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" ] &&
+    [ -e "$preflight_clean_tmpdir/repo-automation-template/marker.txt" ] &&
+    [ -e "$preflight_clean_tmpdir/repo-automation/marker.txt" ] &&
+    [ -e "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" ] &&
+    [ -e "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" ] &&
+    [ -e "$preflight_clean_home/.cache/repo-automation-template/marker.txt" ] &&
+    [ -e "$preflight_clean_home/.cache/repo-automation/marker.txt" ] &&
+    [ -e "$preflight_clean_home/.cache/repo-automation-log-dump/marker.txt" ]; then
+    test_pass "preflight rejects missing preserve path before cleanup"
+  else
+    test_fail "preflight rejects missing preserve path before cleanup"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
+      REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --explain > "$preflight_clean_stdout" 2> "$preflight_clean_stderr"
   ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_stderr" &&
     grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_stderr" &&
     grep -Eq '^mode=clean-test-cache$' "$preflight_clean_stderr" &&
     grep -Eq '^rc=0$' "$preflight_clean_stderr" &&
     grep -Fxq 'disk=pass' "$preflight_clean_stderr" &&
     grep -Fq 'clean-test-cache removed:' "$preflight_clean_stderr" &&
+    grep -Fq 'clean-test-cache preserved: none' "$preflight_clean_stderr" &&
+    grep -Fq 'clean-test-cache skipped: none' "$preflight_clean_stderr" &&
     grep -Fq 'clean-test-cache free: before=' "$preflight_clean_stderr" &&
     grep -Fq 'repo-automation-template-tests' "$preflight_clean_stderr" &&
     grep -Fq 'repo-automation-template' "$preflight_clean_stderr" &&
@@ -1473,6 +1505,9 @@ PY
     grep -Eq '^cleanup_free_before=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_stderr" &&
     grep -Eq '^cleanup_free_after_bytes=[0-9]+$' "$preflight_clean_stderr" &&
     grep -Eq '^cleanup_free_after=[0-9]+(\.[0-9])?(B|KiB|MiB|GiB|TiB|PiB|EiB)$' "$preflight_clean_stderr" &&
+    grep -Fxq 'cleanup_preserved_path=none' "$preflight_clean_stderr" &&
+    grep -Fxq 'cleanup_skipped_paths=none' "$preflight_clean_stderr" &&
+    grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_stderr" &&
     ! grep -Fq 'cleanup_command=' "$preflight_clean_stderr" &&
     ! grep -Eq '^branch_before=' "$preflight_clean_stderr" &&
     ! grep -Eq '^branch_after=' "$preflight_clean_stderr" &&
@@ -1490,6 +1525,61 @@ PY
     test_pass "preflight clean-test-cache removes only safe cache roots"
   else
     test_fail "preflight clean-test-cache removes only safe cache roots"
+    status=1
+  fi
+
+  mkdir -p "$preflight_clean_tmpdir/repo-automation-template-tests" \
+    "$preflight_clean_tmpdir/repo-automation-template" \
+    "$preflight_clean_tmpdir/repo-automation" \
+    "$preflight_clean_tmpdir/repo-automation-log-dump" \
+    "$preflight_clean_home/.cache/repo-automation-template-tests" \
+    "$preflight_clean_home/.cache/repo-automation-template" \
+    "$preflight_clean_home/.cache/repo-automation" \
+    "$preflight_clean_home/.cache/repo-automation-log-dump" \
+    "$preflight_clean_home/projects/repo-automation-template" \
+    "$preflight_clean_home/Downloads" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-template/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation/marker.txt" || return 1
+  printf 'tmp cache marker\n' > "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" || return 1
+  printf 'tmp preserve marker\n' > "$preflight_preserve_equal_path/keep.txt" || return 1
+  mkdir -p "$preflight_preserve_inside_path" || return 1
+  printf 'tmp nested preserve marker\n' > "$preflight_preserve_inside_path/keep.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-template/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation/marker.txt" || return 1
+  printf 'home cache marker\n' > "$preflight_clean_home/.cache/repo-automation-log-dump/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_home/projects/repo-automation-template/keep.txt" || return 1
+  printf 'keep me\n' > "$preflight_clean_home/Downloads/keep.txt" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path="$preflight_preserve_equal_path" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_stderr"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_stderr" &&
+    grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_stderr" &&
+    grep -Eq '^mode=clean-test-cache$' "$preflight_clean_stderr" &&
+    grep -Eq '^rc=0$' "$preflight_clean_stderr" &&
+    grep -Fq "clean-test-cache preserved: $preflight_preserve_equal_path" "$preflight_clean_stderr" &&
+    grep -Fq "clean-test-cache skipped: $preflight_clean_tmpdir/repo-automation" "$preflight_clean_stderr" &&
+    grep -Fxq "cleanup_preserved_path=$preflight_preserve_equal_path" "$preflight_clean_stderr" &&
+    grep -Fxq "cleanup_skipped_paths=$preflight_clean_tmpdir/repo-automation" "$preflight_clean_stderr" &&
+    grep -Fxq 'cleanup_deleted_count=7' "$preflight_clean_stderr" &&
+    grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_stderr" &&
+    [ -e "$preflight_preserve_equal_path/keep.txt" ] &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation-template-tests/marker.txt" ] &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation-template/marker.txt" ] &&
+    [ -e "$preflight_clean_tmpdir/repo-automation/marker.txt" ] &&
+    [ ! -e "$preflight_clean_tmpdir/repo-automation-log-dump/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation-template-tests/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation-template/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation/marker.txt" ] &&
+    [ ! -e "$preflight_clean_home/.cache/repo-automation-log-dump/marker.txt" ] &&
+    [ -e "$preflight_clean_home/projects/repo-automation-template/keep.txt" ] &&
+    [ -e "$preflight_clean_home/Downloads/keep.txt" ]; then
+    test_pass "preflight preserve-path keeps the containing cleanup root"
+  else
+    test_fail "preflight preserve-path keeps the containing cleanup root"
     status=1
   fi
 
@@ -1541,7 +1631,7 @@ PY
     git switch -c "$preflight_clean_branch" >/dev/null 2>&1 || return 1
     git checkout main >/dev/null 2>&1 || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_clean_tmpdir" HOME="$preflight_clean_home" \
-    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --branch="$preflight_clean_branch" --preserve-path="$preflight_preserve_inside_path" --explain > "$preflight_clean_stdout" 2> "$preflight_clean_branch_stderr"
   ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'script=codex-slice-preflight' "$preflight_clean_branch_stderr" &&
     grep -Eq '^mode=(run|preflight)$' "$preflight_clean_branch_stderr" &&
@@ -1553,12 +1643,14 @@ PY
     grep -Eq '^divergence=[0-9]+[[:space:]][0-9]+$|^divergence=unknown$' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'status_count=0' "$preflight_clean_branch_stderr" &&
     grep -Fxq 'cleanup=cleaned' "$preflight_clean_branch_stderr" &&
-    grep -Eq '^cleanup_deleted_count=8$' "$preflight_clean_branch_stderr" &&
-    ! grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_branch_stderr" &&
-    ! grep -Eq '^cleanup_free_before_bytes=' "$preflight_clean_branch_stderr" &&
-    ! grep -Eq '^cleanup_free_before=' "$preflight_clean_branch_stderr" &&
-    ! grep -Eq '^cleanup_free_after_bytes=' "$preflight_clean_branch_stderr" &&
-    ! grep -Eq '^cleanup_free_after=' "$preflight_clean_branch_stderr" &&
+    grep -Fxq "cleanup_preserved_path=$preflight_preserve_inside_path" "$preflight_clean_branch_stderr" &&
+    grep -Fxq "cleanup_skipped_paths=$preflight_clean_tmpdir/repo-automation" "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_deleted_count=7$' "$preflight_clean_branch_stderr" &&
+    grep -Fq 'cleanup_deleted_paths=' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_before_bytes=' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_before=' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_after_bytes=' "$preflight_clean_branch_stderr" &&
+    grep -Eq '^cleanup_free_after=' "$preflight_clean_branch_stderr" &&
     grep -Fxq '===== END =====' "$preflight_clean_branch_stderr" &&
     ( cd "$preflight_clean_branch_repo" && [ "$(git branch --show-current)" = "$preflight_clean_branch" ] ); then
     test_pass "preflight clean-test-cache can continue into branch setup"
@@ -1603,6 +1695,32 @@ PY
     test_pass "preflight rejects empty --branch value"
   else
     test_fail "preflight rejects empty --branch value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path >/dev/null 2> "$preserve_missing_stderr"
+  ); then
+    test_fail "preflight rejects missing --preserve-path value"
+    status=1
+  elif smoke_assert_flag_error_shape "$preserve_missing_stderr" "missing flag value" "--preserve-path" "use --preserve-path=<path>"; then
+    test_pass "preflight rejects missing --preserve-path value"
+  else
+    test_fail "preflight rejects missing --preserve-path value"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path= >/dev/null 2> "$preserve_empty_stderr"
+  ); then
+    test_fail "preflight rejects empty --preserve-path value"
+    status=1
+  elif smoke_assert_flag_error_shape "$preserve_empty_stderr" "empty flag value" "--preserve-path" "use --preserve-path=<path>"; then
+    test_pass "preflight rejects empty --preserve-path value"
+  else
+    test_fail "preflight rejects empty --preserve-path value"
     status=1
   fi
 

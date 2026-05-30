@@ -15,7 +15,7 @@ It stops when that existing requested branch is behind or diverged, matching nor
 Use `--explain` for the detailed preflight report; default success is compact `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
 
-`--clean-test-cache` removes the recurring repo-automation test/cache roots under `${TMPDIR:-$HOME/.cache}` and `$HOME/.cache`, plus the repo-automation artifact temp root when present. With no `--branch`, it exits after cleanup. With `--branch=<name>`, it cleans first and then continues normal preflight branch setup. With `--explain`, cleanup-only mode reports what it deleted and free space before/after in the final summary; cleanup+branch mode keeps that detail in INFO lines and ends with a compact preflight handoff.
+`--clean-test-cache` removes the recurring repo-automation test/cache roots under `${TMPDIR:-$HOME/.cache}` and `$HOME/.cache`, plus the repo-automation artifact temp root when present. `--preserve-path=<path>` can be combined with `--clean-test-cache` to keep an active run directory or any containing cleanup root from being deleted; the preserve path must already exist. With no `--branch`, cleanup exits after cleanup. With `--branch=<name>`, it cleans first and then continues normal preflight branch setup. With `--explain`, cleanup-only mode reports what it deleted and free space before/after in the final summary; cleanup+branch mode keeps that detail in INFO lines and ends with a compact preflight handoff, including preserved/skipped cleanup paths.
 
 `--delete-safe-stale` allows local safe stale deletion by calling `repo-automation/bin/branch-cleanup --apply`. Without this flag, branch cleanup stays in plan mode.
 
@@ -37,6 +37,7 @@ Usage examples:
     repo-automation/bin/codex-slice-preflight --check-only --branch=feature/my-slice
     repo-automation/bin/codex-slice-preflight --branch=feature/my-slice --delete-safe-stale
     repo-automation/bin/codex-slice-preflight --clean-test-cache --explain
+    repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path=/path/to/active-run --explain
 
 Test coverage:
 
