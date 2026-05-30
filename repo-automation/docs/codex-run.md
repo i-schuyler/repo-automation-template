@@ -1,6 +1,6 @@
 # Codex Run
 
-`codex-run` is the public adapter around `codex exec`.
+`repo-automation/bin/codex-run` is the public adapter around `codex exec`.
 
 ## What it does
 
@@ -9,6 +9,12 @@
 - writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, and `codex-run-summary.txt` into the requested out-dir
 - supports `--quiet` and `--explain`
 - does not implement `--json` in this slice
+
+## Usage
+
+```sh
+repo-automation/bin/codex-run --prompt-file=prompt.txt --out-dir=/path/to/codex-run-out
+```
 
 ## Test contract
 

@@ -206,6 +206,7 @@ EOF
   if (
     rm -rf -- "$quiet_out_dir" &&
       mkdir -p "$quiet_out_dir" &&
+      # --quiet quiet success
       PATH="$fake_bin_dir:$PATH" \
       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$quiet_out_dir" --quiet >"$stdout_file" 2>"$stderr_file" &&
       codex_run_contract_assert_empty "$stdout_file" &&
