@@ -20,7 +20,6 @@ codex_run_profile="default"
 codex_run_cd=""
 codex_run_cd_abs=""
 codex_run_sandbox="workspace-write"
-codex_run_approval="never"
 codex_run_timeout="0"
 codex_run_timeout_enforced="not_requested"
 codex_run_repo_root=""
@@ -37,7 +36,7 @@ codex_run_failure_log=""
 codex_run_failure_excerpt=""
 
 codex_run_usage() {
-  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--ask-for-approval=<policy>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
 }
 
 codex_run_fail() {
@@ -142,7 +141,6 @@ out_dir=$codex_run_out_dir_abs
 cd=$codex_run_cd_abs
 profile=$codex_run_profile
 sandbox=$codex_run_sandbox
-approval=$codex_run_approval
 timeout=$codex_run_timeout
 timeout_enforced=$codex_run_timeout_enforced
 codex_path=$codex_run_codex_path
@@ -165,7 +163,6 @@ codex_run_print_final_summary() {
   printf 'rc=%s\n' "$rc"
   printf 'profile=%s\n' "$codex_run_profile"
   printf 'sandbox=%s\n' "$codex_run_sandbox"
-  printf 'approval=%s\n' "$codex_run_approval"
   printf 'final_output=%s\n' "$final_output_value"
   printf 'summary=%s\n' "$summary_value"
   printf 'status=%s\n' "$status_value"
@@ -266,17 +263,6 @@ codex_run_main() {
         codex_run_flag_value_error "missing flag value" "--sandbox" "use --sandbox=<mode>"
         return 1
         ;;
-      --ask-for-approval=*)
-        codex_run_approval="${arg#--ask-for-approval=}"
-        if [ -z "$codex_run_approval" ]; then
-          codex_run_flag_value_error "empty flag value" "--ask-for-approval" "use --ask-for-approval=<policy>"
-          return 1
-        fi
-        ;;
-      --ask-for-approval)
-        codex_run_flag_value_error "missing flag value" "--ask-for-approval" "use --ask-for-approval=<policy>"
-        return 1
-        ;;
       --timeout=*)
         codex_run_timeout="${arg#--timeout=}"
         if [ -z "$codex_run_timeout" ]; then
@@ -345,11 +331,6 @@ codex_run_main() {
     return 1
   fi
 
-  if ! codex_run_is_conservative_token "$codex_run_approval"; then
-    codex_run_fail "invalid ask-for-approval policy: $codex_run_approval" "use a conservative approval policy without spaces, paths, or shell metacharacters"
-    return 1
-  fi
-
   case "$codex_run_timeout" in
     ''|*[!0-9]*)
       codex_run_fail "invalid timeout: $codex_run_timeout" "use --timeout=<seconds> with a non-negative integer"
@@ -389,8 +370,8 @@ codex_run_main() {
   codex_run_timeout_enforced="not_enforced"
 
   if [ "$codex_run_explain" -eq 1 ]; then
-    printf 'INFO: codex-run profile=%s sandbox=%s approval=%s timeout=%s\n' \
-      "$codex_run_profile" "$codex_run_sandbox" "$codex_run_approval" "$codex_run_timeout"
+    printf 'INFO: codex-run profile=%s sandbox=%s timeout=%s\n' \
+      "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout"
     printf 'INFO: codex-run prompt=%s\n' "$codex_run_prompt_file"
     printf 'INFO: codex-run out-dir=%s\n' "$codex_run_out_dir_abs"
     printf 'INFO: codex-run cd=%s\n' "$codex_run_cd_abs"
@@ -404,7 +385,6 @@ codex_run_main() {
   codex_cmd+=(
     "--cd" "$codex_run_cd_abs"
     "--sandbox" "$codex_run_sandbox"
-    "--ask-for-approval" "$codex_run_approval"
     "--output-last-message" "$codex_run_final_output_path"
     -
   )
