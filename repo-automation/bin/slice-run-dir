@@ -1,0 +1,467 @@
+#!/usr/bin/env bash
+# repo-automation/bin/slice-run-dir
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+slice_run_dir_mode=""
+slice_run_dir_branch=""
+slice_run_dir_root=""
+slice_run_dir_json=0
+slice_run_dir_quiet=0
+slice_run_dir_apply=0
+slice_run_dir_max_age_days=7
+slice_run_dir_keep=10
+slice_run_dir_preserve_path=""
+slice_run_dir_repo_root="$(cd "$script_dir/../.." && pwd -P)"
+
+slice_run_dir_usage() {
+  printf 'Usage: repo-automation/bin/slice-run-dir --create --branch=<name> [--root=<path>] [--json] [--quiet] [--help]\n'
+  printf '   or: repo-automation/bin/slice-run-dir --cleanup-stale [--root=<path>] [--max-age-days=<n>] [--keep=<n>] [--preserve-path=<path>] [--apply] [--json] [--quiet] [--help]\n'
+  printf '  --create\n'
+  printf '  --cleanup-stale\n'
+  printf '  --branch=<name>\n'
+  printf '  --root=<path>\n'
+  printf '  --max-age-days=<n>\n'
+  printf '  --keep=<n>\n'
+  printf '  --preserve-path=<path>\n'
+}
+
+slice_run_dir_fail() {
+  printf 'fail: %s\n' "$1" >&2
+  printf 'fix: %s\n' "$2" >&2
+}
+
+slice_run_dir_value_flag_error() {
+  local flag="$1"
+  local fix="$2"
+  local next="${3:-}"
+
+  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+  else
+    repo_auto_flag_error "missing flag value" "$flag" "$fix"
+  fi
+}
+
+slice_run_dir_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help)
+        slice_run_dir_usage
+        return 0
+        ;;
+      --quiet)
+        slice_run_dir_quiet=1
+        ;;
+      --json)
+        slice_run_dir_json=1
+        ;;
+      --apply)
+        slice_run_dir_apply=1
+        ;;
+      --create)
+        if [ -n "$slice_run_dir_mode" ] && [ "$slice_run_dir_mode" != "create" ]; then
+          slice_run_dir_fail "conflicting action flags" "choose either --create or --cleanup-stale"
+          return 1
+        fi
+        slice_run_dir_mode="create"
+        ;;
+      --cleanup-stale)
+        if [ -n "$slice_run_dir_mode" ] && [ "$slice_run_dir_mode" != "cleanup-stale" ]; then
+          slice_run_dir_fail "conflicting action flags" "choose either --create or --cleanup-stale"
+          return 1
+        fi
+        slice_run_dir_mode="cleanup-stale"
+        ;;
+      --branch=*)
+        slice_run_dir_branch="${arg#--branch=}"
+        if [ -z "$slice_run_dir_branch" ]; then
+          repo_auto_flag_error "empty flag value" "--branch" "use --branch=<name>" || return 1
+          return 1
+        fi
+        ;;
+      --branch)
+        slice_run_dir_value_flag_error "--branch" "use --branch=<name>" "${2:-}" || return 1
+        return 1
+        ;;
+      --root=*)
+        slice_run_dir_root="${arg#--root=}"
+        if [ -z "$slice_run_dir_root" ]; then
+          repo_auto_flag_error "empty flag value" "--root" "use --root=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --root)
+        slice_run_dir_value_flag_error "--root" "use --root=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      --max-age-days=*)
+        slice_run_dir_max_age_days="${arg#--max-age-days=}"
+        if [ -z "$slice_run_dir_max_age_days" ]; then
+          repo_auto_flag_error "empty flag value" "--max-age-days" "use --max-age-days=<n>" || return 1
+          return 1
+        fi
+        ;;
+      --max-age-days)
+        slice_run_dir_value_flag_error "--max-age-days" "use --max-age-days=<n>" "${2:-}" || return 1
+        return 1
+        ;;
+      --keep=*)
+        slice_run_dir_keep="${arg#--keep=}"
+        if [ -z "$slice_run_dir_keep" ]; then
+          repo_auto_flag_error "empty flag value" "--keep" "use --keep=<n>" || return 1
+          return 1
+        fi
+        ;;
+      --keep)
+        slice_run_dir_value_flag_error "--keep" "use --keep=<n>" "${2:-}" || return 1
+        return 1
+        ;;
+      --preserve-path=*)
+        slice_run_dir_preserve_path="${arg#--preserve-path=}"
+        if [ -z "$slice_run_dir_preserve_path" ]; then
+          repo_auto_flag_error "empty flag value" "--preserve-path" "use --preserve-path=<path>" || return 1
+          return 1
+        fi
+        ;;
+      --preserve-path)
+        slice_run_dir_value_flag_error "--preserve-path" "use --preserve-path=<path>" "${2:-}" || return 1
+        return 1
+        ;;
+      --*)
+        repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/slice-run-dir --help" || return 1
+        return 1
+        ;;
+      *)
+        repo_auto_stop "unknown argument: $arg"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$slice_run_dir_mode" ]; then
+    slice_run_dir_fail "missing required action" "use --create or --cleanup-stale"
+    return 1
+  fi
+
+  if [ "$slice_run_dir_mode" = "create" ] && [ -z "$slice_run_dir_branch" ]; then
+    repo_auto_flag_error "missing flag value" "--branch" "use --branch=<name>" || return 1
+    return 1
+  fi
+
+  if [ "$slice_run_dir_mode" = "create" ] && [ "$slice_run_dir_apply" -eq 1 ]; then
+    slice_run_dir_fail "unsupported flag: --apply" "use --apply only with --cleanup-stale"
+    return 1
+  fi
+
+  if [ "$slice_run_dir_mode" = "create" ] && { [ "$slice_run_dir_max_age_days" != "7" ] || [ "$slice_run_dir_keep" != "10" ] || [ -n "$slice_run_dir_preserve_path" ]; }; then
+    slice_run_dir_fail "unsupported cleanup flag for --create" "use cleanup flags only with --cleanup-stale"
+    return 1
+  fi
+
+  python3 - "$slice_run_dir_mode" \
+    "$slice_run_dir_branch" \
+    "$slice_run_dir_root" \
+    "$slice_run_dir_json" \
+    "$slice_run_dir_quiet" \
+    "$slice_run_dir_apply" \
+    "$slice_run_dir_max_age_days" \
+    "$slice_run_dir_keep" \
+    "$slice_run_dir_preserve_path" \
+    "$slice_run_dir_repo_root" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import tempfile
+from pathlib import Path
+
+
+def fail(reason: str, fix: str) -> None:
+    print(f"fail: {reason}", file=sys.stderr)
+    print(f"fix: {fix}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+mode, branch, root_arg, json_mode, quiet, apply_flag, max_age_days_arg, keep_arg, preserve_path_arg, repo_root_arg = sys.argv[1:11]
+json_mode = json_mode == "1"
+quiet = quiet == "1"
+apply_flag = apply_flag == "1"
+repo_root = Path(repo_root_arg).resolve(strict=True)
+
+
+def default_root() -> Path:
+    base = Path(os.environ.get("TMPDIR") or os.path.expanduser("~/.cache"))
+    return base / "repo-automation" / "slice-handoff-runs"
+
+
+def resolve_path(raw: str | None) -> Path:
+    if raw:
+        return Path(raw).expanduser().resolve(strict=False)
+    return default_root().expanduser().resolve(strict=False)
+
+
+def ensure_outside_repo(path: Path, label: str) -> None:
+    try:
+        path.relative_to(repo_root)
+    except ValueError:
+        return
+    fail(f"{label} must resolve outside the repo root", "choose a directory outside the current repo root")
+
+
+def positive_int(value: str, flag: str) -> int:
+    if not re.fullmatch(r"[0-9]+", value) or int(value) <= 0:
+        fail(f"invalid {flag} value: {value}", f"use {flag}=<positive integer>")
+    return int(value)
+
+
+def branch_is_valid(value: str) -> None:
+    if not value:
+        fail("missing branch", "use --branch=<name>")
+    if value.startswith("-") or ".." in value or re.search(r"\s", value):
+        fail(f"invalid branch: {value}", "use a conservative feature branch name without whitespace or shell metacharacters")
+    if shutil.which("git") is None:
+        fail("git is required", "install git and rerun slice-run-dir")
+    completed = subprocess.run(
+        ["git", "check-ref-format", "--branch", value],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode != 0:
+        fail(f"invalid branch: {value}", "use a conservative feature branch name without whitespace or shell metacharacters")
+
+
+def marker_path_for(run_dir: Path) -> Path:
+    return run_dir / ".repo-automation-slice-run"
+
+
+def read_marker(marker_path: Path) -> dict[str, str] | None:
+    if not marker_path.is_file() or marker_path.is_symlink():
+        return None
+    try:
+        lines = marker_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    data: dict[str, str] = {}
+    for line in lines:
+        if not line or "=" not in line:
+            return None
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or not value:
+            return None
+        data[key] = value
+    if data.get("schema") != "repo-automation-slice-run/v1":
+        return None
+    if "created_at_epoch" not in data or "branch" not in data or "run_id" not in data:
+        return None
+    if not re.fullmatch(r"[0-9]+", data["created_at_epoch"]):
+        return None
+    return data
+
+
+def path_overlaps(left: Path, right: Path) -> bool:
+    left = left.resolve(strict=False)
+    right = right.resolve(strict=False)
+    if left == right:
+        return True
+    try:
+        left.relative_to(right)
+        return True
+    except ValueError:
+        pass
+    try:
+        right.relative_to(left)
+        return True
+    except ValueError:
+        return False
+
+
+def format_branch_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("._-")
+    if not slug:
+        slug = "branch"
+    return slug[:48]
+
+
+def json_print(obj: object) -> None:
+    if quiet:
+        return
+    print(json.dumps(obj, separators=(",", ":"), sort_keys=True))
+
+
+def text_print(lines: list[str]) -> None:
+    if quiet:
+        return
+    for line in lines:
+        print(line)
+
+
+root = resolve_path(root_arg)
+ensure_outside_repo(root, "run root")
+
+if mode == "create":
+    branch_is_valid(branch)
+    root.mkdir(parents=True, exist_ok=True)
+    ts = int(time.time())
+    pid = os.getpid()
+    slug = format_branch_slug(branch)
+    run_dir = Path(tempfile.mkdtemp(prefix=f"{ts}-{pid}-{slug}-", dir=str(root)))
+    marker = marker_path_for(run_dir)
+    marker_content = (
+        "schema=repo-automation-slice-run/v1\n"
+        f"created_at_epoch={ts}\n"
+        f"branch={branch}\n"
+        f"run_id={run_dir.name}\n"
+    )
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=str(run_dir), prefix=".repo-automation-slice-run.", delete=False) as handle:
+            handle.write(marker_content)
+            marker_tmp = Path(handle.name)
+        os.replace(marker_tmp, marker)
+    except Exception as exc:
+        fail(f"unable to create run dir marker: {exc}", "fix filesystem permissions and rerun slice-run-dir")
+    result = {
+        "mode": "create",
+        "root": str(root),
+        "run_dir": str(run_dir),
+        "marker_path": str(marker),
+        "branch": branch,
+        "run_id": run_dir.name,
+    }
+    if json_mode:
+        json_print(result)
+    else:
+        text_print([f"mode=create", f"run_dir={run_dir}", f"marker_path={marker}", f"run_id={run_dir.name}", f"root={root}"])
+    raise SystemExit(0)
+
+if mode != "cleanup-stale":
+    fail(f"unsupported action: {mode}", "use --create or --cleanup-stale")
+
+max_age_days = positive_int(max_age_days_arg, "--max-age-days")
+keep = positive_int(keep_arg, "--keep")
+preserve_path = resolve_path(preserve_path_arg) if preserve_path_arg else None
+if preserve_path is not None:
+    preserve_path = preserve_path.resolve(strict=False)
+
+root.mkdir(parents=True, exist_ok=True)
+root_resolved = root.resolve(strict=False)
+
+scanned: list[Path] = []
+marked: list[tuple[int, Path, dict[str, str]]] = []
+skipped: list[str] = []
+
+for entry in sorted(root.iterdir(), key=lambda item: item.name):
+    if entry.is_symlink() or not entry.is_dir():
+        continue
+    scanned.append(entry)
+    if preserve_path is not None and path_overlaps(entry, preserve_path):
+        skipped.append(str(entry))
+        continue
+    marker = marker_path_for(entry)
+    marker_data = read_marker(marker)
+    if marker_data is None:
+        skipped.append(str(entry))
+        continue
+    try:
+        created_at = int(marker_data["created_at_epoch"])
+    except (KeyError, ValueError):
+        skipped.append(str(entry))
+        continue
+    marked.append((created_at, entry, marker_data))
+
+marked.sort(key=lambda item: (-item[0], item[1].name))
+selected: list[tuple[int, Path, dict[str, str]]] = []
+for index, item in enumerate(marked):
+    created_at, entry, marker_data = item
+    age_seconds = int(time.time()) - created_at
+    beyond_keep = index >= keep
+    too_old = age_seconds > (max_age_days * 86400)
+    if beyond_keep or too_old:
+        selected.append(item)
+    else:
+        skipped.append(str(entry))
+
+deleted_paths: list[str] = []
+selected_paths = [str(item[1]) for item in selected]
+
+if apply_flag:
+    for created_at, entry, marker_data in selected:
+        try:
+            entry_resolved = entry.resolve(strict=False)
+        except OSError:
+            skipped.append(str(entry))
+            continue
+        try:
+            entry_resolved.relative_to(root_resolved)
+        except ValueError:
+            skipped.append(str(entry))
+            continue
+        if entry == root or entry_resolved == root_resolved:
+            skipped.append(str(entry))
+            continue
+        marker = marker_path_for(entry)
+        if read_marker(marker) is None:
+            skipped.append(str(entry))
+            continue
+        try:
+            shutil.rmtree(entry)
+        except FileNotFoundError:
+            skipped.append(str(entry))
+            continue
+        except OSError as exc:
+            fail(f"unable to delete run dir {entry}: {exc}", "fix filesystem permissions and rerun slice-run-dir")
+        deleted_paths.append(str(entry))
+
+result = {
+    "mode": "cleanup-stale",
+    "root": str(root),
+    "apply": apply_flag,
+    "max_age_days": max_age_days,
+    "keep": keep,
+    "preserve_path": str(preserve_path) if preserve_path is not None else "",
+    "scanned": len(scanned),
+    "deletable": len(selected),
+    "deleted": len(deleted_paths),
+    "skipped": len(skipped),
+    "selected_paths": selected_paths,
+    "deleted_paths": deleted_paths,
+    "skipped_paths": skipped,
+}
+
+if json_mode:
+    json_print(result)
+else:
+    text_print([
+        f"mode=cleanup-stale",
+        f"root={root}",
+        f"scanned={len(scanned)}",
+        f"deletable={len(selected)}",
+        f"deleted={len(deleted_paths)}",
+        f"skipped={len(skipped)}",
+    ])
+raise SystemExit(0)
+PY
+}
+
+slice_run_dir_main "$@"
+# repo-automation/bin/slice-run-dir EOF

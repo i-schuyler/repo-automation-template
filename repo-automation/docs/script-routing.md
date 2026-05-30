@@ -11,6 +11,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | mixed code/docs/test PR | `pr-create` | no | yes | yes | yes | maybe | `run-tests` |
 | PR body contract | `pr-body-check` | yes | no | no | no | no | `pr-create`, CI PR validation |
 | pre-Codex branch setup | `codex-slice-preflight` | yes | no | no | no | no | `branch-cleanup` |
+| run-dir lifecycle | `slice-run-dir` | yes | yes | no | no | no | `slice-handoff` |
 | first-run tooling audit | `check-tooling` | yes | no | no | no | no | `repo-doctor` |
 | portability drift audit | `check-portability` | yes | no | no | no | yes | `repo-doctor` |
 | post-Codex review packet | `post-codex-packet` | no | yes | no | no | no | `status-packet` |

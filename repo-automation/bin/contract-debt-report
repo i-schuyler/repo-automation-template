@@ -216,7 +216,10 @@ def shell_function_definition_names(text: str) -> set[str]:
 
 
 def shared_contract_function_names(wrapper_text: str) -> list[str]:
-    names = {match for match in re.findall(r"\b(smoke_check_[A-Za-z0-9_]+)\b", wrapper_text)}
+    names = {
+        match
+        for match in re.findall(r"(?<!\$)\b(smoke_check_[A-Za-z0-9_]+)\b(?!\s*=)", wrapper_text)
+    }
     return sorted(names)
 
 

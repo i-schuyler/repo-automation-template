@@ -17,6 +17,7 @@ It summarizes the public surface and points to the deeper source-of-truth docs:
 - output modes: `repo-automation/docs/output-modes.md`
 - codex adapter: `repo-automation/docs/codex-run.md`
 - slice handoff: `repo-automation/docs/slice-handoff.md`
+- slice run dir: `repo-automation/docs/slice-run-dir.md`
 - managed files: `repo-automation/docs/managed-files.md`
 
 Use the linked doc for route-specific or contract-specific rules.
@@ -32,6 +33,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | audit/report | `contract-debt-report` | broad-local | advisory maintainability and contract debt report; warns on metadata, manifest, coverage, and refactor debt without failing CI |
 | PR flow | `pr-create`, `pr-finish`, `branch-cleanup`, `codex-slice-preflight`, `repo-flow` | mutating / targeted-local | git and GitHub coordination helpers; includes read-only `repo-flow status-card`, guarded `repo-flow submit`, and explicit `repo-flow merge` |
 | artifacts | `post-codex-review`, `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump`, `ci-failure-artifacts` | instant / mutating / CI-owned | compact review summaries, uploadable packets, or log artifact helpers; `ci-failure-artifacts` assembles a flat CI failure bundle for phone/AI handoff |
+| run-dir lifecycle | `slice-run-dir` | mutating | marked run-dir creation and stale cleanup only on repo-owned marked run dirs |
 | codex adapter | `codex-run` | mutating | local adapter around `codex exec`; tests inject a fake `codex` binary through `PATH` |
 | review/repair | `review-pack`, `repair-prompt` | mutating | fallback review packet / repair prompt helpers; `review-pack --target=review` is lean by default, `--full` builds the heavier evidence bundle/repo-zip artifact, and `review-pack --target=codex` and `repair-prompt --target=codex` create local artifacts only |
 | status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers; `status-packet --explain` is the FINAL SUMMARY handoff form |

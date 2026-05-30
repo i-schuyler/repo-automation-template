@@ -44,6 +44,7 @@ smoke_check_slice_handoff_contract() {
   local expected_submit_review_body
   local expected_default_review_request
   local expected_submit_default_review_request
+  local expected_planned_run_dir_root
   local expected_none_summary
   local expected_quiet_summary
   local expected_submit_summary
@@ -117,6 +118,7 @@ EOF
 Please review the implementation for correctness and boundary compliance.
 EOF
 )"
+  expected_planned_run_dir_root="${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs"
   expected_none_prompt="$(printf '%s' "$valid_prompt")"
   expected_submit_prompt="$(printf '%s' "$submit_prompt")"
   expected_submit_body="$(printf '%s' "$submit_body")"
@@ -162,13 +164,25 @@ pr_body_path=not_applicable
 review_request_path=$valid_none_out_dir/review-request.txt
 summary_path=$valid_none_out_dir/slice-handoff-summary.txt
 preview_path=$valid_none_out_dir/dry-run-preview.txt
+planned_run_dir_root=$expected_planned_run_dir_root
+planned_active_run_dir=<active-run-dir>
+planned_marker_file_name=.repo-automation-slice-run
 
 Planned execution shapes
+planned_run_dir_cleanup_argv:
+- repo-automation/bin/slice-run-dir
+- --cleanup-stale
+- --root=$expected_planned_run_dir_root
+- --max-age-days=7
+- --keep=10
+- --preserve-path=<active-run-dir>
+- --json
 planned_preflight_argv:
 - repo-automation/bin/codex-slice-preflight
 - --branch=feature/slice-handoff-smoke
 - --clean-test-cache
-- --explain
+- --preserve-path=<active-run-dir>
+- --json
 planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
 planned_pr_body_validation_argv=not_applicable
 planned_repo_flow_submit_argv=not_applicable
@@ -196,13 +210,25 @@ pr_body_path=not_applicable
 review_request_path=$valid_quiet_out_dir/review-request.txt
 summary_path=$valid_quiet_out_dir/slice-handoff-summary.txt
 preview_path=$valid_quiet_out_dir/dry-run-preview.txt
+planned_run_dir_root=$expected_planned_run_dir_root
+planned_active_run_dir=<active-run-dir>
+planned_marker_file_name=.repo-automation-slice-run
 
 Planned execution shapes
+planned_run_dir_cleanup_argv:
+- repo-automation/bin/slice-run-dir
+- --cleanup-stale
+- --root=$expected_planned_run_dir_root
+- --max-age-days=7
+- --keep=10
+- --preserve-path=<active-run-dir>
+- --json
 planned_preflight_argv:
 - repo-automation/bin/codex-slice-preflight
 - --branch=feature/slice-handoff-smoke
 - --clean-test-cache
-- --explain
+- --preserve-path=<active-run-dir>
+- --json
 planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
 planned_pr_body_validation_argv=not_applicable
 planned_repo_flow_submit_argv=not_applicable
@@ -230,13 +256,25 @@ pr_body_path=$valid_submit_out_dir/pr-body.md
 review_request_path=$valid_submit_out_dir/review-request.txt
 summary_path=$valid_submit_out_dir/slice-handoff-summary.txt
 preview_path=$valid_submit_out_dir/dry-run-preview.txt
+planned_run_dir_root=$expected_planned_run_dir_root
+planned_active_run_dir=<active-run-dir>
+planned_marker_file_name=.repo-automation-slice-run
 
 Planned execution shapes
+planned_run_dir_cleanup_argv:
+- repo-automation/bin/slice-run-dir
+- --cleanup-stale
+- --root=$expected_planned_run_dir_root
+- --max-age-days=7
+- --keep=10
+- --preserve-path=<active-run-dir>
+- --json
 planned_preflight_argv:
 - repo-automation/bin/codex-slice-preflight
 - --branch=feature/slice-handoff-submit
 - --clean-test-cache
-- --explain
+- --preserve-path=<active-run-dir>
+- --json
 planned_codex_adapter_shape=profile=review; adapter execution is not implemented in this slice
 planned_pr_body_validation_argv:
 - repo-automation/bin/pr-body-check
