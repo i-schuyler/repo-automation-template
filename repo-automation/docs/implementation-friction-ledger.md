@@ -50,6 +50,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-05-30 / PR #200 / contract-debt-report shared-body repair / ids=none / score_delta=0 / signal=updated shared-contract coverage fixture ordering and ignored local variable names in shared-function detection; no material friction
 - 2026-05-28 / PR #179 / focused-diagnostics / ids=quiet-failure-diagnostics-collapse / score_delta=0 / signal=added focused wrapper diagnostics coverage and collapsed nested uppercase failure reporting
 - 2026-05-28 / PR #180 / submit-fixture-isolation / ids=submit-fixture-shared-state / score_delta=-1 / signal=added gh-stub state reset to reduce leakage risk
 - 2026-05-28 / PR #181 / final-summary-assertions / ids=grep-awk-summary-assertions / score_delta=-1 / signal=added shared FINAL SUMMARY assertion helpers and converted targeted submit checks

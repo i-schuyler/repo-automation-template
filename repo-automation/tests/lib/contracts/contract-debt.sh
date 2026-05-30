@@ -435,9 +435,9 @@ helper_entries = [
 ]
 
 known_helpers = {entry.get("name") for entry in helpers if isinstance(entry, dict)}
-for entry in helper_entries:
-    if entry["name"] not in known_helpers:
-        helpers.append(entry)
+missing_helpers = [entry for entry in helper_entries if entry["name"] not in known_helpers]
+if missing_helpers:
+    helpers[:0] = missing_helpers
 
 manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 managed_files = manifest.setdefault("managed_files", [])
@@ -466,7 +466,7 @@ PY
     cd "$smoke_test_dir" || return 1
     TMPDIR="$report_tmpdir" repo-automation/bin/contract-debt-report --json >"$shared_coverage_json" 2>"$shared_coverage_err"
   ) && [ ! -s "$shared_coverage_err" ] && python3 -m json.tool "$shared_coverage_json" >/dev/null &&
-    smoke_json_assert "$shared_coverage_json" 'not any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "contract-debt-shared-coverage" for f in data.get("findings", []))'; then
+    smoke_json_assert "$shared_coverage_json" 'not any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "contract-debt-shared-coverage" for f in data.get("findings", [])) and not any(f.get("severity") == "warn" and f.get("category") == "contract-coverage" and f.get("helper") == "slice-handoff" and "smoke_check_root" in f.get("message", "") for f in data.get("findings", []))'; then
     test_pass "contract-debt-report uses shared contract bodies for coverage"
   else
     test_fail "contract-debt-report uses shared contract bodies for coverage"

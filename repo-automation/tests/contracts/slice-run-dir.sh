@@ -143,7 +143,8 @@ slice_run_dir_main_impl() {
   if slice_run_dir_run "$smoke_test_base/slice-run-dir-create.out" "$smoke_test_base/slice-run-dir-create.err" \
     --create --branch="$branch" --root="$create_root" --json; then
     cp "$smoke_test_base/slice-run-dir-create.out" "$create_json_file"
-    if [ ! -s "$smoke_test_base/slice-run-dir-create.err" ] &&
+    if python3 -m json.tool "$create_json_file" >/dev/null &&
+      [ ! -s "$smoke_test_base/slice-run-dir-create.err" ] &&
       python3 - "$create_json_file" "$smoke_repo_root" "$create_root" <<'PY'
 from pathlib import Path
 import json
@@ -219,6 +220,17 @@ PY
     test_pass "invalid-branch-fails"
   else
     test_fail "invalid-branch-fails"
+    status=1
+  fi
+
+  if slice_run_dir_run "$smoke_test_base/slice-run-dir-unknown-flag.out" "$smoke_test_base/slice-run-dir-unknown-flag.err" \
+    --bogus; then
+    test_fail "unknown-flag-fails"
+    status=1
+  elif grep -Fq 'fail: unknown flag' "$smoke_test_base/slice-run-dir-unknown-flag.err"; then
+    test_pass "unknown-flag-fails"
+  else
+    test_fail "unknown-flag-fails"
     status=1
   fi
 
