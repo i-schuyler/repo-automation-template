@@ -47,6 +47,9 @@ smoke_check_slice_handoff_contract() {
   local expected_none_summary
   local expected_quiet_summary
   local expected_submit_summary
+  local expected_none_preview
+  local expected_quiet_preview
+  local expected_submit_preview
   local expected_none_review_stdout
   local expected_explicit_review_stdout
   local missing_schema_file="$smoke_check_root/missing-schema.md"
@@ -147,10 +150,100 @@ EOF
   expected_none_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_none_out_dir" "$valid_none_out_dir")"
   expected_quiet_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
   expected_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
-  expected_none_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
-  expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
-  expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
-  expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_none_preview="$(cat <<EOF
+dry_run_mode=enabled
+branch=feature/slice-handoff-smoke
+title=Slice handoff smoke
+codex_profile=default
+submit_mode=none
+commit_message=
+codex_prompt_path=$valid_none_out_dir/codex-prompt.md
+pr_body_path=not_applicable
+review_request_path=$valid_none_out_dir/review-request.txt
+summary_path=$valid_none_out_dir/slice-handoff-summary.txt
+preview_path=$valid_none_out_dir/dry-run-preview.txt
+
+Planned execution shapes
+planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=feature/slice-handoff-smoke --clean-test-cache --explain
+planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
+planned_pr_body_validation_command=not_applicable
+planned_repo_flow_submit_command=not_applicable
+
+Planned artifact/log/metadata paths
+preflight_log_path=not_created_by_dry_run
+codex_execution_log_path=not_created_by_dry_run
+codex_final_output_path=not_written_by_dry_run
+session_metadata_path=not_written_by_dry_run
+submit_log_path=not_created_by_dry_run
+
+Expected future final outcomes
+expected_future_final_outcomes=blocker or review request
+EOF
+)"
+  expected_quiet_preview="$(cat <<EOF
+dry_run_mode=enabled
+branch=feature/slice-handoff-smoke
+title=Slice handoff smoke
+codex_profile=default
+submit_mode=none
+commit_message=
+codex_prompt_path=$valid_quiet_out_dir/codex-prompt.md
+pr_body_path=not_applicable
+review_request_path=$valid_quiet_out_dir/review-request.txt
+summary_path=$valid_quiet_out_dir/slice-handoff-summary.txt
+preview_path=$valid_quiet_out_dir/dry-run-preview.txt
+
+Planned execution shapes
+planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=feature/slice-handoff-smoke --clean-test-cache --explain
+planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
+planned_pr_body_validation_command=not_applicable
+planned_repo_flow_submit_command=not_applicable
+
+Planned artifact/log/metadata paths
+preflight_log_path=not_created_by_dry_run
+codex_execution_log_path=not_created_by_dry_run
+codex_final_output_path=not_written_by_dry_run
+session_metadata_path=not_written_by_dry_run
+submit_log_path=not_created_by_dry_run
+
+Expected future final outcomes
+expected_future_final_outcomes=blocker or review request
+EOF
+)"
+  expected_submit_preview="$(cat <<EOF
+dry_run_mode=enabled
+branch=feature/slice-handoff-submit
+title=Slice handoff submit smoke
+codex_profile=review
+submit_mode=repo-flow-submit-all
+commit_message=chore: slice-handoff smoke
+codex_prompt_path=$valid_submit_out_dir/codex-prompt.md
+pr_body_path=$valid_submit_out_dir/pr-body.md
+review_request_path=$valid_submit_out_dir/review-request.txt
+summary_path=$valid_submit_out_dir/slice-handoff-summary.txt
+preview_path=$valid_submit_out_dir/dry-run-preview.txt
+
+Planned execution shapes
+planned_preflight_command=repo-automation/bin/codex-slice-preflight --branch=feature/slice-handoff-submit --clean-test-cache --explain
+planned_codex_adapter_shape=profile=review; adapter execution is not implemented in this slice
+planned_pr_body_validation_command=repo-automation/bin/pr-body-check --body-file=$valid_submit_out_dir/pr-body.md
+planned_repo_flow_submit_command=repo-automation/bin/repo-flow submit --all --message=chore: slice-handoff smoke --body-file=$valid_submit_out_dir/pr-body.md --watch --timeout=900 --diagnose-on-fail --explain
+
+Planned artifact/log/metadata paths
+preflight_log_path=not_created_by_dry_run
+codex_execution_log_path=not_created_by_dry_run
+codex_final_output_path=not_written_by_dry_run
+session_metadata_path=not_written_by_dry_run
+submit_log_path=not_created_by_dry_run
+
+Expected future final outcomes
+expected_future_final_outcomes=blocker or PR URL / FINAL SUMMARY / review request
+EOF
+)"
+  expected_none_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
+  expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
+  expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
@@ -177,6 +270,7 @@ EOF
     rm -rf -- "$valid_none_out_dir" &&
       smoke_slice_handoff_expect_success "out-dir-none" "$expected_none_stdout" "" --file="$valid_none_file" --dry-run --out-dir="$valid_none_out_dir" &&
       smoke_slice_handoff_assert_text_file "$valid_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_none_out_dir/dry-run-preview.txt" "$expected_none_preview" &&
       smoke_slice_handoff_assert_text_file "$valid_none_out_dir/review-request.txt" "$expected_default_review_request" &&
       smoke_slice_handoff_assert_text_file "$valid_none_out_dir/slice-handoff-summary.txt" "$expected_none_summary"
   ); then
@@ -190,6 +284,7 @@ EOF
     rm -rf -- "$valid_submit_out_dir" &&
       smoke_slice_handoff_expect_success "out-dir-submit" "$expected_submit_stdout" "" --file="$valid_submit_file" --dry-run --out-dir="$valid_submit_out_dir" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/dry-run-preview.txt" "$expected_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/pr-body.md" "$expected_submit_body" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/review-request.txt" "$expected_submit_default_review_request" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/slice-handoff-summary.txt" "$expected_submit_summary"
@@ -205,6 +300,7 @@ EOF
       smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
       smoke_slice_handoff_expect_success "out-dir-submit-review-request" "$expected_explicit_review_stdout" "" --file="$valid_submit_file" --dry-run --out-dir="$valid_submit_out_dir" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/dry-run-preview.txt" "$expected_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/pr-body.md" "$expected_submit_review_body" &&
       smoke_slice_handoff_assert_text_file "$valid_submit_out_dir/review-request.txt" "$review_request_text" &&
       ! grep -Fq -- "$review_request_text" "$valid_submit_out_dir/codex-prompt.md" &&
@@ -226,6 +322,7 @@ EOF
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out-review.out" ] &&
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out-review.err" ] &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/dry-run-preview.txt" "$expected_quiet_preview" &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/review-request.txt" "$review_request_text" &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/slice-handoff-summary.txt" "$expected_quiet_summary" &&
       smoke_slice_handoff_expect_success "out-dir-none-review-request-stdout" "$expected_none_review_stdout" "" --file="$valid_none_file" --dry-run --out-dir="$valid_quiet_out_dir"
@@ -243,6 +340,7 @@ EOF
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out.out" ] &&
       [ ! -s "$smoke_test_base/slice-handoff-quiet-out.err" ] &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/dry-run-preview.txt" "$expected_quiet_preview" &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/review-request.txt" "$expected_default_review_request" &&
       smoke_slice_handoff_assert_text_file "$valid_quiet_out_dir/slice-handoff-summary.txt" "$expected_quiet_summary"
   ); then
