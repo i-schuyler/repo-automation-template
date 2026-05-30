@@ -8,6 +8,7 @@
 - runs `codex exec` with argv construction, not shell eval
 - writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, and `codex-run-summary.txt` into the requested out-dir
 - supports `--quiet` and `--explain`
+- does not pass an approval-policy flag to `codex exec`; it relies on the selected sandbox mode and avoids dangerous bypass flags
 - does not implement `--json` in this slice
 
 ## Usage
@@ -23,3 +24,5 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 ## Relationship to slice-handoff
 
 `slice-handoff` is not wired to call `codex-run` yet. Future execution slices will route through this adapter instead of invoking Codex directly.
+
+Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.

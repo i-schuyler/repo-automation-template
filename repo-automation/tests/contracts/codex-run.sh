@@ -151,14 +151,13 @@ codex_run_contract_main_impl() {
   printf 'prompt for invalid profile\n' > "$invalid_profile_prompt"
 
   expected_default_stdout="$(printf 'pass\nfinal_output_path=%s/codex-run-default/codex-final.txt\nsummary_path=%s/codex-run-default/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")"
-  expected_default_summary="$(printf 'script=codex-run\nresult=pass\nexit_code=0\nprompt_file=%s\nout_dir=%s/codex-run-default\ncd=%s\nprofile=default\nsandbox=workspace-write\napproval=never\ntimeout=0\ntimeout_enforced=not_enforced\ncodex_path=%s/codex\nstdout_path=%s/codex.stdout\nstderr_path=%s/codex.stderr\nfinal_output_path=%s/codex-run-default/codex-final.txt\nfinal_output_status=present' "$prompt_file" "$smoke_test_base" "$repo_root" "$fake_bin_dir" "$smoke_test_base/codex-run-default" "$smoke_test_base/codex-run-default" "$smoke_test_base")"
+  expected_default_summary="$(printf 'script=codex-run\nresult=pass\nexit_code=0\nprompt_file=%s\nout_dir=%s/codex-run-default\ncd=%s\nprofile=default\nsandbox=workspace-write\ntimeout=0\ntimeout_enforced=not_enforced\ncodex_path=%s/codex\nstdout_path=%s/codex.stdout\nstderr_path=%s/codex.stderr\nfinal_output_path=%s/codex-run-default/codex-final.txt\nfinal_output_status=present' "$prompt_file" "$smoke_test_base" "$repo_root" "$fake_bin_dir" "$smoke_test_base/codex-run-default" "$smoke_test_base/codex-run-default" "$smoke_test_base")"
   expected_explain_summary="$(cat <<EOF
 script=codex-run
 mode=run
 rc=0
 profile=default
 sandbox=workspace-write
-approval=never
 final_output=$smoke_test_base/codex-run-explain/codex-final.txt
 summary=$smoke_test_base/codex-run-explain/codex-run-summary.txt
 status=pass
@@ -189,8 +188,6 @@ exec
 $repo_root
 --sandbox
 workspace-write
---ask-for-approval
-never
 --output-last-message
 $default_out_dir/codex-final.txt
 -
@@ -223,7 +220,7 @@ EOF
       mkdir -p "$explain_out_dir" &&
       PATH="$fake_bin_dir:$PATH" \
       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$explain_out_dir" --explain >"$stdout_file" 2>"$stderr_file" &&
-      codex_run_contract_assert_grep 'INFO: codex-run profile=default sandbox=workspace-write approval=never timeout=0' "$stdout_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run profile=default sandbox=workspace-write timeout=0' "$stdout_file" &&
       codex_run_contract_assert_grep '===== FINAL SUMMARY =====' "$stdout_file" &&
       codex_run_contract_assert_grep 'status=pass' "$stdout_file" &&
       codex_run_contract_assert_text <(smoke_extract_final_summary_block "$stdout_file") "$expected_explain_summary"
