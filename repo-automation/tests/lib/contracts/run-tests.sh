@@ -49,6 +49,9 @@ smoke_check_run_tests_contract() {
   local run_tests_low_disk_err="$smoke_test_base/run-tests-low-disk-$$.stderr"
   local run_tests_low_disk_marker="$smoke_test_base/run-tests-low-disk-marker-$$"
   local run_tests_low_disk_changed_repo=""
+  local run_tests_missing_smoke_tmpdir="$smoke_test_base/run-tests-missing-smoke-tmp-$$"
+  local run_tests_missing_smoke_out="$smoke_test_base/run-tests-missing-smoke-$$.txt"
+  local run_tests_missing_smoke_err="$smoke_test_base/run-tests-missing-smoke-$$.stderr"
   local run_tests_low_bytes_config_out="$smoke_test_base/run-tests-low-bytes-config-$$.txt"
   local run_tests_low_bytes_config_err="$smoke_test_base/run-tests-low-bytes-config-$$.stderr"
   local run_tests_low_bytes_env_out="$smoke_test_base/run-tests-low-bytes-env-$$.txt"
@@ -850,6 +853,25 @@ EOF
   fi
   rm -f "$smoke_test_dir/.repo-automation.local.conf" >/dev/null 2>&1 || true
   git -C "$smoke_test_dir" checkout -- repo-automation/tests/docs-check.sh >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    cat > repo-automation/tests/smoke.sh <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+rm -rf -- "${TMPDIR:-$HOME/.cache}/repo-automation-template"/run-tests-* >/dev/null 2>&1 || true
+exit 0
+EOF
+    chmod +x repo-automation/tests/smoke.sh || return 1
+    TMPDIR="$run_tests_missing_smoke_tmpdir" repo-automation/bin/run-tests --smoke --quiet > "$run_tests_missing_smoke_out" 2> "$run_tests_missing_smoke_err"
+  ) && [ ! -s "$run_tests_missing_smoke_out" ] && [ ! -s "$run_tests_missing_smoke_err" ]; then
+    test_pass "run-tests quiet tolerates cleaned smoke capture logs"
+  else
+    test_fail "run-tests quiet tolerates cleaned smoke capture logs"
+    status=1
+  fi
+  git -C "$smoke_test_dir" checkout -- repo-automation/tests/smoke.sh >/dev/null 2>&1 || true
 
   run_tests_low_disk_changed_repo="$(smoke_setup_subset_repo)" || {
     test_fail "run-tests low-disk guard blocks changed smoke selection before smoke runs"

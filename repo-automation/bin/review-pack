@@ -33,18 +33,6 @@ review_pack_usage() {
   printf 'Usage: repo-automation/bin/review-pack --target=<%s|codex> [--out-dir=<path>] [--label=<text>] [--full] [--copy-to=<dir>|--scp-to=<target>|--no-transfer] [--explain] [--help]\n' "$review_pack_target_review"
 }
 
-review_pack_value_flag_error() {
-  local flag="$1"
-  local fix="$2"
-  local next="${3:-}"
-
-  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
-    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
-  else
-    repo_auto_flag_error "missing flag value" "$flag" "$fix"
-  fi
-}
-
 review_pack_slug() {
   local value="${1:-}"
 
@@ -287,12 +275,8 @@ review_pack_main() {
         review_pack_usage
         return 0
         ;;
-      --target=*)
-        review_pack_target="${arg#--target=}"
-        if [ -z "$review_pack_target" ]; then
-          repo_auto_flag_error "empty flag value" "--target" "use --target=<review|codex>" || return 1
-          return 1
-        fi
+      --target|--target=*)
+        repo_auto_parse_value_flag_strict "$arg" "--target" "use --target=<review|codex>" review_pack_target "${2:-}" || return 1
         case "$review_pack_target" in
           review|codex)
             ;;
@@ -302,56 +286,20 @@ review_pack_main() {
             ;;
         esac
         ;;
-      --target)
-        review_pack_value_flag_error "--target" "use --target=<review|codex>" "${2:-}" || return 1
-        return 1
+      --out-dir|--out-dir=*)
+        repo_auto_parse_value_flag_strict "$arg" "--out-dir" "use --out-dir=<path>" review_pack_output_base "${2:-}" || return 1
         ;;
-      --out-dir=*)
-        review_pack_output_base="${arg#--out-dir=}"
-        if [ -z "$review_pack_output_base" ]; then
-          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
-          return 1
-        fi
-        ;;
-      --out-dir)
-        review_pack_value_flag_error "--out-dir" "use --out-dir=<path>" "${2:-}" || return 1
-        return 1
-        ;;
-      --label=*)
-        review_pack_label="${arg#--label=}"
-        if [ -z "$review_pack_label" ]; then
-          repo_auto_flag_error "empty flag value" "--label" "use --label=<text>" || return 1
-          return 1
-        fi
-        ;;
-      --label)
-        review_pack_value_flag_error "--label" "use --label=<text>" "${2:-}" || return 1
-        return 1
+      --label|--label=*)
+        repo_auto_parse_value_flag_strict "$arg" "--label" "use --label=<text>" review_pack_label "${2:-}" || return 1
         ;;
       --full)
         review_pack_full=1
         ;;
-      --copy-to=*)
-        review_pack_copy_to="${arg#--copy-to=}"
-        if [ -z "$review_pack_copy_to" ]; then
-          repo_auto_flag_error "empty flag value" "--copy-to" "use --copy-to=<dir>" || return 1
-          return 1
-        fi
+      --copy-to|--copy-to=*)
+        repo_auto_parse_value_flag_strict "$arg" "--copy-to" "use --copy-to=<dir>" review_pack_copy_to "${2:-}" || return 1
         ;;
-      --copy-to)
-        review_pack_value_flag_error "--copy-to" "use --copy-to=<dir>" "${2:-}" || return 1
-        return 1
-        ;;
-      --scp-to=*)
-        review_pack_scp_to="${arg#--scp-to=}"
-        if [ -z "$review_pack_scp_to" ]; then
-          repo_auto_flag_error "empty flag value" "--scp-to" "use --scp-to=<target>" || return 1
-          return 1
-        fi
-        ;;
-      --scp-to)
-        review_pack_value_flag_error "--scp-to" "use --scp-to=<target>" "${2:-}" || return 1
-        return 1
+      --scp-to|--scp-to=*)
+        repo_auto_parse_value_flag_strict "$arg" "--scp-to" "use --scp-to=<target>" review_pack_scp_to "${2:-}" || return 1
         ;;
       --no-transfer)
         review_pack_no_transfer=1

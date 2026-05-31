@@ -23,18 +23,6 @@ repair_prompt_usage() {
   printf 'Usage: repo-automation/bin/repair-prompt --source=<ci|local> --target=codex [--evidence-file=<path>] [--pr=<number>] [--run-id=<id>] [--out-dir=<path>] [--help]\n'
 }
 
-repair_prompt_value_flag_error() {
-  local flag="$1"
-  local fix="$2"
-  local next="${3:-}"
-
-  if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
-    repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
-  else
-    repo_auto_flag_error "missing flag value" "$flag" "$fix"
-  fi
-}
-
 repair_prompt_slug() {
   local value="${1:-}"
 
@@ -258,12 +246,8 @@ repair_prompt_main() {
         repair_prompt_usage
         return 0
         ;;
-      --source=*)
-        repair_prompt_source="${arg#--source=}"
-        if [ -z "$repair_prompt_source" ]; then
-          repo_auto_flag_error "empty flag value" "--source" "use --source=<ci|local>" || return 1
-          return 1
-        fi
+      --source|--source=*)
+        repo_auto_parse_value_flag_strict "$arg" "--source" "use --source=<ci|local>" repair_prompt_source "${2:-}" || return 1
         case "$repair_prompt_source" in
           ci|local)
             ;;
@@ -273,68 +257,24 @@ repair_prompt_main() {
             ;;
         esac
         ;;
-      --source)
-        repair_prompt_value_flag_error "--source" "use --source=<ci|local>" "${2:-}" || return 1
-        return 1
-        ;;
-      --target=*)
-        repair_prompt_target="${arg#--target=}"
-        if [ -z "$repair_prompt_target" ]; then
-          repo_auto_flag_error "empty flag value" "--target" "use --target=codex" || return 1
-          return 1
-        fi
+      --target|--target=*)
+        repo_auto_parse_value_flag_strict "$arg" "--target" "use --target=codex" repair_prompt_target "${2:-}" || return 1
         if [ "$repair_prompt_target" != "codex" ]; then
           repo_auto_flag_error "unsupported flag value" "--target" "use --target=codex" || return 1
           return 1
         fi
         ;;
-      --target)
-        repair_prompt_value_flag_error "--target" "use --target=codex" "${2:-}" || return 1
-        return 1
+      --evidence-file|--evidence-file=*)
+        repo_auto_parse_value_flag_strict "$arg" "--evidence-file" "use --evidence-file=<path>" repair_prompt_evidence_file "${2:-}" || return 1
         ;;
-      --evidence-file=*)
-        repair_prompt_evidence_file="${arg#--evidence-file=}"
-        if [ -z "$repair_prompt_evidence_file" ]; then
-          repo_auto_flag_error "empty flag value" "--evidence-file" "use --evidence-file=<path>" || return 1
-          return 1
-        fi
+      --pr|--pr=*)
+        repo_auto_parse_value_flag_strict "$arg" "--pr" "use --pr=<number>" repair_prompt_pr "${2:-}" || return 1
         ;;
-      --evidence-file)
-        repair_prompt_value_flag_error "--evidence-file" "use --evidence-file=<path>" "${2:-}" || return 1
-        return 1
+      --run-id|--run-id=*)
+        repo_auto_parse_value_flag_strict "$arg" "--run-id" "use --run-id=<id>" repair_prompt_run_id "${2:-}" || return 1
         ;;
-      --pr=*)
-        repair_prompt_pr="${arg#--pr=}"
-        if [ -z "$repair_prompt_pr" ]; then
-          repo_auto_flag_error "empty flag value" "--pr" "use --pr=<number>" || return 1
-          return 1
-        fi
-        ;;
-      --pr)
-        repair_prompt_value_flag_error "--pr" "use --pr=<number>" "${2:-}" || return 1
-        return 1
-        ;;
-      --run-id=*)
-        repair_prompt_run_id="${arg#--run-id=}"
-        if [ -z "$repair_prompt_run_id" ]; then
-          repo_auto_flag_error "empty flag value" "--run-id" "use --run-id=<id>" || return 1
-          return 1
-        fi
-        ;;
-      --run-id)
-        repair_prompt_value_flag_error "--run-id" "use --run-id=<id>" "${2:-}" || return 1
-        return 1
-        ;;
-      --out-dir=*)
-        repair_prompt_output_base="${arg#--out-dir=}"
-        if [ -z "$repair_prompt_output_base" ]; then
-          repo_auto_flag_error "empty flag value" "--out-dir" "use --out-dir=<path>" || return 1
-          return 1
-        fi
-        ;;
-      --out-dir)
-        repair_prompt_value_flag_error "--out-dir" "use --out-dir=<path>" "${2:-}" || return 1
-        return 1
+      --out-dir|--out-dir=*)
+        repo_auto_parse_value_flag_strict "$arg" "--out-dir" "use --out-dir=<path>" repair_prompt_output_base "${2:-}" || return 1
         ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then

@@ -49,10 +49,14 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 | `metadata-object-drift-slice-handoff` | 3 | active | PR #190 | helper metadata drifted onto the wrong object (`add-doc-pr`) before the focused slice-handoff metadata assertion caught it. | keep object-specific metadata assertions near the affected contract |
 | `slice-handoff-contract-opacity` | 3 | mitigated-monitoring | PR #200 | the slice-handoff smoke wrapper hid the first failing subcheck and preserved capture paths were too ephemeral; a direct body entrypoint and a documented preflight smoke recipe would cut diagnosis time. | keep first-failure extraction, durable failure logs, and body-only isolation hooks in place |
 | `smoke-fixture-reseed-ordering` | 2 | mitigated-monitoring | PR #201 | the slice-handoff contract body depended on canonical handoff files surviving later subchecks; re-seeding fixtures or making each block self-contained avoids brittle ordering dependencies. | keep late-block fixture re-seeding or per-block fixture setup where contract bodies reuse the same canonical files |
+| `focused-contract-parallel-temp-collision` | 1 | active | 2026-05-30 | Running multiple focused contract wrappers in parallel produced quiet failures for `review-pack` and `repair-prompt`, while sequential quiet and explain runs passed. | run focused contract wrappers sequentially unless their temp roots/stubs are isolated |
+| `run-tests-smoke-capture-cleaned` | 0 | resolved | 2026-05-30 | Full audit quiet validation exited 0 but printed a missing smoke capture `cat` error when smoke cleanup removed the run-owned capture before log append. | none unless quiet full-audit capture noise recurs |
 
 ## Per-Slice Signals
 
 - 2026-05-30 / PR #200 / contract-debt-report shared-body repair / ids=none / score_delta=0 / signal=updated shared-contract coverage fixture ordering and ignored local variable names in shared-function detection; no material friction
+- 2026-05-30 / strict-value-flag-parser / ids=focused-contract-parallel-temp-collision / score_delta=+1 / signal=parallel focused wrapper validation produced false quiet failures; sequential focused validation passed
+- 2026-05-30 / strict-value-flag-parser / ids=run-tests-smoke-capture-cleaned / score_delta=0 / signal=guarded missing smoke capture log appends and added quiet regression coverage
 - 2026-05-28 / PR #179 / focused-diagnostics / ids=quiet-failure-diagnostics-collapse / score_delta=0 / signal=added focused wrapper diagnostics coverage and collapsed nested uppercase failure reporting
 - 2026-05-28 / PR #180 / submit-fixture-isolation / ids=submit-fixture-shared-state / score_delta=-1 / signal=added gh-stub state reset to reduce leakage risk
 - 2026-05-28 / PR #181 / final-summary-assertions / ids=grep-awk-summary-assertions / score_delta=-1 / signal=added shared FINAL SUMMARY assertion helpers and converted targeted submit checks
