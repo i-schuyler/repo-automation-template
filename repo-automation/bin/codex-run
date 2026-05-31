@@ -350,12 +350,6 @@ codex_run_main() {
   codex_run_cd="${codex_run_cd:-$codex_run_repo_root}"
   codex_run_cd_abs="$(codex_run_resolve_existing_dir "$codex_run_cd")" || return 1
 
-  if [ "$codex_run_profile" = "default" ]; then
-    :
-  else
-    codex_run_codex_path=""
-  fi
-
   codex_run_codex_path="$(command -v codex 2>/dev/null || true)"
   if [ -z "$codex_run_codex_path" ]; then
     codex_run_fail "codex command not found on PATH" "install Codex or adjust PATH so repo-automation/bin/codex-run can invoke codex exec"

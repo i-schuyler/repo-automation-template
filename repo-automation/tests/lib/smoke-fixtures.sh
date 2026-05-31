@@ -329,7 +329,7 @@ EOF
     touch .github/ISSUE_TEMPLATE/automation-bug.yml .github/ISSUE_TEMPLATE/automation-feature.yml || return 1
     git add README.md || return 1
     git add VERSION CHANGELOG.md README.md docs .github examples || return 1
-    git commit -m "init" >/dev/null || return 1
+    git commit -m "init" --no-verify >/dev/null || return 1
     git init --bare --initial-branch=main "$smoke_remote_dir" >/dev/null || return 1
     git remote add origin "$smoke_remote_dir" || return 1
     git push -u origin main >/dev/null 2>&1 || return 1
@@ -369,7 +369,7 @@ CHECK_PROFILE_NONE_COMMANDS=()
 EOF
     # Commit the full automation baseline before docs-only boundary tests.
     git add -A >/dev/null || return 1
-    git commit -m "add test automation files" >/dev/null || return 1
+    git commit -m "add test automation files" --no-verify >/dev/null || return 1
     git update-ref refs/remotes/origin/main "$(git rev-parse main)" || return 1
     return 0
   ) || return 1

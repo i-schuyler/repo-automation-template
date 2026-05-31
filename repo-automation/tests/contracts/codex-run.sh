@@ -145,6 +145,7 @@ codex_run_contract_main_impl() {
   mkdir -p "$contract_root" || return 1
 
   codex_run_contract_write_fake_codex "$fake_bin_dir" || return 1
+  hash -r || return 1
 
   printf 'run codex-run smoke prompt\n' > "$prompt_file"
   : > "$empty_prompt_file"
