@@ -76,6 +76,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-05-30 / PR #201 / slice-handoff-execution-semantics / ids=smoke-fixture-reseed-ordering / score_delta=+2 / signal=contract body needed explicit fixture re-seeding to keep later subchecks self-contained and avoid brittle ordering dependencies
 - 2026-05-31 / slice-handoff-phase2-fixture-cleanliness / ids=slice-handoff-fake-codex-fixture-dirt / score_delta=+3 / signal=execution-mode smoke needed a clean-tree sentinel and externalized fake Codex artifacts before preflight
 - 2026-05-31 / PR #203 / slice-handoff-codex-run-drift / ids=slice-handoff-codex-run-contract-drift / score_delta=+3 / signal=review caught slice-handoff JSON excerpt indentation drift, stale adapter docs, and undocumented codex-path override behavior
+- 2026-05-31 / slice-handoff-submit-authorization / ids=none / score_delta=0 / signal=added bare-submit authorization, submit-phase PR body validation, and repo-flow submit capture; no material friction
 - 2026-05-29 / run-tests-smoke-timeout-separation / ids=full-smoke-timeout-budget-drift / score_delta=-1 / signal=separated outer smoke-suite timeout from per-command timeout, defaulted smoke suite to 300s, preserved explicit --timeout legacy intent, and added outer-timeout blame coverage
 
 ## Maintenance Notes

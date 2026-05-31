@@ -71,6 +71,8 @@ smoke_slice_handoff_prepare_execution_repo() {
   local config_path="$smoke_test_dir/.repo-automation.conf"
   local execution_remote_dir=""
 
+  smoke_slice_handoff_install_fake_repo_flow || return 1
+  smoke_slice_handoff_install_fake_pr_body_check || return 1
   execution_remote_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-remote.XXXXXX")" || return 1
   git -C "$smoke_test_dir" init --bare "$execution_remote_dir" >/dev/null 2>&1 || return 1
   git -C "$smoke_test_dir" push "$execution_remote_dir" main:main >/dev/null 2>&1 || return 1
@@ -90,6 +92,97 @@ if old not in text:
     raise SystemExit(1)
 config_path.write_text(text.replace(old, new, 1), encoding='utf-8')
 PY
+}
+
+smoke_slice_handoff_install_fake_repo_flow() {
+  local repo_flow_path="$smoke_test_dir/repo-automation/bin/repo-flow"
+
+  cat > "$repo_flow_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="${FAKE_REPO_FLOW_ARGS_FILE:-}"
+stdout_text="${FAKE_REPO_FLOW_STDOUT_TEXT:-}"
+stderr_text="${FAKE_REPO_FLOW_STDERR_TEXT:-}"
+exit_code="${FAKE_REPO_FLOW_EXIT_CODE:-0}"
+pr_number="${FAKE_REPO_FLOW_PR_NUMBER:-123}"
+url_or_stop="${FAKE_REPO_FLOW_URL_OR_STOP:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
+stop_reason="${FAKE_REPO_FLOW_STOP_REASON:-repo-flow submit failed}"
+mode="${1:-}"
+
+shift || true
+
+if [ -n "$args_file" ]; then
+  {
+    printf '%s\n' "$mode"
+    printf '%s\n' "$@"
+  } > "$args_file"
+fi
+
+if [ -n "$stdout_text" ]; then
+  printf '%s\n' "$stdout_text"
+fi
+
+if [ -n "$stderr_text" ]; then
+  printf '%s\n' "$stderr_text" >&2
+fi
+
+if [ "$mode" = "submit" ]; then
+  {
+    printf '===== FINAL SUMMARY =====\n'
+    printf 'script=repo-flow\n'
+    printf 'mode=submit\n'
+    printf 'rc=%s\n' "$exit_code"
+    printf 'pr=%s\n' "$pr_number"
+    if [ "$exit_code" -eq 0 ]; then
+      printf 'url_or_stop=%s\n' "$url_or_stop"
+    else
+      printf 'url_or_stop=%s\n' "$stop_reason"
+    fi
+    printf '===== END =====\n'
+  } >&2
+else
+  printf 'fail: unsupported repo-flow mode: %s\n' "$mode" >&2
+fi
+
+exit "$exit_code"
+EOF
+  chmod +x "$repo_flow_path" || return 1
+  git -C "$smoke_test_dir" add repo-automation/bin/repo-flow >/dev/null 2>&1 || return 1
+  git -C "$smoke_test_dir" commit -m "fake repo-flow for slice-handoff submit" --no-verify >/dev/null 2>&1 || return 1
+}
+
+smoke_slice_handoff_install_fake_pr_body_check() {
+  local pr_body_check_path="$smoke_test_dir/repo-automation/bin/pr-body-check"
+
+  cat > "$pr_body_check_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="${FAKE_PR_BODY_CHECK_ARGS_FILE:-}"
+stdout_text="${FAKE_PR_BODY_CHECK_STDOUT_TEXT:-pass}"
+stderr_text="${FAKE_PR_BODY_CHECK_STDERR_TEXT:-}"
+exit_code="${FAKE_PR_BODY_CHECK_EXIT_CODE:-0}"
+
+if [ -n "$args_file" ]; then
+  printf '%s\n' "$@" > "$args_file"
+fi
+
+if [ -n "$stdout_text" ]; then
+  printf '%s\n' "$stdout_text"
+fi
+
+if [ -n "$stderr_text" ]; then
+  printf '%s\n' "$stderr_text" >&2
+fi
+
+exit "$exit_code"
+EOF
+  chmod +x "$pr_body_check_path" || return 1
+  git -C "$smoke_test_dir" add repo-automation/bin/pr-body-check >/dev/null 2>&1 || return 1
+  git -C "$smoke_test_dir" commit -m "fake pr-body-check for slice-handoff submit" --no-verify >/dev/null 2>&1 || return 1
 }
 
 smoke_slice_handoff_write_file() {
@@ -214,6 +307,32 @@ smoke_slice_handoff_assert_clean_worktree() {
   fi
 }
 
+smoke_slice_handoff_assert_execution_repo_ready() {
+  local repo_root=""
+  local dirty_status=""
+  local dirty_excerpt=""
+
+  repo_root="$(git -C "$smoke_test_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$repo_root" ]; then
+    printf 'fail: slice-handoff execution repo is not a git repository: %s\n' "$smoke_test_dir" >&2
+    printf 'fix: re-seed the smoke execution repo before invoking execution-mode slice-handoff\n' >&2
+    return 1
+  fi
+  if [ "$repo_root" != "$smoke_test_dir" ]; then
+    printf 'fail: slice-handoff execution repo root mismatch: %s\n' "$repo_root" >&2
+    printf 'fix: re-seed the smoke execution repo before invoking execution-mode slice-handoff\n' >&2
+    return 1
+  fi
+
+  dirty_status="$(git -C "$smoke_test_dir" status --short --untracked-files=normal 2>/dev/null || true)"
+  if [ -n "$dirty_status" ]; then
+    dirty_excerpt="$(printf '%s\n' "$dirty_status" | awk 'NR <= 5 { if (NR > 1) printf "; "; printf "%s", $0 } END { print "" }')"
+    printf 'fail: slice-handoff execution repo dirty before preflight: %s' "$dirty_excerpt" >&2
+    printf 'fix: move generated files outside the execution repo before invoking preflight\n' >&2
+    return 1
+  fi
+}
+
 smoke_slice_handoff_assert_dirty_preflight_failure() {
   local stderr_file="$1"
   local args_file="$2"
@@ -234,6 +353,10 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   local args_file="$execution_artifact_root/fake-codex-dirty.args"
   local stdout_file="$execution_artifact_root/slice-handoff-execution-dirty.out"
   local stderr_file="$execution_artifact_root/slice-handoff-execution-dirty.err"
+  local saved_smoke_test_base="$smoke_test_base"
+  local saved_smoke_test_dir="$smoke_test_dir"
+  local saved_smoke_remote_dir="$smoke_remote_dir"
+  local status=0
 
   smoke_setup_temp_repo || return 1
   mkdir -p "$smoke_check_root" || return 1
@@ -248,13 +371,20 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   rm -rf -- "$execution_dirty_out_dir" || return 1
   rm -f -- "$stdout_file" "$stderr_file" "$args_file" || return 1
   if ! PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"; then
-    smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight" || return 1
-    grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file" || return 1
-    return 0
+    if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight"; then
+      status=1
+    elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
+      status=1
+    fi
+  else
+    printf 'fail: dirty preflight run unexpectedly succeeded\n' >&2
+    status=1
   fi
 
-  printf 'fail: dirty preflight run unexpectedly succeeded\n' >&2
-  return 1
+  smoke_test_base="$saved_smoke_test_base"
+  smoke_test_dir="$saved_smoke_test_dir"
+  smoke_remote_dir="$saved_smoke_remote_dir"
+  return "$status"
 }
 
 smoke_slice_handoff_assert_error_shape() {
@@ -285,21 +415,37 @@ smoke_slice_handoff_assert_execution_stdout() {
   local stdout_file="$1"
   local stderr_file="$2"
   local expected_branch="$3"
+  local expected_mode="${4:-execution-codex-run}"
+  local expected_next="${5:-repo-flow submit not implemented in this slice}"
+  local expected_repo_flow_url_or_stop="${6:-}"
   local run_dir=""
 
   [ ! -s "$stderr_file" ] || return 1
-  [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" = "8" ] || return 1
+  if [ "$expected_mode" = "execution-submit" ]; then
+    [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" -ge 9 ] || return 1
+  else
+    [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" = "8" ] || return 1
+  fi
   grep -Fxq 'pass' "$stdout_file" || return 1
-  grep -Fxq 'mode=execution-codex-run' "$stdout_file" || return 1
+  grep -Fxq "mode=$expected_mode" "$stdout_file" || return 1
   grep -Fxq "branch=$expected_branch" "$stdout_file" || return 1
   grep -Eq '^run_dir=.+' "$stdout_file" || return 1
   grep -Fxq 'preflight_status=pass' "$stdout_file" || return 1
   grep -Fxq 'codex_status=pass' "$stdout_file" || return 1
   grep -Eq '^codex_final_output_path=.+' "$stdout_file" || return 1
-  grep -Fxq 'next=repo-flow submit not implemented in this slice' "$stdout_file" || return 1
+  if [ "$expected_mode" = "execution-submit" ]; then
+    grep -Fxq 'submit_status=pass' "$stdout_file" || return 1
+    if [ -n "$expected_repo_flow_url_or_stop" ]; then
+      grep -Fxq "repo_flow_url_or_stop=$expected_repo_flow_url_or_stop" "$stdout_file" || return 1
+    fi
+  fi
+  grep -Fxq "next=$expected_next" "$stdout_file" || return 1
 
   run_dir="$(smoke_slice_handoff_extract_field "$stdout_file" run_dir)"
   [ -n "$run_dir" ] || return 1
+  if [ "$expected_mode" = "execution-submit" ]; then
+    grep -Fxq "review_request_path=$run_dir/review-request.txt" "$stdout_file" || return 1
+  fi
   printf '%s\n' "$run_dir"
 }
 
@@ -312,6 +458,9 @@ smoke_slice_handoff_assert_execution_run_dir() {
   local review_request_text="$6"
   local expected_pr_body="${7:-}"
   local expected_repo_root="${8:-}"
+  local expected_execution_mode="${9:-execution-codex-run}"
+  local expected_next="${10:-repo-flow submit not implemented in this slice}"
+  local expected_repo_flow_url_or_stop="${11:-}"
 
   [ -d "$run_dir" ] || return 1
   for path in \
@@ -337,6 +486,16 @@ smoke_slice_handoff_assert_execution_run_dir() {
   do
     [ -f "$run_dir/$path" ] || return 1
   done
+  if [ "$expected_execution_mode" = "execution-submit" ]; then
+    for path in \
+      pr-body-check.stdout \
+      pr-body-check.stderr \
+      repo-flow-submit.stdout \
+      repo-flow-submit.stderr
+    do
+      [ -f "$run_dir/$path" ] || return 1
+    done
+  fi
   [ ! -s "$run_dir/codex-run.stderr" ] || return 1
   grep -Fxq 'pass' "$run_dir/codex-run.stdout" || return 1
   grep -Eq '^final_output_path=.+' "$run_dir/codex-run.stdout" || return 1
@@ -358,6 +517,12 @@ smoke_slice_handoff_assert_execution_run_dir() {
     [ ! -e "$run_dir/pr-body.md" ] || return 1
   fi
   [ ! -e "$run_dir/dry-run-preview.txt" ] || return 1
+  if [ "$expected_execution_mode" = "execution-submit" ]; then
+    grep -Fxq 'pass' "$run_dir/pr-body-check.stdout" || return 1
+    [ ! -s "$run_dir/pr-body-check.stderr" ] || return 1
+    grep -Fxq '===== FINAL SUMMARY =====' "$run_dir/repo-flow-submit.stderr" || return 1
+    grep -Eq '^url_or_stop=https://github.com/i-schuyler/repo-automation-template/pull/[0-9]+$' "$run_dir/repo-flow-submit.stderr" || return 1
+  fi
 
   python3 - "$run_dir/slice-run-dir-create.json" "$run_dir/slice-run-dir-cleanup.json" "$run_dir/preflight.json" <<'PY' >/dev/null || return 1
 from pathlib import Path
@@ -396,7 +561,7 @@ PY
     grep -Fxq "pr_body_path=" "$run_dir/slice-handoff-summary.txt" || return 1
   fi
   grep -Fxq "schema=repo-automation-slice-handoff-execution/v1" "$run_dir/slice-handoff-execution-summary.txt" || return 1
-  grep -Fxq "mode=execution-codex-run" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "mode=$expected_execution_mode" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "branch=$branch" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "title=$title" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "submit_mode=$submit_mode" "$run_dir/slice-handoff-execution-summary.txt" || return 1
@@ -414,8 +579,31 @@ PY
   grep -Fxq "codex_run_summary_path=$run_dir/codex-run/codex-run-summary.txt" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "result=pass" "$run_dir/slice-handoff-execution-summary.txt" || return 1
-  grep -Fxq "next=repo-flow submit not implemented in this slice" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  if [ "$expected_execution_mode" = "execution-submit" ]; then
+    grep -Fxq "pr_body_check_stdout_path=$run_dir/pr-body-check.stdout" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+    grep -Fxq "pr_body_check_stderr_path=$run_dir/pr-body-check.stderr" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+    grep -Fxq "repo_flow_submit_stdout_path=$run_dir/repo-flow-submit.stdout" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+    grep -Fxq "repo_flow_submit_stderr_path=$run_dir/repo-flow-submit.stderr" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+    grep -Fxq "next=$expected_next" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  else
+    grep -Fxq "next=$expected_next" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  fi
   return 0
+}
+
+smoke_slice_handoff_latest_run_dir() {
+  python3 - <<'PY'
+from pathlib import Path
+import os
+import sys
+
+root = Path(os.environ.get('TMPDIR', str(Path.home() / '.cache'))) / 'repo-automation' / 'slice-handoff-runs'
+dirs = [path for path in root.iterdir() if path.is_dir()]
+if not dirs:
+    raise SystemExit(1)
+dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+print(dirs[0])
+PY
 }
 
 smoke_slice_handoff_run() {
