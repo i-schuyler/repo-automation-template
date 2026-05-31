@@ -8,6 +8,8 @@ The non-executing mode is `--dry-run`.
 
 `--dry-run` validates the handoff and may generate local artifacts, but it does not create an active run dir, run cleanup, run preflight, run Codex, create branches, commit, push, create PRs, watch CI, merge, delete branches, tag, release, publish, or write session metadata into tracked repo files.
 
+`--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
+
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
 - `codex-prompt.md`
@@ -28,19 +30,21 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 
 ## Public-safe state machine
 
-`draft-handoff -> validate-envelope -> validate-pr-body -> validate-prompt-contract -> execution-preflight -> codex-run -> codex-blocker OR submit-pr -> submit-blocker OR pr-ready-for-review`
+`draft-handoff -> validate-envelope -> validate-pr-body -> validate-prompt-contract -> execution-preflight -> codex-run -> codex-blocker OR submit-pr -> pr-body-check -> repo-flow-submit OR submit-blocker OR pr-ready-for-review`
 
-## Execution phase 1
+## Execution flow
 
-When `--dry-run` is omitted, `slice-handoff` currently runs execution phase 1:
+When `--dry-run` is omitted, `slice-handoff` runs execution flow:
 
 - validate the handoff
 - create and preserve a marked active run directory for the lifetime of the future execution
 - clean up stale marked run dirs through `slice-run-dir` without touching unmarked directories
 - run preflight with JSON child diagnostics from the checked-out repo root
-- stop before Codex execution
+- run Codex
+- if `--submit` is not authorized, stop after Codex with `next=repo-flow submit not implemented in this slice`
+- if `--submit` is authorized and `submit_mode: repo-flow-submit-all` is set, validate the PR body, submit through `repo-flow submit`, and stop before merge
 
-Execution phase 1 writes child logs and artifacts under the active run dir:
+Execution flow writes child logs and artifacts under the active run dir:
 
 - `slice-run-dir-create.json`
 - `slice-run-dir-create.stdout`
@@ -51,6 +55,8 @@ Execution phase 1 writes child logs and artifacts under the active run dir:
 - `preflight.json`
 - `preflight.stdout`
 - `preflight.stderr`
+- `pr-body-check.stdout` and `pr-body-check.stderr` when submit is authorized
+- `repo-flow-submit.stdout` and `repo-flow-submit.stderr` when submit is authorized
 - `slice-handoff-execution-summary.txt`
 - `codex-prompt.md`
 - `review-request.txt`
@@ -59,14 +65,6 @@ Execution phase 1 writes child logs and artifacts under the active run dir:
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 
 Failure returns a compact blocker with the failing step, command, exit code, artifact paths, excerpt, and `fix=paste this blocker into ChatGPT`.
-
-## Deferred execution shape
-
-Future execution mode is expected to:
-
-- validate PR body when submit is enabled
-- explicitly submit through repo-flow only when the CLI invocation authorizes submit
-- return blocker or PR-review handoff
 
 ## Timeout and profile contract
 

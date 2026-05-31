@@ -14,6 +14,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 slice_handoff_quiet=0
 slice_handoff_file=""
 slice_handoff_dry_run=0
+slice_handoff_submit_requested=0
 slice_handoff_out_dir=""
 slice_handoff_out_dir_abs=""
 slice_handoff_out_dir_prompt=""
@@ -32,7 +33,7 @@ slice_handoff_review_request_file=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
-  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--out-dir=<path>] [--quiet] [--help]\n'
+  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--help]\n'
 }
 
 slice_handoff_fail() {
@@ -145,6 +146,53 @@ print(' | '.join(parts))
 PY
 }
 
+slice_handoff_extract_final_summary_field() {
+  local file="$1"
+  local field="$2"
+
+  python3 - "$file" "$field" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+field = sys.argv[2]
+in_summary = False
+
+try:
+    lines = path.read_text(encoding='utf-8').splitlines()
+except OSError:
+    raise SystemExit(1)
+
+for line in lines:
+    if line == '===== FINAL SUMMARY =====':
+        in_summary = True
+        continue
+    if in_summary and line == '===== END =====':
+        break
+    if in_summary and line.startswith(f'{field}='):
+        print(line.split('=', 1)[1])
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+}
+
+slice_handoff_extract_repo_flow_summary_value() {
+  local field="$1"
+  local path=""
+
+  shift
+  for path in "$@"; do
+    [ -n "$path" ] || continue
+    if value="$(slice_handoff_extract_final_summary_field "$path" "$field" 2>/dev/null)"; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 slice_handoff_field_value() {
   local file="$1"
   local key="$2"
@@ -185,29 +233,39 @@ slice_handoff_write_execution_summary() {
   local codex_final_output_path="${12}"
   local mode="${13:-execution-preflight}"
   local next="${14:-codex-run not implemented in this slice}"
+  local pr_body_check_stdout_path="${15:-}"
+  local pr_body_check_stderr_path="${16:-}"
+  local repo_flow_submit_stdout_path="${17:-}"
+  local repo_flow_submit_stderr_path="${18:-}"
 
-  slice_handoff_write_atomic_text_file "$run_dir/slice-handoff-execution-summary.txt" <<EOF
-schema=repo-automation-slice-handoff-execution/v1
-mode=$mode
-branch=$slice_handoff_branch
-title=$slice_handoff_title
-codex_profile=$slice_handoff_codex_profile
-submit_mode=$slice_handoff_submit_mode
-preflight_repo_root=$slice_handoff_repo_root
-run_dir=$run_dir
-cleanup_json_path=$cleanup_json_path
-cleanup_stdout_path=$cleanup_stdout_path
-cleanup_stderr_path=$cleanup_stderr_path
-preflight_json_path=$preflight_json_path
-preflight_stdout_path=$preflight_stdout_path
-preflight_stderr_path=$preflight_stderr_path
-codex_run_stdout_path=$codex_run_stdout_path
-codex_run_stderr_path=$codex_run_stderr_path
-codex_run_summary_path=$codex_run_summary_path
-codex_final_output_path=$codex_final_output_path
-result=$result
-next=$next
-EOF
+  {
+    printf 'schema=repo-automation-slice-handoff-execution/v1\n'
+    printf 'mode=%s\n' "$mode"
+    printf 'branch=%s\n' "$slice_handoff_branch"
+    printf 'title=%s\n' "$slice_handoff_title"
+    printf 'codex_profile=%s\n' "$slice_handoff_codex_profile"
+    printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
+    printf 'preflight_repo_root=%s\n' "$slice_handoff_repo_root"
+    printf 'run_dir=%s\n' "$run_dir"
+    printf 'cleanup_json_path=%s\n' "$cleanup_json_path"
+    printf 'cleanup_stdout_path=%s\n' "$cleanup_stdout_path"
+    printf 'cleanup_stderr_path=%s\n' "$cleanup_stderr_path"
+    printf 'preflight_json_path=%s\n' "$preflight_json_path"
+    printf 'preflight_stdout_path=%s\n' "$preflight_stdout_path"
+    printf 'preflight_stderr_path=%s\n' "$preflight_stderr_path"
+    printf 'codex_run_stdout_path=%s\n' "$codex_run_stdout_path"
+    printf 'codex_run_stderr_path=%s\n' "$codex_run_stderr_path"
+    printf 'codex_run_summary_path=%s\n' "$codex_run_summary_path"
+    printf 'codex_final_output_path=%s\n' "$codex_final_output_path"
+    if [ -n "$pr_body_check_stdout_path$pr_body_check_stderr_path$repo_flow_submit_stdout_path$repo_flow_submit_stderr_path" ] || [ "$mode" = "execution-submit" ]; then
+      printf 'pr_body_check_stdout_path=%s\n' "$pr_body_check_stdout_path"
+      printf 'pr_body_check_stderr_path=%s\n' "$pr_body_check_stderr_path"
+      printf 'repo_flow_submit_stdout_path=%s\n' "$repo_flow_submit_stdout_path"
+      printf 'repo_flow_submit_stderr_path=%s\n' "$repo_flow_submit_stderr_path"
+    fi
+    printf 'result=%s\n' "$result"
+    printf 'next=%s\n' "$next"
+  } | slice_handoff_write_atomic_text_file "$run_dir/slice-handoff-execution-summary.txt"
 }
 
 slice_handoff_write_dry_run_preview() {
@@ -529,7 +587,7 @@ default_review_request = (
 
 if submit_mode == 'repo-flow-submit-all':
     if body_index is None:
-        fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
+      fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
     pr_body_end = review_index if review_index is not None else len(lines)
     pr_body_text = '\n'.join(lines[body_index + 1:pr_body_end])
     if not pr_body_text.strip():
@@ -539,7 +597,7 @@ if submit_mode == 'repo-flow-submit-all':
     except OSError as exc:
         fail('unable to write PR body temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
 else:
-    pr_body_path.write_text('', encoding='utf-8')
+  pr_body_path.write_text('', encoding='utf-8')
 
 if review_index is not None:
     review_request_text = '\n'.join(lines[review_index + 1:])
@@ -551,7 +609,7 @@ else:
 try:
     review_request_path.write_text(review_request_text + '\n', encoding='utf-8')
 except OSError as exc:
-    fail('unable to write PR review request temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
+  fail('unable to write PR review request temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
 
 try:
     prompt_path.write_text(prompt_text + '\n', encoding='utf-8')
@@ -587,12 +645,6 @@ PY
   done <<EOF
 $validation_output
 EOF
-
-  if [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
-    if ! "$script_dir/pr-body-check" --body-file="$slice_handoff_pr_body_file" >/dev/null; then
-      return 1
-    fi
-  fi
 
   return 0
 }
@@ -824,6 +876,19 @@ slice_handoff_run_execution_phase() {
   local cleanup_phase_failed=0
   local preflight_phase_failed=0
   local codex_run_phase_failed=0
+  local pr_body_check_stdout_tmp=""
+  local pr_body_check_stderr_tmp=""
+  local pr_body_check_stdout_path=""
+  local pr_body_check_stderr_path=""
+  local pr_body_check_command_summary=""
+  local pr_body_check_phase_failed=0
+  local repo_flow_submit_stdout_tmp=""
+  local repo_flow_submit_stderr_tmp=""
+  local repo_flow_submit_stdout_path=""
+  local repo_flow_submit_stderr_path=""
+  local repo_flow_submit_command_summary=""
+  local repo_flow_submit_phase_failed=0
+  local repo_flow_submit_url_or_stop=""
 
   cd "$slice_handoff_repo_root" || return 1
 
@@ -952,6 +1017,101 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
+  if [ "$slice_handoff_submit_requested" -eq 1 ]; then
+    pr_body_check_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stdout")" || return 1
+    pr_body_check_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stderr")" || {
+      rm -f -- "$pr_body_check_stdout_tmp" >/dev/null 2>&1 || true
+      return 1
+    }
+    pr_body_check_stdout_path="$active_run_dir/pr-body-check.stdout"
+    pr_body_check_stderr_path="$active_run_dir/pr-body-check.stderr"
+    pr_body_check_command_summary="$(slice_handoff_command_summary repo-automation/bin/pr-body-check "--body-file=$active_run_dir/pr-body.md")"
+
+    if ! (
+      cd "$slice_handoff_repo_root" || return 1
+      repo-automation/bin/pr-body-check "--body-file=$active_run_dir/pr-body.md" >"$pr_body_check_stdout_tmp" 2>"$pr_body_check_stderr_tmp"
+    ); then
+      pr_body_check_phase_failed=1
+    fi
+
+    if ! mv -f -- "$pr_body_check_stdout_tmp" "$pr_body_check_stdout_path" || ! mv -f -- "$pr_body_check_stderr_tmp" "$pr_body_check_stderr_path"; then
+      slice_handoff_print_execution_blocker "pr-body-check" "$pr_body_check_command_summary" 1 "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "unable to finalize pr-body-check artifacts"
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "pr-body-check failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "" "" || true
+      return 1
+    fi
+
+    if [ "$pr_body_check_phase_failed" -ne 0 ]; then
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "pr-body-check failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "" "" || true
+      local pr_body_check_excerpt=""
+      if [ -s "$pr_body_check_stderr_path" ]; then
+        pr_body_check_excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$pr_body_check_stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
+      fi
+      if [ -z "$pr_body_check_excerpt" ] && [ -s "$pr_body_check_stdout_path" ]; then
+        pr_body_check_excerpt="$(awk 'NF { print; count++; if (count == 4) exit }' "$pr_body_check_stdout_path")"
+      fi
+      [ -n "$pr_body_check_excerpt" ] || pr_body_check_excerpt="pr-body-check exited nonzero"
+      slice_handoff_print_execution_blocker "pr-body-check" "$pr_body_check_command_summary" 1 "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$pr_body_check_excerpt"
+      return 1
+    fi
+
+    repo_flow_submit_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-repo-flow-submit.XXXXXX.stdout")" || return 1
+    repo_flow_submit_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-repo-flow-submit.XXXXXX.stderr")" || {
+      rm -f -- "$repo_flow_submit_stdout_tmp" >/dev/null 2>&1 || true
+      return 1
+    }
+    repo_flow_submit_stdout_path="$active_run_dir/repo-flow-submit.stdout"
+    repo_flow_submit_stderr_path="$active_run_dir/repo-flow-submit.stderr"
+    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" --watch --timeout=900 --diagnose-on-fail --explain)"
+
+    if ! (
+      cd "$slice_handoff_repo_root" || return 1
+      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
+    ); then
+      repo_flow_submit_phase_failed=1
+    fi
+
+    if ! mv -f -- "$repo_flow_submit_stdout_tmp" "$repo_flow_submit_stdout_path" || ! mv -f -- "$repo_flow_submit_stderr_tmp" "$repo_flow_submit_stderr_path"; then
+      slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "unable to finalize repo-flow-submit artifacts"
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "repo-flow submit failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      return 1
+    fi
+
+    if [ "$repo_flow_submit_phase_failed" -ne 0 ]; then
+      repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+      if [ -z "$repo_flow_submit_url_or_stop" ] && [ -s "$repo_flow_submit_stderr_path" ]; then
+        repo_flow_submit_url_or_stop="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$repo_flow_submit_stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
+      fi
+      [ -n "$repo_flow_submit_url_or_stop" ] || repo_flow_submit_url_or_stop="repo-flow submit exited nonzero"
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "repo-flow submit failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "$repo_flow_submit_url_or_stop"
+      return 1
+    fi
+
+    repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+    if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review PR before merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path"; then
+      slice_handoff_fail "unable to write execution summary" "fix filesystem permissions and rerun slice-handoff"
+      return 1
+    fi
+
+    if [ "$slice_handoff_quiet" -eq 0 ]; then
+      printf 'pass\n'
+      printf 'mode=execution-submit\n'
+      printf 'run_dir=%s\n' "$active_run_dir"
+      printf 'branch=%s\n' "$slice_handoff_branch"
+      printf 'preflight_status=pass\n'
+      printf 'codex_status=pass\n'
+      printf 'submit_status=pass\n'
+      printf 'codex_final_output_path=%s\n' "$codex_final_output_path"
+      if [ -n "$repo_flow_submit_url_or_stop" ]; then
+        printf 'repo_flow_url_or_stop=%s\n' "$repo_flow_submit_url_or_stop"
+      fi
+      printf 'review_request_path=%s\n' "$active_run_dir/review-request.txt"
+      printf 'next=review PR before merge\n'
+    fi
+
+    return 0
+  fi
+
   if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-codex-run" "repo-flow submit not implemented in this slice"; then
     slice_handoff_fail "unable to write execution summary" "fix filesystem permissions and rerun slice-handoff"
     return 1
@@ -1017,8 +1177,11 @@ slice_handoff_main() {
         slice_handoff_fail "unsupported flag: --execute" "use the default execution mode without --execute"
         return 1
         ;;
+      --submit)
+        slice_handoff_submit_requested=1
+        ;;
       --submit=*)
-        slice_handoff_fail "unsupported flag: --submit" "use --dry-run; slice-handoff does not implement submit behavior"
+        slice_handoff_fail "unsupported flag: --submit" "use bare --submit with submit_mode: repo-flow-submit-all in the handoff envelope"
         return 1
         ;;
       --*)
@@ -1042,6 +1205,11 @@ slice_handoff_main() {
   trap 'slice_handoff_cleanup_temp_files' EXIT INT TERM
 
   slice_handoff_validate_handoff || return 1
+
+  if [ "$slice_handoff_submit_requested" -eq 1 ] && [ "$slice_handoff_submit_mode" != "repo-flow-submit-all" ]; then
+    slice_handoff_fail "--submit requires submit_mode: repo-flow-submit-all in the handoff envelope" "set submit_mode: repo-flow-submit-all or remove --submit"
+    return 1
+  fi
 
   if [ -n "$slice_handoff_out_dir" ]; then
     slice_handoff_out_dir_abs="$(
