@@ -13,10 +13,10 @@ The non-executing mode is `--dry-run`.
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
 - `codex-prompt.md`
-- `dry-run-preview.txt` non-executing public-safe preview of the execution phase 1 shape, including the planned run-dir lifecycle shape, the active-run-dir placeholder, the marker file name, the stale-cleanup argv, and the preflight argv
+- `dry-run-preview.txt` non-executing public-safe preview of the execution shape; submit-specific `pr-body-check` and `repo-flow submit` planning only appears when bare `--submit` is authorized
 - `slice-handoff-summary.txt`
 - `review-request.txt`
-- `pr-body.md` when `submit_mode: repo-flow-submit-all`
+- `pr-body.md` when bare `--submit` is authorized and `submit_mode: repo-flow-submit-all`
 
 The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set.
 
@@ -60,7 +60,7 @@ Execution flow writes child logs and artifacts under the active run dir:
 - `slice-handoff-execution-summary.txt`
 - `codex-prompt.md`
 - `review-request.txt`
-- `pr-body.md` when submit is enabled
+- `pr-body.md` when submit is authorized and submit mode is enabled
 
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 

@@ -272,7 +272,8 @@ slice_handoff_write_dry_run_preview() {
   local preview_tmp="$1"
   local preview_path="$2"
   local pr_body_path="$3"
-  local submit_mode="$4"
+  local submit_requested="$4"
+  local submit_mode="$5"
   local planned_run_dir_root="${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs"
 
   slice_handoff_write_argv_block() {
@@ -293,7 +294,7 @@ slice_handoff_write_dry_run_preview() {
     printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
     printf 'commit_message=%s\n' "$slice_handoff_commit_message"
     printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
-    if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+    if [ "$submit_requested" -eq 1 ] && [ "$submit_mode" = "repo-flow-submit-all" ]; then
       printf 'pr_body_path=%s\n' "$pr_body_path"
     else
       printf 'pr_body_path=not_applicable\n'
@@ -328,7 +329,7 @@ slice_handoff_write_dry_run_preview() {
       "--out-dir=<active-run-dir>/codex-run" \
       "--profile=$slice_handoff_codex_profile" \
       "--cd=$slice_handoff_repo_root"
-    if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+    if [ "$submit_requested" -eq 1 ] && [ "$submit_mode" = "repo-flow-submit-all" ]; then
       slice_handoff_write_argv_block \
         planned_pr_body_validation_argv \
         repo-automation/bin/pr-body-check \
@@ -345,8 +346,8 @@ slice_handoff_write_dry_run_preview() {
         --diagnose-on-fail \
         --explain
     else
-    printf 'planned_pr_body_validation_argv=not_applicable\n'
-    printf 'planned_repo_flow_submit_argv=not_applicable\n'
+      printf 'planned_pr_body_validation_argv=not_applicable\n'
+      printf 'planned_repo_flow_submit_argv=not_applicable\n'
     fi
     printf '\nPlanned artifact/log/metadata paths\n'
     printf 'preflight_log_path=not_created_by_dry_run\n'
@@ -356,7 +357,7 @@ slice_handoff_write_dry_run_preview() {
     printf 'codex_final_output_path=not_written_by_dry_run\n'
     printf 'submit_log_path=not_created_by_dry_run\n'
     printf '\nExpected future final outcomes\n'
-    if [ "$submit_mode" = "repo-flow-submit-all" ]; then
+    if [ "$submit_requested" -eq 1 ] && [ "$submit_mode" = "repo-flow-submit-all" ]; then
       printf 'expected_future_final_outcomes=blocker or PR URL / FINAL SUMMARY / review request\n'
     else
       printf 'expected_future_final_outcomes=blocker or review request\n'
@@ -407,7 +408,7 @@ slice_handoff_validate_handoff() {
   local validation_output=""
 
   validation_output="$(
-    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" "$slice_handoff_review_request_file" <<'PY'
+    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" "$slice_handoff_review_request_file" "$slice_handoff_submit_requested" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -462,6 +463,7 @@ path = Path(sys.argv[1])
 prompt_path = Path(sys.argv[2])
 pr_body_path = Path(sys.argv[3])
 review_request_path = Path(sys.argv[4])
+submit_requested = sys.argv[5] == "1"
 
 try:
     text = path.read_text(encoding='utf-8')
@@ -592,12 +594,46 @@ if submit_mode == 'repo-flow-submit-all':
     pr_body_text = '\n'.join(lines[body_index + 1:pr_body_end])
     if not pr_body_text.strip():
         fail('missing PR body payload', 'add PR body text under ## PR Body')
-    try:
-        pr_body_path.write_text(pr_body_text + '\n', encoding='utf-8')
-    except OSError as exc:
-        fail('unable to write PR body temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
-else:
-  pr_body_path.write_text('', encoding='utf-8')
+    pr_body_lines = pr_body_text.splitlines()
+    required_pr_body_headings = [
+        '## Scope',
+        '## What changed',
+        '## What did not change',
+        '## Verification status',
+        '## User-visible behavior changes',
+        '## Stop conditions encountered',
+        '## Re-entry hint',
+    ]
+    pr_body_forbidden_heading = '## Passive monetization angle'
+    pr_body_heading_positions = {}
+    for heading in required_pr_body_headings:
+        pr_body_heading_positions[heading] = None
+    for index, line in enumerate(pr_body_lines):
+        if line == pr_body_forbidden_heading:
+            fail('forbidden heading present: ## Passive monetization angle', 'remove the passive monetization section')
+        if line in pr_body_heading_positions:
+            if pr_body_heading_positions[line] is None:
+                pr_body_heading_positions[line] = index
+            else:
+                fail(f'heading appears more than once: {line}', 'keep each required heading exactly once')
+    for heading in required_pr_body_headings:
+        if pr_body_heading_positions[heading] is None:
+            fail(f'missing required heading: {heading}', 'use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template')
+    ordered_pr_body_positions = [pr_body_heading_positions[heading] for heading in required_pr_body_headings]
+    if ordered_pr_body_positions != sorted(ordered_pr_body_positions):
+        fail('required headings are out of order', 'use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template')
+    pr_body_content_lines = [
+        line.strip()
+        for line in pr_body_lines
+        if line.strip() and line not in required_pr_body_headings and line != pr_body_forbidden_heading
+    ]
+    if not pr_body_content_lines:
+        fail('body is placeholder-only', 'replace the scaffolding with real scope, change, and verification details')
+    if submit_requested:
+        try:
+            pr_body_path.write_text(pr_body_text + '\n', encoding='utf-8')
+        except OSError as exc:
+            fail('unable to write PR body temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
 
 if review_index is not None:
     review_request_text = '\n'.join(lines[review_index + 1:])
@@ -789,6 +825,7 @@ slice_handoff_run_json_child() {
 slice_handoff_prepare_public_artifacts() {
   local target_dir="$1"
   local include_preview="${2:-1}"
+  local submit_requested="${3:-0}"
   local prompt_target="$target_dir/codex-prompt.md"
   local review_request_target="$target_dir/review-request.txt"
   local summary_target="$target_dir/slice-handoff-summary.txt"
@@ -800,7 +837,7 @@ slice_handoff_prepare_public_artifacts() {
     return 1
   fi
 
-  if [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
+  if [ "$submit_requested" -eq 1 ] && [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
     pr_body_target="$target_dir/pr-body.md"
     if ! slice_handoff_copy_atomic_file "$slice_handoff_pr_body_file" "$pr_body_target"; then
       slice_handoff_fail "unable to write PR body artifact" "fix filesystem permissions and rerun slice-handoff"
@@ -832,7 +869,7 @@ EOF
   if [ "$include_preview" -eq 1 ]; then
     local preview_tmp=""
     preview_tmp="$(mktemp "$target_dir/.dry-run-preview.XXXXXX")" || return 1
-    if ! slice_handoff_write_dry_run_preview "$preview_tmp" "$preview_target" "$pr_body_target" "$slice_handoff_submit_mode"; then
+    if ! slice_handoff_write_dry_run_preview "$preview_tmp" "$preview_target" "$pr_body_target" "$submit_requested" "$slice_handoff_submit_mode"; then
       rm -f -- "$preview_tmp" >/dev/null 2>&1 || true
       slice_handoff_fail "unable to write dry-run preview artifact" "fix filesystem permissions and rerun slice-handoff"
       return 1
@@ -928,7 +965,7 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
-  if ! slice_handoff_prepare_public_artifacts "$active_run_dir" 0; then
+  if ! slice_handoff_prepare_public_artifacts "$active_run_dir" 0 "$slice_handoff_submit_requested"; then
     return 1
   fi
 
@@ -1259,7 +1296,7 @@ PY
       return 1
     fi
 
-    if [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
+    if [ "$slice_handoff_submit_requested" -eq 1 ] && [ "$slice_handoff_submit_mode" = "repo-flow-submit-all" ]; then
       slice_handoff_out_dir_pr_body="$slice_handoff_out_dir_abs/pr-body.md"
       if ! slice_handoff_out_dir_pr_body_tmp="$(mktemp "$slice_handoff_out_dir_abs/.pr-body.XXXXXX")"; then
         slice_handoff_cleanup_out_dir_temp_files "$slice_handoff_out_dir_prompt_tmp"
@@ -1320,7 +1357,7 @@ PY
       return 1
     fi
 
-    if ! slice_handoff_write_dry_run_preview "$slice_handoff_out_dir_preview_tmp" "$slice_handoff_out_dir_preview" "$slice_handoff_out_dir_pr_body" "$slice_handoff_submit_mode"; then
+    if ! slice_handoff_write_dry_run_preview "$slice_handoff_out_dir_preview_tmp" "$slice_handoff_out_dir_preview" "$slice_handoff_out_dir_pr_body" "$slice_handoff_submit_requested" "$slice_handoff_submit_mode"; then
       slice_handoff_cleanup_out_dir_temp_files \
         "$slice_handoff_out_dir_prompt_tmp" \
         "$slice_handoff_out_dir_pr_body_tmp" \
@@ -1343,7 +1380,11 @@ PY
       printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
       printf 'commit_message=%s\n' "$slice_handoff_commit_message"
       printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
-      printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
+      if [ -n "$slice_handoff_out_dir_pr_body" ]; then
+        printf 'pr_body_path=%s\n' "$slice_handoff_out_dir_pr_body"
+      else
+        printf 'pr_body_path=\n'
+      fi
       printf 'review_request_path=%s\n' "$slice_handoff_out_dir_review_request"
     } >"$slice_handoff_out_dir_summary_tmp" || {
       slice_handoff_cleanup_out_dir_temp_files \

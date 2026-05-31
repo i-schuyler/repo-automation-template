@@ -72,6 +72,7 @@ smoke_slice_handoff_prepare_execution_repo() {
   local execution_remote_dir=""
 
   smoke_slice_handoff_install_fake_repo_flow || return 1
+  smoke_slice_handoff_install_fake_pr_body_check || return 1
   execution_remote_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-remote.XXXXXX")" || return 1
   git -C "$smoke_test_dir" init --bare "$execution_remote_dir" >/dev/null 2>&1 || return 1
   git -C "$smoke_test_dir" push "$execution_remote_dir" main:main >/dev/null 2>&1 || return 1
@@ -150,6 +151,38 @@ EOF
   chmod +x "$repo_flow_path" || return 1
   git -C "$smoke_test_dir" add repo-automation/bin/repo-flow >/dev/null 2>&1 || return 1
   git -C "$smoke_test_dir" commit -m "fake repo-flow for slice-handoff submit" --no-verify >/dev/null 2>&1 || return 1
+}
+
+smoke_slice_handoff_install_fake_pr_body_check() {
+  local pr_body_check_path="$smoke_test_dir/repo-automation/bin/pr-body-check"
+
+  cat > "$pr_body_check_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="${FAKE_PR_BODY_CHECK_ARGS_FILE:-}"
+stdout_text="${FAKE_PR_BODY_CHECK_STDOUT_TEXT:-pass}"
+stderr_text="${FAKE_PR_BODY_CHECK_STDERR_TEXT:-}"
+exit_code="${FAKE_PR_BODY_CHECK_EXIT_CODE:-0}"
+
+if [ -n "$args_file" ]; then
+  printf '%s\n' "$@" > "$args_file"
+fi
+
+if [ -n "$stdout_text" ]; then
+  printf '%s\n' "$stdout_text"
+fi
+
+if [ -n "$stderr_text" ]; then
+  printf '%s\n' "$stderr_text" >&2
+fi
+
+exit "$exit_code"
+EOF
+  chmod +x "$pr_body_check_path" || return 1
+  git -C "$smoke_test_dir" add repo-automation/bin/pr-body-check >/dev/null 2>&1 || return 1
+  git -C "$smoke_test_dir" commit -m "fake pr-body-check for slice-handoff submit" --no-verify >/dev/null 2>&1 || return 1
 }
 
 smoke_slice_handoff_write_file() {
@@ -274,6 +307,32 @@ smoke_slice_handoff_assert_clean_worktree() {
   fi
 }
 
+smoke_slice_handoff_assert_execution_repo_ready() {
+  local repo_root=""
+  local dirty_status=""
+  local dirty_excerpt=""
+
+  repo_root="$(git -C "$smoke_test_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$repo_root" ]; then
+    printf 'fail: slice-handoff execution repo is not a git repository: %s\n' "$smoke_test_dir" >&2
+    printf 'fix: re-seed the smoke execution repo before invoking execution-mode slice-handoff\n' >&2
+    return 1
+  fi
+  if [ "$repo_root" != "$smoke_test_dir" ]; then
+    printf 'fail: slice-handoff execution repo root mismatch: %s\n' "$repo_root" >&2
+    printf 'fix: re-seed the smoke execution repo before invoking execution-mode slice-handoff\n' >&2
+    return 1
+  fi
+
+  dirty_status="$(git -C "$smoke_test_dir" status --short --untracked-files=normal 2>/dev/null || true)"
+  if [ -n "$dirty_status" ]; then
+    dirty_excerpt="$(printf '%s\n' "$dirty_status" | awk 'NR <= 5 { if (NR > 1) printf "; "; printf "%s", $0 } END { print "" }')"
+    printf 'fail: slice-handoff execution repo dirty before preflight: %s' "$dirty_excerpt" >&2
+    printf 'fix: move generated files outside the execution repo before invoking preflight\n' >&2
+    return 1
+  fi
+}
+
 smoke_slice_handoff_assert_dirty_preflight_failure() {
   local stderr_file="$1"
   local args_file="$2"
@@ -294,6 +353,10 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   local args_file="$execution_artifact_root/fake-codex-dirty.args"
   local stdout_file="$execution_artifact_root/slice-handoff-execution-dirty.out"
   local stderr_file="$execution_artifact_root/slice-handoff-execution-dirty.err"
+  local saved_smoke_test_base="$smoke_test_base"
+  local saved_smoke_test_dir="$smoke_test_dir"
+  local saved_smoke_remote_dir="$smoke_remote_dir"
+  local status=0
 
   smoke_setup_temp_repo || return 1
   mkdir -p "$smoke_check_root" || return 1
@@ -308,13 +371,20 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   rm -rf -- "$execution_dirty_out_dir" || return 1
   rm -f -- "$stdout_file" "$stderr_file" "$args_file" || return 1
   if ! PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"; then
-    smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight" || return 1
-    grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file" || return 1
-    return 0
+    if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight"; then
+      status=1
+    elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
+      status=1
+    fi
+  else
+    printf 'fail: dirty preflight run unexpectedly succeeded\n' >&2
+    status=1
   fi
 
-  printf 'fail: dirty preflight run unexpectedly succeeded\n' >&2
-  return 1
+  smoke_test_base="$saved_smoke_test_base"
+  smoke_test_dir="$saved_smoke_test_dir"
+  smoke_remote_dir="$saved_smoke_remote_dir"
+  return "$status"
 }
 
 smoke_slice_handoff_assert_error_shape() {
