@@ -63,6 +63,8 @@ smoke_check_slice_handoff_contract() {
   local expected_execution_submit_summary
   local expected_execution_quiet_preview
   local expected_execution_quiet_summary
+  local expected_dry_run_repo_root=""
+  local expected_execution_repo_root=""
   local missing_schema_file="$smoke_check_root/missing-schema.md"
   local invalid_schema_file="$smoke_check_root/invalid-schema.md"
   local missing_branch_file="$smoke_check_root/missing-branch.md"
@@ -74,6 +76,9 @@ smoke_check_slice_handoff_contract() {
   local placeholder_file="$smoke_check_root/placeholder.md"
   local lifecycle_file="$smoke_check_root/lifecycle.md"
   local execution_smoke_test_dir=""
+  local fake_codex_bin_dir=""
+  local fake_codex_args_none_file=""
+  local fake_codex_args_submit_file=""
   local valid_prompt="Implement the slice exactly as specified."
   local submit_prompt="Implement the slice and prepare the PR body."
   local review_request_text
@@ -134,6 +139,7 @@ EOF
   expected_submit_prompt="$(printf '%s' "$submit_prompt")"
   expected_submit_body="$(printf '%s' "$submit_body")"
   expected_submit_review_body="$(printf '%s' "$submit_body")"
+  expected_dry_run_repo_root="$smoke_test_dir"
   expected_default_review_request="$(cat <<EOF
 Please review this PR before merge:
 
@@ -194,15 +200,21 @@ planned_preflight_argv:
 - --clean-test-cache
 - --preserve-path=<active-run-dir>
 - --json
-planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
+planned_codex_run_argv:
+- repo-automation/bin/codex-run
+- --prompt-file=<active-run-dir>/codex-prompt.md
+- --out-dir=<active-run-dir>/codex-run
+- --profile=default
+- --cd=$expected_dry_run_repo_root
 planned_pr_body_validation_argv=not_applicable
 planned_repo_flow_submit_argv=not_applicable
 
 Planned artifact/log/metadata paths
 preflight_log_path=not_created_by_dry_run
-codex_execution_log_path=not_created_by_dry_run
+codex_run_stdout_path=not_created_by_dry_run
+codex_run_stderr_path=not_created_by_dry_run
+codex_run_summary_path=not_created_by_dry_run
 codex_final_output_path=not_written_by_dry_run
-session_metadata_path=not_written_by_dry_run
 submit_log_path=not_created_by_dry_run
 
 Expected future final outcomes
@@ -240,15 +252,21 @@ planned_preflight_argv:
 - --clean-test-cache
 - --preserve-path=<active-run-dir>
 - --json
-planned_codex_adapter_shape=profile=default; adapter execution is not implemented in this slice
+planned_codex_run_argv:
+- repo-automation/bin/codex-run
+- --prompt-file=<active-run-dir>/codex-prompt.md
+- --out-dir=<active-run-dir>/codex-run
+- --profile=default
+- --cd=$expected_dry_run_repo_root
 planned_pr_body_validation_argv=not_applicable
 planned_repo_flow_submit_argv=not_applicable
 
 Planned artifact/log/metadata paths
 preflight_log_path=not_created_by_dry_run
-codex_execution_log_path=not_created_by_dry_run
+codex_run_stdout_path=not_created_by_dry_run
+codex_run_stderr_path=not_created_by_dry_run
+codex_run_summary_path=not_created_by_dry_run
 codex_final_output_path=not_written_by_dry_run
-session_metadata_path=not_written_by_dry_run
 submit_log_path=not_created_by_dry_run
 
 Expected future final outcomes
@@ -286,7 +304,12 @@ planned_preflight_argv:
 - --clean-test-cache
 - --preserve-path=<active-run-dir>
 - --json
-planned_codex_adapter_shape=profile=review; adapter execution is not implemented in this slice
+planned_codex_run_argv:
+- repo-automation/bin/codex-run
+- --prompt-file=<active-run-dir>/codex-prompt.md
+- --out-dir=<active-run-dir>/codex-run
+- --profile=review
+- --cd=$expected_dry_run_repo_root
 planned_pr_body_validation_argv:
 - repo-automation/bin/pr-body-check
 - --body-file=$valid_submit_out_dir/pr-body.md
@@ -303,9 +326,10 @@ planned_repo_flow_submit_argv:
 
 Planned artifact/log/metadata paths
 preflight_log_path=not_created_by_dry_run
-codex_execution_log_path=not_created_by_dry_run
+codex_run_stdout_path=not_created_by_dry_run
+codex_run_stderr_path=not_created_by_dry_run
+codex_run_summary_path=not_created_by_dry_run
 codex_final_output_path=not_written_by_dry_run
-session_metadata_path=not_written_by_dry_run
 submit_log_path=not_created_by_dry_run
 
 Expected future final outcomes
@@ -316,11 +340,8 @@ EOF
   expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
   expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
   expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
-  expected_execution_none_preview="${expected_none_preview//$valid_none_out_dir/$execution_none_out_dir}"
   expected_execution_none_summary="${expected_none_summary//$valid_none_out_dir/$execution_none_out_dir}"
-  expected_execution_submit_preview="${expected_submit_preview//$valid_submit_out_dir/$execution_submit_out_dir}"
   expected_execution_submit_summary="${expected_submit_summary//$valid_submit_out_dir/$execution_submit_out_dir}"
-  expected_execution_quiet_preview="${expected_quiet_preview//$valid_quiet_out_dir/$execution_quiet_out_dir}"
   expected_execution_quiet_summary="${expected_quiet_summary//$valid_quiet_out_dir/$execution_quiet_out_dir}"
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
@@ -433,14 +454,39 @@ EOF
   execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-fixture.XXXXXX")" || return 1
   cp -R "$smoke_test_dir"/. "$execution_smoke_test_dir" || return 1
   smoke_test_dir="$execution_smoke_test_dir"
+  expected_execution_repo_root="$smoke_test_dir"
+  expected_execution_none_preview="${expected_none_preview//$valid_none_out_dir/$execution_none_out_dir}"
+  expected_execution_none_preview="${expected_execution_none_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
+  expected_execution_submit_preview="${expected_submit_preview//$valid_submit_out_dir/$execution_submit_out_dir}"
+  expected_execution_submit_preview="${expected_execution_submit_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
+  expected_execution_quiet_preview="${expected_quiet_preview//$valid_quiet_out_dir/$execution_quiet_out_dir}"
+  expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   smoke_slice_handoff_prepare_execution_repo || return 1
+  fake_codex_bin_dir="$execution_artifact_root/fake-codex-bin"
+  smoke_slice_handoff_write_fake_codex "$fake_codex_bin_dir" || return 1
+  fake_codex_args_none_file="$execution_artifact_root/fake-codex-none.args"
+  fake_codex_args_submit_file="$execution_artifact_root/fake-codex-submit.args"
+  fake_codex_args_quiet_file="$execution_artifact_root/fake-codex-quiet.args"
   inside_repo_out_dir="$smoke_test_dir/slice-handoff-out-inside-repo"
 
   if (
     rm -rf -- "$execution_none_out_dir" &&
-      smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" --file="$valid_none_file" --out-dir="$execution_none_out_dir" &&
+      smoke_slice_handoff_assert_clean_worktree &&
+      PATH="$fake_codex_bin_dir:$PATH" REPO_AUTOMATION_CODEX_PATH="$fake_codex_bin_dir/codex" FAKE_CODEX_ARGS_FILE="$fake_codex_args_none_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" --file="$valid_none_file" --out-dir="$execution_none_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" "feature/slice-handoff-smoke")" &&
+      grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$execution_artifact_root/slice-handoff-execution-none.out" &&
       smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-smoke" "Slice handoff smoke" "$expected_none_prompt" "$expected_default_review_request" "" "$smoke_test_dir" &&
+      smoke_slice_handoff_assert_text_file "$fake_codex_args_none_file" "$(cat <<EOF
+exec
+--cd
+$smoke_test_dir
+--sandbox
+workspace-write
+--output-last-message
+$run_dir/codex-run/codex-final.txt
+-
+EOF
+)" &&
       smoke_slice_handoff_assert_text_file "$execution_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_none_out_dir/dry-run-preview.txt" "$expected_execution_none_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_none_out_dir/review-request.txt" "$expected_default_review_request" &&
@@ -455,9 +501,24 @@ EOF
   if (
     rm -rf -- "$execution_submit_out_dir" &&
       smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
-      smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$valid_submit_file" --out-dir="$execution_submit_out_dir" &&
+      smoke_slice_handoff_assert_clean_worktree &&
+      PATH="$fake_codex_bin_dir:$PATH" REPO_AUTOMATION_CODEX_PATH="$fake_codex_bin_dir/codex" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$valid_submit_file" --out-dir="$execution_submit_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" "feature/slice-handoff-submit")" &&
+      grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$execution_artifact_root/slice-handoff-execution-submit.out" &&
       smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-submit" "Slice handoff submit smoke" "$expected_submit_prompt" "$review_request_text" "$expected_submit_body" "$smoke_test_dir" &&
+      smoke_slice_handoff_assert_text_file "$fake_codex_args_submit_file" "$(cat <<EOF
+exec
+--profile
+review
+--cd
+$smoke_test_dir
+--sandbox
+workspace-write
+--output-last-message
+$run_dir/codex-run/codex-final.txt
+-
+EOF
+)" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/dry-run-preview.txt" "$expected_execution_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/pr-body.md" "$expected_submit_body" &&
@@ -474,9 +535,24 @@ EOF
 
   if (
     rm -rf -- "$execution_quiet_out_dir" &&
-      smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-quiet.out" "$execution_artifact_root/slice-handoff-execution-quiet.err" --file="$valid_none_file" --quiet --out-dir="$execution_quiet_out_dir" &&
+      smoke_slice_handoff_assert_clean_worktree &&
+      PATH="$fake_codex_bin_dir:$PATH" REPO_AUTOMATION_CODEX_PATH="$fake_codex_bin_dir/codex" FAKE_CODEX_ARGS_FILE="$fake_codex_args_quiet_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-quiet.out" "$execution_artifact_root/slice-handoff-execution-quiet.err" --file="$valid_none_file" --quiet --out-dir="$execution_quiet_out_dir" &&
       [ ! -s "$execution_artifact_root/slice-handoff-execution-quiet.out" ] &&
       [ ! -s "$execution_artifact_root/slice-handoff-execution-quiet.err" ] &&
+      final_output_path="$(awk 'prev == "--output-last-message" { print; exit } { prev = $0 }' "$fake_codex_args_quiet_file")" &&
+      run_dir="$(dirname "$(dirname "$final_output_path")")" &&
+      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-smoke" "Slice handoff smoke" "$expected_none_prompt" "$expected_default_review_request" "" "$smoke_test_dir" &&
+      smoke_slice_handoff_assert_text_file "$fake_codex_args_quiet_file" "$(cat <<EOF
+exec
+--cd
+$smoke_test_dir
+--sandbox
+workspace-write
+--output-last-message
+$run_dir/codex-run/codex-final.txt
+-
+EOF
+)" &&
       smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/dry-run-preview.txt" "$expected_execution_quiet_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_quiet_out_dir/review-request.txt" "$expected_default_review_request" &&

@@ -141,8 +141,15 @@ if isinstance(cleanup, dict):
             break
 if not parts:
     parts.append('stdout JSON did not include a stop_reason')
-print(' | '.join(parts))
+  print(' | '.join(parts))
 PY
+}
+
+slice_handoff_field_value() {
+  local file="$1"
+  local key="$2"
+
+  awk -F= -v key="$key" '$1 == key { sub("^[^=]*=", "", $0); print $0; exit }' "$file"
 }
 
 slice_handoff_print_execution_blocker() {
@@ -172,10 +179,16 @@ slice_handoff_write_execution_summary() {
   local preflight_json_path="$6"
   local preflight_stdout_path="$7"
   local preflight_stderr_path="$8"
+  local codex_run_stdout_path="$9"
+  local codex_run_stderr_path="${10}"
+  local codex_run_summary_path="${11}"
+  local codex_final_output_path="${12}"
+  local mode="${13:-execution-preflight}"
+  local next="${14:-codex-run not implemented in this slice}"
 
   slice_handoff_write_atomic_text_file "$run_dir/slice-handoff-execution-summary.txt" <<EOF
 schema=repo-automation-slice-handoff-execution/v1
-mode=execution-preflight
+mode=$mode
 branch=$slice_handoff_branch
 title=$slice_handoff_title
 codex_profile=$slice_handoff_codex_profile
@@ -188,8 +201,12 @@ cleanup_stderr_path=$cleanup_stderr_path
 preflight_json_path=$preflight_json_path
 preflight_stdout_path=$preflight_stdout_path
 preflight_stderr_path=$preflight_stderr_path
+codex_run_stdout_path=$codex_run_stdout_path
+codex_run_stderr_path=$codex_run_stderr_path
+codex_run_summary_path=$codex_run_summary_path
+codex_final_output_path=$codex_final_output_path
 result=$result
-next=codex-run not implemented in this slice
+next=$next
 EOF
 }
 
@@ -246,7 +263,13 @@ slice_handoff_write_dry_run_preview() {
       --clean-test-cache \
       "--preserve-path=<active-run-dir>" \
       --json
-    printf 'planned_codex_adapter_shape=profile=%s; adapter execution is not implemented in this slice\n' "$slice_handoff_codex_profile"
+    slice_handoff_write_argv_block \
+      planned_codex_run_argv \
+      repo-automation/bin/codex-run \
+      "--prompt-file=<active-run-dir>/codex-prompt.md" \
+      "--out-dir=<active-run-dir>/codex-run" \
+      "--profile=$slice_handoff_codex_profile" \
+      "--cd=$slice_handoff_repo_root"
     if [ "$submit_mode" = "repo-flow-submit-all" ]; then
       slice_handoff_write_argv_block \
         planned_pr_body_validation_argv \
@@ -264,14 +287,15 @@ slice_handoff_write_dry_run_preview() {
         --diagnose-on-fail \
         --explain
     else
-      printf 'planned_pr_body_validation_argv=not_applicable\n'
-      printf 'planned_repo_flow_submit_argv=not_applicable\n'
+    printf 'planned_pr_body_validation_argv=not_applicable\n'
+    printf 'planned_repo_flow_submit_argv=not_applicable\n'
     fi
     printf '\nPlanned artifact/log/metadata paths\n'
     printf 'preflight_log_path=not_created_by_dry_run\n'
-    printf 'codex_execution_log_path=not_created_by_dry_run\n'
+    printf 'codex_run_stdout_path=not_created_by_dry_run\n'
+    printf 'codex_run_stderr_path=not_created_by_dry_run\n'
+    printf 'codex_run_summary_path=not_created_by_dry_run\n'
     printf 'codex_final_output_path=not_written_by_dry_run\n'
-    printf 'session_metadata_path=not_written_by_dry_run\n'
     printf 'submit_log_path=not_created_by_dry_run\n'
     printf '\nExpected future final outcomes\n'
     if [ "$submit_mode" = "repo-flow-submit-all" ]; then
@@ -584,6 +608,83 @@ slice_handoff_output_contract_blocker() {
   slice_handoff_print_execution_blocker "$step" "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$excerpt"
 }
 
+slice_handoff_validate_codex_run_output() {
+  local command_summary="$1"
+  local exit_code="$2"
+  local stdout_path="$3"
+  local stderr_path="$4"
+  local codex_run_stdout_path="$5"
+  local codex_run_stderr_path="$6"
+  local codex_run_summary_path="$7"
+  local codex_final_output_path="$8"
+
+  if [ "$exit_code" -ne 0 ]; then
+    local excerpt=""
+    if [ -s "$stdout_path" ]; then
+      excerpt="$(awk 'NF { print; count++; if (count == 4) exit }' "$stdout_path")"
+    fi
+    if [ -z "$excerpt" ] && [ -s "$stderr_path" ]; then
+      excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
+    fi
+    if [ -z "$excerpt" ]; then
+      excerpt="codex-run exited nonzero"
+    fi
+    slice_handoff_print_execution_blocker "codex-run" "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$excerpt"
+    return 1
+  fi
+
+  if ! grep -Fxq 'pass' "$stdout_path"; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "wrapper stdout missing pass"
+    return 1
+  fi
+  if ! grep -Eq '^final_output_path=.+' "$stdout_path"; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "wrapper stdout missing final_output_path"
+    return 1
+  fi
+  if ! grep -Eq '^summary_path=.+' "$stdout_path"; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "wrapper stdout missing summary_path"
+    return 1
+  fi
+
+  if [ ! -s "$codex_final_output_path" ]; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "final output file is missing or empty"
+    return 1
+  fi
+
+  if [ ! -s "$codex_run_summary_path" ]; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "summary file is missing or empty"
+    return 1
+  fi
+
+  grep -Fxq 'script=codex-run' "$codex_run_summary_path" || {
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "summary missing script=codex-run"
+    return 1
+  }
+  grep -Fxq 'result=pass' "$codex_run_summary_path" || {
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "summary missing result=pass"
+    return 1
+  }
+  grep -Fxq 'exit_code=0' "$codex_run_summary_path" || {
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "summary missing exit_code=0"
+    return 1
+  }
+  grep -Fxq 'final_output_status=present' "$codex_run_summary_path" || {
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "summary missing final_output_status=present"
+    return 1
+  }
+
+  if [ "$(slice_handoff_field_value "$stdout_path" final_output_path)" != "$codex_final_output_path" ]; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "wrapper final_output_path did not match generated artifact"
+    return 1
+  fi
+  if [ "$(slice_handoff_field_value "$stdout_path" summary_path)" != "$codex_run_summary_path" ]; then
+    slice_handoff_print_execution_blocker "codex-run-output-contract" "$command_summary" 0 "$stdout_path" "$stderr_path" "wrapper summary_path did not match generated artifact"
+    return 1
+  fi
+
+  return 0
+}
+
 slice_handoff_run_json_child() {
   local step="$1"
   local command_summary="$2"
@@ -705,15 +806,24 @@ slice_handoff_run_execution_phase() {
   local cleanup_stderr_path=""
   local preflight_stdout_path=""
   local preflight_stderr_path=""
+  local codex_run_stdout_path=""
+  local codex_run_stderr_path=""
+  local codex_run_stdout_tmp=""
+  local codex_run_stderr_tmp=""
   local cleanup_json_path=""
   local preflight_json_path=""
+  local codex_run_summary_path=""
+  local codex_run_out_dir=""
+  local codex_final_output_path=""
   local active_run_dir=""
   local run_root=""
   local cleanup_command_summary=""
   local preflight_command_summary=""
   local create_command_summary=""
+  local codex_run_command_summary=""
   local cleanup_phase_failed=0
   local preflight_phase_failed=0
+  local codex_run_phase_failed=0
 
   cd "$slice_handoff_repo_root" || return 1
 
@@ -781,7 +891,7 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
   if [ "$cleanup_phase_failed" -ne 0 ]; then
-    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "" "" "" || true
+    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "" "" "" "" "" "" "" "execution-preflight" "codex-run not implemented in this slice" || true
     return 1
   fi
   preflight_stdout_path="$active_run_dir/preflight.stdout"
@@ -802,22 +912,60 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
   if [ "$preflight_phase_failed" -ne 0 ]; then
-    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" || true
+    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "" "" "" "" "execution-preflight" "codex-run not implemented in this slice" || true
     return 1
   fi
 
-  if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path"; then
+  codex_run_out_dir="$active_run_dir/codex-run"
+  codex_run_stdout_path="$active_run_dir/codex-run.stdout"
+  codex_run_stderr_path="$active_run_dir/codex-run.stderr"
+  codex_run_summary_path="$codex_run_out_dir/codex-run-summary.txt"
+  codex_final_output_path="$codex_run_out_dir/codex-final.txt"
+  codex_run_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-run.XXXXXX.stdout")" || return 1
+  codex_run_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-run.XXXXXX.stderr")" || {
+    rm -f -- "$codex_run_stdout_tmp" >/dev/null 2>&1 || true
+    return 1
+  }
+  codex_run_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-run "--prompt-file=$active_run_dir/codex-prompt.md" "--out-dir=$codex_run_out_dir" "--profile=$slice_handoff_codex_profile" "--cd=$slice_handoff_repo_root")"
+
+  if ! (
+    cd "$slice_handoff_repo_root" || return 1
+    repo-automation/bin/codex-run "--prompt-file=$active_run_dir/codex-prompt.md" "--out-dir=$codex_run_out_dir" "--profile=$slice_handoff_codex_profile" "--cd=$slice_handoff_repo_root" >"$codex_run_stdout_tmp" 2>"$codex_run_stderr_tmp"
+  ); then
+    codex_run_phase_failed=1
+  fi
+
+  if ! mv -f -- "$codex_run_stdout_tmp" "$codex_run_stdout_path" || ! mv -f -- "$codex_run_stderr_tmp" "$codex_run_stderr_path"; then
+    slice_handoff_print_execution_blocker "codex-run" "$codex_run_command_summary" 1 "$codex_run_stdout_path" "$codex_run_stderr_path" "unable to finalize codex-run artifacts"
+    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-codex-run" "repo-flow submit not implemented in this slice" || true
+    return 1
+  fi
+
+  if [ "$codex_run_phase_failed" -ne 0 ]; then
+    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-codex-run" "repo-flow submit not implemented in this slice" || true
+    slice_handoff_validate_codex_run_output "$codex_run_command_summary" 1 "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" || true
+    return 1
+  fi
+
+  if ! slice_handoff_validate_codex_run_output "$codex_run_command_summary" 0 "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path"; then
+    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-codex-run" "repo-flow submit not implemented in this slice" || true
+    return 1
+  fi
+
+  if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-codex-run" "repo-flow submit not implemented in this slice"; then
     slice_handoff_fail "unable to write execution summary" "fix filesystem permissions and rerun slice-handoff"
     return 1
   fi
 
   if [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'
-    printf 'mode=execution-preflight\n'
+    printf 'mode=execution-codex-run\n'
     printf 'run_dir=%s\n' "$active_run_dir"
     printf 'branch=%s\n' "$slice_handoff_branch"
     printf 'preflight_status=pass\n'
-    printf 'next=codex-run not implemented in this slice\n'
+    printf 'codex_status=pass\n'
+    printf 'codex_final_output_path=%s\n' "$codex_final_output_path"
+    printf 'next=repo-flow submit not implemented in this slice\n'
   fi
 
   return 0

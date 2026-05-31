@@ -356,7 +356,10 @@ codex_run_main() {
     codex_run_codex_path=""
   fi
 
-  codex_run_codex_path="$(command -v codex 2>/dev/null || true)"
+  codex_run_codex_path="${REPO_AUTOMATION_CODEX_PATH:-${CODEX_PATH:-}}"
+  if [ -z "$codex_run_codex_path" ]; then
+    codex_run_codex_path="$(command -v codex 2>/dev/null || true)"
+  fi
   if [ -z "$codex_run_codex_path" ]; then
     codex_run_fail "codex command not found on PATH" "install Codex or adjust PATH so repo-automation/bin/codex-run can invoke codex exec"
     return 1
