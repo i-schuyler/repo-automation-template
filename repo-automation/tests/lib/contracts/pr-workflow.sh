@@ -1229,6 +1229,11 @@ smoke_check_preflight_json() {
   local preflight_clean_json_tmpdir="$smoke_test_base/preflight-clean-json-tmp"
   local preflight_clean_json_home="$smoke_test_base/preflight-clean-json-home"
   local preflight_clean_json_preserve_inside_path="$preflight_clean_json_tmpdir/repo-automation/active-run"
+  local preflight_prefix_tmpdir="$smoke_test_base/preflight-prefix-tmp"
+  local preflight_prefix_home="$smoke_test_base/preflight-prefix-home"
+  local preflight_prefix_preserve_inside_path="$preflight_prefix_tmpdir/repo-automation-slice-handoff-fixture.alpha/keep"
+  local preflight_prefix_json="$smoke_test_base/preflight-prefix.json"
+  local preflight_prefix_err="$smoke_test_base/preflight-prefix.err"
   local preflight_clean_stdout="$smoke_test_base/preflight-clean.out"
   local preflight_clean_stderr="$smoke_test_base/preflight-clean.err"
   local preflight_preserve_equal_path="$preflight_clean_tmpdir/repo-automation"
@@ -1670,6 +1675,39 @@ PY
     test_pass "preflight preserve-path keeps the containing cleanup root"
   else
     test_fail "preflight preserve-path keeps the containing cleanup root"
+    status=1
+  fi
+
+  mkdir -p \
+    "$preflight_prefix_tmpdir/repo-automation-slice-handoff-fixture.alpha/keep" \
+    "$preflight_prefix_tmpdir/repo-automation-slice-handoff-fixture.beta" \
+    "$preflight_prefix_tmpdir/repo-automation-slice-handoff-dirty.gamma" \
+    "$preflight_prefix_tmpdir/unrelated-temp-dir" \
+    "$preflight_prefix_home/.cache/tmp/clean-repo-automation-template.delta" \
+    "$preflight_prefix_home/.cache/tmp/unrelated-temp-dir" || return 1
+  printf 'preserve me\n' > "$preflight_prefix_preserve_inside_path/keep.txt" || return 1
+  printf 'delete me\n' > "$preflight_prefix_tmpdir/repo-automation-slice-handoff-fixture.beta/marker.txt" || return 1
+  printf 'delete me\n' > "$preflight_prefix_tmpdir/repo-automation-slice-handoff-dirty.gamma/marker.txt" || return 1
+  printf 'delete me\n' > "$preflight_prefix_home/.cache/tmp/clean-repo-automation-template.delta/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_prefix_tmpdir/unrelated-temp-dir/marker.txt" || return 1
+  printf 'keep me\n' > "$preflight_prefix_home/.cache/tmp/unrelated-temp-dir/marker.txt" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" TMPDIR="$preflight_prefix_tmpdir" HOME="$preflight_prefix_home" \
+      repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path="$preflight_prefix_preserve_inside_path" --json > "$preflight_prefix_json" 2> "$preflight_prefix_err"
+  ) && python3 -m json.tool "$preflight_prefix_json" >/dev/null &&
+    [ ! -s "$preflight_prefix_err" ] &&
+    smoke_json_assert "$preflight_prefix_json" 'data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 3 and "repo-automation-slice-handoff-fixture.beta" in data.get("cleanup_deleted_paths", "") and "repo-automation-slice-handoff-dirty.gamma" in data.get("cleanup_deleted_paths", "") and "clean-repo-automation-template.delta" in data.get("cleanup_deleted_paths", "") and data.get("cleanup_preserved_path", "").endswith("/repo-automation-slice-handoff-fixture.alpha/keep") and "repo-automation-slice-handoff-fixture.alpha" in data.get("cleanup_skipped_paths", "") and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""' &&
+    [ -e "$preflight_prefix_preserve_inside_path/keep.txt" ] &&
+    [ ! -e "$preflight_prefix_tmpdir/repo-automation-slice-handoff-fixture.beta/marker.txt" ] &&
+    [ ! -e "$preflight_prefix_tmpdir/repo-automation-slice-handoff-dirty.gamma/marker.txt" ] &&
+    [ ! -e "$preflight_prefix_home/.cache/tmp/clean-repo-automation-template.delta/marker.txt" ] &&
+    [ -e "$preflight_prefix_tmpdir/unrelated-temp-dir/marker.txt" ] &&
+    [ -e "$preflight_prefix_home/.cache/tmp/unrelated-temp-dir/marker.txt" ]; then
+    test_pass "preflight clean-test-cache removes approved prefix fixtures"
+  else
+    test_fail "preflight clean-test-cache removes approved prefix fixtures"
     status=1
   fi
 
