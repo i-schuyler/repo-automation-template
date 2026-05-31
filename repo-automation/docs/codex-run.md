@@ -23,6 +23,6 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 
 ## Relationship to slice-handoff
 
-`slice-handoff` execution routes through `codex-run` after preflight. Without bare `--submit`, it still stops before `repo-flow submit`; with bare `--submit` and `submit_mode: repo-flow-submit-all`, later slice-handoff phases continue to PR body validation and repo-flow submit.
+`slice-handoff` execution routes through `codex-run` after preflight. `slice-handoff` execution can now continue from `codex-run` to PR-body validation and repo-flow submit only when bare `--submit` authorizes the submit boundary, and still stops before merge.
 
 Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.

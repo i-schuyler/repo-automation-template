@@ -10,6 +10,16 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
+## Submit authorization matrix
+
+| Mode | submit_mode | `--submit` | Behavior |
+| --- | --- | --- | --- |
+| dry-run | unset | no | validate and preview non-submit execution |
+| dry-run | `repo-flow-submit-all` | no | validate PR body; do not preview submit crossing |
+| dry-run | `repo-flow-submit-all` | yes | validate PR body and preview submit plan; no execution |
+| execution | `repo-flow-submit-all` | no | preflight -> codex-run -> stop before submit |
+| execution | `repo-flow-submit-all` | yes | preflight -> codex-run -> pr-body-check -> repo-flow submit -> stop before merge |
+
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
 - `codex-prompt.md`
