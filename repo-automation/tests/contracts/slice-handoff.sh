@@ -472,7 +472,7 @@ EOF
   if (
     rm -rf -- "$execution_none_out_dir" &&
       smoke_slice_handoff_assert_clean_worktree &&
-      PATH="$fake_codex_bin_dir:$PATH" REPO_AUTOMATION_CODEX_PATH="$fake_codex_bin_dir/codex" FAKE_CODEX_ARGS_FILE="$fake_codex_args_none_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" --file="$valid_none_file" --out-dir="$execution_none_out_dir" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_none_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" --file="$valid_none_file" --out-dir="$execution_none_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-none.out" "$execution_artifact_root/slice-handoff-execution-none.err" "feature/slice-handoff-smoke")" &&
       grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$execution_artifact_root/slice-handoff-execution-none.out" &&
       smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-smoke" "Slice handoff smoke" "$expected_none_prompt" "$expected_default_review_request" "" "$smoke_test_dir" &&
@@ -502,7 +502,7 @@ EOF
     rm -rf -- "$execution_submit_out_dir" &&
       smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
       smoke_slice_handoff_assert_clean_worktree &&
-      PATH="$fake_codex_bin_dir:$PATH" REPO_AUTOMATION_CODEX_PATH="$fake_codex_bin_dir/codex" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$valid_submit_file" --out-dir="$execution_submit_out_dir" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$valid_submit_file" --out-dir="$execution_submit_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" "feature/slice-handoff-submit")" &&
       grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$execution_artifact_root/slice-handoff-execution-submit.out" &&
       smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-submit" "Slice handoff submit smoke" "$expected_submit_prompt" "$review_request_text" "$expected_submit_body" "$smoke_test_dir" &&
@@ -536,7 +536,7 @@ EOF
   if (
     rm -rf -- "$execution_quiet_out_dir" &&
       smoke_slice_handoff_assert_clean_worktree &&
-      PATH="$fake_codex_bin_dir:$PATH" REPO_AUTOMATION_CODEX_PATH="$fake_codex_bin_dir/codex" FAKE_CODEX_ARGS_FILE="$fake_codex_args_quiet_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-quiet.out" "$execution_artifact_root/slice-handoff-execution-quiet.err" --file="$valid_none_file" --quiet --out-dir="$execution_quiet_out_dir" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_quiet_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-quiet.out" "$execution_artifact_root/slice-handoff-execution-quiet.err" --file="$valid_none_file" --quiet --out-dir="$execution_quiet_out_dir" &&
       [ ! -s "$execution_artifact_root/slice-handoff-execution-quiet.out" ] &&
       [ ! -s "$execution_artifact_root/slice-handoff-execution-quiet.err" ] &&
       final_output_path="$(awk 'prev == "--output-last-message" { print; exit } { prev = $0 }' "$fake_codex_args_quiet_file")" &&
@@ -561,6 +561,13 @@ EOF
     :
   else
     test_fail "execution-quiet artifacts"
+    status=1
+  fi
+
+  if (smoke_slice_handoff_run_dirty_preflight_regression); then
+    :
+  else
+    test_fail "execution-dirty-preflight artifacts"
     status=1
   fi
 

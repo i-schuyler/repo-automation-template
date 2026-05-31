@@ -23,6 +23,6 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 
 ## Relationship to slice-handoff
 
-`slice-handoff` is not wired to call `codex-run` yet. Future execution slices will route through this adapter instead of invoking Codex directly.
+`slice-handoff` execution now routes through `codex-run` after preflight and still stops before `repo-flow submit`.
 
 Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.

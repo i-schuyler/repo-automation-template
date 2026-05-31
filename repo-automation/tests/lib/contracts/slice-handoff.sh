@@ -214,6 +214,49 @@ smoke_slice_handoff_assert_clean_worktree() {
   fi
 }
 
+smoke_slice_handoff_assert_dirty_preflight_failure() {
+  local stderr_file="$1"
+  local args_file="$2"
+  local expected_excerpt="$3"
+
+  grep -Fxq 'step=preflight' "$stderr_file" || return 1
+  grep -Fxq "excerpt=$expected_excerpt" "$stderr_file" || return 1
+  [ ! -s "$args_file" ] || return 1
+}
+
+smoke_slice_handoff_run_dirty_preflight_regression() {
+  local smoke_check_root="$smoke_test_base/slice-handoff-dirty"
+  local valid_none_file="$smoke_check_root/valid-none.md"
+  local execution_artifact_root="${TMPDIR:-$HOME/.cache}/slice-handoff-execution"
+  local execution_dirty_out_dir="$execution_artifact_root/out-execution-dirty"
+  local dirty_execution_smoke_test_dir=""
+  local fake_codex_bin_dir=""
+  local args_file="$execution_artifact_root/fake-codex-dirty.args"
+  local stdout_file="$execution_artifact_root/slice-handoff-execution-dirty.out"
+  local stderr_file="$execution_artifact_root/slice-handoff-execution-dirty.err"
+
+  smoke_setup_temp_repo || return 1
+  mkdir -p "$smoke_check_root" || return 1
+  smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Implement the slice exactly as specified." || return 1
+  dirty_execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-dirty.XXXXXX")" || return 1
+  cp -R "$smoke_test_dir"/. "$dirty_execution_smoke_test_dir" || return 1
+  smoke_test_dir="$dirty_execution_smoke_test_dir"
+  smoke_slice_handoff_prepare_execution_repo || return 1
+  fake_codex_bin_dir="$execution_artifact_root/fake-codex-bin"
+  smoke_slice_handoff_write_fake_codex "$fake_codex_bin_dir" || return 1
+  printf 'dirty execution repo\n' > "$smoke_test_dir/dirty-before-preflight.txt" || return 1
+  rm -rf -- "$execution_dirty_out_dir" || return 1
+  rm -f -- "$stdout_file" "$stderr_file" "$args_file" || return 1
+  if ! PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"; then
+    smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight" || return 1
+    grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file" || return 1
+    return 0
+  fi
+
+  printf 'fail: dirty preflight run unexpectedly succeeded\n' >&2
+  return 1
+}
+
 smoke_slice_handoff_assert_error_shape() {
   local stderr_file="$1"
   local reason="$2"

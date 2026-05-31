@@ -141,7 +141,7 @@ if isinstance(cleanup, dict):
             break
 if not parts:
     parts.append('stdout JSON did not include a stop_reason')
-  print(' | '.join(parts))
+print(' | '.join(parts))
 PY
 }
 
