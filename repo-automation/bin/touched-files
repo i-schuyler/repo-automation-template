@@ -169,42 +169,19 @@ touched_files_print_json() {
 
 touched_files_main() {
   local arg
-  local next_arg
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
-    next_arg="${2:-}"
     case "$arg" in
       --help)
         touched_files_usage
         return 0
         ;;
-      --base=)
-        repo_auto_parse_value_flag_equals "$arg" "--base" "use --base=<ref>" touched_files_base || return 1
+      --base|--base=*)
+        repo_auto_parse_value_flag_strict "$arg" "--base" "use --base=<ref>" touched_files_base "${2:-}" || return 1
         ;;
-      --base=*)
-        repo_auto_parse_value_flag_equals "$arg" "--base" "use --base=<ref>" touched_files_base || return 1
-        ;;
-      --head=*)
-        repo_auto_parse_value_flag_equals "$arg" "--head" "use --head=<ref>" touched_files_head || return 1
-        ;;
-      --base)
-        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
-          repo_auto_flag_error "missing flag value" "--base" "use --base=<ref>" || return 1
-          [ "$#" -gt 1 ] && shift
-        else
-          repo_auto_flag_error "flag format not accepted" "--base" "use --base=<ref>" || return 1
-          shift
-        fi
-        ;;
-      --head)
-        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
-          repo_auto_flag_error "missing flag value" "--head" "use --head=<ref>" || return 1
-          [ "$#" -gt 1 ] && shift
-        else
-          repo_auto_flag_error "flag format not accepted" "--head" "use --head=<ref>" || return 1
-          shift
-        fi
+      --head|--head=*)
+        repo_auto_parse_value_flag_strict "$arg" "--head" "use --head=<ref>" touched_files_head "${2:-}" || return 1
         ;;
       --machine-json)
         touched_files_machine_json=1

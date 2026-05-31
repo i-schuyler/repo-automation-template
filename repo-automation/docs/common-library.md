@@ -33,6 +33,7 @@ Current slices now include initial workflow scaffolds for branch cleanup and cod
 | `repo_auto_state_dir` | Print the repo automation state directory under `${TMPDIR:-$HOME/.cache}`. |
 | `repo_auto_is_positive_integer` | Validate positive integer values. |
 | `repo_auto_parse_value_flag_equals` | Parse and assign an equals-form value flag while preserving standard empty-value errors. |
+| `repo_auto_parse_value_flag_strict` | Parse and assign a strict `--flag=value` value flag while preserving standard empty, missing, and positional-value errors. |
 | `repo_auto_validate_branch_name` | Reject unsafe branch names and reject names that fail `git check-ref-format --branch`. |
 | `repo_auto_validate_provider` | Allow `github`, `gitlab`, or `none`. |
 | `repo_auto_validate_merge_mode` | Allow `squash`, `merge`, or `rebase`. |

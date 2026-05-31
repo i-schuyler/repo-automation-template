@@ -32,6 +32,23 @@ repo_auto_parse_value_flag_equals() {
   local value_var="${4:-}"
 
   case "$arg" in
+    "$flag="|"$flag="*)
+      repo_auto_parse_value_flag_strict "$arg" "$flag" "$fix" "$value_var"
+      ;;
+    *)
+      return 2
+      ;;
+  esac
+}
+
+repo_auto_parse_value_flag_strict() {
+  local arg="${1:-}"
+  local flag="${2:-}"
+  local fix="${3:-}"
+  local value_var="${4:-}"
+  local next="${5:-}"
+
+  case "$arg" in
     "$flag=")
       repo_auto_flag_error "empty flag value" "$flag" "$fix"
       return 1
@@ -39,6 +56,14 @@ repo_auto_parse_value_flag_equals() {
     "$flag="*)
       printf -v "$value_var" '%s' "${arg#"$flag="}"
       return 0
+      ;;
+    "$flag")
+      if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+        repo_auto_flag_error "flag format not accepted" "$flag" "$fix"
+      else
+        repo_auto_flag_error "missing flag value" "$flag" "$fix"
+      fi
+      return 1
       ;;
     *)
       return 2

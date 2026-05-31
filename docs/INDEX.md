@@ -68,13 +68,14 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 50. [Output Modes](../repo-automation/docs/output-modes.md)
 51. [Testing](../repo-automation/docs/testing.md)
 52. [Roadmap](ROADMAP.md)
-53. [Drift Ledger](DRIFT_LEDGER.md)
-54. [Monetization](MONETIZATION.md)
-55. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
-56. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
-57. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
-58. [Source Provenance](../repo-automation/docs/source-provenance.md)
-59. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
+53. [Repo Improvement Plan](repo-improvement-plan.md)
+54. [Drift Ledger](DRIFT_LEDGER.md)
+55. [Monetization](MONETIZATION.md)
+56. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
+57. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
+58. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
+59. [Source Provenance](../repo-automation/docs/source-provenance.md)
+60. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 
 ## Planned Helpers
 

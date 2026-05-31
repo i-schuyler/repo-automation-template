@@ -191,13 +191,11 @@ EOF_EXCERPT
 
 failure_log_main() {
   local arg
-  local next_arg
   local root
   local log_file=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
-    next_arg="${2:-}"
     case "$arg" in
       --help)
         failure_log_usage
@@ -206,8 +204,8 @@ failure_log_main() {
       --latest)
         failure_log_latest=1
         ;;
-      --kind=*)
-        repo_auto_parse_value_flag_equals "$arg" "--kind" "use --kind=<run-tests|repo-doctor|any>" failure_log_kind || return 1
+      --kind|--kind=*)
+        repo_auto_parse_value_flag_strict "$arg" "--kind" "use --kind=<run-tests|repo-doctor|any>" failure_log_kind "${2:-}" || return 1
         case "$failure_log_kind" in
           run-tests|repo-doctor|any)
             ;;
@@ -217,29 +215,11 @@ failure_log_main() {
             ;;
         esac
         ;;
-      --kind)
-        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
-          repo_auto_flag_error "missing flag value" "--kind" "use --kind=<run-tests|repo-doctor|any>" || return 1
-          [ "$#" -gt 1 ] && shift
-        else
-          repo_auto_flag_error "flag format not accepted" "--kind" "use --kind=<run-tests|repo-doctor|any>" || return 1
-          shift
-        fi
-        ;;
-      --lines=*)
-        repo_auto_parse_value_flag_equals "$arg" "--lines" "use --lines=<lines>" failure_log_lines || return 1
+      --lines|--lines=*)
+        repo_auto_parse_value_flag_strict "$arg" "--lines" "use --lines=<lines>" failure_log_lines "${2:-}" || return 1
         if ! repo_auto_is_positive_integer "$failure_log_lines"; then
           failure_log_output_stop "invalid --lines value: $failure_log_lines"
           return 1
-        fi
-        ;;
-      --lines)
-        if [ "$#" -eq 1 ] || [ "${next_arg#-}" != "$next_arg" ]; then
-          repo_auto_flag_error "missing flag value" "--lines" "use --lines=<lines>" || return 1
-          [ "$#" -gt 1 ] && shift
-        else
-          repo_auto_flag_error "flag format not accepted" "--lines" "use --lines=<lines>" || return 1
-          shift
         fi
         ;;
       --machine-json)
