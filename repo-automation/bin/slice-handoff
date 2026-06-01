@@ -12,6 +12,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 slice_handoff_quiet=0
+slice_handoff_explain=0
 slice_handoff_file=""
 slice_handoff_dry_run=0
 slice_handoff_submit_requested=0
@@ -33,7 +34,40 @@ slice_handoff_review_request_file=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
-  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--help]\n'
+  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--explain] [--help]\n'
+}
+
+slice_handoff_info() {
+  [ "$slice_handoff_explain" -eq 1 ] || return 0
+  printf 'INFO: slice-handoff %s\n' "$*" >&2
+}
+
+slice_handoff_print_final_summary() {
+  local mode="$1"
+  local rc="$2"
+  local next="$3"
+  local out_dir="${4:-}"
+  local run_dir="${5:-}"
+  local review_request_path="${6:-}"
+  local summary_lines=(
+    "script=slice-handoff"
+    "mode=$mode"
+    "rc=$rc"
+    "branch=$slice_handoff_branch"
+  )
+
+  if [ -n "$out_dir" ]; then
+    summary_lines+=("out_dir=$out_dir")
+  fi
+  if [ -n "$run_dir" ]; then
+    summary_lines+=("run_dir=$run_dir")
+  fi
+  if [ -n "$review_request_path" ]; then
+    summary_lines+=("review_request_path=$review_request_path")
+  fi
+  summary_lines+=("next=$next")
+
+  repo_auto_print_final_summary "${summary_lines[@]}" >&2
 }
 
 slice_handoff_fail() {
@@ -473,10 +507,10 @@ def reject_lifecycle_instruction(line: str) -> None:
         return
 
     checks = [
-        (r'^(?:please\s+)?create a pr\b', 'create a pr'),
-        (r'^(?:please\s+)?merge\b', 'merge'),
-        (r'^(?:please\s+)?(?:(?:run|git)\s+)?(?:repo-automation/bin/)?repo-flow submit\b', 'repo-flow submit'),
-        (r'^(?:please\s+)?(?:(?:git\s+)?checkout)\b', 'checkout'),
+        (r'^(?:please\s+)?create(?: a)? pr\b', 'create a pr'),
+        (r'^(?:please\s+)?merge(?:$|[.!?]|(?:\s+(?:it|this|that|them|the\s+pr|the\s+pull\s+request|the\s+branch|the\s+changes|the\s+work|the\s+code|after|once|when|then|now|to|into)\b))', 'merge'),
+        (r'^(?:please\s+)?(?:(?:run|git)\s+)?(?:repo-automation/bin/)?repo-flow submit(?:$|[.!?]|(?:\s+(?:it|this|that|the\s+pr|the\s+pull\s+request|the\s+branch|the\s+changes|now|after|once|when|then|to|in)\b|(?:\s+--\S+)+))', 'repo-flow submit'),
+        (r'^(?:please\s+)?(?:(?:git\s+)?checkout)\b(?:$|[.!?]|(?:\s+(?:main|master|the\s+branch|the\s+changes|it|this|that|to|into)\b|(?:\s+[\w./-]+)+))', 'checkout'),
     ]
     for pattern, phrase in checks:
         if re.match(pattern, normalized):
@@ -977,6 +1011,7 @@ slice_handoff_run_execution_phase() {
   local repo_flow_submit_url_or_stop=""
 
   cd "$slice_handoff_repo_root" || return 1
+  slice_handoff_info "run-dir creation"
 
   create_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-create.XXXXXX.stdout")" || return 1
   create_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-create.XXXXXX.stderr")" || {
@@ -1018,6 +1053,7 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
+  slice_handoff_info "cleanup"
   cleanup_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-cleanup.XXXXXX.stdout")" || return 1
   cleanup_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-cleanup.XXXXXX.stderr")" || {
     rm -f -- "$cleanup_stdout_tmp" >/dev/null 2>&1 || true
@@ -1045,6 +1081,7 @@ slice_handoff_run_execution_phase() {
     slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "" "" "" "" "" "" "" "execution-preflight" "codex-run not implemented in this slice" || true
     return 1
   fi
+  slice_handoff_info "preflight"
   preflight_stdout_path="$active_run_dir/preflight.stdout"
   preflight_stderr_path="$active_run_dir/preflight.stderr"
   preflight_json_path="$active_run_dir/preflight.json"
@@ -1067,6 +1104,7 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
+  slice_handoff_info "codex-run"
   codex_run_out_dir="$active_run_dir/codex-run"
   codex_run_stdout_path="$active_run_dir/codex-run.stdout"
   codex_run_stderr_path="$active_run_dir/codex-run.stderr"
@@ -1104,6 +1142,7 @@ slice_handoff_run_execution_phase() {
   fi
 
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
+    slice_handoff_info "PR-body validation"
     pr_body_check_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stdout")" || return 1
     pr_body_check_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stderr")" || {
       rm -f -- "$pr_body_check_stdout_tmp" >/dev/null 2>&1 || true
@@ -1140,6 +1179,7 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
+    slice_handoff_info "repo-flow submit"
     repo_flow_submit_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-repo-flow-submit.XXXXXX.stdout")" || return 1
     repo_flow_submit_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-repo-flow-submit.XXXXXX.stderr")" || {
       rm -f -- "$repo_flow_submit_stdout_tmp" >/dev/null 2>&1 || true
@@ -1180,6 +1220,7 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
+    slice_handoff_info "review-request rewrite"
     if ! slice_handoff_render_review_request_text "$slice_handoff_review_request_file" "$repo_flow_submit_url_or_stop" "$slice_handoff_title" "$slice_handoff_branch" "$active_run_dir" | slice_handoff_write_atomic_text_file "$active_run_dir/review-request.txt"; then
       slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request rewrite failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
       slice_handoff_print_execution_blocker "review-request-rewrite" "$repo_flow_submit_command_summary" 0 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "unable to rewrite review-request.txt with the submitted PR URL"
@@ -1191,7 +1232,10 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
-    if [ "$slice_handoff_quiet" -eq 0 ]; then
+    if [ "$slice_handoff_explain" -eq 1 ]; then
+      slice_handoff_info "final next=review PR before merge"
+      slice_handoff_print_final_summary "execution-submit" 0 "review PR before merge" "" "$active_run_dir" "$active_run_dir/review-request.txt"
+    elif [ "$slice_handoff_quiet" -eq 0 ]; then
       printf 'pass\n'
       printf 'mode=execution-submit\n'
       printf 'run_dir=%s\n' "$active_run_dir"
@@ -1215,7 +1259,10 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
-  if [ "$slice_handoff_quiet" -eq 0 ]; then
+  if [ "$slice_handoff_explain" -eq 1 ]; then
+    slice_handoff_info "final next=repo-flow submit not implemented in this slice"
+    slice_handoff_print_final_summary "execution-codex-run" 0 "repo-flow submit not implemented in this slice" "" "$active_run_dir" "$active_run_dir/review-request.txt"
+  elif [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'
     printf 'mode=execution-codex-run\n'
     printf 'run_dir=%s\n' "$active_run_dir"
@@ -1241,6 +1288,9 @@ slice_handoff_main() {
         ;;
       --quiet)
         slice_handoff_quiet=1
+        ;;
+      --explain)
+        slice_handoff_explain=1
         ;;
       --plan-only)
         slice_handoff_fail "unsupported flag: --plan-only" "use --dry-run"
@@ -1303,6 +1353,7 @@ slice_handoff_main() {
   trap 'slice_handoff_cleanup_temp_files' EXIT INT TERM
 
   slice_handoff_validate_handoff || return 1
+  slice_handoff_info "validation complete"
 
   if [ "$slice_handoff_submit_requested" -eq 1 ] && [ "$slice_handoff_submit_mode" != "repo-flow-submit-all" ]; then
     slice_handoff_fail "--submit requires submit_mode: repo-flow-submit-all in the handoff envelope" "set submit_mode: repo-flow-submit-all or remove --submit"
@@ -1335,6 +1386,8 @@ PY
       slice_handoff_fail "unable to create out-dir: $slice_handoff_out_dir_abs" "fix filesystem permissions or choose a writable directory outside the repo root"
       return 1
     fi
+
+    slice_handoff_info "dry-run artifact writing out_dir=$slice_handoff_out_dir_abs"
 
     slice_handoff_out_dir_prompt="$slice_handoff_out_dir_abs/codex-prompt.md"
     slice_handoff_out_dir_summary="$slice_handoff_out_dir_abs/slice-handoff-summary.txt"
@@ -1543,7 +1596,10 @@ PY
     return 0
   fi
 
-  if [ "$slice_handoff_quiet" -eq 0 ]; then
+  if [ "$slice_handoff_explain" -eq 1 ]; then
+    slice_handoff_info "final next=review request"
+    slice_handoff_print_final_summary "dry-run" 0 "review request" "$slice_handoff_out_dir_abs" ""
+  elif [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'
     if [ -n "$slice_handoff_out_dir_abs" ]; then
       printf 'out_dir=%s\n' "$slice_handoff_out_dir_abs"

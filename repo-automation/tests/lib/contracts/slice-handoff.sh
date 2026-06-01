@@ -131,6 +131,9 @@ if old not in text:
     raise SystemExit(1)
 config_path.write_text(text.replace(old, new, 1), encoding='utf-8')
 PY
+  cp -- "$smoke_repo_root/repo-automation/bin/slice-handoff" "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/slice-handoff || return 1
 }
 
 smoke_slice_handoff_install_fake_repo_flow() {
