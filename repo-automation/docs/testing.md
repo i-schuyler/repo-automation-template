@@ -63,6 +63,16 @@ Smoke tests source `repo-automation/tests/lib/smoke-common.sh` (which loads `rep
 Smoke scenario execution is split across `repo-automation/tests/contracts/*.sh` plus focused shared modules in `repo-automation/tests/lib/contracts/*.sh`, with `repo-automation/tests/smoke.sh` as the orchestrator.
 The shared harness owns child-process cleanup, temp-dir cleanup, and timeout fallback warnings.
 
+## Temp fixture lifecycle policy
+
+Disposable smoke fixtures live under the registered smoke test parent and are aggressively cleaned with the current test/run. Completed previous smoke fixtures are not durable evidence; only the current active fixture parent should survive while the test is running.
+
+Nested helper invocations that perform cleanup must use isolated `TMPDIR`/`HOME` values so they cannot target the outer smoke harness root.
+
+Operator/evidence run dirs are different: preserve the current active run, keep a small rolling window (for example the last 5–10), and cap by age (for example 7 days) where the helper supports it.
+
+Cleanup should not be generalized to npm cache paths, `.codex`, or unrelated cache directories.
+
 Tests do not delete remote branches and do not use force delete for local branches.
 
 `repo-automation/bin/run-tests` defaults to a 120-second per-check timeout. Use `--timeout=SECONDS` to change it and `--audit` for the compact full suite. If the `timeout` command is unavailable, the scripts warn once and continue without timeout guards instead of failing the whole run.
