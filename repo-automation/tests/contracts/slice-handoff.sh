@@ -526,7 +526,7 @@ EOF
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
-  execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-fixture.XXXXXX")" || return 1
+  execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-exec.XXXXXX")" || return 1
   cp -R "$smoke_test_dir"/. "$execution_smoke_test_dir" || return 1
   smoke_test_dir="$execution_smoke_test_dir"
   expected_execution_repo_root="$smoke_test_dir"

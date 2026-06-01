@@ -257,6 +257,49 @@ preflight_cleanup_root_candidates() {
   printf '%s\n' "$HOME/.cache/repo-automation-log-dump"
 }
 
+preflight_cleanup_prefix_candidates() {
+  local parent=""
+  local resolved_parent=""
+  local seen_parents=""
+  local path=""
+  local base=""
+  local tmp_dir_name="tmp"
+
+  while IFS= read -r parent; do
+    [ -n "$parent" ] || continue
+    resolved_parent="$(
+      python3 - "$parent" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser().resolve(strict=False))
+PY
+    )" || continue
+    case "$seen_parents" in
+      *"$resolved_parent"$'\n'*)
+        continue
+        ;;
+    esac
+    seen_parents="${seen_parents}${resolved_parent}"$'\n'
+    [ -d "$resolved_parent" ] || continue
+
+    while IFS= read -r path; do
+      [ -n "$path" ] || continue
+      base="${path##*/}"
+      case "$base" in
+        repo-automation-slice-handoff-fixture.*|repo-automation-slice-handoff-dirty.*|clean-repo-automation-template.*)
+          printf '%s\n' "$path"
+          ;;
+      esac
+    done <<EOF
+$(find "$resolved_parent" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
+EOF
+  done <<EOF
+${TMPDIR:-$HOME/.cache}
+$HOME/.cache/$tmp_dir_name
+EOF
+}
+
 preflight_clean_test_cache() {
   local root="${TMPDIR:-$HOME/.cache}"
   local path=""
@@ -305,6 +348,7 @@ preflight_clean_test_cache() {
     fi
   done <<EOF
 $(preflight_cleanup_root_candidates)
+$(preflight_cleanup_prefix_candidates)
 EOF
 
   if preflight_disk_guard_collect "$root"; then

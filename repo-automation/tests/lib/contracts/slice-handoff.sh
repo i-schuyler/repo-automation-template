@@ -361,7 +361,7 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   smoke_setup_temp_repo || return 1
   mkdir -p "$smoke_check_root" || return 1
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Implement the slice exactly as specified." || return 1
-  dirty_execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-dirty.XXXXXX")" || return 1
+  dirty_execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-exec-dirty.XXXXXX")" || return 1
   cp -R "$smoke_test_dir"/. "$dirty_execution_smoke_test_dir" || return 1
   smoke_test_dir="$dirty_execution_smoke_test_dir"
   smoke_slice_handoff_prepare_execution_repo || return 1
