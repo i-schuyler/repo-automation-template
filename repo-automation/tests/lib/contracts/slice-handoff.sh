@@ -234,6 +234,7 @@ smoke_slice_handoff_write_file() {
   local prompt_text="$7"
   local pr_body_text="${8:-}"
   local review_request_text="${9:-}"
+  local pr_review_prompt_id="${10:-}"
 
   mkdir -p "$(dirname "$path")" || return 1
   {
@@ -252,6 +253,9 @@ smoke_slice_handoff_write_file() {
     fi
     if [ -n "$commit_message" ]; then
       printf 'commit_message: %s\n' "$commit_message"
+    fi
+    if [ -n "$pr_review_prompt_id" ]; then
+      printf 'pr_review_prompt_id: %s\n' "$pr_review_prompt_id"
     fi
     printf '\n# Slice Handoff\n\n## Codex Prompt\n'
     printf '%s\n' "$prompt_text"
