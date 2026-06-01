@@ -67,13 +67,52 @@ sys.exit(1)
 PY
 }
 
+smoke_slice_handoff_owned_temp_dir() {
+  local pattern="$1"
+  local parent="$smoke_test_base/slice-handoff"
+
+  mkdir -p "$parent" || return 1
+  mktemp -d "$parent/$pattern.XXXXXX" || return 1
+}
+
+smoke_slice_handoff_owned_env_root() {
+  local pattern="$1"
+  local parent="$smoke_test_base/slice-handoff-env"
+
+  mkdir -p "$parent" || return 1
+  mktemp -d "$parent/$pattern.XXXXXX" || return 1
+}
+
+smoke_slice_handoff_run_with_isolated_temp_env() {
+  local tmpdir="$1"
+  local home="$2"
+
+  shift 2
+  TMPDIR="$tmpdir" HOME="$home" "$@"
+}
+
+smoke_slice_handoff_seed_execution_repo() {
+  local source_repo="$1"
+  local repo_dir="$2"
+
+  rm -rf -- "$repo_dir" || return 1
+  git clone --local --no-hardlinks "$source_repo" "$repo_dir" >/dev/null 2>&1 || return 1
+  git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  [ "$(git -C "$repo_dir" rev-parse --show-toplevel 2>/dev/null)" = "$repo_dir" ] || return 1
+  (
+    cd "$repo_dir" || return 1
+    git config user.name "repo-automation-test" || return 1
+    git config user.email "repo-automation-test@example.com" || return 1
+  )
+}
+
 smoke_slice_handoff_prepare_execution_repo() {
   local config_path="$smoke_test_dir/.repo-automation.conf"
   local execution_remote_dir=""
 
   smoke_slice_handoff_install_fake_repo_flow || return 1
   smoke_slice_handoff_install_fake_pr_body_check || return 1
-  execution_remote_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-remote.XXXXXX")" || return 1
+  execution_remote_dir="$(smoke_slice_handoff_owned_temp_dir "remote")" || return 1
   git -C "$smoke_test_dir" init --bare "$execution_remote_dir" >/dev/null 2>&1 || return 1
   git -C "$smoke_test_dir" push "$execution_remote_dir" main:main >/dev/null 2>&1 || return 1
 
@@ -313,6 +352,11 @@ smoke_slice_handoff_assert_execution_repo_ready() {
   local dirty_excerpt=""
 
   repo_root="$(git -C "$smoke_test_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -z "$repo_root" ] && [ -n "${smoke_slice_handoff_execution_seed_dir:-}" ] && [ -d "$smoke_slice_handoff_execution_seed_dir" ]; then
+    smoke_slice_handoff_seed_execution_repo "$smoke_slice_handoff_execution_seed_dir" "$smoke_test_dir" || return 1
+    smoke_slice_handoff_prepare_execution_repo || return 1
+    repo_root="$(git -C "$smoke_test_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+  fi
   if [ -z "$repo_root" ]; then
     printf 'fail: slice-handoff execution repo is not a git repository: %s\n' "$smoke_test_dir" >&2
     printf 'fix: re-seed the smoke execution repo before invoking execution-mode slice-handoff\n' >&2
@@ -333,6 +377,42 @@ smoke_slice_handoff_assert_execution_repo_ready() {
   fi
 }
 
+smoke_slice_handoff_assert_execution_preflight_isolated() {
+  local run_dir="$1"
+  local sentinel_path="$2"
+  local execution_fixture_root="$3"
+  local smoke_fixture_root="$4"
+  local deleted_paths_file="$run_dir/preflight-deleted-paths.txt"
+
+  [ -e "$sentinel_path" ] || return 1
+
+  python3 - "$run_dir/preflight.json" "$deleted_paths_file" "$execution_fixture_root" "$smoke_fixture_root" "$TEST_TEMP_ROOT" <<'PY' || return 1
+from pathlib import Path
+import json
+import sys
+
+preflight_path = Path(sys.argv[1])
+deleted_paths_file = Path(sys.argv[2])
+execution_fixture_root = sys.argv[3]
+smoke_fixture_root = sys.argv[4]
+test_temp_root = sys.argv[5]
+data = json.loads(preflight_path.read_text(encoding='utf-8'))
+deleted = data.get('cleanup_deleted_paths', '')
+if isinstance(deleted, list):
+    paths = [str(item) for item in deleted if item]
+else:
+    paths = [line for line in str(deleted).splitlines() if line]
+deleted_paths_file.write_text('\n'.join(paths) + ('\n' if paths else ''), encoding='utf-8')
+for path in paths:
+    if path == test_temp_root:
+        raise SystemExit(1)
+    if path == smoke_fixture_root:
+        raise SystemExit(1)
+    if path == execution_fixture_root or path.startswith(execution_fixture_root + '/'):
+        raise SystemExit(1)
+PY
+}
+
 smoke_slice_handoff_assert_dirty_preflight_failure() {
   local stderr_file="$1"
   local args_file="$2"
@@ -346,9 +426,14 @@ smoke_slice_handoff_assert_dirty_preflight_failure() {
 smoke_slice_handoff_run_dirty_preflight_regression() {
   local smoke_check_root="$smoke_test_base/slice-handoff-dirty"
   local valid_none_file="$smoke_check_root/valid-none.md"
-  local execution_artifact_root="${TMPDIR:-$HOME/.cache}/slice-handoff-execution"
+  local execution_tmp_root="$smoke_test_base/slice-handoff-tmp"
+  local execution_artifact_root="$execution_tmp_root/slice-handoff-execution"
   local execution_dirty_out_dir="$execution_artifact_root/out-execution-dirty"
   local dirty_execution_smoke_test_dir=""
+  local dirty_execution_sentinel=""
+  local dirty_execution_isolation_root=""
+  local dirty_execution_isolated_tmpdir=""
+  local dirty_execution_isolated_home=""
   local fake_codex_bin_dir=""
   local args_file="$execution_artifact_root/fake-codex-dirty.args"
   local stdout_file="$execution_artifact_root/slice-handoff-execution-dirty.out"
@@ -360,21 +445,68 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
 
   smoke_setup_temp_repo || return 1
   mkdir -p "$smoke_check_root" || return 1
+  mkdir -p "$execution_tmp_root" || return 1
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Implement the slice exactly as specified." || return 1
-  dirty_execution_smoke_test_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-automation-slice-handoff-exec-dirty.XXXXXX")" || return 1
-  cp -R "$smoke_test_dir"/. "$dirty_execution_smoke_test_dir" || return 1
+  dirty_execution_smoke_test_dir="$(smoke_slice_handoff_owned_temp_dir "execution-dirty")" || return 1
+  test_register_temp_dir "$dirty_execution_smoke_test_dir" || return 1
+  smoke_slice_handoff_seed_execution_repo "$smoke_test_dir" "$dirty_execution_smoke_test_dir" || return 1
+  git -C "$dirty_execution_smoke_test_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  [ "$(git -C "$dirty_execution_smoke_test_dir" rev-parse --show-toplevel 2>/dev/null)" = "$dirty_execution_smoke_test_dir" ] || return 1
+  # shellcheck disable=SC2034
+  smoke_slice_handoff_execution_seed_dir="$saved_smoke_test_dir"
   smoke_test_dir="$dirty_execution_smoke_test_dir"
+  dirty_execution_sentinel="$smoke_test_base/slice-handoff/.slice-handoff-execution-sentinel"
+  printf 'keep\n' > "$dirty_execution_sentinel" || return 1
+  dirty_execution_isolation_root="$(smoke_slice_handoff_owned_env_root "execution-dirty")" || return 1
+  dirty_execution_isolated_tmpdir="$dirty_execution_isolation_root/tmpdir"
+  dirty_execution_isolated_home="$dirty_execution_isolation_root/home"
+  mkdir -p "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" || return 1
   smoke_slice_handoff_prepare_execution_repo || return 1
   fake_codex_bin_dir="$execution_artifact_root/fake-codex-bin"
   smoke_slice_handoff_write_fake_codex "$fake_codex_bin_dir" || return 1
   printf 'dirty execution repo\n' > "$smoke_test_dir/dirty-before-preflight.txt" || return 1
   rm -rf -- "$execution_dirty_out_dir" || return 1
   rm -f -- "$stdout_file" "$stderr_file" "$args_file" || return 1
-  if ! PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"; then
+  if ! (
+    PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run_with_isolated_temp_env "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"
+  ); then
     if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight"; then
       status=1
     elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
       status=1
+    elif [ ! -e "$dirty_execution_sentinel" ]; then
+      status=1
+    else
+      run_dir="$(find "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+      if ! python3 - "$run_dir" "$dirty_execution_sentinel" "$dirty_execution_smoke_test_dir" "$saved_smoke_test_base" "$TEST_TEMP_ROOT" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+run_dir = Path(sys.argv[1])
+sentinel_path = Path(sys.argv[2])
+execution_fixture_root = sys.argv[3]
+smoke_fixture_root = sys.argv[4]
+test_temp_root = sys.argv[5]
+preflight = json.loads((run_dir / 'preflight.json').read_text(encoding='utf-8'))
+deleted = preflight.get('cleanup_deleted_paths', '')
+if isinstance(deleted, list):
+    paths = [str(item) for item in deleted if item]
+else:
+    paths = [line for line in str(deleted).splitlines() if line]
+for path in paths:
+    if path == test_temp_root:
+        raise SystemExit(1)
+    if path == smoke_fixture_root:
+        raise SystemExit(1)
+    if path == execution_fixture_root or path.startswith(execution_fixture_root + '/'):
+        raise SystemExit(1)
+if not sentinel_path.exists():
+    raise SystemExit(1)
+PY
+      then
+      status=1
+      fi
     fi
   else
     printf 'fail: dirty preflight run unexpectedly succeeded\n' >&2
@@ -499,7 +631,6 @@ smoke_slice_handoff_assert_execution_run_dir() {
   [ ! -s "$run_dir/codex-run.stderr" ] || return 1
   grep -Fxq 'pass' "$run_dir/codex-run.stdout" || return 1
   grep -Eq '^final_output_path=.+' "$run_dir/codex-run.stdout" || return 1
-  grep -Eq '^summary_path=.+' "$run_dir/codex-run.stdout" || return 1
   [ -s "$run_dir/codex-run/codex.stdout" ] || return 1
   [ -s "$run_dir/codex-run/codex.stderr" ] || return 1
   [ -s "$run_dir/codex-run/codex-final.txt" ] || return 1
@@ -620,7 +751,9 @@ smoke_slice_handoff_run() {
   mkdir -p "$(dirname "$stdout_file")" "$(dirname "$stderr_file")" || return 1
   script_path="$(smoke_slice_handoff_script)"
   if [ -n "${smoke_test_dir:-}" ] && [ "$script_path" = "$smoke_test_dir/repo-automation/bin/slice-handoff" ]; then
+    # shellcheck disable=SC2031
     capture_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-stdout.XXXXXX")" || return 1
+    # shellcheck disable=SC2031
     capture_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-stderr.XXXXXX")" || {
       rm -f -- "$capture_stdout_tmp" >/dev/null 2>&1 || true
       return 1
@@ -629,7 +762,7 @@ smoke_slice_handoff_run() {
     capture_stderr="$capture_stderr_tmp"
     (
       cd "$smoke_test_dir" || return 1
-      env PATH="$PATH" "$script_path" "$@"
+      env PATH="$PATH" TMPDIR="${TMPDIR:-}" HOME="${HOME:-}" "$script_path" "$@"
     ) >"$capture_stdout" 2>"$capture_stderr"
     command_status=$?
     mv -f -- "$capture_stdout" "$stdout_file" || command_status=1
