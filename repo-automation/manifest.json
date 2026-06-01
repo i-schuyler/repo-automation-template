@@ -912,6 +912,21 @@
       "path": "repo-automation/tests/contracts/managed-file-tools.sh",
       "owner": "repo-automation-template",
       "kind": "test"
+    },
+    {
+      "path": "repo-automation/lib/operator-output.sh",
+      "owner": "repo-automation-template",
+      "kind": "library"
+    },
+    {
+      "path": "repo-automation/lib/review-request.sh",
+      "owner": "repo-automation-template",
+      "kind": "library"
+    },
+    {
+      "path": "repo-automation/tests/contracts/repo-flow-submit.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
     }
   ]
 }

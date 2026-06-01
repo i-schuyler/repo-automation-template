@@ -13,6 +13,27 @@ When submit stops for unrequested worktree changes, human failure output prints 
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
 `--all` stages all non-ignored working-tree changes with `git add -A -- .` and is mutually exclusive with `--modified`, `--paths`, and `--staged`.
 For most PRs, use the generated body from `repo-flow`; it is the default and easiest path. Use `--body-file=<path>` only for a human-authored custom PR body that passes `repo-automation/bin/pr-body-check`.
+Use `--review-request-file=<path>` or `--review-request-id=<id>` when `repo-flow submit --explain` should print a PR-review handoff after the PR exists.
+`--review-request-file` reads a regular readable non-empty text template.
+`--review-request-id` resolves `.prompts/<id>.md` under the repo root; IDs are conservative basenames with letters, digits, underscores, and hyphens only, and no slashes, leading dot, leading dash, shell metacharacters, or `..`.
+The two review-request flags are mutually exclusive.
+If neither is supplied, submit output is unchanged and no `PR REVIEW REQUEST` block is invented.
+Review-request templates support these repo-flow placeholders:
+
+- `<PR_URL>`: the created or existing PR URL
+- `<TITLE>`: the submit commit message passed with `--message`
+- `<BRANCH>`: the current submit branch
+
+`repo-flow submit` does not support `<RUN_DIR>`; lower-layer submit has no stable run directory.
+If the rendered text does not otherwise contain the PR URL, `repo-flow submit` appends a `PR URL: ...` line so the explain handoff is actionable.
+On successful `--explain` runs with a review-request source, `repo-flow submit` writes `review-request.txt` and `pr-review-request-block.txt` artifacts under a temporary artifact directory, prints the `FINAL SUMMARY` first, then a blank line, then:
+
+```text
+===== PR REVIEW REQUEST =====
+...
+===== END PR REVIEW REQUEST =====
+```
+
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
 When `--body-file` is omitted, `repo-flow submit` generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`. When it reuses an existing PR, it refreshes that canonical body in place so staged paths and stop notes stay current. The generated PR body re-entry hint is: `Review the PR, then run repo-automation/bin/repo-flow merge --explain`.
 `--watch` hands off to the repo-native PR completion path with a bounded timeout and stops after CI is green; `--timeout=<seconds>` sets that limit.
@@ -55,6 +76,8 @@ Usage examples:
     repo-automation/bin/repo-flow submit --modified --message="update repo-flow docs"
     repo-automation/bin/repo-flow submit --all --message="include all Codex edits"
     repo-automation/bin/repo-flow submit --staged --message="commit staged work"
+    repo-automation/bin/repo-flow submit --staged --message="commit staged work" --review-request-id=repo-review --explain
+    repo-automation/bin/repo-flow submit --paths=README.md --message="commit docs" --review-request-file=.prompts/repo-review.md --explain
     repo-automation/bin/repo-flow submit --staged --message="commit staged work" --watch --timeout=900 --diagnose-on-fail --explain
     repo-automation/bin/repo-flow submit --paths=docs/repo-flow.md --message="update repo-flow docs"
     repo-automation/bin/repo-flow merge --explain

@@ -153,6 +153,8 @@ codex_run_contract_main_impl() {
 
   expected_default_stdout="$(printf 'pass\nfinal_output_path=%s/codex-run-default/codex-final.txt\nsummary_path=%s/codex-run-default/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")"
   expected_default_summary="$(printf 'script=codex-run\nresult=pass\nexit_code=0\nprompt_file=%s\nout_dir=%s/codex-run-default\ncd=%s\nprofile=default\nsandbox=workspace-write\ntimeout=0\ntimeout_enforced=not_enforced\ncodex_path=%s/codex\nstdout_path=%s/codex.stdout\nstderr_path=%s/codex.stderr\nfinal_output_path=%s/codex-run-default/codex-final.txt\nfinal_output_status=present' "$prompt_file" "$smoke_test_base" "$repo_root" "$fake_bin_dir" "$smoke_test_base/codex-run-default" "$smoke_test_base/codex-run-default" "$smoke_test_base")"
+  expected_default_summary="${expected_default_summary}
+codex_final_output_block_path=$smoke_test_base/codex-run-default/codex-final-output-block.txt"
   expected_explain_summary="$(cat <<EOF
 script=codex-run
 mode=run
@@ -179,6 +181,12 @@ EOF
       codex_run_contract_assert_text "$stdout_file" "$expected_default_stdout" &&
       codex_run_contract_assert_empty "$stderr_file" &&
       codex_run_contract_assert_text "$default_out_dir/codex-final.txt" 'fake final output' &&
+      codex_run_contract_assert_text "$default_out_dir/codex-final-output-block.txt" "$(cat <<'EOF'
+===== CODEX FINAL OUTPUT =====
+fake final output
+===== END CODEX FINAL OUTPUT =====
+EOF
+)" &&
       codex_run_contract_assert_text "$default_out_dir/codex.stdout" 'stdout from fake codex' &&
       codex_run_contract_assert_text "$default_out_dir/codex.stderr" 'stderr from fake codex' &&
       codex_run_contract_assert_text "$default_out_dir/codex-run-summary.txt" "$expected_default_summary" &&
@@ -221,10 +229,27 @@ EOF
       mkdir -p "$explain_out_dir" &&
       PATH="$fake_bin_dir:$PATH" \
       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$explain_out_dir" --explain >"$stdout_file" 2>"$stderr_file" &&
-      codex_run_contract_assert_grep 'INFO: codex-run profile=default sandbox=workspace-write timeout=0' "$stdout_file" &&
-      codex_run_contract_assert_grep '===== FINAL SUMMARY =====' "$stdout_file" &&
-      codex_run_contract_assert_grep 'status=pass' "$stdout_file" &&
-      codex_run_contract_assert_text <(smoke_extract_final_summary_block "$stdout_file") "$expected_explain_summary"
+      codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run profile=default sandbox=workspace-write timeout=0' "$stderr_file" &&
+      codex_run_contract_assert_grep '===== FINAL SUMMARY =====' "$stderr_file" &&
+      codex_run_contract_assert_grep 'status=pass' "$stderr_file" &&
+      codex_run_contract_assert_text <(smoke_extract_final_summary_block "$stderr_file") "$expected_explain_summary" &&
+      python3 - "$stderr_file" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+summary = "===== FINAL SUMMARY =====\n"
+summary_end = "===== END =====\n"
+block = "\n===== CODEX FINAL OUTPUT =====\nfake final output\n===== END CODEX FINAL OUTPUT =====\n"
+if text.count(summary) != 1 or text.count("===== CODEX FINAL OUTPUT =====") != 1:
+    raise SystemExit(1)
+summary_index = text.index(summary)
+summary_end_index = text.index(summary_end, summary_index) + len(summary_end)
+block_index = text.index(block)
+if not summary_index < summary_end_index <= block_index:
+    raise SystemExit(1)
+PY
   ); then
     :
   else

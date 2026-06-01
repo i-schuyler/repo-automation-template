@@ -302,6 +302,8 @@ repo_install_main() {
   local line=""
   local -a managed_files=(
     "repo-automation/lib/common.sh"
+    "repo-automation/lib/operator-output.sh"
+    "repo-automation/lib/review-request.sh"
     "repo-automation/lib/repo-flow-json.sh"
     "repo-automation/lib/repo-flow-submit-paths.sh"
     "repo-automation/lib/repo-flow-submit-body.sh"
@@ -488,6 +490,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/prepare-release.sh"
     "repo-automation/tests/contracts/automation-freshness.sh"
     "repo-automation/tests/contracts/slice-handoff.sh"
+    "repo-automation/tests/contracts/repo-flow-submit.sh"
     "repo-automation/tests/version-consistency.sh"
     "repo-automation/bin/run-tests"
   )

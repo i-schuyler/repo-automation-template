@@ -6,7 +6,7 @@
 
 - reads a prompt file
 - runs `codex exec` with argv construction, not shell eval
-- writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, and `codex-run-summary.txt` into the requested out-dir
+- writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, `codex-final-output-block.txt`, and `codex-run-summary.txt` into the requested out-dir
 - supports `--quiet` and `--explain`
 - does not pass an approval-policy flag to `codex exec`; it relies on the selected sandbox mode and avoids dangerous bypass flags
 - does not implement `--json` in this slice
@@ -16,6 +16,16 @@
 ```sh
 repo-automation/bin/codex-run --prompt-file=prompt.txt --out-dir=/path/to/codex-run-out
 ```
+
+In `--explain` mode, successful runs print the `FINAL SUMMARY` first and then a copy/paste block on stderr:
+
+```text
+===== CODEX FINAL OUTPUT =====
+...
+===== END CODEX FINAL OUTPUT =====
+```
+
+The block content comes from `codex-final.txt`. Default non-explain output stays compact, and `codex-run-summary.txt` stays key=value machine-readable.
 
 ## Test contract
 
