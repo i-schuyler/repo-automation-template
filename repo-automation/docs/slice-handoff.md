@@ -18,6 +18,17 @@ Review request source precedence is:
 
 Explicit `## PR Review Request` and `pr_review_prompt_id` are mutually exclusive.
 
+## Review request placeholders
+
+Supported placeholders in review-request content are:
+
+- `<PR_URL>`: resolves to the submitted PR URL after successful `repo-flow submit`
+- `<TITLE>`: resolves to the handoff title
+- `<BRANCH>`: resolves to the handoff branch
+- `<RUN_DIR>`: resolves to the active execution run directory
+
+Dry-run artifacts may keep placeholders unresolved because no real PR has been submitted and no active execution run has completed. In execution submit mode, the active run-dir `review-request.txt` is rewritten after submit succeeds so supported placeholders resolve.
+
 ## Submit authorization matrix
 
 | Mode | submit_mode | `--submit` | Behavior |
