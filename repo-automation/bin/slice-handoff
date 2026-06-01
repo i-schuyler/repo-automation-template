@@ -519,6 +519,25 @@ def reject_lifecycle_instruction(line: str) -> None:
     if re.match(r'^branch:\s+\S', normalized):
         fail('Codex Prompt contains lifecycle instruction: branch:', 'remove execution and workflow instructions from the prompt')
 
+def reject_self_modifying_helper_instruction(line: str) -> None:
+    normalized = strip_list_marker(line).strip().lower()
+    if not normalized:
+        return
+    if normalized.startswith('out of scope:'):
+        normalized = normalized[len('out of scope:'):].strip()
+        if not normalized:
+            return
+    if normalized.startswith(('do not ', "don't ")):
+        return
+    if 'repo-automation/bin/slice-handoff' not in normalized:
+        return
+    if re.match(r'^(?:please\s+)?(?:run|invoke|execute|launch|call)\s+repo-automation/bin/slice-handoff\b', normalized):
+        return
+    fail(
+        'Codex Prompt targets the running helper: repo-automation/bin/slice-handoff',
+        'changing the running helper through slice-handoff is unsafe; use the direct Codex lane or same-branch repair lane instead',
+    )
+
 path = Path(sys.argv[1])
 prompt_path = Path(sys.argv[2])
 pr_body_path = Path(sys.argv[3])
@@ -634,6 +653,7 @@ for phrase in blocked_phrases:
 
 for raw_line in prompt_lines:
     reject_lifecycle_instruction(raw_line)
+    reject_self_modifying_helper_instruction(raw_line)
 
 default_review_request = (
     'Please review this PR before merge:\n'

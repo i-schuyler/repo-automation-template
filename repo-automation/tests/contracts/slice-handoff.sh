@@ -93,11 +93,19 @@ smoke_check_slice_handoff_contract() {
   local missing_prompt_file="$smoke_check_root/missing-pr-review-preset.md"
   local placeholder_file="$smoke_check_root/placeholder.md"
   local lifecycle_file="$smoke_check_root/lifecycle.md"
+  local self_modifying_helper_file="$smoke_check_root/self-modifying-helper.md"
+  local helper_command_mention_file="$smoke_check_root/helper-command-mention.md"
   local execution_smoke_test_dir=""
   local fake_codex_bin_dir=""
   local fake_codex_args_none_file=""
   local fake_codex_args_submit_file=""
   local fake_repo_flow_args_submit_file=""
+  local self_modifying_guard_args_file=""
+  local self_modifying_guard_stdout_file=""
+  local self_modifying_guard_stderr_file=""
+  local self_modifying_guard_isolation_root=""
+  local self_modifying_guard_tmpdir=""
+  local self_modifying_guard_home=""
   local execution_valid_none_file=""
   local execution_valid_submit_file=""
   local execution_valid_preset_file=""
@@ -509,6 +517,8 @@ EOF
   smoke_slice_handoff_write_file "$invalid_prompt_conflict_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "$review_request_text" "repo-automation-template-pr-review" || return 1
   smoke_slice_handoff_write_file "$invalid_prompt_id_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "" "-bad" || return 1
   smoke_slice_handoff_write_file "$missing_prompt_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "" "missing-preset" || return 1
+  smoke_slice_handoff_write_file "$self_modifying_helper_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Update repo-automation/bin/slice-handoff to add the new guard." || return 1
+  smoke_slice_handoff_write_file "$helper_command_mention_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Please run repo-automation/bin/slice-handoff --help as a command reference, then continue with the slice." || return 1
 
   if smoke_slice_handoff_expect_success "valid-none" "pass" "" --file="$valid_none_file" --dry-run; then
     :
@@ -1494,6 +1504,38 @@ text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slic
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
   ) && smoke_slice_handoff_expect_success "lifecycle-neutral-boundary" "pass" "" --file="$lifecycle_file" --dry-run; then
+    :
+  else
+    status=1
+  fi
+
+  self_modifying_guard_isolation_root="$(smoke_slice_handoff_owned_env_root "self-modifying-helper")" || return 1
+  self_modifying_guard_tmpdir="$self_modifying_guard_isolation_root/tmpdir"
+  self_modifying_guard_home="$self_modifying_guard_isolation_root/home"
+  mkdir -p "$self_modifying_guard_tmpdir" "$self_modifying_guard_home" || return 1
+  self_modifying_guard_args_file="$self_modifying_guard_isolation_root/fake-codex.args"
+  self_modifying_guard_stdout_file="$self_modifying_guard_isolation_root/slice-handoff.out"
+  self_modifying_guard_stderr_file="$self_modifying_guard_isolation_root/slice-handoff.err"
+  rm -f -- "$self_modifying_guard_args_file" || return 1
+  if (
+    PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$self_modifying_guard_args_file" smoke_slice_handoff_run_with_isolated_temp_env "$self_modifying_guard_tmpdir" "$self_modifying_guard_home" smoke_slice_handoff_run "$self_modifying_guard_stdout_file" "$self_modifying_guard_stderr_file" --file="$self_modifying_helper_file"
+  ); then
+    test_fail "self-modifying-helper-reject"
+    status=1
+  else
+    if smoke_slice_handoff_assert_error_shape "$self_modifying_guard_stderr_file" "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff" "changing the running helper through slice-handoff is unsafe; use the direct Codex lane or same-branch repair lane instead" &&
+      [ ! -s "$self_modifying_guard_args_file" ] &&
+      [ ! -e "$self_modifying_guard_tmpdir/repo-automation/slice-handoff-runs" ]; then
+      test_pass "self-modifying-helper-reject"
+    else
+      test_fail "self-modifying-helper-reject"
+      status=1
+    fi
+  fi
+
+  if (
+    smoke_slice_handoff_expect_success "self-modifying-helper-command-mention" "pass" "" --file="$helper_command_mention_file" --dry-run
+  ); then
     :
   else
     status=1

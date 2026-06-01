@@ -12,6 +12,8 @@ The non-executing mode is `--dry-run`.
 
 `--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
+`slice-handoff` refuses prompts that would edit the running helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Use the direct Codex lane or the same-branch repair lane when changing `slice-handoff`.
+
 Review request source precedence is:
 
 1. explicit `## PR Review Request` payload in the handoff file
