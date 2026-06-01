@@ -72,8 +72,6 @@ smoke_check_slice_handoff_contract() {
   local expected_execution_submit_summary
   local expected_execution_quiet_preview
   local expected_execution_quiet_summary
-  local expected_explain_preview
-  local expected_explain_summary
   local expected_execution_explain_preview
   local expected_execution_explain_summary
   local expected_dry_run_repo_root=""
