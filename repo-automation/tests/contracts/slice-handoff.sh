@@ -716,6 +716,7 @@ EOF
       grep -Fxq "out_dir=$valid_explain_out_dir" "$smoke_test_base/slice-handoff-explain.err" &&
       grep -Fxq 'next=review request' "$smoke_test_base/slice-handoff-explain.err" &&
       grep -Fxq '===== END =====' "$smoke_test_base/slice-handoff-explain.err" &&
+      smoke_slice_handoff_assert_review_request_block "$smoke_test_base/slice-handoff-explain.err" "$valid_explain_out_dir/review-request.txt" &&
       smoke_slice_handoff_assert_text_file "$valid_explain_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$valid_explain_out_dir/review-request.txt" "$expected_default_review_request" &&
       grep -Fxq 'dry_run_mode=enabled' "$valid_explain_out_dir/dry-run-preview.txt" &&
@@ -941,6 +942,7 @@ EOF
     if smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "$expected_submit_prompt" "$expected_submit_review_request_rendered" "$expected_submit_body" "$smoke_test_dir" "execution-submit" "review PR before merge" "$expected_submit_repo_flow_url_or_stop" &&
       grep -Fxq "run_dir=$run_dir" "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq "review_request_path=$run_dir/review-request.txt" "$execution_artifact_root/slice-handoff-execution-explain.err" &&
+      smoke_slice_handoff_assert_review_request_block "$execution_artifact_root/slice-handoff-execution-explain.err" "$run_dir/review-request.txt" &&
       smoke_slice_handoff_assert_text_file "$execution_explain_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_explain_out_dir/dry-run-preview.txt" "$expected_execution_explain_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_explain_out_dir/pr-body.md" "$expected_submit_body" &&

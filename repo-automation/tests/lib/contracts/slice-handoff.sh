@@ -593,6 +593,32 @@ smoke_slice_handoff_assert_execution_stdout() {
   printf '%s\n' "$run_dir"
 }
 
+smoke_slice_handoff_assert_review_request_block() {
+  local stderr_file="$1"
+  local expected_review_request_file="$2"
+
+  python3 - "$stderr_file" "$expected_review_request_file" <<'PY'
+from pathlib import Path
+import sys
+
+stderr_lines = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+expected_lines = Path(sys.argv[2]).read_text(encoding='utf-8').splitlines()
+
+try:
+    end_index = stderr_lines.index('===== END =====')
+    start_index = stderr_lines.index('===== PR REVIEW REQUEST =====')
+except ValueError:
+    raise SystemExit(1)
+
+if start_index != end_index + 2:
+    raise SystemExit(1)
+if stderr_lines[-1] != '===== END PR REVIEW REQUEST =====':
+    raise SystemExit(1)
+if stderr_lines[start_index + 1:-1] != expected_lines:
+    raise SystemExit(1)
+PY
+}
+
 smoke_slice_handoff_assert_execution_run_dir() {
   local run_dir="$1"
   local submit_mode="$2"
