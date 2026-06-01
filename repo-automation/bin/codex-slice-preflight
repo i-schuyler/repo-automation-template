@@ -263,6 +263,7 @@ preflight_cleanup_prefix_candidates() {
   local seen_parents=""
   local path=""
   local base=""
+  local tmp_dir_name="tmp"
 
   while IFS= read -r parent; do
     [ -n "$parent" ] || continue
@@ -295,7 +296,7 @@ $(find "$resolved_parent" -mindepth 1 -maxdepth 1 -type d 2>/dev/null)
 EOF
   done <<EOF
 ${TMPDIR:-$HOME/.cache}
-$HOME/.cache/tmp
+$HOME/.cache/$tmp_dir_name
 EOF
 }
 
