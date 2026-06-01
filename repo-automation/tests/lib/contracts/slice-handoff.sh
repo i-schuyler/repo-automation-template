@@ -398,10 +398,15 @@ smoke_fixture_root = sys.argv[4]
 test_temp_root = sys.argv[5]
 data = json.loads(preflight_path.read_text(encoding='utf-8'))
 deleted = data.get('cleanup_deleted_paths', '')
+paths = []
 if isinstance(deleted, list):
-    paths = [str(item) for item in deleted if item]
+    raw_paths = [str(item) for item in deleted if item is not None]
 else:
-    paths = [line for line in str(deleted).splitlines() if line]
+    raw_paths = str(deleted).split(',')
+for item in raw_paths:
+    path = item.strip()
+    if path:
+        paths.append(path)
 deleted_paths_file.write_text('\n'.join(paths) + ('\n' if paths else ''), encoding='utf-8')
 for path in paths:
     if path == test_temp_root:
@@ -631,6 +636,7 @@ smoke_slice_handoff_assert_execution_run_dir() {
   [ ! -s "$run_dir/codex-run.stderr" ] || return 1
   grep -Fxq 'pass' "$run_dir/codex-run.stdout" || return 1
   grep -Eq '^final_output_path=.+' "$run_dir/codex-run.stdout" || return 1
+  grep -Eq '^summary_path=.+' "$run_dir/codex-run.stdout" || return 1
   [ -s "$run_dir/codex-run/codex.stdout" ] || return 1
   [ -s "$run_dir/codex-run/codex.stderr" ] || return 1
   [ -s "$run_dir/codex-run/codex-final.txt" ] || return 1

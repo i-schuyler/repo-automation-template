@@ -35,7 +35,7 @@ smoke_check_slice_handoff_contract() {
   local valid_submit_out_dir="$smoke_test_base/out-valid-submit"
   local valid_quiet_out_dir="$smoke_test_base/out-quiet"
   local execution_tmp_root="$smoke_test_base/slice-handoff-tmp"
-  local execution_artifact_root="${TMPDIR:-$HOME/.cache}/slice-handoff-execution"
+  local execution_artifact_root="$execution_tmp_root/slice-handoff-execution"
   local execution_none_out_dir="$execution_artifact_root/out-execution-none"
   local execution_submit_out_dir="$execution_artifact_root/out-execution-submit"
   local execution_quiet_out_dir="$execution_artifact_root/out-execution-quiet"
@@ -103,6 +103,10 @@ smoke_check_slice_handoff_contract() {
 
   mkdir -p "$smoke_check_root" || return 1
   mkdir -p "$execution_tmp_root" || return 1
+  case "$execution_artifact_root" in
+    "$smoke_test_base"/*) : ;;
+    *) return 1 ;;
+  esac
 
   if smoke_slice_handoff_assert_metadata; then
     test_pass "slice-handoff metadata matches helper object"
