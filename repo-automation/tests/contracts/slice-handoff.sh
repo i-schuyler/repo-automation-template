@@ -859,12 +859,27 @@ submit
 --all
 --message=chore: slice-handoff smoke
 --body-file=$run_dir/pr-body.md
+--review-request-file=$run_dir/review-request-source.txt
 --watch
 --timeout=900
 --diagnose-on-fail
 --explain
 EOF
 )" &&
+      review_request_path="$(smoke_slice_handoff_extract_field "$run_dir/repo-flow-submit.stderr" review_request_path)" &&
+      review_request_block_path="$(smoke_slice_handoff_extract_field "$run_dir/repo-flow-submit.stderr" review_request_block_path)" &&
+      grep -Fxq "review_request_path=$review_request_path" "$run_dir/repo-flow-submit.stderr" &&
+      [ -f "$review_request_path" ] &&
+      [ -f "$review_request_block_path" ] &&
+      cmp -s "$run_dir/review-request.txt" "$review_request_path" &&
+      grep -Fxq '===== PR REVIEW REQUEST =====' "$review_request_block_path" &&
+      grep -Fxq "Slice: Slice handoff preset review smoke" "$run_dir/review-request-source.txt" &&
+      grep -Fxq "Branch: feature/slice-handoff-pr-review" "$run_dir/review-request-source.txt" &&
+      grep -Fxq "Run dir: $run_dir" "$run_dir/review-request-source.txt" &&
+      grep -Fq '<PR_URL>' "$run_dir/review-request-source.txt" &&
+      ! grep -Fq '<TITLE>' "$run_dir/review-request-source.txt" &&
+      ! grep -Fq '<BRANCH>' "$run_dir/review-request-source.txt" &&
+      ! grep -Fq '<RUN_DIR>' "$run_dir/review-request-source.txt" &&
       grep -Fxq 'fake repo-flow stdout' "$run_dir/repo-flow-submit.stdout" &&
       grep -Fq 'fake repo-flow stderr' "$run_dir/repo-flow-submit.stderr" &&
       grep -Fxq 'pass' "$run_dir/pr-body-check.stdout" &&
@@ -896,9 +911,10 @@ EOF
       grep -Fxq 'INFO: slice-handoff cleanup' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq 'INFO: slice-handoff preflight' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq 'INFO: slice-handoff codex-run' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
+      grep -Fxq '===== CODEX FINAL OUTPUT =====' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
+      grep -Fxq '===== END CODEX FINAL OUTPUT =====' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
-      grep -Fxq 'INFO: slice-handoff review-request rewrite' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq 'INFO: slice-handoff final next=review PR before merge' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq '===== FINAL SUMMARY =====' "$execution_artifact_root/slice-handoff-execution-explain.err" &&
       grep -Fxq 'script=slice-handoff' "$execution_artifact_root/slice-handoff-execution-explain.err" &&

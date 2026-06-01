@@ -152,6 +152,9 @@ pr_number="${FAKE_REPO_FLOW_PR_NUMBER:-123}"
 url_or_stop="${FAKE_REPO_FLOW_URL_OR_STOP:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
 stop_reason="${FAKE_REPO_FLOW_STOP_REASON:-repo-flow submit failed}"
 mode="${1:-}"
+review_request_file=""
+review_request_path=""
+review_request_block_path=""
 
 shift || true
 
@@ -160,6 +163,40 @@ if [ -n "$args_file" ]; then
     printf '%s\n' "$mode"
     printf '%s\n' "$@"
   } > "$args_file"
+fi
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --review-request-file=*)
+      review_request_file="${1#--review-request-file=}"
+      ;;
+  esac
+  shift
+done
+
+if [ -n "$review_request_file" ]; then
+  review_request_path="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-submit-review.XXXXXX")" || exit 1
+  review_request_block_path="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-flow-submit-review-block.XXXXXX")" || exit 1
+  python3 - "$review_request_file" "$review_request_path" "$url_or_stop" <<'PY' || exit 1
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1])
+output = Path(sys.argv[2])
+pr_url = sys.argv[3]
+
+text = source.read_text(encoding='utf-8')
+text = text.replace('<PR_URL>', pr_url)
+output.write_text(text, encoding='utf-8')
+PY
+  {
+    printf '===== PR REVIEW REQUEST =====\n'
+    cat "$review_request_path"
+    if [ "$(tail -c 1 "$review_request_path" 2>/dev/null | od -An -t x1 | tr -d '[:space:]')" != "0a" ]; then
+      printf '\n'
+    fi
+    printf '===== END PR REVIEW REQUEST =====\n'
+  } > "$review_request_block_path" || exit 1
 fi
 
 if [ -n "$stdout_text" ]; then
@@ -181,6 +218,12 @@ if [ "$mode" = "submit" ]; then
       printf 'url_or_stop=%s\n' "$url_or_stop"
     else
       printf 'url_or_stop=%s\n' "$stop_reason"
+    fi
+    if [ -n "$review_request_path" ]; then
+      printf 'review_request_path=%s\n' "$review_request_path"
+    fi
+    if [ -n "$review_request_block_path" ]; then
+      printf 'review_request_block_path=%s\n' "$review_request_block_path"
     fi
     printf '===== END =====\n'
   } >&2
@@ -660,6 +703,7 @@ smoke_slice_handoff_assert_execution_run_dir() {
     for path in \
       pr-body-check.stdout \
       pr-body-check.stderr \
+      review-request-source.txt \
       repo-flow-submit.stdout \
       repo-flow-submit.stderr
     do

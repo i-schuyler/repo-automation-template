@@ -10,7 +10,7 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
-`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. When a review request file is available, `--explain` also prints the rendered review-request text after FINAL SUMMARY in a clearly delimited block for copy/paste back into ChatGPT for PR review. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
+`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. When a review request file is available, `--explain` also prints the rendered review-request text after FINAL SUMMARY in a clearly delimited block for copy/paste back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
 `slice-handoff` refuses prompts that would edit the running helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Use the direct Codex lane or the same-branch repair lane when changing `slice-handoff`.
 
@@ -53,7 +53,7 @@ Use `--out-dir=<path>` to write normalized local artifacts outside the repo root
 
 The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set; `--explain` instead emits progress, a FINAL SUMMARY block, and the review-request text when available.
 
-`## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from the selected prompt preset or public-safe defaults. In execution submit mode, the active run dir `review-request.txt` is rewritten after repo-flow submit succeeds so `<PR_URL>` becomes the submitted PR URL.
+`## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from the selected prompt preset or public-safe defaults. In execution submit mode, slice-handoff now passes a run-dir source file to `repo-flow submit --review-request-file=<path>` after pre-resolving `<RUN_DIR>` and the handoff title/branch context; `repo-flow submit` then renders the final `<PR_URL>`, and slice-handoff copies the lower-layer rendered `review_request_path` back to the active run dir `review-request.txt` for compatibility.
 
 ## Envelope and payloads
 
