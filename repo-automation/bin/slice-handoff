@@ -93,6 +93,31 @@ slice_handoff_copy_atomic_file() {
   return 1
 }
 
+slice_handoff_render_review_request_text() {
+  local source_path="$1"
+  local pr_url="$2"
+  local title="$3"
+  local branch="$4"
+  local run_dir="$5"
+
+  python3 - "$source_path" "$pr_url" "$title" "$branch" "$run_dir" <<'PY'
+from pathlib import Path
+import sys
+
+source_path = Path(sys.argv[1])
+pr_url = sys.argv[2]
+title = sys.argv[3]
+branch = sys.argv[4]
+run_dir = sys.argv[5]
+text = source_path.read_text(encoding='utf-8')
+text = text.replace('<PR_URL>', pr_url)
+text = text.replace('<TITLE>', title)
+text = text.replace('<BRANCH>', branch)
+text = text.replace('<RUN_DIR>', run_dir)
+sys.stdout.write(text)
+PY
+}
+
 slice_handoff_json_value() {
   local file="$1"
   local key="$2"
@@ -408,8 +433,9 @@ slice_handoff_validate_handoff() {
   local validation_output=""
 
   validation_output="$(
-    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" "$slice_handoff_review_request_file" "$slice_handoff_submit_requested" <<'PY'
+    python3 - "$slice_handoff_file" "$slice_handoff_prompt_file" "$slice_handoff_pr_body_file" "$slice_handoff_review_request_file" "$slice_handoff_submit_requested" "$slice_handoff_repo_root" <<'PY'
 from pathlib import Path
+import os
 import re
 import sys
 
@@ -464,6 +490,7 @@ prompt_path = Path(sys.argv[2])
 pr_body_path = Path(sys.argv[3])
 review_request_path = Path(sys.argv[4])
 submit_requested = sys.argv[5] == "1"
+repo_root = Path(sys.argv[6])
 
 try:
     text = path.read_text(encoding='utf-8')
@@ -589,7 +616,7 @@ default_review_request = (
 
 if submit_mode == 'repo-flow-submit-all':
     if body_index is None:
-      fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
+        fail('missing ## PR Body', 'add ## PR Body when submit_mode is repo-flow-submit-all')
     pr_body_end = review_index if review_index is not None else len(lines)
     pr_body_text = '\n'.join(lines[body_index + 1:pr_body_end])
     if not pr_body_text.strip():
@@ -635,10 +662,32 @@ if submit_mode == 'repo-flow-submit-all':
         except OSError as exc:
             fail('unable to write PR body temp file', f'fix TMPDIR access and rerun slice-handoff ({exc})')
 
+pr_review_prompt_id = envelope.get('pr_review_prompt_id', '')
+if pr_review_prompt_id:
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', pr_review_prompt_id):
+        fail(f'invalid pr_review_prompt_id: {pr_review_prompt_id}', 'use a basename ID like repo-automation-template-pr-review (letters, digits, underscore, hyphen; no slashes, whitespace, leading dash, or ..)')
+
+if review_index is not None and pr_review_prompt_id:
+    fail('conflicting PR review sources: explicit ## PR Review Request and pr_review_prompt_id', 'remove one of the review request sources before rerunning slice-handoff')
+
 if review_index is not None:
     review_request_text = '\n'.join(lines[review_index + 1:])
     if not review_request_text.strip():
         fail('missing PR Review Request payload', 'add text under ## PR Review Request')
+elif pr_review_prompt_id:
+    review_request_path_source = repo_root / '.prompts' / f'{pr_review_prompt_id}.md'
+    if not review_request_path_source.exists():
+        fail(f'missing PR review prompt preset: {review_request_path_source}', 'add the preset file or remove pr_review_prompt_id')
+    if not review_request_path_source.is_file():
+        fail(f'PR review prompt preset is not a regular file: {review_request_path_source}', 'use a regular preset file under .prompts')
+    if not os.access(review_request_path_source, os.R_OK):
+        fail(f'PR review prompt preset is not readable: {review_request_path_source}', 'fix file permissions or remove pr_review_prompt_id')
+    try:
+        review_request_text = review_request_path_source.read_text(encoding='utf-8')
+    except OSError as exc:
+        fail(f'PR review prompt preset is not readable: {review_request_path_source}', f'fix file permissions or remove pr_review_prompt_id ({exc})')
+    if not review_request_text.strip():
+        fail(f'PR review prompt preset is empty: {review_request_path_source}', 'add review request text to the preset file or remove pr_review_prompt_id')
 else:
     review_request_text = default_review_request
 
@@ -1125,6 +1174,18 @@ slice_handoff_run_execution_phase() {
     fi
 
     repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+    if ! printf '%s' "$repo_flow_submit_url_or_stop" | grep -Eq '^https?://[^[:space:]]+$'; then
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "repo-flow submit output contract failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      slice_handoff_print_execution_blocker "repo-flow-submit-output-contract" "$repo_flow_submit_command_summary" 0 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "missing PR URL in repo-flow submit url_or_stop output"
+      return 1
+    fi
+
+    if ! slice_handoff_render_review_request_text "$slice_handoff_review_request_file" "$repo_flow_submit_url_or_stop" "$slice_handoff_title" "$slice_handoff_branch" "$active_run_dir" | slice_handoff_write_atomic_text_file "$active_run_dir/review-request.txt"; then
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request rewrite failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      slice_handoff_print_execution_blocker "review-request-rewrite" "$repo_flow_submit_command_summary" 0 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "unable to rewrite review-request.txt with the submitted PR URL"
+      return 1
+    fi
+
     if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review PR before merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path"; then
       slice_handoff_fail "unable to write execution summary" "fix filesystem permissions and rerun slice-handoff"
       return 1

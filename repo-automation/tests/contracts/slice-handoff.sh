@@ -33,6 +33,7 @@ smoke_check_slice_handoff_contract() {
   local valid_submit_file="$smoke_check_root/valid-submit.md"
   local valid_none_out_dir="$smoke_test_base/out-valid-none"
   local valid_submit_out_dir="$smoke_test_base/out-valid-submit"
+  local valid_preset_out_dir="$smoke_test_base/out-valid-preset"
   local valid_quiet_out_dir="$smoke_test_base/out-quiet"
   local execution_tmp_root="$smoke_test_base/slice-handoff-tmp"
   local execution_artifact_root="$execution_tmp_root/slice-handoff-execution"
@@ -77,6 +78,10 @@ smoke_check_slice_handoff_contract() {
   local missing_pr_body_file="$smoke_check_root/missing-pr-body.md"
   local invalid_submit_file="$smoke_check_root/invalid-submit-pr-body.md"
   local empty_review_request_file="$smoke_check_root/empty-review-request.md"
+  local valid_preset_file="$smoke_check_root/valid-preset.md"
+  local invalid_prompt_conflict_file="$smoke_check_root/invalid-pr-review-conflict.md"
+  local invalid_prompt_id_file="$smoke_check_root/invalid-pr-review-id.md"
+  local missing_prompt_file="$smoke_check_root/missing-pr-review-preset.md"
   local placeholder_file="$smoke_check_root/placeholder.md"
   local lifecycle_file="$smoke_check_root/lifecycle.md"
   local execution_smoke_test_dir=""
@@ -86,6 +91,7 @@ smoke_check_slice_handoff_contract() {
   local fake_repo_flow_args_submit_file=""
   local execution_valid_none_file=""
   local execution_valid_submit_file=""
+  local execution_valid_preset_file=""
   local execution_invalid_submit_file=""
   local execution_isolation_root=""
   local execution_isolated_tmpdir=""
@@ -98,6 +104,7 @@ smoke_check_slice_handoff_contract() {
   local submit_prompt="Implement the slice and prepare the PR body."
   local invalid_submit_body="This PR body is intentionally invalid for pr-body-check."
   local review_request_text
+  local expected_preset_review_request
   local submit_body
   local invalid_submit_body_text
 
@@ -190,6 +197,7 @@ Review the changed files and any related docs, tests, metadata, command contract
 Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describe one same-branch repair direction.
 EOF
 )"
+  expected_preset_review_request="$(cat "$smoke_test_dir/.prompts/repo-automation-template-pr-review.md")"
   expected_none_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_none_out_dir" "$valid_none_out_dir")"
   expected_quiet_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
   expected_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
@@ -413,16 +421,73 @@ Expected future final outcomes
 expected_future_final_outcomes=blocker or review request
 EOF
 )"
+  expected_preset_preview="$(cat <<EOF
+dry_run_mode=enabled
+branch=feature/slice-handoff-pr-review
+title=Slice handoff preset review smoke
+codex_profile=default
+submit_mode=none
+commit_message=
+codex_prompt_path=$valid_preset_out_dir/codex-prompt.md
+pr_body_path=not_applicable
+review_request_path=$valid_preset_out_dir/review-request.txt
+summary_path=$valid_preset_out_dir/slice-handoff-summary.txt
+preview_path=$valid_preset_out_dir/dry-run-preview.txt
+planned_run_dir_root=$expected_planned_run_dir_root
+planned_active_run_dir=<active-run-dir>
+planned_marker_file_name=.repo-automation-slice-run
+
+Planned execution shapes
+planned_run_dir_cleanup_argv:
+- repo-automation/bin/slice-run-dir
+- --cleanup-stale
+- --root=$expected_planned_run_dir_root
+- --max-age-days=7
+- --keep=10
+- --preserve-path=<active-run-dir>
+- --json
+planned_preflight_argv:
+- repo-automation/bin/codex-slice-preflight
+- --branch=feature/slice-handoff-pr-review
+- --clean-test-cache
+- --preserve-path=<active-run-dir>
+- --json
+planned_codex_run_argv:
+- repo-automation/bin/codex-run
+- --prompt-file=<active-run-dir>/codex-prompt.md
+- --out-dir=<active-run-dir>/codex-run
+- --profile=default
+- --cd=$expected_dry_run_repo_root
+planned_pr_body_validation_argv=not_applicable
+planned_repo_flow_submit_argv=not_applicable
+
+Planned artifact/log/metadata paths
+preflight_log_path=not_created_by_dry_run
+codex_run_stdout_path=not_created_by_dry_run
+codex_run_stderr_path=not_created_by_dry_run
+codex_run_summary_path=not_created_by_dry_run
+codex_final_output_path=not_written_by_dry_run
+submit_log_path=not_created_by_dry_run
+
+Expected future final outcomes
+expected_future_final_outcomes=blocker or review request
+EOF
+)"
   expected_none_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
   expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
   expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
   expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_preset_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir")"
   expected_execution_none_summary="${expected_none_summary//$valid_none_out_dir/$execution_none_out_dir}"
   expected_execution_quiet_summary="${expected_quiet_summary//$valid_quiet_out_dir/$execution_quiet_out_dir}"
 
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
   smoke_slice_handoff_write_file "$invalid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$invalid_submit_body_text" || return 1
+  smoke_slice_handoff_write_file "$valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "" "repo-automation-template-pr-review" || return 1
+  smoke_slice_handoff_write_file "$invalid_prompt_conflict_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "$review_request_text" "repo-automation-template-pr-review" || return 1
+  smoke_slice_handoff_write_file "$invalid_prompt_id_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "" "-bad" || return 1
+  smoke_slice_handoff_write_file "$missing_prompt_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$valid_prompt" "" "" "missing-preset" || return 1
 
   if smoke_slice_handoff_expect_success "valid-none" "pass" "" --file="$valid_none_file" --dry-run; then
     :
@@ -472,6 +537,20 @@ EOF
   fi
 
   if (
+    rm -rf -- "$valid_preset_out_dir" &&
+      smoke_slice_handoff_expect_success "out-dir-preset" "$expected_preset_stdout" "" --file="$valid_preset_file" --dry-run --out-dir="$valid_preset_out_dir" &&
+      smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+      smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/dry-run-preview.txt" "$expected_preset_preview" &&
+      smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/review-request.txt" "$expected_preset_review_request" &&
+      smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/slice-handoff-summary.txt" "$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_preset_out_dir" "$valid_preset_out_dir")"
+  ); then
+    :
+  else
+    test_fail "out-dir-preset artifacts"
+    status=1
+  fi
+
+  if (
     rm -rf -- "$invalid_out_dir" &&
       smoke_slice_handoff_expect_failure "out-dir-submit-invalid-pr-body" "missing required heading: ## Scope" "use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template" --file="$invalid_submit_file" --dry-run --out-dir="$invalid_out_dir" &&
       [ ! -e "$invalid_out_dir" ]
@@ -479,6 +558,24 @@ EOF
     :
   else
     test_fail "out-dir-submit-invalid-pr-body artifacts"
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "pr-review-conflict" "conflicting PR review sources: explicit ## PR Review Request and pr_review_prompt_id" "remove one of the review request sources before rerunning slice-handoff" --file="$invalid_prompt_conflict_file" --dry-run; then
+    :
+  else
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "pr-review-invalid-id" "invalid pr_review_prompt_id: -bad" "use a basename ID like repo-automation-template-pr-review (letters, digits, underscore, hyphen; no slashes, whitespace, leading dash, or ..)" --file="$invalid_prompt_id_file" --dry-run; then
+    :
+  else
+    status=1
+  fi
+
+  if smoke_slice_handoff_expect_failure "pr-review-missing-preset" "missing PR review prompt preset: $smoke_test_dir/.prompts/missing-preset.md" "add the preset file or remove pr_review_prompt_id" --file="$missing_prompt_file" --dry-run; then
+    :
+  else
     status=1
   fi
 
@@ -564,9 +661,11 @@ EOF
   expected_execution_none_preview="${expected_execution_none_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   expected_execution_none_preview="${expected_execution_none_preview//$expected_planned_run_dir_root/$expected_execution_planned_run_dir_root}"
   expected_execution_submit_preview="${expected_submit_preview//$valid_submit_out_dir/$execution_submit_out_dir}"
+  expected_execution_submit_preview="${expected_execution_submit_preview//feature\/slice-handoff-submit/feature\/slice-handoff-pr-review}"
+  expected_execution_submit_preview="${expected_execution_submit_preview//Slice handoff submit smoke/Slice handoff preset review smoke}"
   expected_execution_submit_preview="${expected_execution_submit_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   expected_execution_submit_preview="${expected_execution_submit_preview//$expected_planned_run_dir_root/$expected_execution_planned_run_dir_root}"
-  expected_execution_submit_summary="${expected_submit_summary//$valid_submit_out_dir/$execution_submit_out_dir}"
+  expected_execution_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt' "$execution_submit_out_dir" "$execution_submit_out_dir" "$execution_submit_out_dir")"
   expected_execution_quiet_preview="${expected_quiet_preview//$valid_quiet_out_dir/$execution_quiet_out_dir}"
   expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_planned_run_dir_root/$expected_execution_planned_run_dir_root}"
@@ -583,11 +682,13 @@ EOF
   fake_repo_flow_args_submit_file="$execution_artifact_root/fake-repo-flow-submit.args"
   execution_valid_none_file="$execution_artifact_root/valid-none.md"
   execution_valid_submit_file="$execution_artifact_root/valid-submit.md"
+  execution_valid_preset_file="$execution_artifact_root/valid-preset.md"
   execution_invalid_submit_file="$execution_artifact_root/invalid-submit-pr-body.md"
   rm -f -- "$fake_repo_flow_args_submit_file" >/dev/null 2>&1 || true
   inside_repo_out_dir="$smoke_test_dir/slice-handoff-out-inside-repo"
   smoke_slice_handoff_write_file "$execution_valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
   smoke_slice_handoff_write_file "$execution_valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
+  smoke_slice_handoff_write_file "$execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "" "repo-automation-template-pr-review" || return 1
   smoke_slice_handoff_write_file "$execution_invalid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
 
   if (
@@ -639,12 +740,42 @@ EOF
 
   if (
     rm -rf -- "$execution_submit_out_dir" &&
-      smoke_slice_handoff_write_file "$execution_valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "$review_request_text" &&
+      smoke_slice_handoff_write_file "$execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" "" "repo-automation-template-pr-review" &&
       smoke_slice_handoff_assert_clean_worktree &&
-      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP="$expected_submit_repo_flow_url_or_stop" smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$execution_valid_submit_file" --submit --out-dir="$execution_submit_out_dir" &&
-      run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" "feature/slice-handoff-submit" "execution-submit" "review PR before merge" "$expected_submit_repo_flow_url_or_stop")" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP="$expected_submit_repo_flow_url_or_stop" smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" --file="$execution_valid_preset_file" --submit --out-dir="$execution_submit_out_dir" &&
+      run_dir="$(smoke_slice_handoff_assert_execution_stdout "$execution_artifact_root/slice-handoff-execution-submit.out" "$execution_artifact_root/slice-handoff-execution-submit.err" "feature/slice-handoff-pr-review" "execution-submit" "review PR before merge" "$expected_submit_repo_flow_url_or_stop")" &&
+      expected_submit_review_request_rendered="$(cat <<EOF
+Please review this PR before merge:
+
+$expected_submit_repo_flow_url_or_stop
+
+Slice: Slice handoff preset review smoke
+Branch: feature/slice-handoff-pr-review
+Run dir: $run_dir
+
+Use the canonical private project review sources:
+1. \`prompts/PR_REVIEW_PROMPT.md\`
+2. \`projects/repo-automation-template/PROMPTS.md\` → \`PR Review Wrapper\`
+3. \`projects/repo-automation-template/CURRENT_STATE.md\` for current guardrails, deferred hardening, and recent PR context.
+
+Review the changed files and related docs, tests, metadata, helper contracts, output contracts, examples, and workflow routing for drift.
+
+Return the full project review shape, including:
+- Verdict
+- Audit Coverage
+- Findings
+- Contract Drift Matrix
+- Search Terms Used
+- Tests / Enforcement Needing Updates
+- Questions I Should Be Asking
+- Selected Repair Architecture
+- Consolidated Repair Prompt
+
+Merge remains explicit and outside slice-handoff.
+EOF
+)" &&
       grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$execution_artifact_root/slice-handoff-execution-submit.out" &&
-      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-submit" "Slice handoff submit smoke" "$expected_submit_prompt" "$review_request_text" "$expected_submit_body" "$smoke_test_dir" "execution-submit" "review PR before merge" "$expected_submit_repo_flow_url_or_stop" &&
+      smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "$expected_submit_prompt" "$expected_submit_review_request_rendered" "$expected_submit_body" "$smoke_test_dir" "execution-submit" "review PR before merge" "$expected_submit_repo_flow_url_or_stop" &&
       smoke_slice_handoff_assert_execution_preflight_isolated "$run_dir" "$execution_fixture_sentinel" "$execution_smoke_test_dir" "$smoke_test_base" &&
       smoke_slice_handoff_assert_text_file "$fake_codex_args_submit_file" "$(cat <<EOF
 exec
@@ -678,7 +809,7 @@ EOF
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/dry-run-preview.txt" "$expected_execution_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/pr-body.md" "$expected_submit_body" &&
-      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/review-request.txt" "$review_request_text" &&
+      smoke_slice_handoff_assert_text_file "$execution_submit_out_dir/review-request.txt" "$expected_preset_review_request" &&
       grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'result=pass' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'next=review PR before merge' "$run_dir/slice-handoff-execution-summary.txt" &&

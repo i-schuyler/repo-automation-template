@@ -79,6 +79,7 @@ smoke_template_source_newer() {
 
   newer_path="$(find \
     "$smoke_repo_root/AGENTS.md" \
+    "$smoke_repo_root/.prompts" \
     "$smoke_repo_root/.github" \
     "$smoke_repo_root/docs" \
     "$smoke_repo_root/examples" \
@@ -177,6 +178,7 @@ smoke_setup_temp_repo() {
 
   mkdir -p "$smoke_test_dir/repo-automation/bin" "$smoke_test_dir/repo-automation/lib" "$smoke_test_dir/repo-automation/tests/lib" "$smoke_test_dir/repo-automation/tests/lib/contracts" "$smoke_test_dir/repo-automation/tests/contracts" "$smoke_test_dir/repo-automation/tests" || return 1
   cp "$smoke_repo_root/AGENTS.md" "$smoke_test_dir/AGENTS.md" || return 1
+  cp -R "$smoke_repo_root/.prompts" "$smoke_test_dir/.prompts" || return 1
   cp "$smoke_repo_root"/repo-automation/lib/*.sh "$smoke_test_dir/repo-automation/lib/" || return 1
   smoke_copy_metadata_helper_bins || return 1
   cp "$smoke_repo_root/repo-automation/helper-metadata.json" "$smoke_test_dir/repo-automation/helper-metadata.json" || return 1

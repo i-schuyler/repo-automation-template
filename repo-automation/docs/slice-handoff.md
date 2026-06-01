@@ -10,6 +10,14 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
+Review request source precedence is:
+
+1. explicit `## PR Review Request` payload in the handoff file
+2. `pr_review_prompt_id`, resolved to `.prompts/<id>.md` under the repo root
+3. built-in fallback review request
+
+Explicit `## PR Review Request` and `pr_review_prompt_id` are mutually exclusive.
+
 ## Submit authorization matrix
 
 | Mode | submit_mode | `--submit` | Behavior |
@@ -30,12 +38,13 @@ Use `--out-dir=<path>` to write normalized local artifacts outside the repo root
 
 The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set.
 
-`## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from public-safe defaults.
+`## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from the selected prompt preset or public-safe defaults. In execution submit mode, the active run dir `review-request.txt` is rewritten after repo-flow submit succeeds so `<PR_URL>` becomes the submitted PR URL.
 
 ## Envelope and payloads
 
 - envelope: branch, title, `codex_profile`, `commit_message`, submit mode, watch/timeout fields, and prompt preset identifiers
 - payloads: Codex prompt, PR body, and PR-review request
+- `pr_review_prompt_id` selects `.prompts/<id>.md` when no explicit review request is present
 - `slice-handoff` validates payload shape and configured policy, but it does not reinterpret strategy
 
 ## Public-safe state machine
