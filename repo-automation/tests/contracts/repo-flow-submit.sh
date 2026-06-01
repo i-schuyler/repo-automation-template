@@ -4,6 +4,7 @@
 set -u
 set -o pipefail
 
+# shellcheck disable=SC2034
 REPO_FLOW_CONTRACT_SOURCE_ONLY=1
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/repo-flow.sh"
@@ -50,6 +51,10 @@ repo_flow_submit_contract_assert_head_unchanged() {
   [ "$(git -C "$repo_dir" rev-parse HEAD)" = "$expected_head" ]
 }
 
+# smoke_test_dir is assigned by smoke_setup_temp_repo from the sourced repo-flow contract helpers.
+# shellcheck disable=SC2154
+# smoke_test_dir is assigned by smoke_setup_temp_repo from the sourced repo-flow contract helpers.
+# shellcheck disable=SC2154
 repo_flow_submit_contract_main_impl() {
   local status=0
   local gh_stub_dir=""
