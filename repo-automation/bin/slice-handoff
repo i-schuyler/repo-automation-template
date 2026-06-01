@@ -70,6 +70,19 @@ slice_handoff_print_final_summary() {
   repo_auto_print_final_summary "${summary_lines[@]}" >&2
 }
 
+slice_handoff_print_review_request_block() {
+  local review_request_path="$1"
+
+  [ -n "$review_request_path" ] || return 0
+  [ -f "$review_request_path" ] || return 0
+  [ -r "$review_request_path" ] || return 0
+
+  printf '\n===== PR REVIEW REQUEST =====\n' >&2
+  if cat "$review_request_path" >&2; then
+    printf '===== END PR REVIEW REQUEST =====\n' >&2
+  fi
+}
+
 slice_handoff_fail() {
   printf 'fail: %s\n' "$1" >&2
   printf 'fix: %s\n' "$2" >&2
@@ -1252,10 +1265,11 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
-    if [ "$slice_handoff_explain" -eq 1 ]; then
-      slice_handoff_info "final next=review PR before merge"
-      slice_handoff_print_final_summary "execution-submit" 0 "review PR before merge" "" "$active_run_dir" "$active_run_dir/review-request.txt"
-    elif [ "$slice_handoff_quiet" -eq 0 ]; then
+  if [ "$slice_handoff_explain" -eq 1 ]; then
+    slice_handoff_info "final next=review PR before merge"
+    slice_handoff_print_final_summary "execution-submit" 0 "review PR before merge" "" "$active_run_dir" "$active_run_dir/review-request.txt"
+    slice_handoff_print_review_request_block "$active_run_dir/review-request.txt"
+  elif [ "$slice_handoff_quiet" -eq 0 ]; then
       printf 'pass\n'
       printf 'mode=execution-submit\n'
       printf 'run_dir=%s\n' "$active_run_dir"
@@ -1282,6 +1296,7 @@ slice_handoff_run_execution_phase() {
   if [ "$slice_handoff_explain" -eq 1 ]; then
     slice_handoff_info "final next=repo-flow submit not implemented in this slice"
     slice_handoff_print_final_summary "execution-codex-run" 0 "repo-flow submit not implemented in this slice" "" "$active_run_dir" "$active_run_dir/review-request.txt"
+    slice_handoff_print_review_request_block "$active_run_dir/review-request.txt"
   elif [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'
     printf 'mode=execution-codex-run\n'
@@ -1619,6 +1634,7 @@ PY
   if [ "$slice_handoff_explain" -eq 1 ]; then
     slice_handoff_info "final next=review request"
     slice_handoff_print_final_summary "dry-run" 0 "review request" "$slice_handoff_out_dir_abs" ""
+    slice_handoff_print_review_request_block "$slice_handoff_out_dir_review_request"
   elif [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'
     if [ -n "$slice_handoff_out_dir_abs" ]; then
