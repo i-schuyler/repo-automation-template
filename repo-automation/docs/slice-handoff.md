@@ -10,6 +10,10 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
+`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
+
+`slice-handoff` refuses prompts that would edit the running helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Use the direct Codex lane or the same-branch repair lane when changing `slice-handoff`.
+
 Review request source precedence is:
 
 1. explicit `## PR Review Request` payload in the handoff file
@@ -47,7 +51,7 @@ Use `--out-dir=<path>` to write normalized local artifacts outside the repo root
 - `review-request.txt`
 - `pr-body.md` when bare `--submit` is authorized and `submit_mode: repo-flow-submit-all`
 
-The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set.
+The out-dir must be outside the current repo root. Success prints the artifact paths unless `--quiet` is set; `--explain` instead emits progress and a FINAL SUMMARY block.
 
 `## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from the selected prompt preset or public-safe defaults. In execution submit mode, the active run dir `review-request.txt` is rewritten after repo-flow submit succeeds so `<PR_URL>` becomes the submitted PR URL.
 
