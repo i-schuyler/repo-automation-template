@@ -24,6 +24,8 @@ repo_flow_submit_print_final_summary() {
   local elapsed_seconds="${14:-}"
   local submit_mode="${15:-}"
   local staged_count="${16:-}"
+  local review_request_path="${17:-}"
+  local review_request_block_path="${18:-}"
   local pr_summary="unknown"
   local url_or_stop="pass"
 
@@ -56,6 +58,12 @@ repo_flow_submit_print_final_summary() {
   fi
   if [ -n "$staged_count" ]; then
     summary_args+=("staged_count=$staged_count")
+  fi
+  if [ -n "$review_request_path" ]; then
+    summary_args+=("review_request_path=$review_request_path")
+  fi
+  if [ -n "$review_request_block_path" ]; then
+    summary_args+=("review_request_block_path=$review_request_block_path")
   fi
   repo_auto_print_final_summary "${summary_args[@]}" >&2
 }

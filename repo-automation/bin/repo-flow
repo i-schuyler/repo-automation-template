@@ -36,6 +36,18 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 # shellcheck source=/dev/null
+. "$script_dir/../lib/operator-output.sh" || {
+  printf 'STOP: failed to source operator output library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+# shellcheck source=/dev/null
+. "$script_dir/../lib/review-request.sh" || {
+  printf 'STOP: failed to source review request library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+# shellcheck source=/dev/null
 . "$script_dir/../lib/repo-flow-submit-preflight.sh" || {
   printf 'STOP: failed to source repo-flow submit preflight library\n' >&2
   return 2 2>/dev/null || exit 2
@@ -96,12 +108,12 @@ repo_flow_stop_reason=""
 
 repo_flow_usage() {
   printf 'Usage: repo-automation/bin/repo-flow [--dry-run|--plan] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
-  printf '       repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf '       repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--review-request-file=<path>|--review-request-id=<id>] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
   printf '       repo-automation/bin/repo-flow merge [--pr=<number|current|latest>] [--timeout=<seconds>] [--diagnose-on-fail] [--json] [--explain] [--help]\n'
 }
 
 repo_flow_submit_usage() {
-  printf 'Usage: repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--review-request-file=<path>|--review-request-id=<id>] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]\n'
 }
 
 repo_flow_merge_usage() {
@@ -135,6 +147,12 @@ repo_flow_submit_main() {
   local message=""
   local custom_body_file=""
   local replace_body=0
+  local review_request_file=""
+  local review_request_id=""
+  local review_request_source_file=""
+  local review_request_text_path=""
+  local review_request_block_path=""
+  local review_request_problem=""
   # shellcheck disable=SC2034
   local repo_root=""
   local current_branch=""
@@ -254,6 +272,32 @@ repo_flow_submit_main() {
       --replace-body=*)
         repo_auto_flag_error "flag format not accepted" "--replace-body" "use --replace-body" || command_status=1
         ;;
+      --review-request-file=*)
+        review_request_file="${arg#--review-request-file=}"
+        if [ -z "$review_request_file" ]; then
+          repo_auto_flag_error "empty flag value" "--review-request-file" "use --review-request-file=<path>" || command_status=1
+        fi
+        ;;
+      --review-request-file)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--review-request-file" "use --review-request-file=<path>" || command_status=1
+        else
+          repo_auto_flag_error "missing flag value" "--review-request-file" "use --review-request-file=<path>" || command_status=1
+        fi
+        ;;
+      --review-request-id=*)
+        review_request_id="${arg#--review-request-id=}"
+        if [ -z "$review_request_id" ]; then
+          repo_auto_flag_error "empty flag value" "--review-request-id" "use --review-request-id=<id>" || command_status=1
+        fi
+        ;;
+      --review-request-id)
+        if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
+          repo_auto_flag_error "flag format not accepted" "--review-request-id" "use --review-request-id=<id>" || command_status=1
+        else
+          repo_auto_flag_error "missing flag value" "--review-request-id" "use --review-request-id=<id>" || command_status=1
+        fi
+        ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then
           repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/repo-flow submit --help" || command_status=1
@@ -275,6 +319,35 @@ repo_flow_submit_main() {
     if ! repo_flow_submit_validate_custom_body_file "$custom_body_file"; then
       command_status=1
     fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$review_request_file" ] && [ -n "$review_request_id" ]; then
+    repo_flow_submit_stop "use either --review-request-file or --review-request-id, not both"
+    command_status=1
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$review_request_file" ]; then
+    review_request_problem=""
+    if ! review_request_problem="$(repo_review_request_template_problem "$review_request_file" "review request file")"; then
+      repo_flow_submit_stop "$review_request_problem"
+      printf 'fix: provide a regular readable non-empty review request template file\n' >&2
+      command_status=1
+    else
+      review_request_file="$(python3 - "$review_request_file" <<'PY'
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser().resolve(strict=True))
+PY
+)" || command_status=1
+      review_request_source_file="$review_request_file"
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$review_request_id" ] && ! repo_review_request_is_valid_id "$review_request_id"; then
+    repo_flow_submit_stop "invalid review request id: $review_request_id"
+    printf 'fix: use a basename ID like repo-automation-template-pr-review (letters, digits, underscore, hyphen; no slashes, whitespace, leading dot, leading dash, shell metacharacters, or ..)\n' >&2
+    command_status=1
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$all" -eq 1 ] && [ "$modified" -eq 1 ]; then

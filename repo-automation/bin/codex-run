@@ -11,6 +11,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   return 2 2>/dev/null || exit 2
 }
 
+# shellcheck source=/dev/null
+. "$script_dir/../lib/operator-output.sh" || {
+  printf 'STOP: failed to source operator output library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
 codex_run_quiet=0
 codex_run_explain=0
 codex_run_prompt_file=""
@@ -27,6 +33,7 @@ codex_run_codex_path=""
 codex_run_stdout_path=""
 codex_run_stderr_path=""
 codex_run_final_output_path=""
+codex_run_final_output_block_path=""
 codex_run_summary_path=""
 codex_run_exit_code=0
 codex_run_result="pass"
@@ -149,6 +156,9 @@ stderr_path=$codex_run_stderr_path
 final_output_path=$codex_run_final_output_path
 final_output_status=$codex_run_final_output_status
 EOF
+  if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
+    printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path" >> "$codex_run_summary_path"
+  fi
 }
 
 codex_run_print_final_summary() {
@@ -359,17 +369,18 @@ codex_run_main() {
   codex_run_stdout_path="$codex_run_out_dir_abs/codex.stdout"
   codex_run_stderr_path="$codex_run_out_dir_abs/codex.stderr"
   codex_run_final_output_path="$codex_run_out_dir_abs/codex-final.txt"
+  codex_run_final_output_block_path="$codex_run_out_dir_abs/codex-final-output-block.txt"
   codex_run_summary_path="$codex_run_out_dir_abs/codex-run-summary.txt"
 
   codex_run_timeout_enforced="not_enforced"
 
   if [ "$codex_run_explain" -eq 1 ]; then
     printf 'INFO: codex-run profile=%s sandbox=%s timeout=%s\n' \
-      "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout"
-    printf 'INFO: codex-run prompt=%s\n' "$codex_run_prompt_file"
-    printf 'INFO: codex-run out-dir=%s\n' "$codex_run_out_dir_abs"
-    printf 'INFO: codex-run cd=%s\n' "$codex_run_cd_abs"
-    printf 'INFO: codex-run timeout_enforced=%s\n' "$codex_run_timeout_enforced"
+      "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout" >&2
+    printf 'INFO: codex-run prompt=%s\n' "$codex_run_prompt_file" >&2
+    printf 'INFO: codex-run out-dir=%s\n' "$codex_run_out_dir_abs" >&2
+    printf 'INFO: codex-run cd=%s\n' "$codex_run_cd_abs" >&2
+    printf 'INFO: codex-run timeout_enforced=%s\n' "$codex_run_timeout_enforced" >&2
   fi
 
   codex_cmd=("$codex_run_codex_path" exec)
@@ -384,7 +395,7 @@ codex_run_main() {
   )
 
   if [ "$codex_run_explain" -eq 1 ]; then
-    printf 'INFO: codex-run executing codex exec\n'
+    printf 'INFO: codex-run executing codex exec\n' >&2
   fi
 
   "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
@@ -401,7 +412,7 @@ codex_run_main() {
     codex_run_write_summary || return 1
     codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_log" "$codex_run_failure_log" >&2
     if [ "$codex_run_explain" -eq 1 ]; then
-      codex_run_print_final_summary 1 none "$codex_run_summary_path" fail
+      codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
     fi
     return 1
   fi
@@ -410,6 +421,23 @@ codex_run_main() {
     codex_run_final_output_status="present"
     final_output_value="$codex_run_final_output_path"
     codex_run_result="pass"
+    if ! repo_operator_output_write_file_block "CODEX FINAL OUTPUT" "$codex_run_final_output_path" "$codex_run_final_output_block_path"; then
+      codex_run_result="fail"
+      codex_run_failure_step="final-output-block"
+      codex_run_failure_log="$codex_run_final_output_block_path"
+      codex_run_failure_excerpt="failed to write Codex final output block artifact"
+      codex_run_write_summary || return 1
+      printf 'fail: codex-run failed\n' >&2
+      printf 'step: %s\n' "$codex_run_failure_step" >&2
+      printf 'exit_code: %s\n' "$codex_run_exit_code" >&2
+      printf 'excerpt:\n%s\n' "$codex_run_failure_excerpt" >&2
+      printf 'log: %s\n' "$codex_run_failure_log" >&2
+      printf 'fix: paste this blocker into ChatGPT\n' >&2
+      if [ "$codex_run_explain" -eq 1 ]; then
+        codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
+      fi
+      return 1
+    fi
     codex_run_write_summary || return 1
     if [ "$codex_run_quiet" -eq 0 ] && [ "$codex_run_explain" -eq 0 ]; then
       printf 'pass\n'
@@ -417,8 +445,10 @@ codex_run_main() {
       printf 'summary_path=%s\n' "$codex_run_summary_path"
     fi
     if [ "$codex_run_explain" -eq 1 ]; then
-      printf 'INFO: codex-run final output=%s\n' "$codex_run_final_output_path"
-      codex_run_print_final_summary 0 "$codex_run_final_output_path" "$codex_run_summary_path" pass
+      printf 'INFO: codex-run final output=%s\n' "$codex_run_final_output_path" >&2
+      codex_run_print_final_summary 0 "$codex_run_final_output_path" "$codex_run_summary_path" pass >&2
+      printf '\n' >&2
+      repo_operator_output_emit_file_block "CODEX FINAL OUTPUT" "$codex_run_final_output_path" 0 >&2
     fi
     return 0
   fi
@@ -435,7 +465,7 @@ codex_run_main() {
   printf 'log: %s\n' "$codex_run_failure_log" >&2
   printf 'fix: paste this blocker into ChatGPT\n' >&2
   if [ "$codex_run_explain" -eq 1 ]; then
-    codex_run_print_final_summary 1 none "$codex_run_summary_path" fail
+    codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
   fi
   return 1
 }

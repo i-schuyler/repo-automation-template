@@ -2704,7 +2704,7 @@ smoke_check_repo_flow_submit_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     PATH="$gh_stub_dir:$PATH" "$local_bash_path" repo-automation/bin/repo-flow submit --help > "$help_out"
-  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
+  ) && grep -Fxq 'Usage: repo-automation/bin/repo-flow submit [--all|--modified|--paths=<path[,path...]>|--staged] --message=<text> [--body-file=<path>] [--replace-body] [--review-request-file=<path>|--review-request-id=<id>] [--watch] [--timeout=<seconds>] [--diagnose-on-fail] [--explain] [--help]' "$help_out"; then
     if ! grep -Fq 'pr-finish --merge' "$help_out" && ! grep -Fq 'repo-flow merge' "$help_out"; then
       test_pass "repo-flow submit help shows strict syntax"
     else
@@ -3772,5 +3772,7 @@ smoke_main() {
   smoke_run_focused_contract_wrapper smoke_main_impl "$@"
 }
 
-smoke_main "$@"
+if [ "${REPO_FLOW_CONTRACT_SOURCE_ONLY:-0}" != "1" ]; then
+  smoke_main "$@"
+fi
 # repo-automation/tests/contracts/repo-flow.sh EOF

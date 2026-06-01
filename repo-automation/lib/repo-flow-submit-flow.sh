@@ -26,6 +26,18 @@
 }
 
 # shellcheck source=/dev/null
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/operator-output.sh" || {
+  printf 'STOP: failed to source operator output library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+# shellcheck source=/dev/null
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/review-request.sh" || {
+  printf 'STOP: failed to source review request library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+# shellcheck source=/dev/null
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/repo-flow-submit-preflight.sh" || {
   printf 'STOP: failed to source repo-flow submit preflight library\n' >&2
   return 2 2>/dev/null || exit 2
@@ -209,6 +221,61 @@ repo_flow_submit_apply_child_result() {
 }
 
 # shellcheck disable=SC2034,SC2154
+repo_flow_submit_validate_review_request_source() {
+  local review_request_problem=""
+
+  if [ -n "${review_request_source_file:-}" ]; then
+    return 0
+  elif [ -n "$review_request_file" ]; then
+    if ! review_request_problem="$(repo_review_request_template_problem "$review_request_file" "review request file")"; then
+      repo_flow_submit_stop "$review_request_problem"
+      printf 'fix: provide a regular readable non-empty review request template file\n' >&2
+      return 1
+    fi
+    review_request_source_file="$review_request_file"
+  elif [ -n "$review_request_id" ]; then
+    review_request_source_file="$(repo_review_request_preset_path "$repo_root" "$review_request_id")"
+    if ! review_request_problem="$(repo_review_request_template_problem "$review_request_source_file" "review request preset")"; then
+      repo_flow_submit_stop "$review_request_problem"
+      printf 'fix: add .prompts/%s.md or choose an existing review request preset ID\n' "$review_request_id" >&2
+      return 1
+    fi
+  fi
+
+  return 0
+}
+
+# shellcheck disable=SC2034,SC2154
+repo_flow_submit_render_review_request() {
+  local artifact_dir=""
+
+  [ -n "${review_request_source_file:-}" ] || return 0
+
+  if [ -z "${pr_url:-}" ]; then
+    repo_flow_submit_stop "review request rendering requires a PR URL"
+    return 1
+  fi
+
+  artifact_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/repo-flow-submit-review.XXXXXX")" || {
+    repo_flow_submit_stop "failed to create review request artifact directory"
+    return 1
+  }
+  review_request_text_path="$artifact_dir/review-request.txt"
+  review_request_block_path="$artifact_dir/pr-review-request-block.txt"
+
+  if ! repo_review_request_render_template "$review_request_source_file" "$review_request_text_path" "$pr_url" "$message" "$current_branch"; then
+    repo_flow_submit_stop "failed to render review request"
+    return 1
+  fi
+  if ! repo_operator_output_write_file_block "PR REVIEW REQUEST" "$review_request_text_path" "$review_request_block_path"; then
+    repo_flow_submit_stop "failed to write PR review request block"
+    return 1
+  fi
+
+  return 0
+}
+
+# shellcheck disable=SC2034,SC2154
 repo_flow_submit_complete_or_delegate() {
   local repo_flow_submit_child_body_file=""
   local repo_flow_submit_child_body_source_file=""
@@ -297,7 +364,13 @@ repo_flow_submit_render_result() {
       "$repo_flow_stop_reason" \
       "" \
       "$summary_submit_mode" \
-      "$summary_staged_count"
+      "$summary_staged_count" \
+      "${review_request_text_path:-}" \
+      "${review_request_block_path:-}"
+    if [ "$command_status" -eq 0 ] && [ -n "${review_request_block_path:-}" ]; then
+      printf '\n' >&2
+      repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$review_request_text_path" 0 >&2
+    fi
   fi
 
   if [ "$repo_flow_explain" -eq 0 ] && [ "$command_status" -eq 0 ] && [ -n "$repo_flow_submit_child_stdout" ]; then
@@ -310,6 +383,10 @@ repo_flow_submit_render_result() {
 # shellcheck disable=SC2034,SC2154
 repo_flow_submit_flow() {
   repo_flow_submit_preflight
+
+  if [ "$command_status" -eq 0 ] && ! repo_flow_submit_validate_review_request_source; then
+    command_status=1
+  fi
 
   if [ "$command_status" -eq 0 ]; then
     if [ "$all" -eq 1 ]; then
@@ -361,6 +438,10 @@ repo_flow_submit_flow() {
   if [ "$command_status" -eq 0 ]; then
     repo_flow_submit_complete_or_delegate
     command_status=$?
+  fi
+
+  if [ "$command_status" -eq 0 ] && ! repo_flow_submit_render_review_request; then
+    command_status=1
   fi
 
   repo_flow_submit_render_result
