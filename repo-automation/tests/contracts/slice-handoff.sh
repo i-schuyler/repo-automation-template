@@ -700,8 +700,6 @@ EOF
   expected_execution_quiet_preview="${expected_quiet_preview//$valid_quiet_out_dir/$execution_quiet_out_dir}"
   expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_planned_run_dir_root/$expected_execution_planned_run_dir_root}"
-  expected_explain_preview="${expected_none_preview//$valid_none_out_dir/$valid_explain_out_dir}"
-  expected_explain_summary="${expected_none_summary//$valid_none_out_dir/$valid_explain_out_dir}"
   expected_execution_explain_preview="${expected_execution_submit_preview//$execution_submit_out_dir/$execution_explain_out_dir}"
   expected_execution_explain_summary="${expected_execution_submit_summary//$execution_submit_out_dir/$execution_explain_out_dir}"
   if (
