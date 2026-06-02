@@ -324,6 +324,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/codex-session-resume.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/common-library.md",
       "owner": "repo-automation-template",
       "kind": "doc"

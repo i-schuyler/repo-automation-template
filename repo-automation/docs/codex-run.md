@@ -36,3 +36,5 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 `slice-handoff` execution routes through `codex-run` after preflight. `slice-handoff` execution can now continue from `codex-run` to PR-body validation and repo-flow submit only when bare `--submit` authorizes the submit boundary, and still stops before merge.
 
 Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.
+
+For public-safe interactive/resume/session metadata observations and future helper direction, see [Codex Session Resume and Metadata](codex-session-resume.md).
