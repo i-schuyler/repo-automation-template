@@ -4,7 +4,11 @@
 set -u
 set -o pipefail
 
+# shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
+# shellcheck disable=SC2154
+# smoke_test_base, smoke_test_dir, and smoke_repo_root are initialized by
+# smoke-common before the focused contract body runs.
 
 codex_status_make_fixture() {
   local path="$1"
@@ -15,6 +19,7 @@ codex_status_make_fixture() {
 EOF
 }
 
+# shellcheck disable=SC2154
 codex_status_main() {
   local status=0
   smoke_setup_temp_repo || return 1
