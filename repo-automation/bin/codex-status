@@ -88,7 +88,13 @@ def emit(payload, rc=0):
             s.append(f"git: {git.get('branch')} {git.get('commit')}")
         if ctx.get('remaining_summary'):
             s.append(f"context: {ctx.get('remaining_summary')}")
-        s.append(f"5h: {limits.get('five_hour', {}).get('state')} weekly: {limits.get('weekly', {}).get('state')}")
+        five = limits.get('five_hour', {})
+        weekly = limits.get('weekly', {})
+        if five.get('remaining_percent') is not None:
+            s.append(f"five_hour_remaining={five.get('remaining_percent')}%")
+        if weekly.get('remaining_percent') is not None:
+            s.append(f"weekly_remaining={weekly.get('remaining_percent')}%")
+        s.append(f"5h: {five.get('state')} weekly: {weekly.get('state')}")
         for line in s: print(line)
     else:
         print(json.dumps(payload, separators=(',', ':')))
@@ -125,6 +131,11 @@ def parse(path):
             if ln: events.append(json.loads(ln))
     return events
 
+def payload_of(event):
+    if isinstance(event, dict) and isinstance(event.get('payload'), dict):
+        return event['payload']
+    return event if isinstance(event, dict) else {}
+
 def first(d,*keys):
     for k in keys:
         if isinstance(d, dict) and d.get(k) not in (None, ''):
@@ -145,14 +156,15 @@ try:
 except Exception as e:
     print(f'fail: unable to parse session file: {e}', file=sys.stderr); sys.exit(1)
 
-meta = next((e for e in events if e.get('type') == 'session_meta'), {})
-turn = next((e for e in reversed(events) if e.get('type') == 'turn_context'), {})
-token = next((e for e in reversed(events) if e.get('type') == 'token_count'), {})
+meta = next((payload_of(e) for e in events if e.get('type') == 'session_meta'), {})
+turn = next((payload_of(e) for e in reversed(events) if e.get('type') == 'turn_context'), {})
+token_event = next((payload_of(e) for e in reversed(events) if (e.get('type') == 'event_msg' and payload_of(e).get('type') == 'token_count') or e.get('type') == 'token_count'), {})
 
 sidv = first(meta, 'session_id') or path.stem
 model_name = first(turn, 'model_name', 'model')
 reasoning = first(turn, 'reasoning')
 repo = Path(repo_root).resolve() if repo_root else None
+token = token_event.get('usage', token_event)
 tokens_total = first(token, 'total_tokens', 'token_count', 'total')
 ctx_window = first(turn, 'model_context_window', 'context_window')
 remaining = ctx_window - tokens_total if isinstance(ctx_window, (int, float)) and isinstance(tokens_total, (int, float)) else None
@@ -173,15 +185,15 @@ payload = {
     'session':{'session_id':sidv,'source':first(meta,'source'),'originator':first(meta,'originator'),'resumeable':True,'resume_commands':[]},
     'git':{'repo_root':str(repo) if repo else None,'branch':first(meta,'branch'),'commit':first(meta,'commit'),'repository_url':first(meta,'repository_url')},
     'model':{'name':model_name,'reasoning':reasoning,'context_window':ctx_window},
-    'tokens':{'total':tokens_total},
+    'tokens':{'total':tokens_total,'input':first(token,'input_tokens'),'cached_input':first(token,'cached_input_tokens'),'output':first(token,'output_tokens'),'reasoning_output':first(token,'reasoning_output_tokens')},
     'context':{'remaining':remaining,'used_percent':used_percent,'remaining_percent':remaining_percent,'remaining_summary':remaining_summary},
-    'limits':{'five_hour':{'percent':first(token,'five_hour_percent','five_hour'),'state':limit_state(first(token,'five_hour_remaining_percent')),'warn_at':warn_at,'block_at':block_at},'weekly':{'percent':first(token,'weekly_percent','weekly'),'state':limit_state(first(token,'weekly_remaining_percent')),'warn_at':warn_at,'block_at':block_at}},
-    'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':True,'compact_then_resume':'unsupported_or_unproven','start_fresh':True}},
-    'reentry':{'decision_inputs':{'resume_without_compact':True,'compact_then_resume':'unsupported_or_unproven','start_fresh':True}},
+    'limits':{'five_hour':{'percent':first(token,'five_hour_remaining_percent','five_hour_percent'),'remaining_percent':first(token,'five_hour_remaining_percent'),'state':limit_state(first(token,'five_hour_remaining_percent')),'warn_at':warn_at,'block_at':block_at},'weekly':{'percent':first(token,'weekly_remaining_percent','weekly_percent'),'remaining_percent':first(token,'weekly_remaining_percent'),'state':limit_state(first(token,'weekly_remaining_percent')),'warn_at':warn_at,'block_at':block_at}},
+    'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','start_fresh':'available'}},
+    'reentry':{'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','start_fresh':'available'}},
     'warnings':[],'errors':[],'next':[]
 }
 if sidv:
-    payload['session']['resume_commands']=[f"codex resume {sidv}", f"codex resume --session-id {sidv}"]
+    payload['session']['resume_commands']=[f"codex resume --include-non-interactive {sidv}", f'codex exec resume {sidv} "<PROMPT>"']
 
 if check_limits and ('block' in (payload['limits']['five_hour']['state'], payload['limits']['weekly']['state'])):
     payload['ok']=False

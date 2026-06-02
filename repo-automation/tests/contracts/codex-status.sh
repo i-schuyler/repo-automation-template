@@ -13,9 +13,9 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 codex_status_make_fixture() {
   local path="$1"
   cat > "$path" <<'EOF'
-{"type":"session_meta","session_id":"sess-123","source":"cli","originator":"operator","branch":"feature/test","commit":"abc123","repository_url":"git@example/repo.git"}
-{"type":"turn_context","model_name":"gpt-test","reasoning":"high","model_context_window":1000}
-{"type":"token_count","input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":900,"five_hour_remaining_percent":15,"weekly_remaining_percent":7}
+{"type":"session_meta","timestamp":"2026-06-02T00:00:00Z","payload":{"session_id":"sess-123","source":"cli","originator":"operator","branch":"feature/test","commit":"abc123","repository_url":"git@example/repo.git"}}
+{"type":"turn_context","timestamp":"2026-06-02T00:00:01Z","payload":{"model_name":"gpt-test","reasoning":"high","model_context_window":1000}}
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":900,"five_hour_remaining_percent":15,"weekly_remaining_percent":7}}}
 EOF
 }
 
@@ -43,6 +43,8 @@ data=json.load(open(sys.argv[1]))
 assert data["ok"] is True
 assert data["session"]["session_id"] == "sess-123"
 assert data["context"]["remaining"] == 100
+assert data["limits"]["five_hour"]["remaining_percent"] == 15
+assert data["limits"]["weekly"]["remaining_percent"] == 7
 assert data["limits"]["five_hour"]["state"] == "warn"
 assert data["limits"]["weekly"]["state"] == "block"
 PY
@@ -51,6 +53,8 @@ PY
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$latest_file" --pretty >"$out" 2>"$err" &&
      grep -Fq 'session: sess-123' "$out" &&
      grep -Fq 'model: gpt-test/high' "$out" &&
+     grep -Fq 'five_hour_remaining=15%' "$out" &&
+     grep -Fq 'weekly_remaining=7%' "$out" &&
      grep -Fq '5h: warn weekly: block' "$out"
   then :; else test_fail "pretty"; status=1; fi
 
