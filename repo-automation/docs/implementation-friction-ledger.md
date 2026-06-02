@@ -60,6 +60,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-06-01 / PR #213 / slice-handoff review-request submit-path / ids=none / score_delta=0 / signal=aligned dry-run preview with the new lower-layer review-request submit path and kept the refactor public-safe
 - 2026-05-30 / PR #200 / contract-debt-report shared-body repair / ids=none / score_delta=0 / signal=updated shared-contract coverage fixture ordering and ignored local variable names in shared-function detection; no material friction
 - 2026-05-30 / strict-value-flag-parser / ids=focused-contract-parallel-temp-collision / score_delta=+1 / signal=parallel focused wrapper validation produced false quiet failures; sequential focused validation passed
 - 2026-05-30 / strict-value-flag-parser / ids=run-tests-smoke-capture-cleaned / score_delta=0 / signal=guarded missing smoke capture log appends and added quiet regression coverage

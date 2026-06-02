@@ -11,6 +11,18 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   return 2 2>/dev/null || exit 2
 }
 
+# shellcheck source=/dev/null
+. "$script_dir/../lib/operator-output.sh" || {
+  printf 'STOP: failed to source operator output library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+# shellcheck source=/dev/null
+. "$script_dir/../lib/review-request.sh" || {
+  printf 'STOP: failed to source review request library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
 slice_handoff_quiet=0
 slice_handoff_explain=0
 slice_handoff_file=""
@@ -77,10 +89,44 @@ slice_handoff_print_review_request_block() {
   [ -f "$review_request_path" ] || return 0
   [ -r "$review_request_path" ] || return 0
 
-  printf '\n===== PR REVIEW REQUEST =====\n' >&2
-  if cat "$review_request_path" >&2; then
-    printf '===== END PR REVIEW REQUEST =====\n' >&2
-  fi
+  printf '\n' >&2
+  repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$review_request_path" 0 >&2
+}
+
+slice_handoff_print_codex_final_output_block() {
+  local codex_final_output_path="$1"
+
+  [ -n "$codex_final_output_path" ] || return 0
+  [ -f "$codex_final_output_path" ] || return 0
+  [ -r "$codex_final_output_path" ] || return 0
+
+  printf '\n' >&2
+  repo_operator_output_emit_file_block "CODEX FINAL OUTPUT" "$codex_final_output_path" 0 >&2
+}
+
+slice_handoff_render_review_request_for_submit() {
+  local source_path="$1"
+  local output_path="$2"
+  local run_dir="$3"
+  local title="$4"
+  local branch="$5"
+
+  python3 - "$source_path" "$output_path" "$run_dir" "$title" "$branch" <<'PY'
+from pathlib import Path
+import sys
+
+source_path = Path(sys.argv[1])
+output_path = Path(sys.argv[2])
+run_dir = sys.argv[3]
+title = sys.argv[4]
+branch = sys.argv[5]
+
+text = source_path.read_text(encoding='utf-8')
+text = text.replace('<RUN_DIR>', run_dir)
+text = text.replace('<TITLE>', title)
+text = text.replace('<BRANCH>', branch)
+output_path.write_text(text, encoding='utf-8')
+PY
 }
 
 slice_handoff_fail() {
@@ -138,31 +184,6 @@ slice_handoff_copy_atomic_file() {
   fi
   rm -f -- "$tmp_file" >/dev/null 2>&1 || true
   return 1
-}
-
-slice_handoff_render_review_request_text() {
-  local source_path="$1"
-  local pr_url="$2"
-  local title="$3"
-  local branch="$4"
-  local run_dir="$5"
-
-  python3 - "$source_path" "$pr_url" "$title" "$branch" "$run_dir" <<'PY'
-from pathlib import Path
-import sys
-
-source_path = Path(sys.argv[1])
-pr_url = sys.argv[2]
-title = sys.argv[3]
-branch = sys.argv[4]
-run_dir = sys.argv[5]
-text = source_path.read_text(encoding='utf-8')
-text = text.replace('<PR_URL>', pr_url)
-text = text.replace('<TITLE>', title)
-text = text.replace('<BRANCH>', branch)
-text = text.replace('<RUN_DIR>', run_dir)
-sys.stdout.write(text)
-PY
 }
 
 slice_handoff_json_value() {
@@ -413,6 +434,7 @@ slice_handoff_write_dry_run_preview() {
         --all \
         "--message=$slice_handoff_commit_message" \
         "--body-file=$pr_body_path" \
+        "--review-request-file=<active-run-dir>/review-request-source.txt" \
         --watch \
         --timeout=900 \
         --diagnose-on-fail \
@@ -1042,6 +1064,9 @@ slice_handoff_run_execution_phase() {
   local repo_flow_submit_command_summary=""
   local repo_flow_submit_phase_failed=0
   local repo_flow_submit_url_or_stop=""
+  local repo_flow_submit_review_request_source_path=""
+  local repo_flow_submit_review_request_path=""
+  local repo_flow_submit_review_request_block_path=""
 
   cd "$slice_handoff_repo_root" || return 1
   slice_handoff_info "run-dir creation"
@@ -1174,6 +1199,10 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
+  if [ "$slice_handoff_explain" -eq 1 ]; then
+    slice_handoff_print_codex_final_output_block "$codex_final_output_path"
+  fi
+
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
     slice_handoff_info "PR-body validation"
     pr_body_check_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stdout")" || return 1
@@ -1220,11 +1249,22 @@ slice_handoff_run_execution_phase() {
     }
     repo_flow_submit_stdout_path="$active_run_dir/repo-flow-submit.stdout"
     repo_flow_submit_stderr_path="$active_run_dir/repo-flow-submit.stderr"
-    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" --watch --timeout=900 --diagnose-on-fail --explain)"
+    repo_flow_submit_review_request_source_path="$active_run_dir/review-request-source.txt"
+    if ! slice_handoff_render_review_request_for_submit "$slice_handoff_review_request_file" "$repo_flow_submit_review_request_source_path" "$active_run_dir" "$slice_handoff_title" "$slice_handoff_branch"; then
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request source preparation failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "" "" || true
+      slice_handoff_print_execution_blocker "review-request-source" "prepare review request source for repo-flow submit" 1 "$repo_flow_submit_review_request_source_path" "$repo_flow_submit_stderr_path" "unable to prepare review-request source file"
+      return 1
+    fi
+    if ! repo_review_request_template_problem "$repo_flow_submit_review_request_source_path" "review request source file" >/dev/null 2>&1; then
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request source validation failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "" "" || true
+      slice_handoff_print_execution_blocker "review-request-source" "prepare review request source for repo-flow submit" 1 "$repo_flow_submit_review_request_source_path" "$repo_flow_submit_stderr_path" "review request source file is not a regular readable non-empty file"
+      return 1
+    fi
+    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain)"
 
     if ! (
       cd "$slice_handoff_repo_root" || return 1
-      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
+      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
     ); then
       repo_flow_submit_phase_failed=1
     fi
@@ -1253,10 +1293,18 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
-    slice_handoff_info "review-request rewrite"
-    if ! slice_handoff_render_review_request_text "$slice_handoff_review_request_file" "$repo_flow_submit_url_or_stop" "$slice_handoff_title" "$slice_handoff_branch" "$active_run_dir" | slice_handoff_write_atomic_text_file "$active_run_dir/review-request.txt"; then
-      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request rewrite failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
-      slice_handoff_print_execution_blocker "review-request-rewrite" "$repo_flow_submit_command_summary" 0 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "unable to rewrite review-request.txt with the submitted PR URL"
+    repo_flow_submit_review_request_path="$(slice_handoff_extract_repo_flow_summary_value review_request_path "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+    repo_flow_submit_review_request_block_path="$(slice_handoff_extract_repo_flow_summary_value review_request_block_path "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+
+    if [ -n "$repo_flow_submit_review_request_path" ] && [ -f "$repo_flow_submit_review_request_path" ]; then
+      if ! slice_handoff_copy_atomic_file "$repo_flow_submit_review_request_path" "$active_run_dir/review-request.txt"; then
+        slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request compatibility copy failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+        slice_handoff_print_execution_blocker "review-request-compatibility-copy" "$repo_flow_submit_command_summary" 0 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "unable to copy repo-flow submit review_request_path into active run dir"
+        return 1
+      fi
+    else
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review request artifact missing" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      slice_handoff_print_execution_blocker "review-request-artifact" "$repo_flow_submit_command_summary" 0 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "missing review_request_path in repo-flow submit final summary"
       return 1
     fi
 
@@ -1268,7 +1316,12 @@ slice_handoff_run_execution_phase() {
   if [ "$slice_handoff_explain" -eq 1 ]; then
     slice_handoff_info "final next=review PR before merge"
     slice_handoff_print_final_summary "execution-submit" 0 "review PR before merge" "" "$active_run_dir" "$active_run_dir/review-request.txt"
-    slice_handoff_print_review_request_block "$active_run_dir/review-request.txt"
+    if [ -n "$repo_flow_submit_review_request_block_path" ] && [ -f "$repo_flow_submit_review_request_block_path" ] && [ -r "$repo_flow_submit_review_request_block_path" ]; then
+      printf '\n' >&2
+      cat "$repo_flow_submit_review_request_block_path" >&2
+    else
+      slice_handoff_print_review_request_block "$active_run_dir/review-request.txt"
+    fi
   elif [ "$slice_handoff_quiet" -eq 0 ]; then
       printf 'pass\n'
       printf 'mode=execution-submit\n'
