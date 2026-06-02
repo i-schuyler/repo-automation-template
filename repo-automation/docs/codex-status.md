@@ -1,215 +1,96 @@
 # Codex Status Helper Spec
 
-This is a public-safe spec only. The helper described here is not implemented yet.
+`repo-automation/bin/codex-status` is implemented as a read-only, JSON-first Phase 1 helper.
 
 ## Purpose
 
-Plan a single future helper, `repo-automation/bin/codex-status`, that reports Codex session, resume, token, context, and rate-limit status for both humans and automation.
+Report Codex session, token, context, resume, re-entry, and rate-limit status from Codex JSONL session files.
 
-## Design goals
-
-- one helper with flags/modes, not a family of separate helpers
-- JSON-first output for scripting
-- optional human rendering only with an explicit flag such as `--human`
-- stdout carries requested status output; stderr carries diagnostics only
-- do not require automation callers to scrape human text
-- preserve deterministic slice-handoff boundaries
-- keep current behavior distinct from planned behavior
-
-## Proposed CLI surface
+## Phase 1 CLI
 
 ```sh
-repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>] [--repo-root=<dir>] [--all-sessions|--recent=<n>] [--session] [--usage] [--limits] [--resume] [--all] [--check-limits] [--warn-at=<percent>] [--strong-warn-at=<percent>] [--block-at=<percent>] [--human] [--pretty] [--quiet]
+repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>] [--repo-root=<dir>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]
 ```
 
-Recommended defaults:
+Defaults:
 
-- default to JSON on stdout
-- `--human` enables operator-friendly rendering
-- `--pretty` may prettify JSON when JSON output is selected
-- `--quiet` suppresses nonessential human chatter, not the contract output
+- output is compact JSON on stdout
+- report mode defaults to `--all`
+- remaining thresholds default to `--warn-remaining-at=15` and `--block-remaining-at=7`
+- session discovery uses `CODEX_HOME` when set, otherwise `$HOME/.codex`
 
-Selection rules:
+Implemented behavior:
 
-- `--latest` chooses the newest readable session
-- `--session-id=<id>` selects one known session
-- `--session-file=<path>` reads a specific JSONL session file
-- `--repo-root=<dir>` scopes repository-relative metadata and git info
-- `--all-sessions` or `--recent=<n>` can enumerate multiple sessions
+- read-only; no Codex writes
+- `--pretty` emits compact operator-readable text
+- `--session`, `--usage`, `--limits`, `--resume`, `--reentry`, and `--all` are supported
+- single-session selection supports `--latest`, `--session-id=<id>`, `--session-file=<path>`, and `--repo-root=<dir>`
+- `--check-limits` exits `2` when a block-threshold condition is selected
+- unsupported Phase 1 flags fail with exit `1` and a fix hint
 
-Report modes:
+Unsupported in Phase 1:
 
-- `--session` reports identity and provenance
-- `--usage` reports tokens, cached input tokens, and context remaining
-- `--limits` reports 5-hour and weekly rate-limit proximity
-- `--resume` reports possible resume commands and resume suitability
-- `--reentry` or `--blocker-summary` reports compact blocker/re-entry status for operator handoff
-- `--all` is the combined report mode
-- `--check-limits` makes rate-limit thresholds affect exit status
+- `--human`
+- `--quiet`
+- `--all-sessions`
+- `--recent=<n>`
+- `--blocker-summary`
+- `--warn-at=<percent>`
+- `--block-at=<percent>`
+- `--strong-warn-at=<percent>`
 
-Threshold controls:
+## JSON contract
 
-- `--warn-at=<percent>` defaults around `75`
-- `--strong-warn-at=<percent>` defaults around `85`
-- `--block-at=<percent>` defaults around `92`
+Top-level fields:
 
-Resume policy direction:
+- `schema`
+- `ok`
+- `status`
+- `generated_at`
+- `codex`
+- `selector`
+- `session`
+- `git`
+- `model`
+- `tokens`
+- `context`
+- `limits`
+- `resume`
+- `reentry`
+- `warnings`
+- `errors`
+- `next`
 
-- same-model resume with changed reasoning may be allowed when intentional and recorded
-- different-model resume should be avoided by default
-- avoid resuming sessions after more than 1-2 compactions or a major context shift
+Field notes:
 
-## Blocker and re-entry status
-
-Future blocker output should be compact enough to paste into ChatGPT/operator review after a failed helper flow.
-
-Preferred behavior:
-
-- JSON-first by default for automation and re-entry tooling
-- explicit `--human` only for operator-friendly rendering
-- compact blocker output should either include the re-entry status directly or point to a JSON artifact plus a short human summary
-- the compact re-entry payload should make the resume decision obvious without scraping prose
-
-Decision targets for the re-entry payload:
-
-- `resume_without_compact`
-- `resume_with_compact`
-- `start_fresh`
-
-The status should summarize the current session, the resume candidates, and the key decision inputs needed for ChatGPT/operator judgment.
-
-## Public facts to preserve
-
-- Codex session metadata can be read from JSONL session files.
-- Useful observed event types include `session_meta`, `turn_context`, `event_msg`, and `response_item`.
-- Token-count events can include input tokens, cached input tokens, output tokens, reasoning output tokens, total tokens, model context window, plan type, and primary/secondary rate-limit window percentages.
-- Approximate remaining context can be derived as `model_context_window - total_tokens`.
-- Current helpers do not yet implement session metadata scraping or rate-limit warnings.
-
-## Draft JSON contract
-
-```json
-{
-  "schema": "repo-automation-codex-status/v1",
-  "ok": true,
-  "status": "ok",
-  "generated_at": "2026-06-02T00:00:00Z",
-  "codex": {
-    "helper": "repo-automation/bin/codex-status",
-    "mode": "all",
-    "version": null
-  },
-  "selector": {
-    "kind": "latest",
-    "session_id": null,
-    "session_file": null,
-    "repo_root": "."
-  },
-  "session": {
-    "session_id": null,
-    "resumeable": false,
-    "resume_commands": [],
-    "source": null,
-    "originator": null,
-    "cwd": null,
-    "branch": null,
-    "commit": null,
-    "compactions": 0,
-    "event_types": ["session_meta", "turn_context", "event_msg", "response_item"]
-  },
-  "git": {
-    "repo_root": ".",
-    "branch": null,
-    "commit": null,
-    "dirty": null
-  },
-  "model": {
-    "name": null,
-    "reasoning": null,
-    "plan_type": null,
-    "context_window": null
-  },
-  "tokens": {
-    "input": null,
-    "cached_input": null,
-    "output": null,
-    "reasoning_output": null,
-    "total": null
-  },
-  "context": {
-    "remaining": null,
-    "approx_remaining": null,
-    "used_percent": null,
-    "remaining_percent": null,
-    "remaining_summary": null
-  },
-  "limits": {
-    "five_hour": {
-      "percent": null,
-      "state": "unknown",
-      "warn_at": 75,
-      "strong_warn_at": 85,
-      "block_at": 92
-    },
-    "weekly": {
-      "percent": null,
-      "state": "unknown",
-      "warn_at": 75,
-      "strong_warn_at": 85,
-      "block_at": 92
-    }
-  },
-  "resume": {
-    "allowed": null,
-    "model_match": null,
-    "reasoning_change_recorded": null,
-    "recommendation": null,
-    "decision_inputs": {
-      "resume_without_compact": null,
-      "resume_with_compact": null,
-      "start_fresh": null
-    }
-  },
-  "warnings": [],
-  "errors": [],
-  "next": []
-}
-```
-
-Implementation may add fields, but it should not remove or repurpose these without a new schema version.
+- `session.session_id` should resolve from session metadata or filename when possible
+- `session.source` and `session.originator` should be populated when present
+- `git.branch`, `git.commit`, and `git.repository_url` should be parsed when available
+- `model.name` and `model.reasoning` should come from turn context when available
+- `tokens` should use the latest token-count event
+- `token_count` is read from `event_msg.payload.info.total_token_usage`
+- `rate_limits.primary` maps to five-hour status and `rate_limits.secondary` maps to weekly status
+- `context.remaining` should be `model_context_window - total tokens` when available
+- `context.used_percent` and `context.remaining_percent` should be numeric when calculable
+- `context.remaining_summary` should be compact human-readable text when calculable
+- `limits.five_hour` and `limits.weekly` should include `percent`, `state`, `window_minutes` when known, and thresholds
+- `limits.five_hour.used_percent` and `limits.weekly.used_percent` should be exposed when available
+- session id should prefer `payload.session_id`, then `payload.id`, then a UUID-like filename stem, then the filename stem with a warning
+- `limit.state` is `unknown`, `ok`, `warn`, or `block`
+- `warn` means remaining percent is at or below `--warn-remaining-at`
+- `block` means remaining percent is at or below `--block-remaining-at`
+- `resume.resume_commands` should include interactive and non-interactive resume shapes when `session_id` is known
+- `reentry` should include decision inputs for `resume_without_compact`, `compact_then_resume`, and `start_fresh`
+- `compact_then_resume` is unsupported or unproven in Phase 1 unless supported behavior is later documented
+- `warnings` and `errors` are arrays
+- `ok` is `false` only for actual errors, not for unknown optional metadata
 
 ## Exit codes
 
-- `0`: successful status generation, including warning-only states
-- `1`: invalid input, missing or unreadable session metadata, parse errors, or unexpected tool failure
-- `2`: `--check-limits` found a block-threshold condition requiring explicit operator override
+- `0` successful status generation, including warning-only states
+- `1` invalid flags, missing or unreadable selected session metadata, parse errors, or unexpected tool failure
+- `2` `--check-limits` found a block-threshold condition requiring explicit operator override
 
-## Integration plan
+## Future work
 
-Phase 1: implement `codex-status` as a read-only helper with tests.
-
-Phase 2: have `codex-run` write session metadata artifacts or consume `codex-status` results after exec.
-
-Phase 3: have `slice-handoff` surface resume/status artifacts in blocker and re-entry contexts.
-
-Phase 4: optionally add a preflight warning gate for rate-limit thresholds.
-
-Direct interactive TUI launch inside `slice-handoff` stays out of scope.
-
-## Future test coverage
-
-- JSON schema/shape
-- fixture JSONL parsing
-- latest/session-id/session-file selection
-- token and context calculations
-- rate-limit warning thresholds
-- resume-command generation
-- stdout/stderr purity
-- no private path leakage in public tests or docs
-- managed-file and installer coverage once the helper is implemented
-
-## Related docs
-
-- [Codex Session Resume and Metadata](codex-session-resume.md)
-- [Codex Run](codex-run.md)
-- [Slice Handoff](slice-handoff.md)
+Phase 2+ may integrate `codex-status` into other helpers or add richer multi-session views. That integration is not part of Phase 1.

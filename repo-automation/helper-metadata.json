@@ -421,6 +421,27 @@
       "config_keys": []
     },
     {
+      "name": "codex-status",
+      "path": "repo-automation/bin/codex-status",
+      "doc_path": "repo-automation/docs/codex-status.md",
+      "contract_test_path": "repo-automation/tests/contracts/codex-status.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": false,
+      "check_cost_tier": "instant",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": false,
+      "supports_json": true,
+      "artifact_helper": false,
+      "umbrella_helper": false,
+      "workflow_role": "artifact",
+      "config_keys": []
+    },
+    {
       "name": "codex-run",
       "path": "repo-automation/bin/codex-run",
       "doc_path": "repo-automation/docs/codex-run.md",
