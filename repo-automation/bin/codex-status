@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# repo-automation/bin/codex-status
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+codex_status_mode="all"
+codex_status_selector_kind="latest"
+codex_status_session_id=""
+codex_status_session_file=""
+codex_status_repo_root=""
+codex_status_pretty=0
+codex_status_check_limits=0
+codex_status_warn_remaining_at="15"
+codex_status_block_remaining_at="7"
+
+codex_status_usage() {
+  printf 'Usage: repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>] [--repo-root=<dir>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]\n'
+}
+
+codex_status_fail_flag() { repo_auto_flag_error "$1" "$2" "$3" || true; }
+
+codex_status_invalid_flag() {
+  codex_status_fail_flag "unsupported flag" "$1" "run repo-automation/bin/codex-status --help"
+}
+
+codex_status_main() {
+  local arg=""
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      --help) codex_status_usage; return 0 ;;
+      --pretty) codex_status_pretty=1 ;;
+      --check-limits) codex_status_check_limits=1 ;;
+      --latest) codex_status_selector_kind="latest" ;;
+      --session) codex_status_mode="session" ;;
+      --usage) codex_status_mode="usage" ;;
+      --limits) codex_status_mode="limits" ;;
+      --resume) codex_status_mode="resume" ;;
+      --reentry) codex_status_mode="reentry" ;;
+      --all) codex_status_mode="all" ;;
+      --session-id=*) codex_status_selector_kind="session-id"; codex_status_session_id="${arg#*=}" ;;
+      --session-file=*) codex_status_selector_kind="session-file"; codex_status_session_file="${arg#*=}" ;;
+      --repo-root=*) codex_status_repo_root="${arg#*=}" ;;
+      --warn-remaining-at=*) codex_status_warn_remaining_at="${arg#*=}" ;;
+      --block-remaining-at=*) codex_status_block_remaining_at="${arg#*=}" ;;
+      --human|--quiet|--all-sessions|--recent=*|--blocker-summary|--warn-at=*|--block-at=*|--strong-warn-at=*)
+        codex_status_invalid_flag "$arg"; return 1 ;;
+      --*) codex_status_invalid_flag "$arg"; return 1 ;;
+      *) codex_status_invalid_flag "$arg"; return 1 ;;
+    esac
+    shift
+  done
+
+  python3 - "$codex_status_mode" "$codex_status_selector_kind" "$codex_status_session_id" "$codex_status_session_file" "$codex_status_repo_root" "$codex_status_pretty" "$codex_status_check_limits" "$codex_status_warn_remaining_at" "$codex_status_block_remaining_at" <<'PY'
+import json, os, sys
+from pathlib import Path
+from datetime import datetime, timezone
+
+mode, skind, sid, sfile, repo_root, pretty, check_limits, warn_at, block_at = sys.argv[1:]
+pretty = pretty == '1'
+check_limits = check_limits == '1'
+warn_at = float(warn_at)
+block_at = float(block_at)
+codex_home = Path(os.environ.get('CODEX_HOME', str(Path.home()/'.codex'))).expanduser()
+
+def emit(payload, rc=0):
+    if pretty:
+        s = []
+        sess = payload.get('session', {})
+        model = payload.get('model', {})
+        git = payload.get('git', {})
+        ctx = payload.get('context', {})
+        limits = payload.get('limits', {})
+        s.append(f"session: {sess.get('session_id')}")
+        if sess.get('source') or sess.get('originator'):
+            s.append(f"source/originator: {sess.get('source')}/{sess.get('originator')}")
+        s.append(f"model: {model.get('name')}/{model.get('reasoning')}")
+        if git.get('branch') or git.get('commit'):
+            s.append(f"git: {git.get('branch')} {git.get('commit')}")
+        if ctx.get('remaining_summary'):
+            s.append(f"context: {ctx.get('remaining_summary')}")
+        s.append(f"5h: {limits.get('five_hour', {}).get('state')} weekly: {limits.get('weekly', {}).get('state')}")
+        for line in s: print(line)
+    else:
+        print(json.dumps(payload, separators=(',', ':')))
+    return rc
+
+def session_files(root):
+    for p in root.rglob('*.jsonl'):
+        yield p
+
+def select_latest(root):
+    files = [p for p in session_files(root) if p.is_file()]
+    if not files:
+        raise FileNotFoundError('no Codex session files found')
+    return max(files, key=lambda p: p.stat().st_mtime)
+
+def select_by_id(root, session_id):
+    for p in session_files(root):
+        if session_id in p.name:
+            return p
+        try:
+            with p.open() as f:
+                for line in f:
+                    if '"session_meta"' in line and session_id in line:
+                        return p
+        except Exception:
+            pass
+    raise FileNotFoundError(f'session id not found: {session_id}')
+
+def parse(path):
+    events=[]
+    with path.open() as f:
+        for ln in f:
+            ln=ln.strip()
+            if ln: events.append(json.loads(ln))
+    return events
+
+def first(d,*keys):
+    for k in keys:
+        if isinstance(d, dict) and d.get(k) not in (None, ''):
+            return d[k]
+    return None
+
+if sfile:
+    path=Path(sfile).expanduser()
+    if not path.is_file():
+        print('fail: missing or unreadable session file', file=sys.stderr); sys.exit(1)
+elif skind == 'session-id':
+    path=select_by_id(codex_home, sid)
+else:
+    path=select_latest(codex_home)
+
+try:
+    events=parse(path)
+except Exception as e:
+    print(f'fail: unable to parse session file: {e}', file=sys.stderr); sys.exit(1)
+
+meta = next((e for e in events if e.get('type') == 'session_meta'), {})
+turn = next((e for e in reversed(events) if e.get('type') == 'turn_context'), {})
+token = next((e for e in reversed(events) if e.get('type') == 'token_count'), {})
+
+sidv = first(meta, 'session_id') or path.stem
+model_name = first(turn, 'model_name', 'model')
+reasoning = first(turn, 'reasoning')
+repo = Path(repo_root).resolve() if repo_root else None
+tokens_total = first(token, 'total_tokens', 'token_count', 'total')
+ctx_window = first(turn, 'model_context_window', 'context_window')
+remaining = ctx_window - tokens_total if isinstance(ctx_window, (int, float)) and isinstance(tokens_total, (int, float)) else None
+used_percent = (tokens_total / ctx_window * 100) if remaining is not None and ctx_window else None
+remaining_percent = (remaining / ctx_window * 100) if remaining is not None and ctx_window else None
+remaining_summary = f'{int(remaining_percent)}% remaining' if remaining_percent is not None else None
+
+def limit_state(rem):
+    if rem is None: return 'unknown'
+    if rem <= block_at: return 'block'
+    if rem <= warn_at: return 'warn'
+    return 'ok'
+
+payload = {
+    'schema':'repo-automation-codex-status/v1','ok':True,'status':'ok','generated_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
+    'codex':{'helper':'repo-automation/bin/codex-status','mode':mode,'version':None},
+    'selector':{'kind':skind,'session_id':sid or None,'session_file':str(Path(sfile).expanduser()) if sfile else None,'repo_root':str(repo) if repo else None},
+    'session':{'session_id':sidv,'source':first(meta,'source'),'originator':first(meta,'originator'),'resumeable':True,'resume_commands':[]},
+    'git':{'repo_root':str(repo) if repo else None,'branch':first(meta,'branch'),'commit':first(meta,'commit'),'repository_url':first(meta,'repository_url')},
+    'model':{'name':model_name,'reasoning':reasoning,'context_window':ctx_window},
+    'tokens':{'total':tokens_total},
+    'context':{'remaining':remaining,'used_percent':used_percent,'remaining_percent':remaining_percent,'remaining_summary':remaining_summary},
+    'limits':{'five_hour':{'percent':first(token,'five_hour_percent','five_hour'),'state':limit_state(first(token,'five_hour_remaining_percent')),'warn_at':warn_at,'block_at':block_at},'weekly':{'percent':first(token,'weekly_percent','weekly'),'state':limit_state(first(token,'weekly_remaining_percent')),'warn_at':warn_at,'block_at':block_at}},
+    'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':True,'compact_then_resume':'unsupported_or_unproven','start_fresh':True}},
+    'reentry':{'decision_inputs':{'resume_without_compact':True,'compact_then_resume':'unsupported_or_unproven','start_fresh':True}},
+    'warnings':[],'errors':[],'next':[]
+}
+if sidv:
+    payload['session']['resume_commands']=[f"codex resume {sidv}", f"codex resume --session-id {sidv}"]
+
+if check_limits and ('block' in (payload['limits']['five_hour']['state'], payload['limits']['weekly']['state'])):
+    payload['ok']=False
+    payload['status']='block'
+    emit(payload, 2)
+    sys.exit(2)
+if payload['limits']['five_hour']['state']=='warn':
+    payload['warnings'].append('five-hour remaining at or below warning threshold')
+if payload['limits']['weekly']['state']=='warn':
+    payload['warnings'].append('weekly remaining at or below warning threshold')
+emit(payload, 0)
+PY
+}
+
+codex_status_main "$@"
