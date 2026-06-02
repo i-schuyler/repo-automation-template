@@ -68,10 +68,14 @@ Field notes:
 - `git.branch`, `git.commit`, and `git.repository_url` should be parsed when available
 - `model.name` and `model.reasoning` should come from turn context when available
 - `tokens` should use the latest token-count event
+- `token_count` is read from `event_msg.payload.info.total_token_usage`
+- `rate_limits.primary` maps to five-hour status and `rate_limits.secondary` maps to weekly status
 - `context.remaining` should be `model_context_window - total tokens` when available
 - `context.used_percent` and `context.remaining_percent` should be numeric when calculable
 - `context.remaining_summary` should be compact human-readable text when calculable
 - `limits.five_hour` and `limits.weekly` should include `percent`, `state`, `window_minutes` when known, and thresholds
+- `limits.five_hour.used_percent` and `limits.weekly.used_percent` should be exposed when available
+- session id should prefer `payload.session_id`, then `payload.id`, then a UUID-like filename stem, then the filename stem with a warning
 - `limit.state` is `unknown`, `ok`, `warn`, or `block`
 - `warn` means remaining percent is at or below `--warn-remaining-at`
 - `block` means remaining percent is at or below `--block-remaining-at`

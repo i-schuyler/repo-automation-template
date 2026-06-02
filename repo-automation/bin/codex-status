@@ -62,6 +62,7 @@ codex_status_main() {
 
   python3 - "$codex_status_mode" "$codex_status_selector_kind" "$codex_status_session_id" "$codex_status_session_file" "$codex_status_repo_root" "$codex_status_pretty" "$codex_status_check_limits" "$codex_status_warn_remaining_at" "$codex_status_block_remaining_at" <<'PY'
 import json, os, sys
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -103,6 +104,12 @@ def emit(payload, rc=0):
 def session_files(root):
     for p in root.rglob('*.jsonl'):
         yield p
+
+def filename_session_id(path):
+    m = re.search(r'[0-9a-fA-F-]{8,}', path.name)
+    if m:
+        return m.group(0)
+    return path.stem
 
 def select_latest(root):
     files = [p for p in session_files(root) if p.is_file()]
@@ -159,18 +166,26 @@ except Exception as e:
 meta = next((payload_of(e) for e in events if e.get('type') == 'session_meta'), {})
 turn = next((payload_of(e) for e in reversed(events) if e.get('type') == 'turn_context'), {})
 token_event = next((payload_of(e) for e in reversed(events) if (e.get('type') == 'event_msg' and payload_of(e).get('type') == 'token_count') or e.get('type') == 'token_count'), {})
+token_info = token_event.get('info', token_event)
+token_usage = token_info.get('total_token_usage', token_event.get('usage', token_event))
 
-sidv = first(meta, 'session_id') or path.stem
+sidv = first(meta, 'session_id', 'id') or filename_session_id(path)
+if sidv == path.stem:
+    payload_warning = 'session id fell back to filename stem'
+else:
+    payload_warning = None
 model_name = first(turn, 'model_name', 'model')
 reasoning = first(turn, 'reasoning')
 repo = Path(repo_root).resolve() if repo_root else None
-token = token_event.get('usage', token_event)
-tokens_total = first(token, 'total_tokens', 'token_count', 'total')
-ctx_window = first(turn, 'model_context_window', 'context_window')
+tokens_total = first(token_usage, 'total_tokens', 'token_count', 'total')
+ctx_window = first(turn, 'model_context_window', 'context_window') or first(token_info, 'model_context_window')
 remaining = ctx_window - tokens_total if isinstance(ctx_window, (int, float)) and isinstance(tokens_total, (int, float)) else None
 used_percent = (tokens_total / ctx_window * 100) if remaining is not None and ctx_window else None
 remaining_percent = (remaining / ctx_window * 100) if remaining is not None and ctx_window else None
 remaining_summary = f'{int(remaining_percent)}% remaining' if remaining_percent is not None else None
+rate_limits = first(token_info, 'rate_limits') or {}
+primary_limit = rate_limits.get('primary', {}) if isinstance(rate_limits, dict) else {}
+secondary_limit = rate_limits.get('secondary', {}) if isinstance(rate_limits, dict) else {}
 
 def limit_state(rem):
     if rem is None: return 'unknown'
@@ -182,18 +197,20 @@ payload = {
     'schema':'repo-automation-codex-status/v1','ok':True,'status':'ok','generated_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
     'codex':{'helper':'repo-automation/bin/codex-status','mode':mode,'version':None},
     'selector':{'kind':skind,'session_id':sid or None,'session_file':str(Path(sfile).expanduser()) if sfile else None,'repo_root':str(repo) if repo else None},
-    'session':{'session_id':sidv,'source':first(meta,'source'),'originator':first(meta,'originator'),'resumeable':True,'resume_commands':[]},
+    'session':{'session_id':sidv,'source':first(meta,'source'),'originator':first(meta,'originator'),'resumeable':True},
     'git':{'repo_root':str(repo) if repo else None,'branch':first(meta,'branch'),'commit':first(meta,'commit'),'repository_url':first(meta,'repository_url')},
     'model':{'name':model_name,'reasoning':reasoning,'context_window':ctx_window},
-    'tokens':{'total':tokens_total,'input':first(token,'input_tokens'),'cached_input':first(token,'cached_input_tokens'),'output':first(token,'output_tokens'),'reasoning_output':first(token,'reasoning_output_tokens')},
+    'tokens':{'total':tokens_total,'input':first(token_usage,'input_tokens'),'cached_input':first(token_usage,'cached_input_tokens'),'output':first(token_usage,'output_tokens'),'reasoning_output':first(token_usage,'reasoning_output_tokens')},
     'context':{'remaining':remaining,'used_percent':used_percent,'remaining_percent':remaining_percent,'remaining_summary':remaining_summary},
-    'limits':{'five_hour':{'percent':first(token,'five_hour_remaining_percent','five_hour_percent'),'remaining_percent':first(token,'five_hour_remaining_percent'),'state':limit_state(first(token,'five_hour_remaining_percent')),'warn_at':warn_at,'block_at':block_at},'weekly':{'percent':first(token,'weekly_remaining_percent','weekly_percent'),'remaining_percent':first(token,'weekly_remaining_percent'),'state':limit_state(first(token,'weekly_remaining_percent')),'warn_at':warn_at,'block_at':block_at}},
-    'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','start_fresh':'available'}},
-    'reentry':{'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','start_fresh':'available'}},
+    'limits':{'five_hour':{'percent':first(primary_limit,'used_percent'),'used_percent':first(primary_limit,'used_percent'),'remaining_percent':(100 - first(primary_limit,'used_percent')) if first(primary_limit,'used_percent') is not None else first(primary_limit,'remaining_percent'),'window_minutes':first(primary_limit,'window_minutes'),'state':limit_state((100 - first(primary_limit,'used_percent')) if first(primary_limit,'used_percent') is not None else first(primary_limit,'remaining_percent')),'warn_at':warn_at,'block_at':block_at},'weekly':{'percent':first(secondary_limit,'used_percent'),'used_percent':first(secondary_limit,'used_percent'),'remaining_percent':(100 - first(secondary_limit,'used_percent')) if first(secondary_limit,'used_percent') is not None else first(secondary_limit,'remaining_percent'),'window_minutes':first(secondary_limit,'window_minutes'),'state':limit_state((100 - first(secondary_limit,'used_percent')) if first(secondary_limit,'used_percent') is not None else first(secondary_limit,'remaining_percent')),'warn_at':warn_at,'block_at':block_at}},
+    'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','resume_and_allow_natural_compact':'operator_judgment_required','start_fresh':'available'}},
+    'reentry':{'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','resume_and_allow_natural_compact':'operator_judgment_required','start_fresh':'available'}},
     'warnings':[],'errors':[],'next':[]
 }
+if payload_warning:
+    payload['warnings'].append(payload_warning)
 if sidv:
-    payload['session']['resume_commands']=[f"codex resume --include-non-interactive {sidv}", f'codex exec resume {sidv} "<PROMPT>"']
+    payload['resume']['resume_commands']=[f"codex resume --include-non-interactive {sidv}", f'codex exec resume {sidv} "<PROMPT>"']
 
 if check_limits and ('block' in (payload['limits']['five_hour']['state'], payload['limits']['weekly']['state'])):
     payload['ok']=False

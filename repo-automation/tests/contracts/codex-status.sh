@@ -14,8 +14,8 @@ codex_status_make_fixture() {
   local path="$1"
   cat > "$path" <<'EOF'
 {"type":"session_meta","timestamp":"2026-06-02T00:00:00Z","payload":{"session_id":"sess-123","source":"cli","originator":"operator","branch":"feature/test","commit":"abc123","repository_url":"git@example/repo.git"}}
-{"type":"turn_context","timestamp":"2026-06-02T00:00:01Z","payload":{"model_name":"gpt-test","reasoning":"high","model_context_window":1000}}
-{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":900,"five_hour_remaining_percent":15,"weekly_remaining_percent":7}}}
+{"type":"turn_context","timestamp":"2026-06-02T00:00:01Z","payload":{"model_name":"gpt-test","reasoning":"high"}}
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","info":{"model_context_window":1000,"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":900},"rate_limits":{"primary":{"used_percent":85,"window_minutes":300},"secondary":{"used_percent":93,"window_minutes":10080}}}}}
 EOF
 }
 
@@ -43,10 +43,17 @@ data=json.load(open(sys.argv[1]))
 assert data["ok"] is True
 assert data["session"]["session_id"] == "sess-123"
 assert data["context"]["remaining"] == 100
+assert round(data["context"]["remaining_percent"], 1) == 10.0
 assert data["limits"]["five_hour"]["remaining_percent"] == 15
 assert data["limits"]["weekly"]["remaining_percent"] == 7
+assert data["limits"]["five_hour"]["used_percent"] == 85
+assert data["limits"]["weekly"]["used_percent"] == 93
+assert data["limits"]["five_hour"]["window_minutes"] == 300
+assert data["limits"]["weekly"]["window_minutes"] == 10080
 assert data["limits"]["five_hour"]["state"] == "warn"
 assert data["limits"]["weekly"]["state"] == "block"
+assert data["resume"]["resume_commands"][0] == "codex resume --include-non-interactive sess-123"
+assert data["resume"]["resume_commands"][1] == 'codex exec resume sess-123 "<PROMPT>"'
 PY
   then :; else test_fail "latest/json"; status=1; fi
 
@@ -57,6 +64,19 @@ PY
      grep -Fq 'weekly_remaining=7%' "$out" &&
      grep -Fq '5h: warn weekly: block' "$out"
   then :; else test_fail "pretty"; status=1; fi
+
+  local uuid_file="$sess_dir/123e4567-e89b-12d3-a456-426614174000.jsonl"
+  cat > "$uuid_file" <<'EOF'
+{"type":"session_meta","timestamp":"2026-06-02T00:00:00Z","payload":{"source":"cli"}}
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","info":{"model_context_window":1000,"total_token_usage":{"total_tokens":10},"rate_limits":{"primary":{"used_percent":1},"secondary":{"used_percent":2}}}}}
+EOF
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$uuid_file" >"$out" 2>"$err" &&
+     python3 - "$out" <<'PY'
+import json, sys
+data=json.load(open(sys.argv[1]))
+assert data["session"]["session_id"] == "123e4567-e89b-12d3-a456-426614174000"
+PY
+  then :; else test_fail "filename uuid"; status=1; fi
 
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$latest_file" --check-limits >/dev/null 2>"$err"; then
     test_fail "check-limits exit"; status=1
