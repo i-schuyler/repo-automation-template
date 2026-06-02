@@ -96,6 +96,8 @@ Possible future helper names:
 - `codex-resume-command`
 - or one helper with subcommands or modes
 
+For a consolidated future spec, see [Codex Status Helper Spec](codex-status.md).
+
 A future usage helper should report:
 
 - current session state

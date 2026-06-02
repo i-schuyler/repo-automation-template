@@ -359,6 +359,7 @@ repo_install_main() {
     "repo-automation/docs/branch-cleanup.md"
     "repo-automation/docs/codex-slice-preflight.md"
     "repo-automation/docs/codex-run.md"
+    "repo-automation/docs/codex-status.md"
     "repo-automation/docs/codex-session-resume.md"
     "repo-automation/docs/common-library.md"
     "repo-automation/docs/config.md"

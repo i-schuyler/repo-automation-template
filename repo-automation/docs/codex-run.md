@@ -38,3 +38,5 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.
 
 For public-safe interactive/resume/session metadata observations and future helper direction, see [Codex Session Resume and Metadata](codex-session-resume.md).
+
+For the future one-helper status plan, see [Codex Status Helper Spec](codex-status.md).

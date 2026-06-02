@@ -123,3 +123,5 @@ Profile examples:
 - generated logs/artifacts outside the repo root by default
 - no tracked session metadata by default
 - merge remains explicit and outside `slice-handoff`
+
+For the future operator/automation status helper spec, see [Codex Status Helper Spec](codex-status.md).
