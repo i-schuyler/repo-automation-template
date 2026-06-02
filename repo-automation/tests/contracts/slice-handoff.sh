@@ -379,6 +379,7 @@ planned_repo_flow_submit_argv:
 - --all
 - --message=chore: slice-handoff smoke
 - --body-file=$valid_submit_out_dir/pr-body.md
+- --review-request-file=<active-run-dir>/review-request-source.txt
 - --watch
 - --timeout=900
 - --diagnose-on-fail

@@ -186,31 +186,6 @@ slice_handoff_copy_atomic_file() {
   return 1
 }
 
-slice_handoff_render_review_request_text() {
-  local source_path="$1"
-  local pr_url="$2"
-  local title="$3"
-  local branch="$4"
-  local run_dir="$5"
-
-  python3 - "$source_path" "$pr_url" "$title" "$branch" "$run_dir" <<'PY'
-from pathlib import Path
-import sys
-
-source_path = Path(sys.argv[1])
-pr_url = sys.argv[2]
-title = sys.argv[3]
-branch = sys.argv[4]
-run_dir = sys.argv[5]
-text = source_path.read_text(encoding='utf-8')
-text = text.replace('<PR_URL>', pr_url)
-text = text.replace('<TITLE>', title)
-text = text.replace('<BRANCH>', branch)
-text = text.replace('<RUN_DIR>', run_dir)
-sys.stdout.write(text)
-PY
-}
-
 slice_handoff_json_value() {
   local file="$1"
   local key="$2"
@@ -459,6 +434,7 @@ slice_handoff_write_dry_run_preview() {
         --all \
         "--message=$slice_handoff_commit_message" \
         "--body-file=$pr_body_path" \
+        "--review-request-file=<active-run-dir>/review-request-source.txt" \
         --watch \
         --timeout=900 \
         --diagnose-on-fail \
