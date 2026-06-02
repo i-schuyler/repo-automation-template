@@ -43,6 +43,7 @@ Report modes:
 - `--usage` reports tokens, cached input tokens, and context remaining
 - `--limits` reports 5-hour and weekly rate-limit proximity
 - `--resume` reports possible resume commands and resume suitability
+- `--reentry` or `--blocker-summary` reports compact blocker/re-entry status for operator handoff
 - `--all` is the combined report mode
 - `--check-limits` makes rate-limit thresholds affect exit status
 
@@ -57,6 +58,25 @@ Resume policy direction:
 - same-model resume with changed reasoning may be allowed when intentional and recorded
 - different-model resume should be avoided by default
 - avoid resuming sessions after more than 1-2 compactions or a major context shift
+
+## Blocker and re-entry status
+
+Future blocker output should be compact enough to paste into ChatGPT/operator review after a failed helper flow.
+
+Preferred behavior:
+
+- JSON-first by default for automation and re-entry tooling
+- explicit `--human` only for operator-friendly rendering
+- compact blocker output should either include the re-entry status directly or point to a JSON artifact plus a short human summary
+- the compact re-entry payload should make the resume decision obvious without scraping prose
+
+Decision targets for the re-entry payload:
+
+- `resume_without_compact`
+- `resume_with_compact`
+- `start_fresh`
+
+The status should summarize the current session, the resume candidates, and the key decision inputs needed for ChatGPT/operator judgment.
 
 ## Public facts to preserve
 
@@ -90,6 +110,7 @@ Resume policy direction:
     "resumeable": false,
     "resume_commands": [],
     "source": null,
+    "originator": null,
     "cwd": null,
     "branch": null,
     "commit": null,
@@ -118,29 +139,36 @@ Resume policy direction:
   "context": {
     "remaining": null,
     "approx_remaining": null,
-    "used_percent": null
+    "used_percent": null,
+    "remaining_percent": null,
+    "remaining_summary": null
   },
   "limits": {
     "five_hour": {
       "percent": null,
+      "state": "unknown",
       "warn_at": 75,
       "strong_warn_at": 85,
-      "block_at": 92,
-      "state": "unknown"
+      "block_at": 92
     },
     "weekly": {
       "percent": null,
+      "state": "unknown",
       "warn_at": 75,
       "strong_warn_at": 85,
-      "block_at": 92,
-      "state": "unknown"
+      "block_at": 92
     }
   },
   "resume": {
     "allowed": null,
     "model_match": null,
     "reasoning_change_recorded": null,
-    "recommendation": null
+    "recommendation": null,
+    "decision_inputs": {
+      "resume_without_compact": null,
+      "resume_with_compact": null,
+      "start_fresh": null
+    }
   },
   "warnings": [],
   "errors": [],
