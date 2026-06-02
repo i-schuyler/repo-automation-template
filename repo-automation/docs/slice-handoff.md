@@ -106,6 +106,7 @@ Failure returns a compact blocker with the failing step, command, exit code, art
 - `codex_timeout_seconds=0` means no hard Codex timeout
 - submit/watch timeout is separate and may default to `900`
 - detached or interactive-only Codex invocations are unsupported unless wrapped by an adapter that provides an exit code and final output file
+- future resumability should preserve deterministic slice-handoff boundaries
 
 Profile examples:
 
