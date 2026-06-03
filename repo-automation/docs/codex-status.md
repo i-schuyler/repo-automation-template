@@ -65,16 +65,17 @@ Field notes:
 
 - `session.session_id` should resolve from session metadata or filename when possible
 - `session.source` and `session.originator` should be populated when present
-- `git.branch`, `git.commit`, and `git.repository_url` should be parsed when available
-- `model.name` and `model.reasoning` should come from turn context when available
-- `tokens` should use the latest token-count event
-- `token_count` is read from `event_msg.payload.info.total_token_usage`
+- `git.branch`, `git.commit`, and `git.repository_url` should be parsed from nested `session_meta.payload.git` first, with flat fallbacks preserved for compatibility
+- `model.name` should come from turn context when available; `model.reasoning` should prefer `turn_context.payload.collaboration_mode.settings.reasoning_effort`, then `turn_context.payload.effort`, then `turn_context.payload.reasoning`
+- `tokens` should expose both current/last-context totals and cumulative totals when present
+- `token_count` is read from `event_msg.payload.info.total_token_usage`, while current-context usage comes from `event_msg.payload.info.last_token_usage`
 - `rate_limits.primary` maps to five-hour status and `rate_limits.secondary` maps to weekly status
-- `context.remaining` should be `model_context_window - total tokens` when available
+- `context.remaining` should be `model_context_window - last_token_usage.total_tokens` when available
 - `context.used_percent` and `context.remaining_percent` should be numeric when calculable
-- `context.remaining_summary` should be compact human-readable text when calculable
-- `limits.five_hour` and `limits.weekly` should include `percent`, `state`, `window_minutes` when known, and thresholds
-- `limits.five_hour.used_percent` and `limits.weekly.used_percent` should be exposed when available
+- `context.remaining_summary` should be compact human-readable text when calculable, otherwise `unknown`
+- context remaining must never go negative; if the current total exceeds the window, set context fields to null and warn
+- `limits.five_hour` and `limits.weekly` should include `used_percent`, `remaining_percent`, `window_minutes`, `state`, and thresholds
+- `limits.five_hour.percent` and `limits.weekly.percent` are compatibility aliases for `used_percent`
 - session id should prefer `payload.session_id`, then `payload.id`, then a UUID-like filename stem, then the filename stem with a warning
 - `limit.state` is `unknown`, `ok`, `warn`, or `block`
 - `warn` means remaining percent is at or below `--warn-remaining-at`
