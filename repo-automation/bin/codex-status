@@ -81,14 +81,26 @@ def emit(payload, rc=0):
         git = payload.get('git', {})
         ctx = payload.get('context', {})
         limits = payload.get('limits', {})
+        tokens = payload.get('tokens', {})
         s.append(f"session: {sess.get('session_id')}")
-        if sess.get('source') or sess.get('originator'):
-            s.append(f"source/originator: {sess.get('source')}/{sess.get('originator')}")
-        s.append(f"model: {model.get('name')}/{model.get('reasoning')}")
-        if git.get('branch') or git.get('commit'):
-            s.append(f"git: {git.get('branch')} {git.get('commit')}")
+        source_bits = [v for v in (sess.get('source'), sess.get('originator')) if v not in (None, '')]
+        if source_bits:
+            s.append(f"source/originator: {'/'.join(source_bits)}")
+        s.append(f"model: {model.get('name')}/{model.get('reasoning') or 'unknown'}")
+        git_bits = [v for v in (git.get('branch'), git.get('commit')) if v not in (None, '')]
+        if git_bits:
+            s.append(f"git: {' '.join(git_bits)}")
+        if tokens.get('current_total') is not None or tokens.get('cumulative_total') is not None:
+            bits = []
+            if tokens.get('current_total') is not None:
+                bits.append(f"current_total={tokens.get('current_total')}")
+            if tokens.get('cumulative_total') is not None:
+                bits.append(f"cumulative_total={tokens.get('cumulative_total')}")
+            s.append("tokens: " + " ".join(bits))
         if ctx.get('remaining_summary'):
             s.append(f"context: {ctx.get('remaining_summary')}")
+        else:
+            s.append("context: unknown")
         five = limits.get('five_hour', {})
         weekly = limits.get('weekly', {})
         if five.get('remaining_percent') is not None:
@@ -149,6 +161,46 @@ def first(d,*keys):
             return d[k]
     return None
 
+def nested(d, *keys):
+    cur = d
+    for key in keys:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+        if cur in (None, ''):
+            return None
+    return cur
+
+def as_number(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+def token_fields(src):
+    if not isinstance(src, dict):
+        src = {}
+    return {
+        'input': first(src, 'input_tokens'),
+        'cached_input': first(src, 'cached_input_tokens'),
+        'output': first(src, 'output_tokens'),
+        'reasoning_output': first(src, 'reasoning_output_tokens'),
+        'total': first(src, 'total_tokens', 'token_count', 'total'),
+    }
+
+def rate_limit_fields(src):
+    if not isinstance(src, dict):
+        src = {}
+    used_percent = first(src, 'used_percent')
+    remaining_percent = first(src, 'remaining_percent')
+    if used_percent is None and isinstance(remaining_percent, (int, float)):
+        used_percent = 100 - remaining_percent
+    if remaining_percent is None and isinstance(used_percent, (int, float)):
+        remaining_percent = 100 - used_percent
+    return {
+        'percent': used_percent,
+        'used_percent': used_percent,
+        'remaining_percent': remaining_percent,
+        'window_minutes': first(src, 'window_minutes'),
+    }
+
 if sfile:
     path=Path(sfile).expanduser()
     if not path.is_file():
@@ -167,25 +219,52 @@ meta = next((payload_of(e) for e in events if e.get('type') == 'session_meta'), 
 turn = next((payload_of(e) for e in reversed(events) if e.get('type') == 'turn_context'), {})
 token_event = next((payload_of(e) for e in reversed(events) if (e.get('type') == 'event_msg' and payload_of(e).get('type') == 'token_count') or e.get('type') == 'token_count'), {})
 token_info = token_event.get('info', token_event)
-token_usage = token_info.get('total_token_usage', token_event.get('usage', token_event))
+token_usage_total = first(token_info, 'total_token_usage') or token_event.get('usage', token_event)
+token_usage_last = first(token_info, 'last_token_usage')
+rate_limits = first(token_event, 'rate_limits') or first(token_info, 'rate_limits') or {}
 
 sidv = first(meta, 'session_id', 'id') or filename_session_id(path)
 if sidv == path.stem:
-    payload_warning = 'session id fell back to filename stem'
+    session_warning = 'session id fell back to filename stem'
 else:
-    payload_warning = None
+    session_warning = None
 model_name = first(turn, 'model_name', 'model')
-reasoning = first(turn, 'reasoning')
+reasoning = first(turn, 'effort') or nested(turn, 'collaboration_mode', 'settings', 'reasoning_effort') or first(turn, 'reasoning')
 repo = Path(repo_root).resolve() if repo_root else None
-tokens_total = first(token_usage, 'total_tokens', 'token_count', 'total')
-ctx_window = first(turn, 'model_context_window', 'context_window') or first(token_info, 'model_context_window')
-remaining = ctx_window - tokens_total if isinstance(ctx_window, (int, float)) and isinstance(tokens_total, (int, float)) else None
-used_percent = (tokens_total / ctx_window * 100) if remaining is not None and ctx_window else None
-remaining_percent = (remaining / ctx_window * 100) if remaining is not None and ctx_window else None
-remaining_summary = f'{int(remaining_percent)}% remaining' if remaining_percent is not None else None
-rate_limits = first(token_info, 'rate_limits') or {}
+current_total = first(token_usage_last, 'total_tokens')
+if current_total is None:
+    current_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
+cumulative_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
+ctx_window = first(token_info, 'model_context_window')
+if ctx_window is None:
+    ctx_window = first(turn, 'model_context_window', 'context_window')
+ctx_window_n = as_number(ctx_window)
+current_total_n = as_number(current_total)
+cumulative_total_n = as_number(cumulative_total)
+context_available = ctx_window_n is not None and current_total_n is not None and current_total_n <= ctx_window_n
+if context_available:
+    remaining = ctx_window_n - current_total_n
+    used_percent = current_total_n / ctx_window_n * 100
+    remaining_percent = remaining / ctx_window_n * 100
+    remaining_summary = f'{int(round(remaining_percent))}% remaining'
+else:
+    remaining = None
+    used_percent = None
+    remaining_percent = None
+    remaining_summary = 'unknown'
 primary_limit = rate_limits.get('primary', {}) if isinstance(rate_limits, dict) else {}
 secondary_limit = rate_limits.get('secondary', {}) if isinstance(rate_limits, dict) else {}
+five_hour = rate_limit_fields(primary_limit)
+weekly = rate_limit_fields(secondary_limit)
+if not context_available and ctx_window_n is not None:
+    if current_total_n is not None and current_total_n > ctx_window_n:
+        context_warning = 'current token total exceeds model context window; current context usage unavailable'
+    elif cumulative_total_n is not None and cumulative_total_n > ctx_window_n:
+        context_warning = 'cumulative token total exceeds model context window; current context usage unavailable'
+    else:
+        context_warning = None
+else:
+    context_warning = None
 
 def limit_state(rem):
     if rem is None: return 'unknown'
@@ -193,24 +272,49 @@ def limit_state(rem):
     if rem <= warn_at: return 'warn'
     return 'ok'
 
+five_hour_state = limit_state(five_hour['remaining_percent'])
+weekly_state = limit_state(weekly['remaining_percent'])
+
 payload = {
     'schema':'repo-automation-codex-status/v1','ok':True,'status':'ok','generated_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
     'codex':{'helper':'repo-automation/bin/codex-status','mode':mode,'version':None},
     'selector':{'kind':skind,'session_id':sid or None,'session_file':str(Path(sfile).expanduser()) if sfile else None,'repo_root':str(repo) if repo else None},
     'session':{'session_id':sidv,'source':first(meta,'source'),'originator':first(meta,'originator'),'resumeable':True},
-    'git':{'repo_root':str(repo) if repo else None,'branch':first(meta,'branch'),'commit':first(meta,'commit'),'repository_url':first(meta,'repository_url')},
+    'git':{
+      'repo_root':str(repo) if repo else None,
+      'branch':nested(meta, 'git', 'branch') or first(meta,'branch'),
+      'commit':nested(meta, 'git', 'commit_hash') or nested(meta, 'git', 'commit') or first(meta,'commit'),
+      'repository_url':nested(meta, 'git', 'repository_url') or first(meta,'repository_url'),
+    },
     'model':{'name':model_name,'reasoning':reasoning,'context_window':ctx_window},
-    'tokens':{'total':tokens_total,'input':first(token_usage,'input_tokens'),'cached_input':first(token_usage,'cached_input_tokens'),'output':first(token_usage,'output_tokens'),'reasoning_output':first(token_usage,'reasoning_output_tokens')},
+    'tokens':{
+      'total':current_total_n,
+      'current_total':current_total_n,
+      'last_total':current_total_n,
+      'cumulative_total':cumulative_total_n,
+      'input':first(token_usage_last,'input_tokens'),
+      'cached_input':first(token_usage_last,'cached_input_tokens'),
+      'output':first(token_usage_last,'output_tokens'),
+      'reasoning_output':first(token_usage_last,'reasoning_output_tokens'),
+      'current':token_fields(token_usage_last),
+      'cumulative':token_fields(token_usage_total),
+    },
     'context':{'remaining':remaining,'used_percent':used_percent,'remaining_percent':remaining_percent,'remaining_summary':remaining_summary},
-    'limits':{'five_hour':{'percent':first(primary_limit,'used_percent'),'used_percent':first(primary_limit,'used_percent'),'remaining_percent':(100 - first(primary_limit,'used_percent')) if first(primary_limit,'used_percent') is not None else first(primary_limit,'remaining_percent'),'window_minutes':first(primary_limit,'window_minutes'),'state':limit_state((100 - first(primary_limit,'used_percent')) if first(primary_limit,'used_percent') is not None else first(primary_limit,'remaining_percent')),'warn_at':warn_at,'block_at':block_at},'weekly':{'percent':first(secondary_limit,'used_percent'),'used_percent':first(secondary_limit,'used_percent'),'remaining_percent':(100 - first(secondary_limit,'used_percent')) if first(secondary_limit,'used_percent') is not None else first(secondary_limit,'remaining_percent'),'window_minutes':first(secondary_limit,'window_minutes'),'state':limit_state((100 - first(secondary_limit,'used_percent')) if first(secondary_limit,'used_percent') is not None else first(secondary_limit,'remaining_percent')),'warn_at':warn_at,'block_at':block_at}},
+    'limits':{'five_hour':{**five_hour,'state':five_hour_state,'warn_at':warn_at,'block_at':block_at},'weekly':{**weekly,'state':weekly_state,'warn_at':warn_at,'block_at':block_at}},
     'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','resume_and_allow_natural_compact':'operator_judgment_required','start_fresh':'available'}},
     'reentry':{'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','resume_and_allow_natural_compact':'operator_judgment_required','start_fresh':'available'}},
     'warnings':[],'errors':[],'next':[]
 }
-if payload_warning:
-    payload['warnings'].append(payload_warning)
 if sidv:
     payload['resume']['resume_commands']=[f"codex resume --include-non-interactive {sidv}", f'codex exec resume {sidv} "<PROMPT>"']
+if payload['model']['reasoning'] in (None, ''):
+    payload['model']['reasoning'] = 'unknown'
+if session_warning:
+    payload['warnings'].append(session_warning)
+if context_warning:
+    payload['warnings'].append(context_warning)
+if current_total_n is not None and cumulative_total_n is not None:
+    payload['tokens']['last_total'] = current_total_n
 
 if check_limits and ('block' in (payload['limits']['five_hour']['state'], payload['limits']['weekly']['state'])):
     payload['ok']=False
