@@ -207,6 +207,12 @@ test_render_json() {
   local kind=""
   local message=""
   local first=1
+  local result=""
+  local code=""
+  local step=""
+  local reason=""
+  local fix=""
+  local first_failure_log=""
 
   while [ "$idx" -lt "${#TEST_EVENT_KIND[@]}" ]; do
     kind="${TEST_EVENT_KIND[$idx]}"
@@ -225,14 +231,46 @@ test_render_json() {
     idx=$((idx + 1))
   done
 
+  result="$overall_status"
+  if [ "$overall_status" = "fail" ] && [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
+    check_name="${TEST_EVENT_CHECK[$TEST_FIRST_FAILURE_INDEX]}"
+    message="${TEST_EVENT_MESSAGE[$TEST_FIRST_FAILURE_INDEX]}"
+    first_failure_log="$TEST_FIRST_FAILURE_LOG"
+    code="named-check-failed"
+    step="${check_name:-${message:-smoke}}"
+    if [ -n "$check_name" ] && [ -n "$message" ] && [ "$message" != "$check_name" ]; then
+      reason="$message"
+      fix="inspect the failing check"
+    elif [ -z "$check_name" ] && [ -n "$first_failure_log" ]; then
+      code="test-wrapper-body-failed"
+      step="${message:-smoke}"
+      reason="${message:-smoke}: wrapper body failed before reporting an actionable check"
+      fix="patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero"
+    elif [ -n "$check_name" ]; then
+      reason="${check_name}: check failed without actionable captured output"
+      fix="patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero"
+    fi
+  fi
+
   printf '{'
+  printf '"schema":"repo-automation-helper-output/v1",'
   printf '"script":"%s",' "$(test_escape_json "$TEST_OUTPUT_SCRIPT")"
   printf '"mode":"json",'
+  printf '"result":"%s",' "$(test_escape_json "$result")"
   printf '"status":"%s",' "$(test_escape_json "$overall_status")"
   printf '"pass_count":%s,' "$pass_count"
   printf '"warn_count":%s,' "$warn_count"
   printf '"fail_count":%s,' "$fail_count"
   printf '"checks":[%s]' "$json_checks"
+  if [ "$overall_status" = "fail" ]; then
+    printf ',"code":"%s"' "$(test_escape_json "$code")"
+    printf ',"step":"%s"' "$(test_escape_json "$step")"
+    printf ',"reason":"%s"' "$(test_escape_json "$reason")"
+    printf ',"fix":"%s"' "$(test_escape_json "$fix")"
+    if [ -n "$first_failure_log" ]; then
+      printf ',"log":"%s"' "$(test_escape_json "$first_failure_log")"
+    fi
+  fi
   if [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
     printf ',"first_failure":{"check":"%s","message":"%s"}' \
       "$(test_escape_json "${TEST_EVENT_CHECK[$TEST_FIRST_FAILURE_INDEX]}")" \
