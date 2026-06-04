@@ -374,6 +374,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/codex-implementation-notes.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/command-shape.md",
       "owner": "repo-automation-template",
       "kind": "doc"

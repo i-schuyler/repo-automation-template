@@ -111,7 +111,7 @@ test_render_first_failure() {
   check_name="${TEST_EVENT_CHECK[$fail_index]}"
 
   if [ -n "$check_name" ] && [ -n "$message" ] && [ "$message" != "$check_name" ]; then
-    repo_auto_print_failure_footer fail "$check_name: $message" >&2
+    repo_auto_print_failure_footer fail "$check_name: $message" fix "inspect the failing check" >&2
     return $?
   fi
 

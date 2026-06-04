@@ -11,18 +11,24 @@ When adding, moving, or deleting files under `repo-automation/`, keep managed-fi
 Do not run tests, commit, push, merge, tag, publish releases, or perform GitHub write operations unless explicitly asked.
 
 For implementation PRs, update `repo-automation/docs/implementation-friction-ledger.md`.
+If material implementation learning occurred, also update `repo-automation/docs/codex-implementation-notes.md`.
 
 Successful implementation output should be exactly this shape unless the prompt asks otherwise:
 
 Implementation complete.
 Validation: required checks passed.
 Friction ledger: <compact ledger line>
+Codex notes: <updated/no material notes>
 
 Do not list changed files or every validation command on success unless scope changed, an expected file was not touched, an unexpected file was touched, a check was skipped, substituted, or failed, or the prompt explicitly asks for detailed reporting.
 
 If material friction occurred, update the relevant ledger item and use a compact final line naming the ID and score delta.
 If no material friction occurred, use:
 `Friction ledger: no material friction; no score changes`
+For Codex implementation notes, use:
+`Codex notes: updated`
+or
+`Codex notes: no material notes`
 
 On failure, keep the blocker-style report:
 - blocker

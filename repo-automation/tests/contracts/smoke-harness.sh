@@ -114,7 +114,12 @@ EOF
     test_fail "smoke harness actionable default should fail"
     status=1
   elif grep -Fxq 'fail: smoke:harness-actionable-check: focused inner failure' "$stderr_file"; then
-    test_pass "smoke harness actionable default failure is compact"
+    if grep -Fxq 'fix: inspect the failing check' "$stderr_file"; then
+      test_pass "smoke harness actionable default failure is compact"
+    else
+      test_fail "smoke harness actionable default failure is compact"
+      status=1
+    fi
   else
     test_fail "smoke harness actionable default failure is compact"
     status=1
@@ -123,7 +128,7 @@ EOF
   if "$silent_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
     test_fail "smoke harness silent quiet should fail"
     status=1
-  elif grep -Fxq 'result=fail' "$stderr_file" && grep -Fxq 'code=named-check-failed' "$stderr_file" && grep -Fxq 'step=smoke:harness-silent-check' "$stderr_file" && grep -Fxq 'reason=smoke:harness-silent-check: check failed without actionable captured output' "$stderr_file" && grep -Fxq 'fix=patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero' "$stderr_file" && grep -Fq 'log=' "$stderr_file" && [ ! -s "$stdout_file" ]; then
+  elif grep -Fxq 'result=fail' "$stderr_file" && grep -Fxq 'code=named-check-failed' "$stderr_file" && grep -Fxq 'step=smoke:harness-silent-check' "$stderr_file" && grep -Fxq 'reason=smoke:harness-silent-check: check failed without actionable captured output' "$stderr_file" && grep -Fxq 'fix=patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero' "$stderr_file" && grep -Eq '^log=.+$' "$stderr_file" && [ ! -s "$stdout_file" ]; then
     test_pass "smoke harness silent quiet failure is actionable"
   else
     test_fail "smoke harness silent quiet failure is actionable"
@@ -133,7 +138,7 @@ EOF
   if "$body_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
     test_fail "smoke harness body quiet should fail"
     status=1
-  elif grep -Fxq 'result=fail' "$stderr_file" && grep -Fxq 'code=test-wrapper-body-failed' "$stderr_file" && grep -Fxq 'step=smoke_harness_main_impl' "$stderr_file" && grep -Fxq 'reason=smoke_harness_main_impl: wrapper body failed before reporting an actionable check' "$stderr_file" && grep -Fxq 'fix=patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero' "$stderr_file" && grep -Fq "log=$TEST_FIRST_FAILURE_LOG" "$stderr_file" && [ ! -s "$stdout_file" ]; then
+  elif grep -Fxq 'result=fail' "$stderr_file" && grep -Fxq 'code=test-wrapper-body-failed' "$stderr_file" && grep -Fxq 'step=smoke_harness_main_impl' "$stderr_file" && grep -Fxq 'reason=smoke_harness_main_impl: wrapper body failed before reporting an actionable check' "$stderr_file" && grep -Fxq 'fix=patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero' "$stderr_file" && grep -Eq '^log=.+$' "$stderr_file" && [ ! -s "$stdout_file" ]; then
     test_pass "smoke harness body quiet failure is actionable"
   else
     test_fail "smoke harness body quiet failure is actionable"
@@ -143,7 +148,7 @@ EOF
   if "$body_wrapper" > "$stdout_file" 2> "$stderr_file"; then
     test_fail "smoke harness body default should fail"
     status=1
-  elif grep -Fxq 'fail: smoke_harness_main_impl: wrapper body failed before reporting an actionable check' "$stderr_file" && grep -Eq '^log:' "$stderr_file" && grep -Fxq 'fix: patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero' "$stderr_file"; then
+  elif grep -Fxq 'fail: smoke_harness_main_impl: wrapper body failed before reporting an actionable check' "$stderr_file" && grep -Eq '^log: .+$' "$stderr_file" && grep -Fxq 'fix: patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero' "$stderr_file"; then
     test_pass "smoke harness body default failure is compact"
   else
     test_fail "smoke harness body default failure is compact"
