@@ -10,6 +10,7 @@
 smoke_contract_names=(
   "smoke:add-doc-pr-contract"
   "smoke:pr-body-check-contract"
+  "smoke:smoke-harness"
   "smoke:pr-create-contract"
   "smoke:report-upstream-contract"
   "smoke:failure-log-contract"
@@ -53,6 +54,7 @@ smoke_contract_names=(
 smoke_contract_scripts=(
   "repo-automation/tests/contracts/add-doc-pr.sh"
   "repo-automation/tests/contracts/pr-body-check.sh"
+  "repo-automation/tests/contracts/smoke-harness.sh"
   "repo-automation/tests/contracts/pr-create.sh"
   "repo-automation/tests/contracts/report-upstream.sh"
   "repo-automation/tests/contracts/failure-log.sh"

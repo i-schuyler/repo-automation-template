@@ -21,6 +21,7 @@ TEST_EVENT_CHECK=()
 TEST_EVENT_MESSAGE=()
 TEST_FIRST_FAILURE_INDEX=-1
 TEST_FIRST_WARNING_INDEX=-1
+TEST_FIRST_FAILURE_LOG=""
 TEST_CLEANUP_OWNER_BASHPID="${BASHPID:-$$}"
 
 # shellcheck source=/dev/null
@@ -100,6 +101,7 @@ test_render_first_failure() {
   local fail_index="$TEST_FIRST_FAILURE_INDEX"
   local message=""
   local check_name=""
+  local fix=""
 
   if [ "$fail_index" -lt 0 ]; then
     return 1
@@ -108,13 +110,24 @@ test_render_first_failure() {
   message="${TEST_EVENT_MESSAGE[$fail_index]}"
   check_name="${TEST_EVENT_CHECK[$fail_index]}"
 
-  if [ -n "$check_name" ] && [ -n "$message" ]; then
+  if [ -n "$check_name" ] && [ -n "$message" ] && [ "$message" != "$check_name" ]; then
     repo_auto_print_failure_footer fail "$check_name: $message" >&2
     return $?
   fi
 
+  if [ -z "$check_name" ] && [ -n "$TEST_FIRST_FAILURE_LOG" ]; then
+    fix="patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero"
+    repo_auto_print_failure_footer fail "$message: wrapper body failed before reporting an actionable check" log "$TEST_FIRST_FAILURE_LOG" fix "$fix" >&2
+    return $?
+  fi
+
   if [ -n "$check_name" ]; then
-    repo_auto_print_failure_footer fail "$check_name" >&2
+    fix="patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero"
+    if [ -n "$TEST_FIRST_FAILURE_LOG" ]; then
+      repo_auto_print_failure_footer fail "$check_name: check failed without actionable captured output" log "$TEST_FIRST_FAILURE_LOG" fix "$fix" >&2
+    else
+      repo_auto_print_failure_footer fail "$check_name: check failed without actionable captured output" fix "$fix" >&2
+    fi
     return $?
   fi
 
@@ -124,6 +137,44 @@ test_render_first_failure() {
     printf 'fail\n' >&2
   fi
   return $?
+}
+
+test_render_quiet_failure() {
+  local fail_index="$TEST_FIRST_FAILURE_INDEX"
+  local message=""
+  local check_name=""
+  local fix=""
+  local code="named-check-failed"
+
+  if [ "$fail_index" -lt 0 ]; then
+    return 1
+  fi
+
+  message="${TEST_EVENT_MESSAGE[$fail_index]}"
+  check_name="${TEST_EVENT_CHECK[$fail_index]}"
+
+  fix="patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero"
+  printf 'result=fail\n' >&2
+  if [ -z "$check_name" ] && [ -n "$TEST_FIRST_FAILURE_LOG" ]; then
+    code="test-wrapper-body-failed"
+  fi
+  printf 'code=%s\n' "$code" >&2
+  printf 'step=%s\n' "${check_name:-${message:-smoke}}" >&2
+  if [ -n "$check_name" ] && [ -n "$message" ] && [ "$message" != "$check_name" ]; then
+    printf 'reason=%s\n' "$message" >&2
+    printf 'fix=%s\n' "inspect the failing check" >&2
+  elif [ -z "$check_name" ] && [ -n "$TEST_FIRST_FAILURE_LOG" ]; then
+    printf 'reason=%s\n' "${message:-smoke}: wrapper body failed before reporting an actionable check" >&2
+    printf 'fix=%s\n' "patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero" >&2
+    printf 'log=%s\n' "$TEST_FIRST_FAILURE_LOG" >&2
+  else
+    printf 'reason=%s\n' "${check_name:-smoke}: check failed without actionable captured output" >&2
+    printf 'fix=%s\n' "$fix" >&2
+    if [ -n "$TEST_FIRST_FAILURE_LOG" ]; then
+      printf 'log=%s\n' "$TEST_FIRST_FAILURE_LOG" >&2
+    fi
+  fi
+  return 0
 }
 
 test_extract_first_actionable_failure() {
@@ -215,7 +266,7 @@ test_finish_output() {
       ;;
     quiet)
       if [ "$status" -ne 0 ]; then
-        test_render_first_failure || printf 'fail\n'
+        test_render_quiet_failure || printf 'fail\n'
       fi
       ;;
     *)
@@ -244,6 +295,7 @@ test_run_named_check() {
   TEST_CURRENT_CHECK="$check_name"
   TEST_CURRENT_CHECK_REPORTED=0
   TEST_CURRENT_CHECK_FAILED=0
+  TEST_FIRST_FAILURE_LOG=""
     export TEST_CURRENT_CHECK
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
@@ -287,10 +339,11 @@ test_run_named_check() {
       preserved_capture_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-automation-template-named-check.XXXXXX")" || preserved_capture_file="$capture_file"
       cp -- "$capture_file" "$preserved_capture_file" >/dev/null 2>&1 || preserved_capture_file="$capture_file"
       failure_line="$(test_extract_first_actionable_failure "$preserved_capture_file" || true)"
+      TEST_FIRST_FAILURE_LOG="$preserved_capture_file"
       if [ -n "$failure_line" ]; then
         test_fail "$failure_line"
       else
-        test_fail "$TEST_CURRENT_CHECK (log: $preserved_capture_file)"
+        test_fail "$TEST_CURRENT_CHECK"
       fi
     fi
   fi
