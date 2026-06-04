@@ -374,6 +374,11 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/codex-implementation-notes.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/command-shape.md",
       "owner": "repo-automation-template",
       "kind": "doc"
@@ -720,6 +725,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/pr-body-check.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/smoke-harness.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },

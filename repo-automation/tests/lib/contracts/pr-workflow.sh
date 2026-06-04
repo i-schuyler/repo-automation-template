@@ -1078,7 +1078,7 @@ EOF
     ); then
       test_fail "pr-body-check wrapper quiet failure reports only the first actionable failure"
       status=1
-    elif [ ! -s "$wrapper_failure_stdout" ] && [ "$(wc -l < "$wrapper_failure_stderr")" -eq 1 ] && grep -Fxq 'fail: smoke:pr-body-check-contract: forced wrapper failure fixture' "$wrapper_failure_stderr"; then
+    elif smoke_assert_quiet_failure_envelope "$wrapper_failure_stderr" "named-check-failed" "smoke:pr-body-check-contract" "forced wrapper failure fixture" "inspect the failing check" && [ ! -s "$wrapper_failure_stdout" ]; then
       test_pass "pr-body-check wrapper quiet failure reports only the first actionable failure"
     else
       test_fail "pr-body-check wrapper quiet failure reports only the first actionable failure"

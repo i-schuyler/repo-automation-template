@@ -111,14 +111,16 @@ smoke_run_focused_contract_wrapper() {
       if [ -n "$failure_line" ]; then
         test_fail "$failure_line"
       else
-        test_fail "$smoke_wrapper_script"
+        # shellcheck disable=SC2034 # Shared by test-common.sh failure renderers.
+        TEST_FIRST_FAILURE_LOG="$smoke_capture_file"
+        test_fail "$body_function"
       fi
     fi
     smoke_capture_cleanup "$status" || return 1
   fi
 
   if [ "$status" -ne 0 ] && [ "$TEST_FIRST_FAILURE_INDEX" -lt 0 ]; then
-    test_fail "$smoke_wrapper_script"
+    test_fail "$body_function"
   fi
 
   smoke_finish_output "$status"
