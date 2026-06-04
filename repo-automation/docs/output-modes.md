@@ -335,3 +335,187 @@ fix: use pr-create or narrow changed files
 Rules:
 
 - `--dry-run` and `--plan` should not perform writes.
+
+- Output should show only the planned action, blocked reason, or next fix.
+- Do not print full internal decision trees by default.
+
+## Write/action commands
+
+PR created or reused:
+
+```text
+https://github.com/i-schuyler/repo-automation-template/pull/53
+```
+
+PR merge completed:
+
+```text
+merged: #53
+```
+
+PR merge blocked:
+
+```text
+fail: PR checks not green
+pr: #53
+checks: red
+fix: repo-automation/bin/pr-finish --watch --diagnose-on-fail --pr=53
+```
+
+Write blocked by dirty tree:
+
+```text
+fail: dirty worktree
+fix: commit, stash, or revert changes first
+```
+
+Rules:
+
+- Successful creation commands may output only the URL or resulting path.
+- Successful destructive or irreversible commands should print the completed action.
+- Blocked writes must print the blocker and smallest safe fix.
+
+## Argument and flag errors
+
+All helpers should use the same flag-error output shape.
+
+Known value flag passed as `--flag value`:
+
+```text
+fail: flag format not accepted
+flag: --pr
+fix: use --pr=52
+```
+
+Unknown flag:
+
+```text
+fail: unknown flag
+flag: --whatever
+fix: run <script> --help
+```
+
+Missing value:
+
+```text
+fail: missing flag value
+flag: --pr
+fix: use --pr=<number|current|latest>
+```
+
+Empty value:
+
+```text
+fail: empty flag value
+flag: --branch
+fix: use --branch=<name>
+```
+
+Rules:
+
+- `--flag value` is an error, not a warning, alias, fallback, or transition behavior.
+- Prefer helper-specific fixes when a valid value set is known.
+- Use the exact flag spelling in the `flag:` line.
+
+## Help output
+
+Help should remain compact and consistent.
+
+Example:
+
+```text
+Usage: repo-automation/bin/run-tests [--summary] [--audit] [--changed] [--quiet] [--explain] [--json] [--help]
+```
+
+Rules:
+
+- Help may include a compact options list.
+- Help must document only accepted syntax.
+- Help must not document `--flag value` for value flags.
+
+## CI enforcement
+
+Output contracts should be enforced in CI with exact stdout/stderr tests.
+
+Required enforcement areas:
+
+- default success prints only `pass` or the documented compact result;
+- `--quiet` prints nothing on success;
+- `--quiet` prints only first actionable failure on failure;
+- warning-only output prints warning only;
+- JSON modes print valid JSON only to stdout;
+- umbrella scripts do not print child pass/status chatter;
+- artifact-producing commands print path-only success where documented;
+- known bad flag syntax produces the standard flag error;
+- help output does not document stale flag shapes.
+
+Prefer focused contract files under:
+
+```text
+repo-automation/tests/contracts/
+```
+
+## Examples by command type
+
+Generic check scripts:
+
+```text
+repo-automation/bin/run-tests --changed --quiet
+repo-automation/bin/repo-doctor --check=docs --quiet
+repo-automation/tests/docs-check.sh
+```
+
+Expected clean output for default mode:
+
+```text
+pass
+```
+
+Expected clean output for quiet mode:
+
+```text
+```
+
+Artifact scripts:
+
+```text
+repo-automation/bin/post-codex-packet --name=review
+repo-automation/bin/evidence-bundle --pr=current --ci-failed
+repo-automation/bin/repo-zip --name=review
+```
+
+Expected clean output:
+
+```text
+/path/to/artifact.zip
+```
+
+Status scripts:
+
+```text
+repo-automation/bin/status-packet
+repo-automation/bin/touched-files --base=main --head=HEAD
+```
+
+Expected clean output may be:
+
+```text
+clean
+```
+
+or:
+
+```text
+none
+```
+
+## Non-goals
+
+This contract does not require:
+
+- verbose progress output;
+- full local audit output on phone;
+- child pass lines from umbrella scripts;
+- log paths on every successful run;
+- dual human and JSON output in the same stream;
+- accepting alternate value-flag syntax.
