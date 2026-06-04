@@ -3,19 +3,18 @@
 Status: approved draft canon
 Repo target: `repo-automation-template`
 Intended repo path after approval: `repo-automation/docs/output-modes.md`
-Purpose: define the newest quiet-first output contract for repo automation helpers.
+Purpose: define the repo-wide output-mode gates for human, quiet, JSON, and explain output.
 
 This doc is the broader output-mode guide. The exit-code and stream contract lives in [Exit-Code / Stream Contract](exit-code-stream-contract.md).
 
-This document replaces older output-mode language. The newest design is the only design.
+## Core rules
 
-## Core rule
-
-Every repo automation helper should output the least information that is still useful.
+- Default output is the least information helpful for a human.
+- `--quiet` is the least information helpful for a machine or low-token agent caller.
+- `--json` is detailed structured machine output.
+- `--explain` is detailed step-by-step human/operator output.
 
 Success should be quiet. Failure should be actionable. Diagnostics should be narrow.
-
-Do not make the user hunt for the important line.
 
 ## Status words
 
@@ -32,47 +31,129 @@ Canonical human status words are lowercase:
 
 Use lowercase because it is consistent, easy to snapshot-test, easy to parse, and visually calm.
 
-Do not choose status-word capitalization based on assumed token savings.
+## Approved gates
 
-## Output postures
-
-Every public helper should fit one of these output postures.
-
-| Posture | Purpose | Success output | Failure output |
+| Gate | Meaning | Success | Failure |
 | --- | --- | --- | --- |
-| Default human compact | readable phone-friendly output | `pass`, artifact path, or compact result | first actionable failure plus fix |
-| `--quiet` | lowest-noise human-readable output | silent | first actionable failure only |
-| `--json` | canonical machine-readable compact result | valid JSON only on stdout | valid JSON only on stdout |
-| `--explain` | detailed human/operator output | details plus required tail summary when the helper supports it | details plus actionable failures |
+| Default human compact | minimal human-readable result | compact pass/result | compact fail plus next action |
+| `--quiet` | low-token machine/agent-readable envelope | empty stdout, empty stderr, rc=0 | single minimal envelope on stderr |
+| `--json` | detailed machine output | valid JSON only on stdout | valid JSON only on stdout |
+| `--explain` | detailed human/operator output | progress plus final summary where supported | detailed actionable failure |
 
-For Codex or other agent checks, prefer `--quiet` for minimal human-readable checks. Use `--json` only when structured parsing is needed. Use `--explain` when a person needs the full operator view.
+## Quiet Diagnostic Envelope v1
+
+`--quiet` failures use a single minimal line-oriented envelope on stderr.
+Stdout stays empty unless a helper explicitly documents a machine-primary result.
+
+Required fields:
+
+- `result=fail`
+- `code=<stable-lowercase-dash-code>`
+- `step=<stable-step-or-check>`
+- `reason=<short-one-line-reason>`
+- `fix=<short-next-action>`
+
+Optional fields when needed:
+
+- `path=<relevant-path>`
+- `artifact=<relevant-artifact-path>`
+- `log=<relevant-log-path>`
+- `excerpt=<single-line-or-short-excerpt>`
+
+Rules:
+
+- Do not print multiple failures in quiet mode.
+- Do not print child progress.
+- Do not use JSON in quiet mode.
+- Do not mix human prose into the envelope.
+
+Example:
+
+```text
+result=fail
+code=missing-required-heading
+step=pr-body-check
+reason=missing required heading: ## Scope
+fix=use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template
+```
+
+## Default human compact failure
+
+Default failure output stays compact and human-readable:
+
+```text
+fail: <step/check>: <reason>
+excerpt: <smallest useful excerpt when needed>
+artifact: <path only when useful>
+fix: <next action>
+```
+
+Rules:
+
+- Include only the next helpful artifact or log path.
+- Keep child-script status out of umbrella output.
+- Prefer one concise failure plus one fix.
+
+## JSON
+
+`--json` is detailed machine output, not “more detailed quiet.”
+
+Rules:
+
+- stdout must be valid JSON only.
+- stderr may contain fatal wrapper errors only when JSON cannot be produced.
+- Include `schema`, `result`, `code` on failure, `step`, `reason`, `fix`, and richer artifacts/children when relevant.
+- JSON should carry the same core actionable facts as the compact result, without chatter.
+
+## Explain
+
+`--explain` is detailed human/operator output.
+
+Rules:
+
+- Show progress, summaries, and relevant artifact paths.
+- May include multiple findings.
+- Must stay actionable.
+- Operator-facing helpers should end with a `===== FINAL SUMMARY =====` block when supported.
+
+## Output-mode conflict rules
+
+Unless a helper explicitly documents an exception, output modes are mutually exclusive.
+
+- `--quiet --json` -> compact usage error
+- `--quiet --explain` -> compact usage error
+- `--json --explain` -> compact usage error
+
+Do not guess precedence.
 
 ## Stream rules
 
 - Default human success output goes to stdout.
-- Artifact paths go to stdout.
+- Artifact paths go to stdout when they are the next thing a human should inspect.
 - Human warnings and failures go to stderr.
 - `--json` writes valid JSON only to stdout.
 - Non-JSON diagnostics must not mix into JSON stdout.
 - `--help` writes usage to stdout.
 - `--packet` is an action modifier, not an output mode.
 
-If a script cannot produce valid JSON, it must fail outside JSON mode with a compact human failure instead of printing partial JSON.
+## Umbrella and artifact rules
 
-## Default human compact mode
+Umbrella scripts run multiple checks or child scripts.
 
-Default output prints only the final useful result.
+Rules:
 
-Successful generic check:
+- Default: include an artifact/log path only when it is the next thing a human should inspect.
+- Quiet: include at most one `artifact=` or `log=` unless multiple paths are required to classify the failure.
+- JSON: include full artifact/log maps.
+- Explain: include all relevant paths and summaries.
+- Umbrella quiet failure should identify `result`, `code`, `step`, child when applicable, `reason`, one most relevant artifact/log if needed, and `fix`.
+
+## Default human compact examples
+
+Success:
 
 ```text
 pass
-```
-
-Warning-only run:
-
-```text
-warn: gh unavailable; skipped GitHub settings readiness
 ```
 
 Failure:
@@ -82,170 +163,6 @@ fail: docs-check: broken link in docs/INDEX.md
 excerpt: repo-automation/docs/command-shape.md not found
 fix: add the doc or update docs/INDEX.md
 ```
-
-Rules:
-
-- Do not print every passing check.
-- Do not print child-script status from umbrella scripts.
-- Do not print decorative headings.
-- Shared failure footers use lowercase `fail`, `log`, `excerpt`, and `fix` labels in that order when present; omit empty fields.
-- Do not print a log path on clean success unless the command's purpose is to create an artifact or log.
-
-## Quiet mode
-
-`--quiet` is the lowest-noise human-readable mode.
-
-Successful quiet run:
-
-```text
-```
-
-Failure in quiet mode:
-
-```text
-fail: shellcheck missing
-fix: pkg install shellcheck
-```
-
-Warning-only quiet run:
-
-```text
-warn: gh unavailable; skipped GitHub settings readiness
-```
-
-Rules:
-
-- Print nothing when all checks pass.
-- Print warning-only output when there are warnings but no failures.
-- Print only the first actionable failure when a failure occurs.
-- Do not print child-script status from umbrella scripts.
-- Do not print log paths unless the log path is required for the smallest next action.
-
-## Explain mode
-
-`--explain` is the detailed human/operator escape hatch.
-
-Use it when a person needs all relevant warnings, failures, summaries, artifact paths, or log paths.
-
-Example:
-
-```text
-fail: 1 blocker, 1 warning
-blocker: docs-check: broken link in docs/INDEX.md
-warning: gh unavailable; skipped GitHub settings readiness
-log: ${TMPDIR:-$HOME/.cache}/repo-automation-template/repo-doctor-2026-05-14T215100.log
-```
-
-Rules:
-
-- `--explain` may include pass/warn/fail counts.
-- `--explain` may include multiple findings.
-- `--explain` still must not dump long raw logs by default.
-- If a long log matters, print the exact log path and the smallest useful excerpt.
-- For operator-facing helpers, `--explain` must end with a `===== FINAL SUMMARY =====` block.
-
-`repo-automation/bin/post-codex-review` is an operator handoff helper, so its default output is also the compact `===== FINAL SUMMARY =====` block.
-`repo-automation/bin/status-packet --explain` is the operator handoff form for the repo snapshot helper.
-
-## FINAL SUMMARY handoff block
-
-Some operator-facing helpers end `--explain` with a `===== FINAL SUMMARY =====` block.
-It is a compact copy/paste block and must stay within 25 lines.
-Local workflows may add one line immediately after the start marker and one line immediately before the end marker by setting `FINAL_SUMMARY_AFTER_START_HOOK` and `FINAL_SUMMARY_BEFORE_END_HOOK` in `.repo-automation.local.conf`.
-
-Example:
-
-```text
-===== FINAL SUMMARY =====
-branch=feature/demo
-rc=0
-output_lines=8
-url_or_stop=https://github.com/org/repo/pull/123
-status_count=2
-===== END =====
-```
-
-## JSON modes
-
-Scripts may expose `--json`, `--machine-json`, or both.
-Prefer `--json` as the canonical compact machine mode.
-Keep `--machine-json` only when a helper already exposes it, and document it as legacy or specialized machine output.
-
-Rules:
-
-- stdout must be valid JSON only.
-- stderr may contain fatal wrapper errors only when JSON cannot be produced.
-- default `--json` means a compact actionable result, not verbose diagnostics.
-- deeper JSON levels are opt-in and helper-documented.
-- `--json-level=fail` includes failures only.
-- `--json-level=warn` includes failures and warnings.
-- `--json-level=all` includes all reported checks.
-
-Minimal failure JSON shape:
-
-```json
-{"status":"fail","first_failure":{"check":"docs","reason":"broken link in docs/INDEX.md","fix":"add the doc or update docs/INDEX.md"}}
-```
-
-JSON output shape should be documented per helper when that helper has JSON mode.
-
-If JSON shape changes, update docs and tests in the same slice.
-
-JSON output should carry the same core actionable facts as the compact/final summary result, without verbose logs or progress chatter.
-
-## Logs
-
-Detailed logs may still be created, but compact output should not advertise logs on every successful run.
-
-Default log root:
-
-```text
-${TMPDIR:-$HOME/.cache}/repo-automation-template
-```
-
-Print a log path only when:
-
-- a failure or warning requires it;
-- the user requested log output;
-- the command's purpose is to create a log or evidence artifact;
-- `--explain` is used.
-
-Logs must not include secrets.
-
-## Umbrella scripts
-
-Umbrella scripts run multiple checks or child scripts.
-
-Examples:
-
-- `repo-automation/bin/run-tests --audit`
-- `repo-automation/bin/run-tests --changed`
-- `repo-automation/bin/repo-doctor --full`
-- `repo-automation/bin/repo-doctor --quick`
-- `repo-automation/bin/evidence-bundle --post-codex`
-- `repo-automation/bin/evidence-bundle --include-repo-zip`
-- `repo-automation/bin/repo-flow --watch --diagnose-on-fail`
-
-All children pass:
-
-```text
-pass
-```
-
-First child failure:
-
-```text
-fail: run-tests: smoke:pr-create
-excerpt: expected PR body file validation to block missing file
-fix: inspect repo-automation/tests/contracts/pr-create.sh
-```
-
-Rules:
-
-- Do not print one line per passing child.
-- Stop UI output at the first actionable failure.
-- Preserve full child details in logs, JSON, or `--explain` when useful.
-- Keep umbrella success output as compact as any single script.
 
 ## Contract-test wrappers
 
@@ -418,6 +335,7 @@ fix: use pr-create or narrow changed files
 Rules:
 
 - `--dry-run` and `--plan` should not perform writes.
+
 - Output should show only the planned action, blocked reason, or next fix.
 - Do not print full internal decision trees by default.
 

@@ -609,12 +609,16 @@ smoke_check_pr_body_check_contract() {
   local order_body="$smoke_test_base/pr-body-check-order.md"
   local passive_body="$smoke_test_base/pr-body-check-passive.md"
   local missing_body="$smoke_test_base/pr-body-check-missing.md"
+  local missing_scope_body="$smoke_test_base/pr-body-check-missing-scope.md"
   local missing_heading_body="$smoke_test_base/pr-body-check-missing-heading.md"
   local directory_body="$smoke_test_base/pr-body-check-directory"
   local helper_help="$smoke_test_base/pr-body-check-help-$$.txt"
   local helper_template="$smoke_test_base/pr-body-check-template.out"
   local helper_stdout="$smoke_test_base/pr-body-check.out"
   local helper_stderr="$smoke_test_base/pr-body-check.err"
+  local helper_json="$smoke_test_base/pr-body-check-json.out"
+  local helper_json_stderr="$smoke_test_base/pr-body-check-json.err"
+  local invalid_json_body="$smoke_test_base/pr-body-check-invalid-json.md"
   local wrapper_help="$smoke_test_base/pr-body-check-wrapper-help.txt"
   local wrapper_json="$smoke_test_base/pr-body-check-wrapper.json"
   local wrapper_stdout="$smoke_test_base/pr-body-check-wrapper.out"
@@ -713,6 +717,83 @@ None
 ## Re-entry hint
 
 Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+EOF
+
+  cat > "$missing_scope_body" <<'EOF'
+## What changed
+
+- Missing scope fixture.
+
+## What did not change
+
+- No unrelated files.
+
+## Verification status
+
+- pr-body-check contract smoke check
+
+## User-visible behavior changes
+
+None
+
+## Stop conditions encountered
+
+None
+
+## Re-entry hint
+
+Use the PR URL, watch CI, and finish with pr-finish after checks pass.
+EOF
+
+  cat > "$invalid_json_body" <<'EOF'
+## Scope
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## What changed
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## What did not change
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## Verification status
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## User-visible behavior changes
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## Stop conditions encountered
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
+
+## Re-entry hint
+
+Branch: feature/demo
+Base: main
+Ahead: 1
+Behind: 0
 EOF
 
   cat > "$scaffold_body" <<'EOF'
@@ -869,7 +950,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --help > "$helper_help"
-  ) && grep -Fq -- '--body-file=<path>' "$helper_help" && grep -Fq -- '--quiet' "$helper_help" && grep -Fq -- '--print-template' "$helper_help"; then
+  ) && grep -Fq -- '--body-file=<path>' "$helper_help" && grep -Fq -- '--quiet' "$helper_help" && grep -Fq -- '--json' "$helper_help" && grep -Fq -- '--print-template' "$helper_help"; then
     test_pass "pr-body-check help shows strict syntax"
   else
     test_fail "pr-body-check help shows strict syntax"
@@ -904,10 +985,59 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --quiet --body-file="$valid_body" > "$helper_stdout" 2> "$helper_stderr"
-  ) && [ ! -s "$helper_stdout" ] && [ ! -s "$helper_stderr" ]; then
+  ) && smoke_assert_quiet_success_empty "$helper_stdout" "$helper_stderr"; then
     test_pass "pr-body-check quiet success is silent"
   else
     test_fail "pr-body-check quiet success is silent"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --quiet --body-file="$missing_scope_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check quiet failure uses the quiet envelope"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$helper_stderr" "missing-required-heading" "pr-body-check" "missing required heading: ## Scope" "use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template" && [ ! -s "$helper_stdout" ]; then
+    test_pass "pr-body-check quiet failure uses the quiet envelope"
+  else
+    test_fail "pr-body-check quiet failure uses the quiet envelope"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --json --body-file="$valid_body" > "$helper_json" 2> "$helper_json_stderr"
+  ) && [ ! -s "$helper_json_stderr" ] && python3 -m json.tool "$helper_json" >/dev/null && smoke_json_assert "$helper_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "pr-body-check" and data.get("mode") == "json" and data.get("result") == "pass" and data.get("body_file", "").endswith("pr-body-check-valid.md")'; then
+    test_pass "pr-body-check json output is valid"
+  else
+    test_fail "pr-body-check json output is valid"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --json --body-file="$invalid_json_body" > "$helper_json" 2> "$helper_json_stderr"
+  ); then
+    test_fail "pr-body-check json failure includes schema and result"
+    status=1
+  elif [ ! -s "$helper_json_stderr" ] && python3 -m json.tool "$helper_json" >/dev/null && smoke_json_assert "$helper_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "pr-body-check" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("code") == "pr-body-check-failed" and data.get("step") == "pr-body-check" and data.get("reason") == "body is placeholder-only" and data.get("fix") == "replace branch/base/ahead/behind scaffolding with real PR body content" and data.get("path", "").endswith("pr-body-check-invalid-json.md")'; then
+    test_pass "pr-body-check json failure includes schema and result"
+  else
+    test_fail "pr-body-check json failure includes schema and result"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --quiet --json --body-file="$valid_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects quiet json conflict"
+    status=1
+  elif grep -Fxq 'fail: incompatible flag combination: --quiet and --json' "$helper_stderr" && grep -Fxq 'fix: use one output mode at a time' "$helper_stderr" && [ ! -s "$helper_stdout" ]; then
+    test_pass "pr-body-check rejects quiet json conflict"
+  else
+    test_fail "pr-body-check rejects quiet json conflict"
     status=1
   fi
 
@@ -1083,7 +1213,7 @@ EOF
     status=1
   fi
 
-  rm -f "$valid_body" "$template_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_heading_body" "$helper_help" "$helper_template" "$helper_stdout" "$helper_stderr" >/dev/null 2>&1 || true
+  rm -f "$valid_body" "$template_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_scope_body" "$missing_heading_body" "$invalid_json_body" "$helper_help" "$helper_template" "$helper_stdout" "$helper_stderr" "$helper_json" "$helper_json_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 

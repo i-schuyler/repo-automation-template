@@ -184,6 +184,36 @@ PY
   return 1
 }
 
+smoke_assert_quiet_success_empty() {
+  local stdout_file="$1"
+  local stderr_file="$2"
+
+  [ ! -s "$stdout_file" ] && [ ! -s "$stderr_file" ]
+}
+
+smoke_assert_quiet_failure_envelope() {
+  local stderr_file="$1"
+  local expected_code="$2"
+  local expected_step="$3"
+  local expected_reason="$4"
+  local expected_fix="$5"
+  local filtered_stderr_file=""
+
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/smoke-quiet-envelope.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+  if [ "$(wc -l < "$filtered_stderr_file" | tr -d '[:space:]')" = "5" ] &&
+    grep -Fxq 'result=fail' "$filtered_stderr_file" &&
+    grep -Fxq "code=$expected_code" "$filtered_stderr_file" &&
+    grep -Fxq "step=$expected_step" "$filtered_stderr_file" &&
+    grep -Fxq "reason=$expected_reason" "$filtered_stderr_file" &&
+    grep -Fxq "fix=$expected_fix" "$filtered_stderr_file"; then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+  return 1
+}
+
 smoke_extract_final_summary_block() {
   local summary_file="$1"
 

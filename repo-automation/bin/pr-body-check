@@ -12,16 +12,68 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 }
 
 pr_body_check_quiet=0
+pr_body_check_json=0
 pr_body_check_body_file=""
 pr_body_check_print_template=0
 
 pr_body_check_usage() {
-  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--print-template] [--body-file=<path>]\n'
+  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--json] [--print-template] [--body-file=<path>]\n'
 }
 
 pr_body_check_fail() {
   printf 'fail: %s\n' "$1" >&2
   printf 'fix: %s\n' "$2" >&2
+}
+
+pr_body_check_json_fail() {
+  python3 - "$@" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import sys
+
+payload = {
+    "schema": "repo-automation-helper-output/v1",
+    "script": "pr-body-check",
+    "mode": "json",
+    "result": "fail",
+    "code": sys.argv[1],
+    "step": sys.argv[2],
+    "reason": sys.argv[3],
+    "fix": sys.argv[4],
+}
+if len(sys.argv) > 5 and sys.argv[5]:
+    payload["path"] = sys.argv[5]
+if len(sys.argv) > 6 and sys.argv[6]:
+    payload["artifact"] = sys.argv[6]
+if len(sys.argv) > 7 and sys.argv[7]:
+    payload["log"] = sys.argv[7]
+if len(sys.argv) > 8 and sys.argv[8]:
+    payload["excerpt"] = sys.argv[8]
+print(json.dumps(payload, ensure_ascii=False))
+PY
+}
+
+pr_body_check_quiet_fail() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local path="${5:-}"
+  local artifact="${6:-}"
+  local log="${7:-}"
+  local excerpt="${8:-}"
+
+  printf 'result=fail\n' >&2
+  printf 'code=%s\n' "$code" >&2
+  printf 'step=%s\n' "$step" >&2
+  printf 'reason=%s\n' "$reason" >&2
+  printf 'fix=%s\n' "$fix" >&2
+  [ -n "$path" ] && printf 'path=%s\n' "$path" >&2
+  [ -n "$artifact" ] && printf 'artifact=%s\n' "$artifact" >&2
+  [ -n "$log" ] && printf 'log=%s\n' "$log" >&2
+  [ -n "$excerpt" ] && printf 'excerpt=%s\n' "$excerpt" >&2
 }
 
 pr_body_check_print_template_body() {
@@ -153,6 +205,9 @@ pr_body_check_main() {
       --quiet)
         pr_body_check_quiet=1
         ;;
+      --json)
+        pr_body_check_json=1
+        ;;
       --print-template)
         pr_body_check_print_template=1
         ;;
@@ -192,6 +247,11 @@ pr_body_check_main() {
     return 0
   fi
 
+  if [ "$pr_body_check_json" -eq 1 ] && [ "$pr_body_check_quiet" -eq 1 ]; then
+    pr_body_check_fail "incompatible flag combination: --quiet and --json" "use one output mode at a time"
+    return 1
+  fi
+
   if [ -z "$pr_body_check_body_file" ]; then
     pr_body_check_fail "missing required --body-file" "use --body-file=<path>"
     return 1
@@ -220,15 +280,43 @@ pr_body_check_main() {
   validation_output="$(pr_body_check_validate "$pr_body_check_body_file" 2>/dev/null)" || command_status=$?
   if [ "$command_status" -ne 0 ]; then
     if [ -n "$validation_output" ]; then
-      pr_body_check_fail "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
+      failure_code="pr-body-check-failed"
+      if printf '%s\n' "$validation_output" | sed -n '1p' | grep -Fxq 'missing required heading: ## Scope' 2>/dev/null || printf '%s\n' "$validation_output" | sed -n '1p' | grep -Fq 'missing required heading: '; then
+        failure_code="missing-required-heading"
+      fi
+      if [ "$pr_body_check_json" -eq 1 ]; then
+        pr_body_check_json_fail "$failure_code" "pr-body-check" "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')" "$pr_body_check_body_file" "" "" ""
+      elif [ "$pr_body_check_quiet" -eq 1 ]; then
+        pr_body_check_quiet_fail "$failure_code" "pr-body-check" "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
+      else
+        pr_body_check_fail "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
+      fi
     else
-      pr_body_check_fail "PR body validation failed" "run repo-automation/bin/pr-body-check --help"
+      if [ "$pr_body_check_json" -eq 1 ]; then
+        pr_body_check_json_fail "pr-body-check-failed" "pr-body-check" "PR body validation failed" "run repo-automation/bin/pr-body-check --help" "$pr_body_check_body_file" "" "" ""
+      elif [ "$pr_body_check_quiet" -eq 1 ]; then
+        pr_body_check_quiet_fail "pr-body-check-failed" "pr-body-check" "PR body validation failed" "run repo-automation/bin/pr-body-check --help"
+      else
+        pr_body_check_fail "PR body validation failed" "run repo-automation/bin/pr-body-check --help"
+      fi
     fi
     return 1
   fi
 
-  if [ "$pr_body_check_quiet" -eq 0 ]; then
+  if [ "$pr_body_check_quiet" -eq 0 ] && [ "$pr_body_check_json" -eq 0 ]; then
     printf 'pass\n'
+  elif [ "$pr_body_check_json" -eq 1 ]; then
+    python3 - "$pr_body_check_body_file" <<'PY'
+from pathlib import Path
+import json, sys
+print(json.dumps({
+    "schema": "repo-automation-helper-output/v1",
+    "script": "pr-body-check",
+    "mode": "json",
+    "result": "pass",
+    "body_file": str(Path(sys.argv[1])),
+}, ensure_ascii=False))
+PY
   fi
 
   return 0
