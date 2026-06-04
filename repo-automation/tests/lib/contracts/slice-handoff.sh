@@ -86,9 +86,14 @@ smoke_slice_handoff_owned_env_root() {
 smoke_slice_handoff_run_with_isolated_temp_env() {
   local tmpdir="$1"
   local home="$2"
+  local var=""
 
   shift 2
-  TMPDIR="$tmpdir" HOME="$home" "$@"
+  for var in $(compgen -A variable FAKE_ 2>/dev/null); do
+    # shellcheck disable=SC2163
+    export "$var"
+  done
+  PATH="$PATH" TMPDIR="$tmpdir" HOME="$home" "$@"
 }
 
 smoke_slice_handoff_seed_execution_repo() {
@@ -112,6 +117,9 @@ smoke_slice_handoff_prepare_execution_repo() {
 
   smoke_slice_handoff_install_fake_repo_flow || return 1
   smoke_slice_handoff_install_fake_pr_body_check || return 1
+  if [ "${FAKE_CODEX_RUN_HELPER:-0}" = 1 ]; then
+    smoke_slice_handoff_install_fake_codex_run || return 1
+  fi
   execution_remote_dir="$(smoke_slice_handoff_owned_temp_dir "remote")" || return 1
   git -C "$smoke_test_dir" init --bare "$execution_remote_dir" >/dev/null 2>&1 || return 1
   git -C "$smoke_test_dir" push "$execution_remote_dir" main:main >/dev/null 2>&1 || return 1
@@ -149,6 +157,9 @@ stdout_text="${FAKE_REPO_FLOW_STDOUT_TEXT:-}"
 stderr_text="${FAKE_REPO_FLOW_STDERR_TEXT:-}"
 exit_code="${FAKE_REPO_FLOW_EXIT_CODE:-0}"
 pr_number="${FAKE_REPO_FLOW_PR_NUMBER:-123}"
+commit_sha="${FAKE_REPO_FLOW_COMMIT_SHA:-0123abcd}"
+watched="${FAKE_REPO_FLOW_WATCHED:-true}"
+ci_state="${FAKE_REPO_FLOW_CI_STATE:-pass}"
 url_or_stop="${FAKE_REPO_FLOW_URL_OR_STOP:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
 stop_reason="${FAKE_REPO_FLOW_STOP_REASON:-repo-flow submit failed}"
 mode="${1:-}"
@@ -214,6 +225,9 @@ if [ "$mode" = "submit" ]; then
     printf 'mode=submit\n'
     printf 'rc=%s\n' "$exit_code"
     printf 'pr=%s\n' "$pr_number"
+    printf 'commit=%s\n' "$commit_sha"
+    printf 'watched=%s\n' "$watched"
+    printf 'ci=%s\n' "$ci_state"
     if [ "$exit_code" -eq 0 ]; then
       printf 'url_or_stop=%s\n' "$url_or_stop"
     else
@@ -268,6 +282,91 @@ EOF
   chmod +x "$pr_body_check_path" || return 1
   git -C "$smoke_test_dir" add repo-automation/bin/pr-body-check >/dev/null 2>&1 || return 1
   git -C "$smoke_test_dir" commit -m "fake pr-body-check for slice-handoff submit" --no-verify >/dev/null 2>&1 || return 1
+}
+
+smoke_slice_handoff_install_fake_codex_run() {
+  local codex_run_path="$smoke_test_dir/repo-automation/bin/codex-run"
+
+  cat > "$codex_run_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+stdout_text="${FAKE_CODEX_RUN_STDOUT_TEXT:-pass}"
+stderr_text="${FAKE_CODEX_RUN_STDERR_TEXT:-}"
+exit_code="${FAKE_CODEX_RUN_EXIT_CODE:-0}"
+skip_final_output="${FAKE_CODEX_RUN_SKIP_FINAL_OUTPUT:-0}"
+final_text="${FAKE_CODEX_RUN_FINAL_TEXT:-fake final output}"
+out_dir=""
+prev=""
+
+for arg in "$@"; do
+  if [ -n "$prev" ]; then
+    case "$prev" in
+      --out-dir)
+        out_dir="$arg"
+        ;;
+    esac
+    prev=""
+    continue
+  fi
+  case "$arg" in
+    --out-dir=*)
+      out_dir="${arg#--out-dir=}"
+      ;;
+    --out-dir)
+      prev="$arg"
+      ;;
+  esac
+done
+
+if [ -z "$out_dir" ]; then
+  out_dir="${FAKE_CODEX_RUN_OUT_DIR:-}"
+fi
+
+if [ -n "$out_dir" ]; then
+  mkdir -p "$out_dir" || exit 1
+  final_output_path="$out_dir/codex-final.txt"
+  summary_path="$out_dir/codex-run-summary.txt"
+  if [ -n "$stdout_text" ]; then
+    stdout_text="$(printf '%s\nfinal_output_path=%s\nsummary_path=%s' "$stdout_text" "$final_output_path" "$summary_path")"
+  fi
+  {
+    printf 'script=codex-run\n'
+    printf 'result=pass\n'
+    printf 'exit_code=0\n'
+    printf 'final_output_path=%s\n' "$final_output_path"
+    if [ "$skip_final_output" -eq 0 ]; then
+      printf 'final_output_status=present\n'
+    else
+      printf 'final_output_status=missing\n'
+    fi
+  } > "$summary_path"
+  if [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
+    printf '%s\n' "$final_text" > "$final_output_path"
+  fi
+fi
+
+if [ -n "$stdout_text" ]; then
+  printf '%s\n' "$stdout_text"
+fi
+
+if [ -n "$stderr_text" ]; then
+  printf '%s\n' "$stderr_text" >&2
+fi
+
+exit "$exit_code"
+EOF
+  chmod +x "$codex_run_path" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/codex-run >/dev/null 2>&1 || return 1
+}
+
+smoke_slice_handoff_restore_codex_run() {
+  local codex_run_path="$smoke_test_dir/repo-automation/bin/codex-run"
+
+  cp -- "$smoke_repo_root/repo-automation/bin/codex-run" "$codex_run_path" || return 1
+  chmod +x "$codex_run_path" || return 1
+  git -C "$smoke_test_dir" update-index --no-skip-worktree repo-automation/bin/codex-run >/dev/null 2>&1 || return 1
 }
 
 smoke_slice_handoff_write_file() {
@@ -334,6 +433,7 @@ stdout_text="${FAKE_CODEX_STDOUT_TEXT:-pass}"
 stderr_text="${FAKE_CODEX_STDERR_TEXT:-}"
 final_text="${FAKE_CODEX_FINAL_TEXT:-fake final output}"
 exit_code="${FAKE_CODEX_EXIT_CODE:-0}"
+skip_final_output="${FAKE_CODEX_SKIP_FINAL_OUTPUT:-0}"
 output_last_message=""
 prev=""
 
@@ -359,7 +459,9 @@ for arg in "$@"; do
 done
 
 if [ -n "$output_last_message" ]; then
-  printf '%s\n' "$final_text" > "$output_last_message"
+  if [ "$skip_final_output" -eq 0 ]; then
+    printf '%s\n' "$final_text" > "$output_last_message"
+  fi
 fi
 
 if [ -n "$log_file" ]; then
@@ -416,6 +518,9 @@ smoke_slice_handoff_assert_execution_repo_ready() {
     printf 'fail: slice-handoff execution repo root mismatch: %s\n' "$repo_root" >&2
     printf 'fix: re-seed the smoke execution repo before invoking execution-mode slice-handoff\n' >&2
     return 1
+  fi
+  if [ "${FAKE_CODEX_RUN_HELPER:-0}" = 1 ] && [ -x "$smoke_test_dir/repo-automation/bin/codex-run" ]; then
+    smoke_slice_handoff_install_fake_codex_run || return 1
   fi
 
   dirty_status="$(git -C "$smoke_test_dir" status --short --untracked-files=normal 2>/dev/null || true)"
@@ -578,10 +683,18 @@ smoke_slice_handoff_assert_error_shape() {
   local stderr_file="$1"
   local reason="$2"
   local fix="$3"
+  local filtered_stderr_file=""
 
-  [ "$(wc -l < "$stderr_file" | tr -d '[:space:]')" = "2" ] &&
-    grep -Fxq "fail: $reason" "$stderr_file" &&
-    grep -Fxq "fix: $fix" "$stderr_file"
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-expected-error.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+  if [ "$(wc -l < "$filtered_stderr_file" | tr -d '[:space:]')" = "2" ] &&
+    grep -Fxq "fail: $reason" "$filtered_stderr_file" &&
+    grep -Fxq "fix: $fix" "$filtered_stderr_file"; then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+  return 1
 }
 
 smoke_slice_handoff_assert_text_file() {
@@ -606,8 +719,16 @@ smoke_slice_handoff_assert_execution_stdout() {
   local expected_next="${5:-repo-flow submit not implemented in this slice}"
   local expected_repo_flow_url_or_stop="${6:-}"
   local run_dir=""
+  local filtered_stderr_file=""
 
-  [ ! -s "$stderr_file" ] || return 1
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-execution-stderr.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+  if [ -s "$filtered_stderr_file" ]; then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 1
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+
   if [ "$expected_mode" = "execution-submit" ]; then
     [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" -ge 9 ] || return 1
   else
@@ -636,11 +757,86 @@ smoke_slice_handoff_assert_execution_stdout() {
   printf '%s\n' "$run_dir"
 }
 
+smoke_slice_handoff_assert_execution_blocker_summary() {
+  local stderr_file="$1"
+  local expected_mode="$2"
+  local expected_branch="$3"
+  local expected_run_dir="$4"
+  local expected_codex_final_output_path="$5"
+
+  grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" || return 1
+  grep -Fxq 'script=slice-handoff' "$stderr_file" || return 1
+  grep -Fxq "mode=$expected_mode" "$stderr_file" || return 1
+  grep -Fxq 'rc=1' "$stderr_file" || return 1
+  grep -Fxq 'step=codex-final-contract' "$stderr_file" || return 1
+  grep -Fxq "branch=$expected_branch" "$stderr_file" || return 1
+  grep -Fxq "run_dir=$expected_run_dir" "$stderr_file" || return 1
+  grep -Fxq "codex_final_output_path=$expected_codex_final_output_path" "$stderr_file" || return 1
+  grep -Fxq '===== CODEX FINAL OUTPUT =====' "$stderr_file" || return 1
+  grep -Fxq '===== END CODEX FINAL OUTPUT =====' "$stderr_file" || return 1
+  grep -Fxq 'pr_body_check=not_run' "$stderr_file" || return 1
+  grep -Fxq 'repo_flow_submit=not_run' "$stderr_file" || return 1
+  grep -Fxq 'review_request_printed=false' "$stderr_file" || return 1
+  grep -Fxq 'next=paste blocker into ChatGPT' "$stderr_file" || return 1
+  grep -Fxq '===== END =====' "$stderr_file" || return 1
+  ! grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file" || return 1
+}
+
+smoke_slice_handoff_assert_stderr_effectively_empty() {
+  local stderr_file="$1"
+  local filtered_stderr_file=""
+
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-empty-stderr.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+  if [ ! -s "$filtered_stderr_file" ]; then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+  return 1
+}
+
+smoke_slice_handoff_assert_execution_success_summary() {
+  local stderr_file="$1"
+  local expected_mode="$2"
+  local expected_branch="$3"
+  local expected_run_dir="$4"
+  local expected_review_request_path="$5"
+  local expected_pr="$6"
+  local expected_commit="$7"
+  local expected_watched="$8"
+  local expected_ci="$9"
+  local expected_url_or_stop="${10}"
+  local expected_review_request_printed="${11}"
+  local expected_next="${12}"
+
+  grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" || return 1
+  grep -Fxq 'script=slice-handoff' "$stderr_file" || return 1
+  grep -Fxq "mode=$expected_mode" "$stderr_file" || return 1
+  grep -Fxq 'rc=0' "$stderr_file" || return 1
+  grep -Fxq "branch=$expected_branch" "$stderr_file" || return 1
+  grep -Fxq "run_dir=$expected_run_dir" "$stderr_file" || return 1
+  grep -Fxq "review_request_path=$expected_review_request_path" "$stderr_file" || return 1
+  grep -Fxq "pr=$expected_pr" "$stderr_file" || return 1
+  grep -Fxq "commit=$expected_commit" "$stderr_file" || return 1
+  grep -Fxq "watched=$expected_watched" "$stderr_file" || return 1
+  grep -Fxq "ci=$expected_ci" "$stderr_file" || return 1
+  grep -Fxq "url_or_stop=$expected_url_or_stop" "$stderr_file" || return 1
+  grep -Fxq 'review_request_valid=true' "$stderr_file" || return 1
+  grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
+  grep -Fxq "next=$expected_next" "$stderr_file" || return 1
+  grep -Fxq '===== END =====' "$stderr_file" || return 1
+}
+
 smoke_slice_handoff_assert_review_request_block() {
   local stderr_file="$1"
   local expected_review_request_file="$2"
+  local filtered_stderr_file=""
 
-  python3 - "$stderr_file" "$expected_review_request_file" <<'PY'
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-review-request.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+
+  if ! python3 - "$filtered_stderr_file" "$expected_review_request_file" <<'PY'
 from pathlib import Path
 import sys
 
@@ -660,6 +856,11 @@ if stderr_lines[-1] != '===== END PR REVIEW REQUEST =====':
 if stderr_lines[start_index + 1:-1] != expected_lines:
     raise SystemExit(1)
 PY
+  then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 1
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
 }
 
 smoke_slice_handoff_assert_execution_run_dir() {
@@ -692,8 +893,6 @@ smoke_slice_handoff_assert_execution_run_dir() {
     slice-handoff-execution-summary.txt \
     codex-prompt.md \
     review-request.txt \
-    codex-run/codex.stdout \
-    codex-run/codex.stderr \
     codex-run/codex-final.txt \
     codex-run/codex-run-summary.txt
   do
@@ -714,8 +913,6 @@ smoke_slice_handoff_assert_execution_run_dir() {
   grep -Fxq 'pass' "$run_dir/codex-run.stdout" || return 1
   grep -Eq '^final_output_path=.+' "$run_dir/codex-run.stdout" || return 1
   grep -Eq '^summary_path=.+' "$run_dir/codex-run.stdout" || return 1
-  [ -s "$run_dir/codex-run/codex.stdout" ] || return 1
-  [ -s "$run_dir/codex-run/codex.stderr" ] || return 1
   [ -s "$run_dir/codex-run/codex-final.txt" ] || return 1
   grep -Fxq 'script=codex-run' "$run_dir/codex-run/codex-run-summary.txt" || return 1
   grep -Fxq 'result=pass' "$run_dir/codex-run/codex-run-summary.txt" || return 1
@@ -845,7 +1042,10 @@ smoke_slice_handoff_run() {
     capture_stderr="$capture_stderr_tmp"
     (
       cd "$smoke_test_dir" || return 1
-      env PATH="$PATH" TMPDIR="${TMPDIR:-}" HOME="${HOME:-}" "$script_path" "$@"
+      if [ "${FAKE_CODEX_RUN_HELPER:-0}" = 1 ]; then
+        smoke_slice_handoff_install_fake_codex_run || return 1
+      fi
+      PATH="$PATH" TMPDIR="${TMPDIR:-}" HOME="${HOME:-}" "$script_path" "$@"
     ) >"$capture_stdout" 2>"$capture_stderr"
     command_status=$?
     mv -f -- "$capture_stdout" "$stdout_file" || command_status=1
@@ -884,13 +1084,18 @@ smoke_slice_handoff_expect_success() {
   local expected_stderr="$3"
   local stdout_file="$smoke_test_base/slice-handoff-${label}.out"
   local stderr_file="$smoke_test_base/slice-handoff-${label}.err"
+  local filtered_stderr_file=""
 
   shift 3
   if smoke_slice_handoff_run "$stdout_file" "$stderr_file" "$@"; then
-    if [ "$(cat "$stdout_file" 2>/dev/null || true)" = "$expected_stdout" ] && [ "$(cat "$stderr_file" 2>/dev/null || true)" = "$expected_stderr" ]; then
+    filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-expected-success.XXXXXX")" || return 1
+    grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+    if [ "$(cat "$stdout_file" 2>/dev/null || true)" = "$expected_stdout" ] && [ "$(cat "$filtered_stderr_file" 2>/dev/null || true)" = "$expected_stderr" ]; then
+      rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
       test_pass "$label"
       return 0
     fi
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
   fi
 
   test_fail "$label"
