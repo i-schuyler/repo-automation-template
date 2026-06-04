@@ -140,6 +140,12 @@ Revert the helper migration in the four scripts first, leaving `repo_auto_parse_
 
 Post-PR204 triage note: the selected strict parser arc has landed. Continue parser consolidation remains useful, but it is no longer the immediate highest-priority next slice. After PR #204, the nearer cleanup priority is slice-handoff docs/ledger alignment plus contract/fixture clarity before any merge automation. Oversized smoke-contract modules and missing quiet/JSON coverage remain valid backlog items, but they should move through focused slices only when a concrete failure or review friction recurs. Do not start merge automation without an explicit trust-boundary planning read.
 
+1. Add a tiny Codex final-output first-non-empty-line fixture helper so blocker shaping does not require ad hoc test file prep.
+2. Split slice-handoff execution summary states into explicit `blocker-contract`, `output-contract`, and `submit-contract` buckets.
+3. Add a shared negative-assertion helper for “downstream helper not invoked” checks.
+4. Keep blocker-semantics contract coverage adjacent to the slice-handoff trust-boundary code path, not only in the smoke wrapper.
+5. Make quiet-mode smoke artifacts more self-describing for slice-handoff runs so missing files are easier to diagnose without tracing.
+6. Align `repo-flow submit` review-request output with the slice-handoff PR review prompt block shape via a small shared helper.
 1. Continue parser consolidation for `repo-automation-install`, `repo-automation-report-upstream`, `slice-run-dir`, and other helpers flagged by `contract-debt-report`.
 2. Split `repo-automation/tests/lib/contracts/artifacts.sh` and `repo-automation/tests/contracts/repo-flow.sh` into smaller focused modules.
 3. Add missing JSON/quiet contract coverage reported by `contract-debt-report`.

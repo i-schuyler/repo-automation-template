@@ -34,6 +34,8 @@ On successful `--explain` runs with a review-request source, `repo-flow submit` 
 ===== END PR REVIEW REQUEST =====
 ```
 
+Future planning: align this review-request block shape with slice-handoff output, ideally through a small shared renderer/helper instead of duplicated formatting.
+
 When `EXPECTED_REMOTE_URL` is set, a matching GitHub SSH alias remote is also accepted if `ssh -G` resolves the alias to `github.com` and the repo path matches `UPSTREAM_REPO_FULL_NAME`.
 When `--body-file` is omitted, `repo-flow submit` generates the canonical PR body headings and routes the body through `repo-automation/bin/pr-create`. When it reuses an existing PR, it refreshes that canonical body in place so staged paths and stop notes stay current. The generated PR body re-entry hint is: `Review the PR, then run repo-automation/bin/repo-flow merge --explain`.
 `--watch` hands off to the repo-native PR completion path with a bounded timeout and stops after CI is green; `--timeout=<seconds>` sets that limit.
