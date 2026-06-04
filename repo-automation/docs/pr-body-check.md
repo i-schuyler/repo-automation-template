@@ -19,7 +19,7 @@ It also requires a regular readable file and rejects directories, missing files,
 
 Value flags use `--body-file=<path>` syntax. `--body-file <path>` is rejected.
 
-Default success output is `pass`. `--quiet` makes success silent.
+Default success output is `pass`. `--quiet` makes success silent. Quiet failures use the repo-wide Quiet Diagnostic Envelope v1. `--json` is supported and returns detailed machine output.
 
 Usage examples:
 

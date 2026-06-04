@@ -140,6 +140,15 @@ Revert the helper migration in the four scripts first, leaving `repo_auto_parse_
 
 Post-PR204 triage note: the selected strict parser arc has landed. Continue parser consolidation remains useful, but it is no longer the immediate highest-priority next slice. After PR #204, the nearer cleanup priority is slice-handoff docs/ledger alignment plus contract/fixture clarity before any merge automation. Oversized smoke-contract modules and missing quiet/JSON coverage remain valid backlog items, but they should move through focused slices only when a concrete failure or review friction recurs. Do not start merge automation without an explicit trust-boundary planning read.
 
+Deferred output-mode migration order:
+1. `pr-body-check` (this canary slice)
+2. `managed-file-check`
+3. `codex-run`
+4. `slice-handoff`
+5. `managed-file-add` after metadata/quiet drift is resolved
+
+If confirmed by contract checks, `managed-file-add` still advertises `supports_quiet=true` in metadata while its script usage/code does not yet implement `--quiet`.
+
 1. Add a tiny Codex final-output first-non-empty-line fixture helper so blocker shaping does not require ad hoc test file prep.
 2. Split slice-handoff execution summary states into explicit `blocker-contract`, `output-contract`, and `submit-contract` buckets.
 3. Add a shared negative-assertion helper for “downstream helper not invoked” checks.

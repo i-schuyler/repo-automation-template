@@ -2,6 +2,17 @@
 
 This doc is the source of truth for exit-code/stdout/stderr/JSON stream behavior. [Output Modes](output-modes.md) remains the broader output-mode guide.
 
+## Approved gates
+
+| Gate | Contract |
+| --- | --- |
+| Default human compact | least information helpful for a human |
+| `--quiet` | least information helpful for a machine or low-token agent caller |
+| `--json` | detailed structured machine output |
+| `--explain` | detailed step-by-step human/operator output |
+
+## Signal contract
+
 | Signal | Contract |
 | --- | --- |
 | `0` | success |
@@ -17,3 +28,4 @@ This doc is the source of truth for exit-code/stdout/stderr/JSON stream behavior
 - JSON stdout must be pure JSON.
 - No human chatter in JSON output.
 - No child-helper chatter may leak through umbrella helpers.
+- Quiet mode uses a machine/agent low-token envelope, not human-readable prose, unless the helper documents an exception.

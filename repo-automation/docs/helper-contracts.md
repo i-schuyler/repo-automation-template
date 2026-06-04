@@ -103,9 +103,9 @@ The helper contracts use these fixtures only in smoke tests; production helpers 
 
 | Mode | stdout | stderr |
 | --- | --- | --- |
-| default human | success summary or artifact path | failures and warnings |
-| `--quiet` | success is silent | first actionable failure only |
-| `--json` | valid JSON only | fatal wrapper errors only |
+| default human | least information helpful for a human | compact failures and warnings |
+| `--quiet` | empty on success; machine/agent low-token result only when documented | Quiet Diagnostic Envelope or a compact usage error |
+| `--json` | valid JSON only; detailed machine output | fatal wrapper errors only |
 | `--explain` | detailed operator output with a required FINAL SUMMARY tail block when supported | details and warnings |
 
 `--help` always writes usage to stdout.
