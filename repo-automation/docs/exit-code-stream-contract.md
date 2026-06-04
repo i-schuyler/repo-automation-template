@@ -26,6 +26,7 @@ This doc is the source of truth for exit-code/stdout/stderr/JSON stream behavior
 - stdout is reserved for the primary result.
 - stderr carries human diagnostics when stdout is machine-readable.
 - JSON stdout must be pure JSON.
+- JSON helpers should include a `schema` and `result` field, and failures should carry `code`, `step`, `reason`, and `fix` when those fields are part of the helper contract.
 - No human chatter in JSON output.
 - No child-helper chatter may leak through umbrella helpers.
 - Quiet mode uses a machine/agent low-token envelope, not human-readable prose, unless the helper documents an exception.

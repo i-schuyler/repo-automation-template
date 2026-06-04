@@ -21,6 +21,8 @@ Value flags use `--body-file=<path>` syntax. `--body-file <path>` is rejected.
 
 Default success output is `pass`. `--quiet` makes success silent. Quiet failures use the repo-wide Quiet Diagnostic Envelope v1. `--json` is supported and returns detailed machine output.
 
+`--json` uses `schema=repo-automation-helper-output/v1`, `result=pass|fail`, `script=pr-body-check`, and `mode=json`. JSON failures include `code`, `step`, `reason`, `fix`, and `path` when the body file matters.
+
 Usage examples:
 
     repo-automation/bin/pr-body-check --print-template

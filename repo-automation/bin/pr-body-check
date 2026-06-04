@@ -17,7 +17,7 @@ pr_body_check_body_file=""
 pr_body_check_print_template=0
 
 pr_body_check_usage() {
-  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--print-template] [--body-file=<path>]\n'
+  printf 'Usage: repo-automation/bin/pr-body-check [--help] [--quiet] [--json] [--print-template] [--body-file=<path>]\n'
 }
 
 pr_body_check_fail() {
@@ -34,9 +34,10 @@ import json
 import sys
 
 payload = {
+    "schema": "repo-automation-helper-output/v1",
     "script": "pr-body-check",
     "mode": "json",
-    "status": "fail",
+    "result": "fail",
     "code": sys.argv[1],
     "step": sys.argv[2],
     "reason": sys.argv[3],
@@ -279,10 +280,14 @@ pr_body_check_main() {
   validation_output="$(pr_body_check_validate "$pr_body_check_body_file" 2>/dev/null)" || command_status=$?
   if [ "$command_status" -ne 0 ]; then
     if [ -n "$validation_output" ]; then
+      failure_code="pr-body-check-failed"
+      if printf '%s\n' "$validation_output" | sed -n '1p' | grep -Fxq 'missing required heading: ## Scope' 2>/dev/null || printf '%s\n' "$validation_output" | sed -n '1p' | grep -Fq 'missing required heading: '; then
+        failure_code="missing-required-heading"
+      fi
       if [ "$pr_body_check_json" -eq 1 ]; then
-        pr_body_check_json_fail "missing-required-heading" "pr-body-check" "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')" "$pr_body_check_body_file" "" "" ""
+        pr_body_check_json_fail "$failure_code" "pr-body-check" "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')" "$pr_body_check_body_file" "" "" ""
       elif [ "$pr_body_check_quiet" -eq 1 ]; then
-        pr_body_check_quiet_fail "missing-required-heading" "pr-body-check" "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
+        pr_body_check_quiet_fail "$failure_code" "pr-body-check" "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
       else
         pr_body_check_fail "$(printf '%s\n' "$validation_output" | sed -n '1p')" "$(printf '%s\n' "$validation_output" | sed -n '2p')"
       fi
@@ -305,9 +310,10 @@ pr_body_check_main() {
 from pathlib import Path
 import json, sys
 print(json.dumps({
+    "schema": "repo-automation-helper-output/v1",
     "script": "pr-body-check",
     "mode": "json",
-    "status": "pass",
+    "result": "pass",
     "body_file": str(Path(sys.argv[1])),
 }, ensure_ascii=False))
 PY

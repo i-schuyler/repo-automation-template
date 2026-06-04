@@ -16,6 +16,21 @@ This doc is the broader output-mode guide. The exit-code and stream contract liv
 
 Success should be quiet. Failure should be actionable. Diagnostics should be narrow.
 
+## Status words
+
+Canonical human status words are lowercase:
+
+- `pass`
+- `fail`
+- `warn`
+- `skip`
+- `wait`
+- `plan`
+- `clean`
+- `none`
+
+Use lowercase because it is consistent, easy to snapshot-test, easy to parse, and visually calm.
+
 ## Approved gates
 
 | Gate | Meaning | Success | Failure |
@@ -149,15 +164,174 @@ excerpt: repo-automation/docs/command-shape.md not found
 fix: add the doc or update docs/INDEX.md
 ```
 
-## Output contract planning checklist
+## Contract-test wrappers
 
-Before changing an output contract, answer:
+The contract-test wrappers and smoke harness use the same quiet-first posture as the public helpers.
 
-- Who is the consumer for each mode?
-- What are the exact stdout, stderr, and exit-code contracts?
-- What are the success, failure, and warning examples?
-- What is the mode-conflict behavior?
-- What artifacts are guaranteed, optional, or forbidden?
-- What tests cover the mode and envelope?
-- What canary helper proves the new shape?
-- Which helpers migrate now, and which are deferred?
+- default success: `pass`
+- `--quiet` success: empty stdout and stderr
+- `--explain`: RUNNING/PASS/FAIL progress
+- `--json`: valid JSON only on stdout
+- focused wrappers derive `--help` usage from their own path and share the common wrapper runner in `repo-automation/tests/lib/smoke-common.sh`
+
+## Artifact-producing commands
+
+Artifact-producing helpers should print path-only success when the artifact path is the result.
+
+Examples:
+
+- `repo-automation/bin/post-codex-packet`
+- `repo-automation/bin/repo-zip`
+- `repo-automation/bin/evidence-bundle`
+- `repo-automation/bin/ci-log-dump`
+
+Single artifact success:
+
+```text
+/storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/repo-zip/repo-automation-template-review.zip
+```
+
+Multiple artifact success:
+
+```text
+bundle: /storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/evidence-bundle/review.zip
+packet: /storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/post-codex/review.zip
+```
+
+Artifact warning:
+
+```text
+warn: skipped sensitive untracked file
+file: .env
+artifact: /storage/emulated/0/Documents/HeartloomVault/40_STAGING/repo-automation/post-codex/review.zip
+```
+
+Artifact failure:
+
+```text
+fail: zip creation failed
+excerpt: permission denied writing output directory
+fix: choose --out-dir=${TMPDIR:-$HOME/.cache}/repo-automation
+```
+
+Rules:
+
+- Print the artifact path, not a paragraph.
+- Print file count, size, checksum, or timestamp only when requested by `--explain`, JSON mode, or the helper's documented purpose.
+- Never include ignored files, secrets, build artifacts, caches, `.git`, dependency folders, or generated binaries unless a helper explicitly documents a safe exception.
+
+## Status and diagnostic commands
+
+Status commands should output only the state that matters.
+
+Clean status:
+
+```text
+clean
+```
+
+Dirty status:
+
+```text
+branch: output-contract-spec
+changed:
+- repo-automation/docs/output-modes.md
+- docs/INDEX.md
+```
+
+No touched files:
+
+```text
+none
+```
+
+Touched files:
+
+```text
+repo-automation/docs/output-modes.md
+docs/INDEX.md
+```
+
+No recent failure log:
+
+```text
+none
+```
+
+Failure log found:
+
+```text
+fail: latest run-tests failure
+excerpt: shellcheck: repo-automation/bin/repo-flow: SC2086
+log: ${TMPDIR:-$HOME/.cache}/repo-automation-template/run-tests-2026-05-14T215100.log
+```
+
+Rules:
+
+- Do not mix unrelated diagnostics into status output.
+- If the command is a diagnostic command, output only the relevant diagnostic data.
+- If no data exists, print `none`, not an explanatory paragraph.
+
+## CI commands
+
+CI green:
+
+```text
+pass
+```
+
+CI red:
+
+```text
+fail: CI validate failed
+run: 123456789
+fix: repo-automation/bin/ci-log-dump --run-id=123456789
+```
+
+CI pending or timeout:
+
+```text
+wait: CI still pending after 600s
+fix: rerun later or inspect GitHub Actions
+```
+
+Network or auth failure:
+
+```text
+fail: GitHub API unavailable
+fix: retry before patching code
+```
+
+Rules:
+
+- Network/auth failure is not CI failure.
+- Do not tell the user to patch code unless CI failure evidence proves a code/doc/test problem.
+- Prefer the smallest next command that retrieves the relevant evidence.
+
+## Planning and dry-run commands
+
+Safe no-op plan:
+
+```text
+plan: no changes
+```
+
+Plan with action:
+
+```text
+plan: create docs PR
+branch: docs/output-contract
+files: 2
+```
+
+Blocked plan:
+
+```text
+fail: blocked non-docs file
+file: repo-automation/bin/run-tests
+fix: use pr-create or narrow changed files
+```
+
+Rules:
+
+- `--dry-run` and `--plan` should not perform writes.
