@@ -1116,6 +1116,25 @@ EOF
     fi
   fi
 
+  if (
+    rm -f -- "$fake_repo_flow_args_submit_file" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP='not-a-url' smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.out" "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" --file="$execution_valid_submit_file" --submit --out-dir="$execution_submit_out_dir"
+  ); then
+    test_fail "execution-submit repo-flow output-contract failure"
+    status=1
+  else
+    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" "repo-flow-submit-output-contract" "repo-automation/bin/repo-flow submit output contract" "0" "$run_dir/repo-flow-submit.stdout" "$run_dir/repo-flow-submit.stderr" "missing PR URL in repo-flow submit url_or_stop output" "missing PR URL in repo-flow submit url_or_stop output" "repair repo-flow submit output contract and rerun slice-handoff" &&
+      ! grep -Fq '===== PR REVIEW REQUEST =====' "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" &&
+      grep -Fxq 'fake repo-flow stdout' "$run_dir/repo-flow-submit.stdout" &&
+      grep -Fxq 'fake repo-flow stderr' "$run_dir/repo-flow-submit.stderr"; then
+      test_pass "execution-submit repo-flow output-contract failure"
+    else
+      test_fail "execution-submit repo-flow output-contract failure"
+      status=1
+    fi
+  fi
+
   smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" || return 1
 
   if (

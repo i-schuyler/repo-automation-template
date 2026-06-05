@@ -118,6 +118,9 @@ slice_handoff_execution_command_class() {
     repo-flow-submit)
       printf '%s' 'repo-automation/bin/repo-flow submit'
       ;;
+    repo-flow-submit-output-contract)
+      printf '%s' 'repo-automation/bin/repo-flow submit output contract'
+      ;;
     review-request-source|review-request-artifact|review-request-compatibility-copy)
       printf '%s' 'repo-automation/bin/repo-flow submit review-request'
       ;;
@@ -154,6 +157,9 @@ slice_handoff_execution_next_action() {
       ;;
     repo-flow-submit)
       printf '%s' 'fix repo-flow submit and rerun slice-handoff'
+      ;;
+    repo-flow-submit-output-contract)
+      printf '%s' 'repair repo-flow submit output contract and rerun slice-handoff'
       ;;
     review-request-source|review-request-artifact|review-request-compatibility-copy)
       printf '%s' 'fix the review-request handoff and rerun slice-handoff'
