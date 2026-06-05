@@ -349,6 +349,7 @@ repo_install_main() {
     "repo-automation/bin/review-pack"
     "repo-automation/bin/repo-zip"
     "repo-automation/bin/slice-run-dir"
+    "repo-automation/bin/slice-validator"
     "repo-automation/bin/evidence-bundle"
     "repo-automation/lib/temp-disk.sh"
     "repo-automation/lib/run-tests-routing.sh"
@@ -379,6 +380,7 @@ repo_install_main() {
     "repo-automation/docs/review-pack.md"
     "repo-automation/docs/slice-handoff.md"
     "repo-automation/docs/slice-run-dir.md"
+    "repo-automation/docs/slice-validator.md"
     "repo-automation/docs/implementation-friction-ledger.md"
     "repo-automation/docs/codex-implementation-notes.md"
     "repo-automation/docs/config-schema.md"
@@ -500,6 +502,7 @@ repo_install_main() {
     "repo-automation/tests/contracts/automation-freshness.sh"
     "repo-automation/tests/contracts/slice-handoff.sh"
     "repo-automation/tests/contracts/repo-flow-submit.sh"
+    "repo-automation/tests/contracts/slice-validator.sh"
     "repo-automation/tests/version-consistency.sh"
     "repo-automation/bin/run-tests"
   )
