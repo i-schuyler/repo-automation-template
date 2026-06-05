@@ -140,11 +140,11 @@ The capability manifest is run-scoped, not a single safety byte. A compact examp
 }
 ```
 
-Default success should stay compact and name the manifest path. Default failure should stay compact and actionable with step, reason, and fix. Quiet success and quiet failure should follow the QDE shape if quiet is later supported. JSON success and JSON failure should remain valid JSON only on stdout if JSON is later supported.
+Default success stays compact and names the manifest path. Default failure stays compact and actionable with step, reason, and fix. Quiet success is silent, quiet failure uses QDE, and JSON success/failure emit valid JSON only on stdout.
 
 Over time, run-shape checks should move out of `slice-handoff` and `codex-slice-preflight` into `slice-validator`: handoff envelope fields, mode/flag compatibility, submit authorization, PR body static readiness, Codex prompt lifecycle and boundary checks, self-modifying target checks, review-request source compatibility, and downstream helper contract assumptions. Repo/worktree/environment checks stay in `codex-slice-preflight`.
 
-Downstream helpers keep local invariant validation for standalone, debug, and repair use. Orchestrated calls may eventually pass a `--validation-manifest=<path>` or equivalent, but this spec slice does not require that behavior. Direct standalone helper use should remain intact in the first implementation.
+Downstream helpers keep local invariant validation for standalone, debug, and repair use. Orchestrated calls may eventually pass a `--validation-manifest=<path>` or equivalent, but The current implementation does not require that behavior. Direct standalone helper use should remain intact in the first implementation.
 
 Phased plan:
 
