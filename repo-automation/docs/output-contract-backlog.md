@@ -37,13 +37,15 @@ Compliance means truthful metadata, aligned docs/help, focused tests for declare
 - blocked: compliance work is prevented by an unresolved dependency or boundary.
 - not-applicable: the field or layer does not apply to that helper.
 
-## Small planning/testability slice
+## Planning/testability baseline
 
-Next slice:
-- add compliance status/rubric to this doc;
-- add or prepare columns for declared-contract status, test coverage status, and compliance status;
-- define a future lightweight checker, likely `output-contract-check`;
-- do not implement the checker in this slice unless it is truly tiny and docs-only validation is insufficient.
+This baseline is now recorded through:
+- compliance tracking fields;
+- complete compliance tracking matrix;
+- future output-contract-check shape;
+- next implementation handoff.
+
+Future helper slices should update the tracking matrix when helper behavior, tests, evidence, or status changes.
 
 ## How to use this backlog
 
