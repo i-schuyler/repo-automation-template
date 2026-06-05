@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154
 
 set -u
 set -o pipefail
 
-# shellcheck disable=SC2154
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 
