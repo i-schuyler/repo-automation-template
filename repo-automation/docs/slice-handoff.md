@@ -117,8 +117,8 @@ The capability manifest is run-scoped, not a single safety byte. A compact examp
 
 ```json
 {
-  "schema": "repo-automation/slice-validator.v1",
-  "result": "ok",
+  "schema": "repo-automation-slice-validator/v1",
+  "result": "pass",
   "validation_id": "val_123",
   "repo_root": "/path/to/repo",
   "branch": "docs/output-contract-compliance-tracking",
@@ -140,17 +140,17 @@ The capability manifest is run-scoped, not a single safety byte. A compact examp
 }
 ```
 
-Default success should stay compact and name the manifest path. Default failure should stay compact and actionable with step, reason, and fix. Quiet success and quiet failure should follow the QDE shape if quiet is later supported. JSON success and JSON failure should remain valid JSON only on stdout if JSON is later supported. This is a spec only; it does not claim an implementation yet.
+Default success stays compact and names the manifest path. Default failure stays compact and actionable with step, reason, and fix. Quiet success is silent, quiet failure uses QDE, and JSON success/failure emit valid JSON only on stdout.
 
 Over time, run-shape checks should move out of `slice-handoff` and `codex-slice-preflight` into `slice-validator`: handoff envelope fields, mode/flag compatibility, submit authorization, PR body static readiness, Codex prompt lifecycle and boundary checks, self-modifying target checks, review-request source compatibility, and downstream helper contract assumptions. Repo/worktree/environment checks stay in `codex-slice-preflight`.
 
-Downstream helpers keep local invariant validation for standalone, debug, and repair use. Orchestrated calls may eventually pass a `--validation-manifest=<path>` or equivalent, but this spec slice does not require that behavior. Direct standalone helper use should remain intact in the first implementation.
+Downstream helpers keep local invariant validation for standalone, debug, and repair use. Orchestrated calls may eventually pass a `--validation-manifest=<path>` or equivalent, but The current implementation does not require that behavior. Direct standalone helper use should remain intact in the first implementation.
 
 Phased plan:
 
-1. Spec only.
-2. Implement `slice-validator` as a direct-call helper that emits a manifest and has focused contract tests.
-3. Make `slice-handoff` call `slice-validator` before `codex-slice-preflight`.
+1. Spec recorded.
+2. Implemented: `slice-validator` emits a manifest and has focused contract tests.
+3. Wire `slice-handoff` to call `slice-validator` before `codex-slice-preflight`.
 4. Pass the manifest to downstream helpers in orchestrated mode.
 5. Selectively require the manifest for high-risk orchestrated downstream operations while preserving standalone repair/debug paths.
 

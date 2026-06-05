@@ -1,0 +1,635 @@
+#!/usr/bin/env bash
+
+REPO_AUTOMATION_REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export REPO_AUTOMATION_REPO_ROOT
+
+python3 - "$@" <<'PY'
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+HELP = """Usage: repo-automation/bin/slice-validator --file=<path> [--artifact-dir=<path>] [--manifest-out=<path>] [--submit] [--quiet] [--json] [--help]
+
+Validate a repo-automation-slice-handoff/v1 file and emit a run-scoped capability manifest.
+"""
+
+OUTPUT_SCHEMA = "repo-automation-helper-output/v1"
+MANIFEST_SCHEMA = "repo-automation-slice-validator/v1"
+VALID_PROFILES = {"default", "lean", "medium", "high", "repair", "review"}
+VALID_SUBMIT_MODES = {"none", "repo-flow-submit-all"}
+DEFAULT_REVIEW_REQUEST = (
+    "Please review this PR before merge:\n\n"
+    "<PR_URL>\n\n"
+    "{title}\n"
+    "Branch: {branch}\n\n"
+    "Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.\n\n"
+    "Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describe one same-branch repair direction."
+)
+BLOCKED_PHRASES = (
+    "use previous chat",
+    "as discussed",
+    "from above",
+    "you know the context",
+    "same as before",
+    "approved in chat",
+    "see attached",
+    "use the uploaded file",
+    "whatever chatgpt said",
+    "choose the best architecture",
+    "do the rest",
+)
+LIFECYCLE_PATTERNS = (
+    (re.compile(r"^(?:please\s+)?create(?: a)? pr\b"), "create a pr"),
+    (re.compile(r"^(?:please\s+)?merge(?:$|[.!?]|(?:\s+(?:it|this|that|them|the\s+pr|the\s+pull\s+request|the\s+branch|the\s+changes|the\s+work|the\s+code|after|once|when|then|now|to|into)\b))"), "merge"),
+    (re.compile(r"^(?:please\s+)?(?:(?:run|git)\s+)?(?:repo-automation/bin/)?repo-flow submit(?:$|[.!?]|(?:\s+(?:it|this|that|the\s+pr|the\s+pull\s+request|the\s+branch|the\s+changes|now|after|once|when|then|to|in)\b|(?:\s+--\S+)+))"), "repo-flow submit"),
+    (re.compile(r"^(?:please\s+)?(?:(?:git\s+)?checkout)\b(?:$|[.!?]|(?:\s+(?:main|master|the\s+branch|the\s+changes|it|this|that|to|into)\b|(?:\s+[\w./-]+)+))"), "checkout"),
+)
+
+
+@dataclass
+class ValidationError(Exception):
+    code: str
+    step: str
+    reason: str
+    fix: str
+    artifact: str = ""
+    excerpt: str = ""
+
+
+@dataclass
+class ValidationState:
+    repo_root: Path
+    handoff_path: Path
+    submit_requested: bool
+    artifact_dir: Path
+    manifest_path: Path
+    result: str = "pass"
+    branch: str = ""
+    title: str = ""
+    codex_profile: str = ""
+    submit_mode: str = ""
+    commit_message: str = ""
+    prompt_text: str = ""
+    prompt_path: Path = Path()
+    body_text: str = ""
+    body_path: Path = Path()
+    review_request_text: str = ""
+    review_request_path: Path = Path()
+    pr_review_prompt_id: str = ""
+    review_request_source: str = ""
+    validated_capabilities: dict[str, bool] = field(default_factory=dict)
+    forbidden_steps: list[str] = field(default_factory=list)
+
+
+def usage() -> None:
+    sys.stdout.write(HELP)
+
+
+def parse_args(argv: list[str]) -> tuple[dict[str, object], str]:
+    opts: dict[str, object] = {
+        "file": "",
+        "artifact_dir": "",
+        "manifest_out": "",
+        "quiet": False,
+        "json": False,
+        "submit": False,
+        "help": False,
+    }
+    mode = "default"
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        next_arg = argv[i + 1] if i + 1 < len(argv) else None
+        if arg == "--help":
+            opts["help"] = True
+            return opts, mode
+        if arg == "--quiet":
+            opts["quiet"] = True
+            mode = "quiet"
+        elif arg == "--json":
+            opts["json"] = True
+            mode = "json"
+        elif arg == "--submit":
+            opts["submit"] = True
+        elif arg.startswith("--file="):
+            value = arg.split("=", 1)[1]
+            if not value:
+                raise ValidationError("empty-flag-value", "flag-parse", "empty flag value: --file", "use --file=<path>")
+            opts["file"] = value
+        elif arg == "--file":
+            if next_arg is not None and not next_arg.startswith("-"):
+                raise ValidationError("flag-format-not-accepted", "flag-parse", "flag format not accepted: --file", "use --file=<path>")
+            raise ValidationError("missing-flag-value", "flag-parse", "missing flag value: --file", "use --file=<path>")
+        elif arg.startswith("--artifact-dir="):
+            value = arg.split("=", 1)[1]
+            if not value:
+                raise ValidationError("empty-flag-value", "flag-parse", "empty flag value: --artifact-dir", "use --artifact-dir=<path>")
+            opts["artifact_dir"] = value
+        elif arg == "--artifact-dir":
+            if next_arg is not None and not next_arg.startswith("-"):
+                raise ValidationError("flag-format-not-accepted", "flag-parse", "flag format not accepted: --artifact-dir", "use --artifact-dir=<path>")
+            raise ValidationError("missing-flag-value", "flag-parse", "missing flag value: --artifact-dir", "use --artifact-dir=<path>")
+        elif arg.startswith("--manifest-out="):
+            value = arg.split("=", 1)[1]
+            if not value:
+                raise ValidationError("empty-flag-value", "flag-parse", "empty flag value: --manifest-out", "use --manifest-out=<path>")
+            opts["manifest_out"] = value
+        elif arg == "--manifest-out":
+            if next_arg is not None and not next_arg.startswith("-"):
+                raise ValidationError("flag-format-not-accepted", "flag-parse", "flag format not accepted: --manifest-out", "use --manifest-out=<path>")
+            raise ValidationError("missing-flag-value", "flag-parse", "missing flag value: --manifest-out", "use --manifest-out=<path>")
+        elif arg.startswith("--"):
+            raise ValidationError("unknown-flag", "flag-parse", f"unknown flag: {arg}", "run repo-automation/bin/slice-validator --help")
+        else:
+            raise ValidationError("unknown-argument", "flag-parse", f"unknown argument: {arg}", "run repo-automation/bin/slice-validator --help")
+        i += 1
+
+    if bool(opts["quiet"]) and bool(opts["json"]):
+        raise ValidationError("output-mode-conflict", "flag-parse", "incompatible output mode flags: --quiet --json", "use exactly one of --quiet or --json")
+    return opts, mode
+
+
+def emit_default_failure(err: ValidationError) -> None:
+    sys.stderr.write(f"fail: {err.reason}\n")
+    sys.stderr.write(f"step: {err.step}\n")
+    if err.artifact:
+        sys.stderr.write(f"artifact: {err.artifact}\n")
+    if err.excerpt:
+        sys.stderr.write(f"excerpt: {err.excerpt}\n")
+    sys.stderr.write(f"fix: {err.fix}\n")
+
+
+def emit_quiet_failure(err: ValidationError) -> None:
+    sys.stderr.write("result=fail\n")
+    sys.stderr.write(f"code={err.code}\n")
+    sys.stderr.write(f"step={err.step}\n")
+    sys.stderr.write(f"reason={err.reason}\n")
+    sys.stderr.write(f"fix={err.fix}\n")
+    if err.artifact:
+        sys.stderr.write(f"artifact={err.artifact}\n")
+    if err.excerpt:
+        sys.stderr.write(f"excerpt={err.excerpt}\n")
+
+
+def emit_json_failure(err: ValidationError) -> None:
+    payload = {
+        "schema": OUTPUT_SCHEMA,
+        "script": "slice-validator",
+        "mode": "json",
+        "result": "fail",
+        "code": err.code,
+        "step": err.step,
+        "reason": err.reason,
+        "fix": err.fix,
+    }
+    if err.artifact:
+        payload["artifact"] = err.artifact
+    if err.excerpt:
+        payload["excerpt"] = err.excerpt
+    json.dump(payload, sys.stdout, ensure_ascii=False)
+    sys.stdout.write("\n")
+
+
+def emit_failure(err: ValidationError, mode: str) -> None:
+    if mode == "json":
+        emit_json_failure(err)
+    elif mode == "quiet":
+        emit_quiet_failure(err)
+    else:
+        emit_default_failure(err)
+
+
+def fail(code: str, step: str, reason: str, fix: str, artifact: str = "", excerpt: str = "") -> ValidationError:
+    return ValidationError(code, step, reason, fix, artifact, excerpt)
+
+
+def file_hash(path: Path) -> str:
+    digest = hashlib.sha256()
+    digest.update(path.read_bytes())
+    return f"sha256:{digest.hexdigest()}"
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def find_section(lines: list[str], heading: str) -> int | None:
+    try:
+        return lines.index(heading)
+    except ValueError:
+        return None
+
+
+def strip_list_marker(line: str) -> str:
+    candidate = line.lstrip()
+    if candidate.startswith(("- ", "* ", "+ ")):
+        return candidate[2:]
+    match = re.match(r"^\d+[.)]\s+(.*)$", candidate)
+    if match:
+        return match.group(1)
+    return candidate
+
+
+def reject_lifecycle_instruction(line: str) -> None:
+    normalized = strip_list_marker(line).strip().lower()
+    if not normalized:
+        return
+    if normalized.startswith("out of scope:"):
+        normalized = normalized[len("out of scope:"):].strip()
+        if not normalized:
+            return
+    if normalized.startswith(("do not ", "don't ")):
+        return
+    for pattern, phrase in LIFECYCLE_PATTERNS:
+        if pattern.match(normalized):
+            raise fail("lifecycle-instruction", "codex-prompt", f"Codex Prompt contains lifecycle instruction: {phrase}", "remove execution and workflow instructions from the prompt")
+    if re.match(r"^branch:\s+\S", normalized):
+        raise fail("lifecycle-instruction", "codex-prompt", "Codex Prompt contains lifecycle instruction: branch:", "remove execution and workflow instructions from the prompt")
+
+
+def reject_self_modifying_helper_instruction(line: str) -> None:
+    normalized = strip_list_marker(line).strip().lower()
+    if not normalized:
+        return
+    if normalized.startswith("out of scope:"):
+        normalized = normalized[len("out of scope:"):].strip()
+        if not normalized:
+            return
+    if normalized.startswith(("do not ", "don't ")):
+        return
+    if "repo-automation/bin/slice-handoff" not in normalized:
+        return
+    if re.match(r"^(?:please\s+)?(?:run|invoke|execute|launch|call)\s+repo-automation/bin/slice-handoff\b", normalized):
+        return
+    raise fail(
+        "self-modifying-target",
+        "codex-prompt",
+        "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff",
+        "changing the running helper through slice-handoff is unsafe; use the direct Codex lane or same-branch repair lane instead",
+    )
+
+
+def parse_handoff(text: str, handoff_path: Path) -> dict[str, object]:
+    lines = text.splitlines()
+    try:
+        slice_index = lines.index("# Slice Handoff")
+    except ValueError:
+        raise fail("missing-heading", "handoff-structure", "missing required heading: # Slice Handoff", "add # Slice Handoff after the envelope")
+
+    prompt_index = find_section(lines, "## Codex Prompt")
+    if prompt_index is None:
+        raise fail("missing-heading", "handoff-structure", "missing required heading: ## Codex Prompt", "add ## Codex Prompt under # Slice Handoff")
+    if prompt_index < slice_index:
+        raise fail("section-order", "handoff-structure", "invalid section order", "place # Slice Handoff before ## Codex Prompt")
+
+    body_index = find_section(lines, "## PR Body")
+    review_index = find_section(lines, "## PR Review Request")
+    if review_index is not None and review_index < prompt_index:
+        raise fail("section-order", "handoff-structure", "invalid section order", "place ## PR Review Request after ## Codex Prompt")
+    if body_index is not None and review_index is not None and review_index < body_index:
+        raise fail("section-order", "handoff-structure", "invalid section order", "place ## PR Review Request after ## PR Body when submit_mode is repo-flow-submit-all")
+
+    envelope: dict[str, str] = {}
+    for raw in lines[:slice_index]:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            raise fail("unexpected-heading", "handoff-envelope", "unexpected heading before # Slice Handoff", "keep the envelope above # Slice Handoff and use key: value lines only")
+        if ":" not in line:
+            raise fail("invalid-envelope-line", "handoff-envelope", f"invalid envelope line: {raw}", "use key: value lines before # Slice Handoff")
+        key, value = line.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            raise fail("empty-envelope-key", "handoff-envelope", "empty envelope key", "use key: value lines before # Slice Handoff")
+        envelope[key] = value
+
+    schema = envelope.get("schema", "")
+    if "schema" not in envelope:
+        raise fail("missing-schema", "handoff-envelope", "missing schema", "set schema: repo-automation-slice-handoff/v1")
+    if schema != "repo-automation-slice-handoff/v1":
+        raise fail("invalid-schema", "handoff-envelope", "invalid schema", "set schema: repo-automation-slice-handoff/v1")
+
+    branch = envelope.get("branch", "")
+    if not branch:
+        raise fail("missing-branch", "handoff-envelope", "missing branch", "set a non-empty branch in the envelope")
+    if branch == "main" or branch.startswith("-") or ".." in branch or re.search(r"\s", branch) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", branch):
+        raise fail("invalid-branch", "handoff-envelope", f"invalid branch: {branch}", "use a conservative feature branch name without whitespace or shell metacharacters")
+
+    title = envelope.get("title", "")
+    if not title:
+        raise fail("missing-title", "handoff-envelope", "missing title", "set a non-empty title in the envelope")
+
+    codex_profile = envelope.get("codex_profile", "")
+    if not codex_profile:
+        raise fail("missing-codex-profile", "handoff-envelope", "missing codex_profile", "set codex_profile to default, lean, medium, high, repair, or review")
+    if codex_profile not in VALID_PROFILES:
+        raise fail("invalid-codex-profile", "handoff-envelope", f"invalid codex_profile: {codex_profile}", "use one of default, lean, medium, high, repair, or review")
+
+    submit_mode = envelope.get("submit_mode", "")
+    if not submit_mode:
+        raise fail("missing-submit-mode", "handoff-envelope", "missing submit_mode", "set submit_mode to none or repo-flow-submit-all")
+    if submit_mode not in VALID_SUBMIT_MODES:
+        raise fail("invalid-submit-mode", "handoff-envelope", f"invalid submit_mode: {submit_mode}", "use submit_mode: none or submit_mode: repo-flow-submit-all")
+
+    commit_message = envelope.get("commit_message", "")
+    if submit_mode == "repo-flow-submit-all" and not commit_message:
+        raise fail("missing-commit-message", "handoff-envelope", "missing commit_message", "set commit_message when submit_mode is repo-flow-submit-all")
+
+    if "## PR Body" in lines[:prompt_index]:
+        raise fail("section-order", "handoff-structure", "invalid section order", "place ## PR Body after ## Codex Prompt if submit_mode is repo-flow-submit-all")
+
+    prompt_end = len(lines)
+    if body_index is not None:
+        prompt_end = body_index
+    elif review_index is not None:
+        prompt_end = review_index
+    prompt_lines = lines[prompt_index + 1:prompt_end]
+    prompt_text = "\n".join(prompt_lines)
+    if not prompt_text.strip():
+        raise fail("missing-prompt", "codex-prompt", "missing Codex Prompt payload", "add prompt text under ## Codex Prompt")
+
+    prompt_lower = prompt_text.lower()
+    for phrase in BLOCKED_PHRASES:
+        if phrase in prompt_lower:
+            raise fail("unsafe-placeholder", "codex-prompt", f"unsafe placeholder text in Codex Prompt: {phrase}", "replace the placeholder prompt with concrete slice instructions")
+
+    for raw_line in prompt_lines:
+        reject_lifecycle_instruction(raw_line)
+        reject_self_modifying_helper_instruction(raw_line)
+
+    pr_review_prompt_id = envelope.get("pr_review_prompt_id", "")
+    if pr_review_prompt_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", pr_review_prompt_id):
+        raise fail("invalid-pr-review-prompt-id", "review-request-source", f"invalid pr_review_prompt_id: {pr_review_prompt_id}", "use a basename ID like repo-automation-template-pr-review (letters, digits, underscore, hyphen; no slashes, whitespace, leading dash, or ..)")
+
+    review_request_text: str
+    review_request_source: str
+    if review_index is not None and pr_review_prompt_id:
+        raise fail("review-source-conflict", "review-request-source", "conflicting PR review sources: explicit ## PR Review Request and pr_review_prompt_id", "remove one of the review request sources before rerunning slice-handoff")
+
+    if review_index is not None:
+        review_request_text = "\n".join(lines[review_index + 1:])
+        if not review_request_text.strip():
+            raise fail("missing-review-request", "review-request-source", "missing PR Review Request payload", "add text under ## PR Review Request")
+        review_request_source = "inline"
+    elif pr_review_prompt_id:
+        review_request_source_path = handoff_path.parent / ".prompts" / f"{pr_review_prompt_id}.md"
+        if not review_request_source_path.exists():
+            raise fail("missing-review-preset", "review-request-source", f"missing PR review prompt preset: {review_request_source_path}", "add the preset file or remove pr_review_prompt_id")
+        if not review_request_source_path.is_file():
+            raise fail("invalid-review-preset", "review-request-source", f"PR review prompt preset is not a regular file: {review_request_source_path}", "use a regular preset file under .prompts")
+        if not os.access(review_request_source_path, os.R_OK):
+            raise fail("invalid-review-preset", "review-request-source", f"PR review prompt preset is not readable: {review_request_source_path}", "fix file permissions or remove pr_review_prompt_id")
+        try:
+            review_request_text = review_request_source_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise fail("invalid-review-preset", "review-request-source", f"PR review prompt preset is not readable: {review_request_source_path}", f"fix file permissions or remove pr_review_prompt_id ({exc})")
+        if not review_request_text.strip():
+            raise fail("empty-review-preset", "review-request-source", f"PR review prompt preset is empty: {review_request_source_path}", "add review request text to the preset file or remove pr_review_prompt_id")
+        review_request_source = f"preset:{pr_review_prompt_id}"
+    else:
+        review_request_text = DEFAULT_REVIEW_REQUEST.format(title=title, branch=branch)
+        review_request_source = "fallback"
+
+    body_text = ""
+    if body_index is not None:
+        body_end = review_index if review_index is not None else len(lines)
+        body_text = "\n".join(lines[body_index + 1:body_end])
+
+    return {
+        "envelope": envelope,
+        "branch": branch,
+        "title": title,
+        "codex_profile": codex_profile,
+        "submit_mode": submit_mode,
+        "commit_message": commit_message,
+        "prompt_text": prompt_text,
+        "body_text": body_text,
+        "review_request_text": review_request_text,
+        "review_request_source": review_request_source,
+        "pr_review_prompt_id": pr_review_prompt_id,
+        "body_index": body_index,
+        "review_index": review_index,
+    }
+
+
+def run_pr_body_check(repo_root: Path, body_path: Path, mode: str) -> tuple[bool, dict[str, object] | None, ValidationError | None]:
+    helper = repo_root / "repo-automation/bin/pr-body-check"
+    if not helper.exists():
+        raise fail("missing-helper", "pr-body-check", f"missing helper: {helper}", "ensure repo-automation/bin/pr-body-check exists")
+    proc = subprocess.run(
+        [str(helper), f"--body-file={body_path}", "--json"],
+        cwd=str(repo_root),
+        text=True,
+        capture_output=True,
+    )
+    try:
+        payload = json.loads(proc.stdout) if proc.stdout.strip() else None
+    except json.JSONDecodeError as exc:
+        raise fail("pr-body-check-json", "pr-body-check", "pr-body-check did not return valid JSON", f"fix repo-automation/bin/pr-body-check JSON output ({exc})", excerpt=proc.stdout.strip()[:200])
+
+    if proc.returncode == 0:
+        return True, payload, None
+    reason = "PR body validation failed"
+    fix = "correct the PR body or remove submit_mode: repo-flow-submit-all"
+    if isinstance(payload, dict):
+        reason = str(payload.get("reason", reason))
+        fix = str(payload.get("fix", fix))
+    elif proc.stdout.strip():
+        reason = proc.stdout.strip().splitlines()[0][:200]
+    return False, payload, fail("pr-body-check-failed", "pr-body-check", reason, fix, excerpt=(json.dumps(payload, ensure_ascii=False) if payload else proc.stdout.strip()[:200]))
+
+
+def build_manifest(state: ValidationState, pr_body_valid: bool, requested_mode: str) -> dict[str, object]:
+    validated_capabilities = {
+        "preflight": True,
+        "codex_run": True,
+        "codex_status": True,
+        "pr_body_check": pr_body_valid,
+        "repo_flow_submit": bool(state.submit_requested and state.submit_mode == "repo-flow-submit-all" and pr_body_valid),
+        "review_request_render": True,
+    }
+    forbidden_steps = []
+    if not validated_capabilities["pr_body_check"]:
+        forbidden_steps.append("pr-body-check")
+    if not validated_capabilities["repo_flow_submit"]:
+        forbidden_steps.append("repo-flow submit")
+
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    validation_id = f"val_{uuid.uuid4().hex[:12]}"
+
+    manifest: dict[str, object] = {
+        "schema": MANIFEST_SCHEMA,
+        "result": "pass",
+        "validation_id": validation_id,
+        "repo_root": str(state.repo_root),
+        "branch": state.branch,
+        "title": state.title,
+        "handoff_path": str(state.handoff_path),
+        "handoff_hash": file_hash(state.handoff_path),
+        "prompt_path": str(state.prompt_path),
+        "prompt_hash": file_hash(state.prompt_path),
+        "requested_mode": requested_mode,
+        "requested_capabilities": {
+            "submit_requested": state.submit_requested,
+            "submit_mode": state.submit_mode,
+        },
+        "validated_capabilities": validated_capabilities,
+        "forbidden_steps": forbidden_steps,
+        "next": "codex-slice-preflight",
+        "created_at": now,
+        "codex_profile": state.codex_profile,
+        "submit_mode": state.submit_mode,
+        "commit_message": state.commit_message,
+        "review_request_source": state.review_request_source,
+        "review_request_path": str(state.review_request_path),
+        "review_request_hash": file_hash(state.review_request_path),
+    }
+    if state.body_text:
+        manifest["pr_body_path"] = str(state.body_path)
+        manifest["pr_body_hash"] = file_hash(state.body_path)
+    else:
+        manifest["pr_body_path"] = ""
+    return manifest
+
+
+def write_manifest(manifest_path: Path, manifest: dict[str, object]) -> None:
+    write_text(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+
+
+def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body_valid: bool) -> None:
+    manifest = build_manifest(state, pr_body_valid, "submit" if state.submit_requested else "validate-only")
+    if mode == "json":
+        payload = {
+            "schema": OUTPUT_SCHEMA,
+            "script": "slice-validator",
+            "mode": "json",
+            "result": "pass",
+            "manifest_path": str(manifest_path),
+            "artifact_dir": str(state.artifact_dir),
+            "requested_mode": "submit" if state.submit_requested else "validate-only",
+            "branch": state.branch,
+            "title": state.title,
+            "submit_mode": state.submit_mode,
+            "codex_profile": state.codex_profile,
+            "validated_capabilities": manifest["validated_capabilities"],
+            "forbidden_steps": manifest["forbidden_steps"],
+            "next": "codex-slice-preflight",
+        }
+        json.dump(payload, sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return
+
+    if mode == "quiet":
+        return
+
+    sys.stdout.write("pass\n")
+    sys.stdout.write(f"manifest_path={manifest_path}\n")
+    sys.stdout.write(f"branch={state.branch}\n")
+    sys.stdout.write(f"title={state.title}\n")
+    sys.stdout.write(f"codex_profile={state.codex_profile}\n")
+    sys.stdout.write(f"submit_mode={state.submit_mode}\n")
+    sys.stdout.write(f"commit_message={state.commit_message}\n")
+    sys.stdout.write("next=codex-slice-preflight\n")
+
+
+def main(argv: list[str]) -> int:
+    opts, mode = parse_args(argv)
+    if opts["help"]:
+        usage()
+        return 0
+
+    if not opts["file"]:
+        raise fail("missing-file", "flag-parse", "missing required --file", "use --file=<path>")
+
+    handoff_path = Path(str(opts["file"])).expanduser()
+    if not handoff_path.exists():
+        raise fail("missing-file", "file-validation", f"missing handoff file: {handoff_path}", "provide an existing handoff file")
+    if handoff_path.is_dir():
+        raise fail("invalid-file", "file-validation", f"handoff file is a directory: {handoff_path}", "provide a regular readable handoff file")
+    if not handoff_path.is_file():
+        raise fail("invalid-file", "file-validation", f"handoff file is not a regular file: {handoff_path}", "provide a regular readable handoff file")
+    if not os.access(handoff_path, os.R_OK):
+        raise fail("invalid-file", "file-validation", f"handoff file is not readable: {handoff_path}", "fix file permissions or choose a readable handoff file")
+
+    repo_root = Path(os.environ.get("REPO_AUTOMATION_REPO_ROOT", Path.cwd()))
+    artifact_dir = Path(str(opts["artifact_dir"])).expanduser() if opts["artifact_dir"] else Path(tempfile.mkdtemp(prefix="slice-validator-", dir=os.environ.get("TMPDIR", None) or None))
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = Path(str(opts["manifest_out"])).expanduser() if opts["manifest_out"] else artifact_dir / "validation-manifest.json"
+    prompt_path = artifact_dir / "codex-prompt.md"
+    review_request_path = artifact_dir / "review-request.txt"
+    body_path = artifact_dir / "pr-body.md"
+
+    raw = handoff_path.read_text(encoding="utf-8")
+    parsed = parse_handoff(raw, handoff_path)
+
+    state = ValidationState(
+        repo_root=repo_root,
+        handoff_path=handoff_path,
+        submit_requested=bool(opts["submit"]),
+        artifact_dir=artifact_dir,
+        manifest_path=manifest_path,
+        branch=str(parsed["branch"]),
+        title=str(parsed["title"]),
+        codex_profile=str(parsed["codex_profile"]),
+        submit_mode=str(parsed["submit_mode"]),
+        commit_message=str(parsed["commit_message"]),
+        prompt_text=str(parsed["prompt_text"]),
+        prompt_path=prompt_path,
+        body_text=str(parsed["body_text"]),
+        body_path=body_path,
+        review_request_text=str(parsed["review_request_text"]),
+        review_request_path=review_request_path,
+        pr_review_prompt_id=str(parsed["pr_review_prompt_id"]),
+        review_request_source=str(parsed["review_request_source"]),
+    )
+
+    write_text(prompt_path, state.prompt_text.rstrip("\n") + "\n")
+    write_text(review_request_path, state.review_request_text.rstrip("\n") + "\n")
+
+    pr_body_valid = False
+    if state.body_text.strip():
+        write_text(body_path, state.body_text.rstrip("\n") + "\n")
+        pr_body_valid, _, pr_body_err = run_pr_body_check(repo_root, body_path, mode)
+        if pr_body_err is not None:
+            if state.submit_mode == "repo-flow-submit-all" and state.submit_requested:
+                raise pr_body_err
+        else:
+            pr_body_valid = True
+    else:
+        if state.submit_mode == "repo-flow-submit-all" and state.submit_requested:
+            raise fail("missing-pr-body", "pr-body-check", "missing ## PR Body", "add ## PR Body when submit_mode is repo-flow-submit-all")
+
+    manifest = build_manifest(state, pr_body_valid, "submit" if state.submit_requested else "validate-only")
+    write_manifest(manifest_path, manifest)
+
+    emit_success(mode, manifest_path, state, pr_body_valid)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except ValidationError as err:
+        mode = "default"
+        argv = sys.argv[1:]
+        if "--json" in argv:
+            mode = "json"
+        elif "--quiet" in argv:
+            mode = "quiet"
+        emit_failure(err, mode)
+        raise SystemExit(1)
+PY

@@ -77,3 +77,18 @@ What would have helped:
 Recommended improvements:
 - Keep child failure metadata explicit across subprocess boundaries.
 - Prefer negative downstream-invocation assertions near the trust boundary.
+
+
+### 2026-06-05 slice-validator capability gate
+
+Challenges:
+- The new gate needed to preserve the handoff shape while separating static run-contract validation from repo/worktree preflight.
+- PR-body validation was reused through `pr-body-check`, so the helper needed a clear boundary between body validity, submit authorization, and unrelated capabilities.
+
+What would have helped:
+- A tiny manifest schema example and direct-call helper spec next to the handoff docs.
+- A dedicated validator contract test that exercises default, quiet, JSON, and submit/non-submit capability splits.
+
+Recommended improvements:
+- Keep capability-grant manifests explicit and separate them from preflight readiness.
+- Reuse PR-body validation as a distinct helper contract instead of embedding body checks in multiple places.

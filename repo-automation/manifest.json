@@ -174,6 +174,11 @@
       "kind": "script"
     },
     {
+      "path": "repo-automation/bin/slice-validator",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
       "path": "repo-automation/bin/review-pack",
       "owner": "repo-automation-template",
       "kind": "script"
@@ -220,6 +225,11 @@
     },
     {
       "path": "repo-automation/docs/slice-run-dir.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/slice-validator.md",
       "owner": "repo-automation-template",
       "kind": "doc"
     },
@@ -280,6 +290,11 @@
     },
     {
       "path": "repo-automation/tests/contracts/slice-run-dir.sh",
+      "owner": "repo-automation-template",
+      "kind": "test"
+    },
+    {
+      "path": "repo-automation/tests/contracts/slice-validator.sh",
       "owner": "repo-automation-template",
       "kind": "test"
     },

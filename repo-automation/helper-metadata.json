@@ -505,6 +505,27 @@
       "config_keys": []
     },
     {
+      "name": "slice-validator",
+      "path": "repo-automation/bin/slice-validator",
+      "doc_path": "repo-automation/docs/slice-validator.md",
+      "contract_test_path": "repo-automation/tests/contracts/slice-validator.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "instant",
+      "writes_files": true,
+      "writes_git": false,
+      "uses_github": false,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": true,
+      "supports_json": true,
+      "artifact_helper": true,
+      "umbrella_helper": false,
+      "workflow_role": "workflow",
+      "config_keys": []
+    },
+    {
       "name": "review-pack",
       "path": "repo-automation/bin/review-pack",
       "doc_path": "repo-automation/docs/review-pack.md",
