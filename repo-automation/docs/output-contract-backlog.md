@@ -159,12 +159,13 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Near-term order
 
-1. codex-slice-preflight output clarity
-2. codex-run child/final-output boundaries
-3. ci-log-dump
-4. run-tests
-5. managed-file-check
-6. remaining quiet-capable helpers by operator risk
+1. implement `slice-validator`
+2. wire `slice-handoff` to call `slice-validator` before `codex-slice-preflight`
+3. resume `codex-slice-preflight` declared-contract baseline
+4. codex-run child/final-output boundaries
+5. ci-log-dump
+6. run-tests
+7. managed-file-check
 
 ## Do not do yet
 
@@ -187,6 +188,8 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Next implementation handoff
 
-After this tracking slice, the next behavior slice should bring `codex-slice-preflight` to declared-contract baseline.
-That slice should update the compliance tracking matrix based on evidence.
-Do not skip tracking updates when helper behavior changes.
+With the `slice-validator` spec recorded, the next behavior slice should implement `repo-automation/bin/slice-validator` as a direct-call helper that emits the documented capability manifest and focused contract tests.
+Then wire `slice-handoff` to call it before `codex-slice-preflight`.
+When `slice-validator` is implemented, add it to `helper-metadata.json`, managed docs and registration surfaces if required, and the compliance tracking matrix.
+After that, resume codex-slice-preflight declared-contract baseline.
+Future helper slices should update the tracking matrix when helper behavior, tests, evidence, or status changes.
