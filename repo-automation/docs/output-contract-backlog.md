@@ -187,6 +187,8 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Next implementation handoff
 
-After this tracking slice, the next behavior slice should bring `codex-slice-preflight` to declared-contract baseline.
-That slice should update the compliance tracking matrix based on evidence.
-Do not skip tracking updates when helper behavior changes.
+First specify `slice-validator` as the next planned helper/spec.
+Then implement `slice-validator`, add it to `helper-metadata.json`, managed docs, and the compliance tracking matrix.
+Then wire `slice-handoff` to call it before `codex-slice-preflight`.
+After that, resume the `codex-slice-preflight` declared-contract baseline.
+Future helper slices should update the tracking matrix when helper behavior, tests, evidence, or status changes.

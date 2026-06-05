@@ -103,6 +103,57 @@ Failure returns a compact blocker with the failing step, command class, command,
 
 For blocker-semantics coverage, keep the trust-boundary tests close to the execution gate and prefer tiny fixture helpers for shaping Codex final output. Quiet-mode artifact clarity matters most for `slice-handoff-execution-summary.txt`, `slice-handoff-summary.txt`, `codex-run.stdout`, `codex-run.stderr`, `codex-run/codex-run-summary.txt`, `codex-run/codex-final.txt`, `preflight.json`, `preflight.stdout`, `preflight.stderr`, `pr-body-check.stdout`, `pr-body-check.stderr`, `repo-flow-submit.stdout`, `repo-flow-submit.stderr`, `review-request.txt`, and `codex-prompt.md`.
 
+## Slice validator capability gate
+
+`repo-automation/bin/slice-validator` validates the run contract and emits a run-scoped capability manifest before repo preflight.
+
+It is designed primarily for `slice-handoff`, but it can be called directly for inspection or debugging of a proposed slice.
+
+It does not validate repo/worktree/execution-environment readiness; that remains `codex-slice-preflight`.
+
+It may grant some capabilities and deny others. Missing optional inputs deny dependent capabilities rather than failing unrelated capabilities. For example, no PR body or submit authorization means `repo_flow_submit=false`, while a valid handoff and Codex prompt can still allow `codex_run=true`. Blocker repair or resume paths may validate a subset such as `codex_run`, `codex_status`, and `repo_flow_submit` without rerunning preflight when the selected mode explicitly supports that flow.
+
+The capability manifest is run-scoped, not a single safety byte. A compact example:
+
+```json
+{
+  "schema": "repo-automation/slice-validator.v1",
+  "result": "ok",
+  "validation_id": "val_123",
+  "repo_root": "/path/to/repo",
+  "branch": "docs/output-contract-compliance-tracking",
+  "handoff_path": ".slice-handoff.json",
+  "handoff_hash": "sha256:...",
+  "prompt_path": "codex-prompt.md",
+  "prompt_hash": "sha256:...",
+  "pr_body_path": "pr-body.md",
+  "pr_body_hash": "sha256:...",
+  "requested_mode": "execution",
+  "validated_capabilities": {
+    "codex_run": true,
+    "codex_status": true,
+    "repo_flow_submit": false
+  },
+  "forbidden_steps": ["merge", "publish"],
+  "next": "codex-slice-preflight",
+  "created_at": "2026-06-05T00:00:00Z"
+}
+```
+
+Default success should stay compact and name the manifest path. Default failure should stay compact and actionable with step, reason, and fix. Quiet success and quiet failure should follow the QDE shape if quiet is later supported. JSON success and JSON failure should remain valid JSON only on stdout if JSON is later supported. This is a spec only; it does not claim an implementation yet.
+
+Over time, run-shape checks should move out of `slice-handoff` and `codex-slice-preflight` into `slice-validator`: handoff envelope fields, mode/flag compatibility, submit authorization, PR body static readiness, Codex prompt lifecycle and boundary checks, self-modifying target checks, review-request source compatibility, and downstream helper contract assumptions. Repo/worktree/environment checks stay in `codex-slice-preflight`.
+
+Downstream helpers keep local invariant validation for standalone, debug, and repair use. Orchestrated calls may eventually pass a `--validation-manifest=<path>` or equivalent, but this spec slice does not require that behavior. Direct standalone helper use should remain intact in the first implementation.
+
+Phased plan:
+
+1. Spec only.
+2. Implement `slice-validator` as a direct-call helper that emits a manifest and has focused contract tests.
+3. Make `slice-handoff` call `slice-validator` before `codex-slice-preflight`.
+4. Pass the manifest to downstream helpers in orchestrated mode.
+5. Selectively require the manifest for high-risk orchestrated downstream operations while preserving standalone repair/debug paths.
+
 ## Timeout and profile contract
 
 - no single global timeout
