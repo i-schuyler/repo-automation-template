@@ -103,8 +103,57 @@ Next slice:
 ## Compliance tracking fields
 
 - Declared contract: what the helper says it supports in docs/help/metadata.
+  Allowed values: declared, partial, needs-audit, not-applicable.
 - Test coverage: which declared behaviors have focused tests.
-- Compliance status: verified / partial / needs-audit / blocked / not-applicable.
+  Allowed values: verified, partial, missing, not-applicable.
+- Compliance status: the overall evidence-based state.
+  Allowed values: verified, partial, needs-audit, blocked, not-applicable.
+- Evidence: the smallest stable pointer that supports the current row value.
+  Allowed values: PR number, contract test path, docs path, or checker name.
+- Next verification action: the smallest next step needed to advance the helper.
+
+## Compliance tracking matrix
+
+| Helper | Declared contract | Test coverage | Compliance status | Evidence | Next verification action |
+| --- | --- | --- | --- | --- | --- |
+| codex-slice-preflight | partial | partial | needs-audit | docs/output-modes.md | baseline declared contract and coverage for default, JSON, and explain failures |
+| codex-run | partial | partial | needs-audit | docs/output-modes.md | verify child-output boundaries and quiet behavior |
+| ci-log-dump | partial | partial | needs-audit | docs/output-modes.md | confirm declared JSON/quiet contract and failure artifact paths |
+| run-tests | partial | partial | needs-audit | docs/output-modes.md | verify umbrella failure shapes and JSON output purity |
+| managed-file-check | partial | partial | needs-audit | docs/output-modes.md | confirm changed-path failure boundaries and quiet behavior |
+| slice-handoff | partial | partial | partial | PR #223 | finish broader output-mode migration and record coverage evidence |
+| pr-body-check | partial | partial | needs-audit | docs/output-modes.md | verify submit-gate failure wording and JSON failure shape |
+| repo-flow | partial | partial | needs-audit | docs/output-modes.md | baseline submit/merge contract and child-boundary coverage |
+| codex-status | partial | partial | needs-audit | docs/output-modes.md | verify declared JSON contract and failure fields |
+| check-portability | partial | partial | needs-audit | docs/output-modes.md | confirm concise audit failures and JSON support |
+| check-tooling | partial | partial | needs-audit | docs/output-modes.md | verify quiet/JSON failure coverage |
+| branch-cleanup | partial | partial | needs-audit | docs/output-modes.md | verify worktree-step failure boundaries |
+| add-doc-pr | partial | partial | needs-audit | docs/output-modes.md | verify docs-PR failure shape and JSON contract |
+| automation-freshness | partial | partial | needs-audit | docs/output-modes.md | verify manifest freshness failure shape |
+| ci-failure-artifacts | partial | partial | needs-audit | docs/output-modes.md | verify artifact-path reporting and JSON output |
+| ci-status | partial | partial | needs-audit | docs/output-modes.md | verify watched-state transitions and JSON failure shape |
+| ci-watch | partial | partial | needs-audit | docs/output-modes.md | verify watch-timeout failure boundaries |
+| contract-debt-report | partial | partial | needs-audit | docs/output-modes.md | verify narrow finding output and JSON coverage |
+| evidence-bundle | partial | partial | needs-audit | docs/output-modes.md | verify artifact-path reporting |
+| failure-log | partial | partial | needs-audit | docs/output-modes.md | verify compact failure summaries |
+| github-settings-check | partial | partial | needs-audit | docs/output-modes.md | verify targeted check failures and JSON output |
+| managed-file-add | partial | partial | needs-audit | docs/output-modes.md | verify mutating-path stop reasons |
+| repair-prompt | partial | missing | needs-audit | docs/output-modes.md | verify whether any coverage exists for minimal prompt output |
+| post-codex-packet | partial | partial | needs-audit | docs/output-modes.md | verify packet path reporting |
+| post-codex-review | partial | partial | needs-audit | docs/output-modes.md | verify review packet path reporting |
+| prepare-release | partial | partial | needs-audit | docs/output-modes.md | verify release-stop shape and JSON output |
+| pr-create | partial | partial | needs-audit | docs/output-modes.md | verify PR creation failure shape |
+| pr-finish | partial | partial | needs-audit | docs/output-modes.md | verify finalize/merge failure shape |
+| repo-automation-install | partial | partial | needs-audit | docs/output-modes.md | verify install-path checks and JSON output |
+| repo-automation-report-upstream | partial | partial | needs-audit | docs/output-modes.md | verify upstream-report failure shape |
+| repo-doctor | partial | partial | needs-audit | docs/output-modes.md | verify audit failure paths and JSON output |
+| repo-zip | partial | partial | needs-audit | docs/output-modes.md | verify archive-path stability |
+| slice-run-dir | partial | partial | needs-audit | docs/output-modes.md | verify run-dir lifecycle failures |
+| review-pack | partial | missing | needs-audit | docs/output-modes.md | verify narrow non-JSON, non-quiet failure output |
+| shellcheck-ci-parity | partial | missing | needs-audit | docs/output-modes.md | verify helper-path parity reporting |
+| starter-template-ready | partial | partial | needs-audit | docs/output-modes.md | verify readiness failure wording |
+| status-packet | partial | partial | needs-audit | docs/output-modes.md | verify packet/status artifact paths |
+| touched-files | partial | partial | needs-audit | docs/output-modes.md | verify changed-path output stability |
 
 ## Near-term order
 
@@ -121,3 +170,21 @@ Next slice:
 - Do not rewrite all helpers in one slice.
 - Do not change helper metadata just to make the table look uniform.
 - Do not run broad checks for docs-only table updates unless existing policy requires it.
+
+## Future checker shape
+
+`repo-automation/bin/output-contract-check` should eventually verify:
+
+- every public helper in `helper-metadata.json` appears exactly once in the backlog table;
+- every public helper appears exactly once in the compliance tracking matrix;
+- quiet/json claims match `helper-metadata.json`;
+- helpers marked verified have evidence;
+- helpers with `supports_quiet=true` have quiet success/failure coverage evidence before verified;
+- helpers with `supports_json=true` have JSON purity/failure coverage evidence before verified;
+- umbrella/child-process helpers have child-boundary coverage evidence before verified.
+
+## Next implementation handoff
+
+After this tracking slice, the next behavior slice should bring `codex-slice-preflight` to declared-contract baseline.
+That slice should update the compliance tracking matrix based on evidence.
+Do not skip tracking updates when helper behavior changes.
