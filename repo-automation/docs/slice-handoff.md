@@ -75,6 +75,7 @@ When `--dry-run` is omitted, `slice-handoff` runs execution flow:
 - clean up stale marked run dirs through `slice-run-dir` without touching unmarked directories
 - run preflight with JSON child diagnostics from the checked-out repo root
 - run Codex
+- if Codex final output begins with `blocker` after trimming spaces, tabs, and CR, stop before PR-body validation or submit and surface the blocker artifact instead
 - if `--submit` is not authorized, stop after Codex with `next=repo-flow submit not implemented in this slice`
 - if `--submit` is authorized and `submit_mode: repo-flow-submit-all` is set, validate the PR body, submit through `repo-flow submit`, and stop before merge
 
@@ -98,7 +99,7 @@ Execution flow writes child logs and artifacts under the active run dir:
 
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 
-Failure returns a compact blocker with the failing step, command, exit code, artifact paths, excerpt, and `fix=paste this blocker into ChatGPT`.
+Failure returns a compact blocker with the failing step, command class, command, exit code, artifact paths, reason/excerpt, `fix=paste this blocker into ChatGPT`, and a step-specific next action.
 
 For blocker-semantics coverage, keep the trust-boundary tests close to the execution gate and prefer tiny fixture helpers for shaping Codex final output. Quiet-mode artifact clarity matters most for `slice-handoff-execution-summary.txt`, `slice-handoff-summary.txt`, `codex-run.stdout`, `codex-run.stderr`, `codex-run/codex-run-summary.txt`, `codex-run/codex-final.txt`, `preflight.json`, `preflight.stdout`, `preflight.stderr`, `pr-body-check.stdout`, `pr-body-check.stderr`, `repo-flow-submit.stdout`, `repo-flow-submit.stderr`, `review-request.txt`, and `codex-prompt.md`.
 
