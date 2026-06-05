@@ -1,22 +1,60 @@
 # Output Contract Backlog
 
-Purpose: public planning inventory for output-contract and child-failure-boundary work.
-This is a backlog, not a guarantee that every helper already complies.
+Purpose: public implementation plan for output-contract and child-failure-boundary work.
+This document is both the helper inventory and the compliance plan for the output-contract arc.
 
 Source inputs:
 - `repo-automation/helper-metadata.json`
 - `repo-automation/docs/output-modes.md`
 - current friction and the near-term plan
 
-This table is intentionally complete across all public helpers; priority lanes determine implementation order.
+This table is intentionally complete across all public helpers; the compliance plan governs the output-contract arc, and helper order remains the first implementation sequence inside that plan.
+
+## Compliance definition
+
+A helper is compliant when its actual behavior matches its declared contract.
+Compliance does not mean every helper supports every output mode.
+Compliance means truthful metadata, aligned docs/help, focused tests for declared modes, and actionable failure boundaries.
+
+## Five-layer compliance plan
+
+1. Layer 1 — Inventory complete
+   The public helper inventory exists and covers all public helpers from `helper-metadata.json`.
+2. Layer 2 — Contract declared per helper
+   Each helper records declared modes, child-process risk, success shape, failure shape, and test coverage status.
+3. Layer 3 — Focused tests prove declared modes
+   Tests cover default success/failure, quiet if supported, JSON if supported, mode conflicts, unknown args/flags, and child-failure boundaries when relevant.
+4. Layer 4 — CI/checker prevents drift
+   A lightweight checker should eventually verify metadata/docs/help/test coverage alignment.
+5. Layer 5 — Verified status
+   Helpers get marked verified/partial/needs-audit/blocked/not-applicable based on evidence.
+
+## Compliance status vocabulary
+
+- verified: evidence shows the helper matches its declared contract.
+- partial: some declared behavior is proven, but coverage or contract alignment is incomplete.
+- needs-audit: the helper needs review before a status claim is reliable.
+- blocked: compliance work is prevented by an unresolved dependency or boundary.
+- not-applicable: the field or layer does not apply to that helper.
+
+## Small planning/testability slice
+
+Next slice:
+- add compliance status/rubric to this doc;
+- add or prepare columns for declared-contract status, test coverage status, and compliance status;
+- define a future lightweight checker, likely `output-contract-check`;
+- do not implement the checker in this slice unless it is truly tiny and docs-only validation is insufficient.
 
 ## How to use this backlog
 
+- The compliance plan governs the output-contract arc.
+- Helper order remains the first implementation sequence inside that plan.
 - Start with the highest operator-risk helpers.
 - Child-process opacity outranks cosmetic cleanup.
 - Quiet-capable helpers need a QDE audit.
 - JSON-capable helpers need valid stdout-only JSON and actionable failure fields.
 - Helpers that wrap child commands need step, reason, fix, and artifact boundaries.
+- Each helper slice should advance a helper through the compliance layers rather than performing isolated output cleanup.
 - Update this table after each output-contract slice.
 
 ## Backlog
@@ -61,6 +99,12 @@ This table is intentionally complete across all public helpers; priority lanes d
 | starter-template-ready | readiness helper | quiet=no json=yes | readiness failures should stay compact and user-facing | keep readiness checks narrow | monitor |
 | status-packet | status/artifact helper | quiet=yes json=yes | packet/status failures need clear artifact paths | keep packet result explicit | monitor |
 | touched-files | diff helper | quiet=yes json=yes | diff output should remain narrow and path-focused | keep changed-path output stable | monitor |
+
+## Compliance tracking fields
+
+- Declared contract: what the helper says it supports in docs/help/metadata.
+- Test coverage: which declared behaviors have focused tests.
+- Compliance status: verified / partial / needs-audit / blocked / not-applicable.
 
 ## Near-term order
 
