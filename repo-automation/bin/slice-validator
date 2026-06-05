@@ -1,4 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/env bash
+
+REPO_AUTOMATION_REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+export REPO_AUTOMATION_REPO_ROOT
+
+python3 - "$@" <<'PY'
 from __future__ import annotations
 
 import hashlib
@@ -560,7 +565,7 @@ def main(argv: list[str]) -> int:
     if not os.access(handoff_path, os.R_OK):
         raise fail("invalid-file", "file-validation", f"handoff file is not readable: {handoff_path}", "fix file permissions or choose a readable handoff file")
 
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(os.environ.get("REPO_AUTOMATION_REPO_ROOT", Path.cwd()))
     artifact_dir = Path(str(opts["artifact_dir"])).expanduser() if opts["artifact_dir"] else Path(tempfile.mkdtemp(prefix="slice-validator-", dir=os.environ.get("TMPDIR", None) or None))
     artifact_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = Path(str(opts["manifest_out"])).expanduser() if opts["manifest_out"] else artifact_dir / "validation-manifest.json"
@@ -627,3 +632,4 @@ if __name__ == "__main__":
             mode = "quiet"
         emit_failure(err, mode)
         raise SystemExit(1)
+PY
