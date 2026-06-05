@@ -117,8 +117,8 @@ The capability manifest is run-scoped, not a single safety byte. A compact examp
 
 ```json
 {
-  "schema": "repo-automation/slice-validator.v1",
-  "result": "ok",
+  "schema": "repo-automation-slice-validator/v1",
+  "result": "pass",
   "validation_id": "val_123",
   "repo_root": "/path/to/repo",
   "branch": "docs/output-contract-compliance-tracking",

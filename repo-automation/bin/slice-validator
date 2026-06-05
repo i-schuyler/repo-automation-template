@@ -610,7 +610,7 @@ def main(argv: list[str]) -> int:
         else:
             pr_body_valid = True
     else:
-        if state.submit_mode == "repo-flow-submit-all":
+        if state.submit_mode == "repo-flow-submit-all" and state.submit_requested:
             raise fail("missing-pr-body", "pr-body-check", "missing ## PR Body", "add ## PR Body when submit_mode is repo-flow-submit-all")
 
     manifest = build_manifest(state, pr_body_valid, "submit" if state.submit_requested else "validate-only")

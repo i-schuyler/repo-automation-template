@@ -450,13 +450,29 @@ PY
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/slice-validator --file="$missing_pr_body_file" >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'pass' "$stdout_file" && grep -Fq 'manifest_path=' "$stdout_file"; then
+    manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
+    if smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("validated_capabilities", {}).get("codex_run") is True and data.get("validated_capabilities", {}).get("pr_body_check") is False and data.get("validated_capabilities", {}).get("repo_flow_submit") is False and "pr-body-check" in data.get("forbidden_steps", [])'; then
+      test_pass "slice-validator denies submit-only body capability without blocking validate-only flow"
+    else
+      test_fail "slice-validator denies submit-only body capability without blocking validate-only flow"
+      status=1
+    fi
+  else
+    test_fail "slice-validator denies submit-only body capability without blocking validate-only flow"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$missing_pr_body_file" --submit >"$stdout_file" 2>"$stderr_file"
   ); then
-    test_fail "slice-validator rejects missing PR body for submit-mode handoff"
+    test_fail "slice-validator rejects missing PR body when submit is requested"
     status=1
   elif grep -Fq 'missing ## PR Body' "$stderr_file"; then
-    test_pass "slice-validator rejects missing PR body for submit-mode handoff"
+    test_pass "slice-validator rejects missing PR body when submit is requested"
   else
-    test_fail "slice-validator rejects missing PR body for submit-mode handoff"
+    test_fail "slice-validator rejects missing PR body when submit is requested"
     status=1
   fi
 
