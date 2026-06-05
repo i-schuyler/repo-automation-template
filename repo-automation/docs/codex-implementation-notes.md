@@ -63,3 +63,17 @@ What would have helped:
 Recommended improvements:
 - Keep named-check failure metadata explicit when checks run under timeout subshells.
 - Prefer temp-root-derived paths in contract fixtures so portability checks stay quiet.
+
+### 2026-06-05 slice-handoff blocker boundary repair
+
+Challenges:
+- The slice-handoff wrapper needed to distinguish Codex final-output blockers from ordinary child failures without letting later submit phases start.
+- Failure output had to stay short but still carry the child step, command class, artifact paths, and next action for operator handoff.
+
+What would have helped:
+- A shared child-boundary error envelope for execution helpers, with explicit fields for artifact paths and the next action.
+- Focused contract fixtures that assert downstream helpers stay uninvoked after the first failing boundary.
+
+Recommended improvements:
+- Keep child failure metadata explicit across subprocess boundaries.
+- Prefer negative downstream-invocation assertions near the trust boundary.

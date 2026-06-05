@@ -576,10 +576,10 @@ PY
 smoke_slice_handoff_assert_dirty_preflight_failure() {
   local stderr_file="$1"
   local args_file="$2"
-  local expected_excerpt="$3"
+  local run_dir="$3"
+  local expected_excerpt="$4"
 
-  grep -Fxq 'step=preflight' "$stderr_file" || return 1
-  grep -Fxq "excerpt=$expected_excerpt" "$stderr_file" || return 1
+  smoke_slice_handoff_assert_child_failure_shape "$stderr_file" "preflight" "repo-automation/bin/codex-slice-preflight" "1" "$run_dir/preflight.stdout" "$run_dir/preflight.stderr" "$expected_excerpt" "$expected_excerpt" "fix preflight and rerun slice-handoff" || return 1
   [ ! -s "$args_file" ] || return 1
 }
 
@@ -630,14 +630,14 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   if ! (
     PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run_with_isolated_temp_env "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"
   ); then
-    if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "stop_reason=working tree must be clean before preflight"; then
+    run_dir="$(find "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "$run_dir" "stop_reason=working tree must be clean before preflight"; then
       status=1
     elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
       status=1
     elif [ ! -e "$dirty_execution_sentinel" ]; then
       status=1
     else
-      run_dir="$(find "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
       if ! python3 - "$run_dir" "$dirty_execution_sentinel" "$dirty_execution_smoke_test_dir" "$saved_smoke_test_base" "$TEST_TEMP_ROOT" <<'PY'
 from pathlib import Path
 import json
@@ -690,6 +690,37 @@ smoke_slice_handoff_assert_error_shape() {
   if [ "$(wc -l < "$filtered_stderr_file" | tr -d '[:space:]')" = "2" ] &&
     grep -Fxq "fail: $reason" "$filtered_stderr_file" &&
     grep -Fxq "fix: $fix" "$filtered_stderr_file"; then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+  return 1
+}
+
+smoke_slice_handoff_assert_child_failure_shape() {
+  local stderr_file="$1"
+  local expected_step="$2"
+  local expected_command_class="$3"
+  local expected_exit_code="$4"
+  local expected_stdout_path="$5"
+  local expected_stderr_path="$6"
+  local expected_reason="$7"
+  local expected_excerpt="${8:-$7}"
+  local expected_next="$9"
+  local filtered_stderr_file=""
+
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-execution-error.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+  if grep -Fxq 'fail: slice-handoff child boundary failed' "$filtered_stderr_file" &&
+    grep -Fxq "step=$expected_step" "$filtered_stderr_file" &&
+    grep -Fxq "command_class=$expected_command_class" "$filtered_stderr_file" &&
+    grep -Fxq "exit_code=$expected_exit_code" "$filtered_stderr_file" &&
+    grep -Fxq "stdout_path=$expected_stdout_path" "$filtered_stderr_file" &&
+    grep -Fxq "stderr_path=$expected_stderr_path" "$filtered_stderr_file" &&
+    grep -Fxq "reason=$expected_reason" "$filtered_stderr_file" &&
+    grep -Fxq "excerpt=$expected_excerpt" "$filtered_stderr_file" &&
+    grep -Fxq 'fix=paste this blocker into ChatGPT' "$filtered_stderr_file" &&
+    grep -Fxq "next=$expected_next" "$filtered_stderr_file"; then
     rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
     return 0
   fi

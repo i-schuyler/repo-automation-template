@@ -829,8 +829,7 @@ EOF
     status=1
   else
     run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
-    if grep -Fxq 'step=codex-run-output-contract' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
-      grep -Fxq 'fix=paste this blocker into ChatGPT' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
+    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-missing-final.err" "codex-run-output-contract" "codex-run output contract" "0" "$run_dir/codex-run.stdout" "$run_dir/codex-run.stderr" "final output file is missing or empty" "final output file is missing or empty" "repair codex-run output contract and rerun slice-handoff" &&
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
       ! grep -Fq '===== PR REVIEW REQUEST =====' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
@@ -841,6 +840,25 @@ EOF
       test_pass "execution-submit missing codex-final"
     else
       test_fail "execution-submit missing codex-final"
+      status=1
+    fi
+  fi
+  if (
+    rm -f -- "$fake_pr_body_check_args_submit_file" "$fake_repo_flow_args_submit_file" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_RUN_HELPER=1 FAKE_CODEX_RUN_EXIT_CODE=1 FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_RUN_STDOUT_TEXT='' FAKE_CODEX_RUN_STDERR_TEXT='fail: forced codex-run blocker from smoke' FAKE_PR_BODY_CHECK_ARGS_FILE="$fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-codex-run-failure.out" "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" --file="$execution_valid_submit_file" --submit --out-dir="$execution_submit_out_dir"
+  ); then
+    test_fail "execution-submit codex-run failure"
+    status=1
+  else
+    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" "codex-run" "repo-automation/bin/codex-run" "1" "$run_dir/codex-run.stdout" "$run_dir/codex-run.stderr" "fail: forced codex-run blocker from smoke" "fail: forced codex-run blocker from smoke" "fix codex-run and rerun slice-handoff" &&
+      ! grep -Fq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" &&
+      ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" &&
+      [ ! -s "$fake_pr_body_check_args_submit_file" ] &&
+      [ ! -s "$fake_repo_flow_args_submit_file" ]; then
+      test_pass "execution-submit codex-run failure"
+    else
+      test_fail "execution-submit codex-run failure"
       status=1
     fi
   fi
@@ -1048,14 +1066,13 @@ EOF
 
   if (
     rm -f -- "$fake_repo_flow_args_submit_file" &&
-      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_PR_BODY_CHECK_EXIT_CODE=1 FAKE_PR_BODY_CHECK_STDERR_TEXT='forced pr-body-check blocker from smoke' smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.out" "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" --file="$execution_invalid_submit_file" --submit --out-dir="$execution_submit_out_dir"
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_PR_BODY_CHECK_EXIT_CODE=1 FAKE_PR_BODY_CHECK_STDERR_TEXT='fail: forced pr-body-check blocker from smoke' smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.out" "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" --file="$execution_invalid_submit_file" --submit --out-dir="$execution_submit_out_dir"
   ); then
     test_fail "execution-submit pr-body-check failure"
     status=1
   else
     run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
-    if grep -Fxq 'step=pr-body-check' "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" &&
-      grep -Fxq 'fix=paste this blocker into ChatGPT' "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" &&
+    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" "pr-body-check" "repo-automation/bin/pr-body-check" "1" "$run_dir/pr-body-check.stdout" "$run_dir/pr-body-check.stderr" "fail: forced pr-body-check blocker from smoke" "fail: forced pr-body-check blocker from smoke" "fix the PR body and rerun slice-handoff" &&
       grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'result=fail' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq "pr_body_check_stdout_path=$run_dir/pr-body-check.stdout" "$run_dir/slice-handoff-execution-summary.txt" &&
@@ -1076,14 +1093,13 @@ EOF
 
   if (
     rm -f -- "$fake_repo_flow_args_submit_file" &&
-      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_EXIT_CODE=1 FAKE_REPO_FLOW_STOP_REASON='repo-flow submit blocker from smoke' smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.out" "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" --file="$execution_valid_submit_file" --submit --out-dir="$execution_submit_out_dir"
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fail: repo-flow submit blocker from smoke' FAKE_REPO_FLOW_EXIT_CODE=1 FAKE_REPO_FLOW_STOP_REASON='repo-flow submit blocker from smoke' smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.out" "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" --file="$execution_valid_submit_file" --submit --out-dir="$execution_submit_out_dir"
   ); then
     test_fail "execution-submit repo-flow failure"
     status=1
   else
     run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
-    if grep -Fxq 'step=repo-flow-submit' "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" &&
-      grep -Fxq 'fix=paste this blocker into ChatGPT' "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" &&
+    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" "repo-flow-submit" "repo-automation/bin/repo-flow submit" "1" "$run_dir/repo-flow-submit.stdout" "$run_dir/repo-flow-submit.stderr" "repo-flow submit blocker from smoke" "repo-flow submit blocker from smoke" "fix repo-flow submit and rerun slice-handoff" &&
       grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'result=fail' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq "repo_flow_submit_stdout_path=$run_dir/repo-flow-submit.stdout" "$run_dir/slice-handoff-execution-summary.txt" &&
@@ -1096,6 +1112,25 @@ EOF
       :
     else
       test_fail "execution-submit repo-flow failure"
+      status=1
+    fi
+  fi
+
+  if (
+    rm -f -- "$fake_repo_flow_args_submit_file" &&
+      PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP='not-a-url' smoke_slice_handoff_run_with_isolated_temp_env "$execution_isolated_tmpdir" "$execution_isolated_home" smoke_slice_handoff_run "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.out" "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" --file="$execution_valid_submit_file" --submit --out-dir="$execution_submit_out_dir"
+  ); then
+    test_fail "execution-submit repo-flow output-contract failure"
+    status=1
+  else
+    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" "repo-flow-submit-output-contract" "repo-automation/bin/repo-flow submit output contract" "0" "$run_dir/repo-flow-submit.stdout" "$run_dir/repo-flow-submit.stderr" "missing PR URL in repo-flow submit url_or_stop output" "missing PR URL in repo-flow submit url_or_stop output" "repair repo-flow submit output contract and rerun slice-handoff" &&
+      ! grep -Fq '===== PR REVIEW REQUEST =====' "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" &&
+      grep -Fxq 'fake repo-flow stdout' "$run_dir/repo-flow-submit.stdout" &&
+      grep -Fxq 'fake repo-flow stderr' "$run_dir/repo-flow-submit.stderr"; then
+      test_pass "execution-submit repo-flow output-contract failure"
+    else
+      test_fail "execution-submit repo-flow output-contract failure"
       status=1
     fi
   fi

@@ -93,6 +93,83 @@ slice_handoff_print_review_request_block() {
   repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$review_request_path" 0 >&2
 }
 
+slice_handoff_execution_command_class() {
+  local step="$1"
+
+  case "$step" in
+    run-dir-create|run-dir-cleanup)
+      printf '%s' 'repo-automation/bin/slice-run-dir'
+      ;;
+    preflight)
+      printf '%s' 'repo-automation/bin/codex-slice-preflight'
+      ;;
+    codex-run)
+      printf '%s' 'repo-automation/bin/codex-run'
+      ;;
+    codex-run-output-contract)
+      printf '%s' 'codex-run output contract'
+      ;;
+    codex-final-contract)
+      printf '%s' 'codex final output contract'
+      ;;
+    pr-body-check)
+      printf '%s' 'repo-automation/bin/pr-body-check'
+      ;;
+    repo-flow-submit)
+      printf '%s' 'repo-automation/bin/repo-flow submit'
+      ;;
+    repo-flow-submit-output-contract)
+      printf '%s' 'repo-automation/bin/repo-flow submit output contract'
+      ;;
+    review-request-source|review-request-artifact|review-request-compatibility-copy)
+      printf '%s' 'repo-automation/bin/repo-flow submit review-request'
+      ;;
+    *)
+      printf '%s' "$step"
+      ;;
+  esac
+}
+
+slice_handoff_execution_next_action() {
+  local step="$1"
+
+  case "$step" in
+    run-dir-create)
+      printf '%s' 'fix run-dir creation and rerun slice-handoff'
+      ;;
+    run-dir-cleanup)
+      printf '%s' 'fix run-dir cleanup and rerun slice-handoff'
+      ;;
+    preflight)
+      printf '%s' 'fix preflight and rerun slice-handoff'
+      ;;
+    codex-run)
+      printf '%s' 'fix codex-run and rerun slice-handoff'
+      ;;
+    codex-run-output-contract)
+      printf '%s' 'repair codex-run output contract and rerun slice-handoff'
+      ;;
+    codex-final-contract)
+      printf '%s' 'paste blocker into ChatGPT'
+      ;;
+    pr-body-check)
+      printf '%s' 'fix the PR body and rerun slice-handoff'
+      ;;
+    repo-flow-submit)
+      printf '%s' 'fix repo-flow submit and rerun slice-handoff'
+      ;;
+    repo-flow-submit-output-contract)
+      printf '%s' 'repair repo-flow submit output contract and rerun slice-handoff'
+      ;;
+    review-request-source|review-request-artifact|review-request-compatibility-copy)
+      printf '%s' 'fix the review-request handoff and rerun slice-handoff'
+      ;;
+    *)
+      printf '%s' 'fix the reported child failure and rerun slice-handoff'
+      ;;
+  esac
+}
+
 slice_handoff_print_codex_final_output_block() {
   local codex_final_output_path="$1"
 
@@ -322,16 +399,25 @@ slice_handoff_print_execution_blocker() {
   local exit_code="$3"
   local stdout_path="$4"
   local stderr_path="$5"
-  local excerpt="$6"
+  local reason="$6"
+  local excerpt="${7:-$6}"
+  local command_class=""
+  local next_action=""
 
-  printf 'fail: slice-handoff execution failed\n' >&2
+  command_class="$(slice_handoff_execution_command_class "$step")"
+  next_action="$(slice_handoff_execution_next_action "$step")"
+
+  printf 'fail: slice-handoff child boundary failed\n' >&2
   printf 'step=%s\n' "$step" >&2
+  printf 'command_class=%s\n' "$command_class" >&2
   printf 'command=%s\n' "$command_summary" >&2
   printf 'exit_code=%s\n' "$exit_code" >&2
   printf 'stdout_path=%s\n' "$stdout_path" >&2
   printf 'stderr_path=%s\n' "$stderr_path" >&2
+  printf 'reason=%s\n' "$reason" >&2
   printf 'excerpt=%s\n' "$excerpt" >&2
   printf 'fix=paste this blocker into ChatGPT\n' >&2
+  printf 'next=%s\n' "$next_action" >&2
 }
 
 slice_handoff_print_execution_blocker_summary() {
@@ -956,11 +1042,11 @@ slice_handoff_validate_codex_run_output() {
 
   if [ "$exit_code" -ne 0 ]; then
     local excerpt=""
-    if [ -s "$stdout_path" ]; then
-      excerpt="$(awk 'NF { print; count++; if (count == 4) exit }' "$stdout_path")"
-    fi
-    if [ -z "$excerpt" ] && [ -s "$stderr_path" ]; then
+    if [ -s "$stderr_path" ]; then
       excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
+    fi
+    if [ -z "$excerpt" ] && [ -s "$stdout_path" ]; then
+      excerpt="$(awk 'NF { if (count > 0) printf " | "; printf "%s", $0; count++; if (count == 4) exit } END { if (count > 0) printf "\n" }' "$stdout_path")"
     fi
     if [ -z "$excerpt" ]; then
       excerpt="codex-run exited nonzero"
@@ -1355,7 +1441,7 @@ slice_handoff_run_execution_phase() {
         pr_body_check_excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$pr_body_check_stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
       fi
       if [ -z "$pr_body_check_excerpt" ] && [ -s "$pr_body_check_stdout_path" ]; then
-        pr_body_check_excerpt="$(awk 'NF { print; count++; if (count == 4) exit }' "$pr_body_check_stdout_path")"
+        pr_body_check_excerpt="$(awk 'NF { if (count > 0) printf " | "; printf "%s", $0; count++; if (count == 4) exit } END { if (count > 0) printf "\n" }' "$pr_body_check_stdout_path")"
       fi
       [ -n "$pr_body_check_excerpt" ] || pr_body_check_excerpt="pr-body-check exited nonzero"
       slice_handoff_print_execution_blocker "pr-body-check" "$pr_body_check_command_summary" 1 "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$pr_body_check_excerpt"
