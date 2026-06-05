@@ -49,3 +49,17 @@ What would have helped:
 
 Recommended improvements:
 - Keep output-mode parse errors and failure envelopes centralized in shared test helpers.
+
+### 2026-06-04 smoke named-check propagation repair
+
+Challenges:
+- Timeout-wrapped named checks could lose child `test_fail` labels unless the harness preserved the first failure metadata across the subshell boundary.
+- A newly added smoke-harness fixture path literal tripped the portability contract until it was rewritten to use temp-root paths.
+
+What would have helped:
+- A shared child-failure metadata channel for timeout-wrapped named checks.
+- A quick portability scan of the focused smoke harness fixture strings before landing.
+
+Recommended improvements:
+- Keep named-check failure metadata explicit when checks run under timeout subshells.
+- Prefer temp-root-derived paths in contract fixtures so portability checks stay quiet.

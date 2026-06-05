@@ -16,6 +16,10 @@ smoke_harness_silent_check() {
   return 1
 }
 
+smoke_harness_recorded_fail_check() {
+  test_fail "recorded internal failure"
+}
+
 smoke_harness_main_impl() {
   local status=0
   local base_dir=""
@@ -23,22 +27,26 @@ smoke_harness_main_impl() {
   test_register_temp_dir "$base_dir" || return 1
   local actionable_wrapper="$base_dir/actionable.sh"
   local silent_wrapper="$base_dir/silent.sh"
+  local recorded_wrapper="$base_dir/recorded.sh"
   local body_wrapper="$base_dir/body.sh"
   local stdout_file="$base_dir/stdout.txt"
   local stderr_file="$base_dir/stderr.txt"
   local json_file="$base_dir/out.json"
   local qde_fixture="$base_dir/qde-fixture.txt"
+  local qde_path="$base_dir/example-path"
+  local qde_artifact="$base_dir/example-artifact"
+  local qde_log="$base_dir/example-log"
   local body_wrapper_help_fix=""
 
-  cat > "$qde_fixture" <<'EOF'
+  cat > "$qde_fixture" <<EOF
 result=fail
 code=example-code
 step=example-step
 reason=example reason
 fix=example fix
-path=/tmp/example-path
-artifact=/tmp/example-artifact
-log=/tmp/example-log
+path=$qde_path
+artifact=$qde_artifact
+log=$qde_log
 excerpt=example excerpt
 EOF
 
@@ -92,6 +100,31 @@ smoke_main "\$@"
 EOF
   sed -i "s#__SMOKE_COMMON__#$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh#g" "$silent_wrapper"
   chmod +x "$silent_wrapper" || return 1
+
+  cat > "$recorded_wrapper" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "__SMOKE_COMMON__"
+
+smoke_harness_main_impl() {
+  smoke_run_named_check "smoke:harness-recorded-fail-check" smoke_harness_recorded_fail_check
+}
+
+smoke_harness_recorded_fail_check() {
+  test_fail "recorded internal failure"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_harness_main_impl "\$@"
+}
+
+smoke_main "\$@"
+EOF
+  sed -i "s#__SMOKE_COMMON__#$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh#g" "$recorded_wrapper"
+  chmod +x "$recorded_wrapper" || return 1
 
   cat > "$body_wrapper" <<EOF
 #!/usr/bin/env bash
@@ -150,6 +183,16 @@ EOF
     status=1
   fi
 
+  if "$recorded_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness recorded quiet should fail"
+    status=1
+  elif grep -Fxq 'result=fail' "$stderr_file" && grep -Fxq 'code=named-check-failed' "$stderr_file" && grep -Fxq 'step=smoke:harness-recorded-fail-check' "$stderr_file" && grep -Fxq 'reason=recorded internal failure' "$stderr_file" && grep -Fxq 'fix=inspect the failing check' "$stderr_file" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness recorded quiet failure preserves internal test_fail"
+  else
+    test_fail "smoke harness recorded quiet failure preserves internal test_fail"
+    status=1
+  fi
+
   if "$body_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
     test_fail "smoke harness body quiet should fail"
     status=1
@@ -190,6 +233,16 @@ EOF
     status=1
   fi
 
+  if "$recorded_wrapper" --json > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness json recorded failure includes actionable fields"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "recorded" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("code") == "named-check-failed" and data.get("step") == "smoke:harness-recorded-fail-check" and data.get("reason") == "recorded internal failure" and data.get("fix") == "inspect the failing check"'; then
+    test_pass "smoke harness json recorded failure includes actionable fields"
+  else
+    test_fail "smoke harness json recorded failure includes actionable fields"
+    status=1
+  fi
+
   if "$body_wrapper" --json > "$json_file" 2> "$stderr_file"; then
     test_fail "smoke harness json body failure includes actionable fields"
     status=1
@@ -200,7 +253,7 @@ EOF
     status=1
   fi
 
-  if smoke_assert_quiet_failure_envelope "$qde_fixture" "example-code" "example-step" "example reason" "example fix" "/tmp/example-path" "/tmp/example-artifact" "/tmp/example-log" "example excerpt"; then
+  if smoke_assert_quiet_failure_envelope "$qde_fixture" "example-code" "example-step" "example reason" "example fix" "$qde_path" "$qde_artifact" "$qde_log" "example excerpt"; then
     test_pass "smoke harness quiet envelope helper supports optional fields"
   else
     test_fail "smoke harness quiet envelope helper supports optional fields"
