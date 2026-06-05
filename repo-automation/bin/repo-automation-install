@@ -414,6 +414,8 @@ repo_install_main() {
     "repo-automation/docs/source-provenance.md"
     "repo-automation/docs/testing.md"
     "repo-automation/docs/version-modes.md"
+    "repo-automation/docs/output-contract-backlog.md"
+
   )
   local -a starter_template_files=(
     ".github/pull_request_template.md"

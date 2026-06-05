@@ -6,6 +6,7 @@ Intended repo path after approval: `repo-automation/docs/output-modes.md`
 Purpose: define the repo-wide output-mode gates for human, quiet, JSON, and explain output.
 
 This doc is the broader output-mode guide. The exit-code and stream contract lives in [Exit-Code / Stream Contract](exit-code-stream-contract.md).
+For planning inventory and remaining helper gaps, see [Output Contract Backlog](output-contract-backlog.md).
 
 ## Core rules
 
