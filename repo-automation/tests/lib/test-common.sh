@@ -207,6 +207,12 @@ test_render_json() {
   local kind=""
   local message=""
   local first=1
+  local result=""
+  local code=""
+  local step=""
+  local reason=""
+  local fix=""
+  local first_failure_log=""
 
   while [ "$idx" -lt "${#TEST_EVENT_KIND[@]}" ]; do
     kind="${TEST_EVENT_KIND[$idx]}"
@@ -225,14 +231,46 @@ test_render_json() {
     idx=$((idx + 1))
   done
 
+  result="$overall_status"
+  if [ "$overall_status" = "fail" ] && [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
+    check_name="${TEST_EVENT_CHECK[$TEST_FIRST_FAILURE_INDEX]}"
+    message="${TEST_EVENT_MESSAGE[$TEST_FIRST_FAILURE_INDEX]}"
+    first_failure_log="$TEST_FIRST_FAILURE_LOG"
+    code="named-check-failed"
+    step="${check_name:-${message:-smoke}}"
+    if [ -n "$check_name" ] && [ -n "$message" ] && [ "$message" != "$check_name" ]; then
+      reason="$message"
+      fix="inspect the failing check"
+    elif [ -z "$check_name" ] && [ -n "$first_failure_log" ]; then
+      code="test-wrapper-body-failed"
+      step="${message:-smoke}"
+      reason="${message:-smoke}: wrapper body failed before reporting an actionable check"
+      fix="patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero"
+    elif [ -n "$check_name" ]; then
+      reason="${check_name}: check failed without actionable captured output"
+      fix="patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero"
+    fi
+  fi
+
   printf '{'
+  printf '"schema":"repo-automation-helper-output/v1",'
   printf '"script":"%s",' "$(test_escape_json "$TEST_OUTPUT_SCRIPT")"
   printf '"mode":"json",'
+  printf '"result":"%s",' "$(test_escape_json "$result")"
   printf '"status":"%s",' "$(test_escape_json "$overall_status")"
   printf '"pass_count":%s,' "$pass_count"
   printf '"warn_count":%s,' "$warn_count"
   printf '"fail_count":%s,' "$fail_count"
   printf '"checks":[%s]' "$json_checks"
+  if [ "$overall_status" = "fail" ]; then
+    printf ',"code":"%s"' "$(test_escape_json "$code")"
+    printf ',"step":"%s"' "$(test_escape_json "$step")"
+    printf ',"reason":"%s"' "$(test_escape_json "$reason")"
+    printf ',"fix":"%s"' "$(test_escape_json "$fix")"
+    if [ -n "$first_failure_log" ]; then
+      printf ',"log":"%s"' "$(test_escape_json "$first_failure_log")"
+    fi
+  fi
   if [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
     printf ',"first_failure":{"check":"%s","message":"%s"}' \
       "$(test_escape_json "${TEST_EVENT_CHECK[$TEST_FIRST_FAILURE_INDEX]}")" \
@@ -286,6 +324,9 @@ test_run_named_check() {
   local capture_file=""
   local preserved_capture_file=""
   local failure_line=""
+  local failure_meta_file=""
+  local failure_meta_message=""
+  local failure_meta_log=""
 
   if [ -z "$check_name" ] || [ -z "$scenario_function" ]; then
     test_fail "missing named check or scenario function"
@@ -297,25 +338,40 @@ test_run_named_check() {
   TEST_CURRENT_CHECK_FAILED=0
   TEST_FIRST_FAILURE_LOG=""
     export TEST_CURRENT_CHECK
+  failure_meta_file="$(mktemp "${TEST_TEMP_ROOT}/named-check-meta.XXXXXX")" || return 1
+  TEST_NAMED_CHECK_FAILURE_META_FILE="$failure_meta_file"
+  export TEST_NAMED_CHECK_FAILURE_META_FILE
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     printf 'RUNNING: %s\n' "$TEST_CURRENT_CHECK"
     if test_run_with_timeout "$timeout_seconds" "$scenario_function"; then
       if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ]; then
+        rm -f -- "$failure_meta_file" >/dev/null 2>&1 || true
         return 1
       fi
       if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
         test_pass "$TEST_CURRENT_CHECK"
       fi
+      rm -f -- "$failure_meta_file" >/dev/null 2>&1 || true
       return 0
     fi
 
+    if [ -s "$failure_meta_file" ]; then
+      failure_meta_message="$(sed -n 's/^message=//p' "$failure_meta_file" | head -n 1)"
+      failure_meta_log="$(sed -n 's/^log=//p' "$failure_meta_file" | head -n 1)"
+    fi
     if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
-      if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
+      if [ -n "$failure_meta_message" ]; then
+        TEST_CURRENT_CHECK_REPORTED=1
+      elif [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
         test_fail "$TEST_CURRENT_CHECK timed out"
       else
         test_fail "$TEST_CURRENT_CHECK"
       fi
     fi
+    if [ -n "$failure_meta_log" ]; then
+      TEST_FIRST_FAILURE_LOG="$failure_meta_log"
+    fi
+    rm -f -- "$failure_meta_file" >/dev/null 2>&1 || true
     return 1
   fi
 
@@ -323,18 +379,29 @@ test_run_named_check() {
 
   if test_run_with_timeout "$timeout_seconds" "$scenario_function" >"$capture_file" 2>&1; then
     if [ "$TEST_CURRENT_CHECK_FAILED" -eq 1 ]; then
+      rm -f -- "$failure_meta_file" >/dev/null 2>&1 || true
       return 1
     fi
     rm -f -- "$capture_file" >/dev/null 2>&1 || true
+    rm -f -- "$failure_meta_file" >/dev/null 2>&1 || true
     if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
       test_pass "$TEST_CURRENT_CHECK"
     fi
     return 0
   fi
 
+  if [ -s "$failure_meta_file" ]; then
+    failure_meta_message="$(sed -n 's/^message=//p' "$failure_meta_file" | head -n 1)"
+    failure_meta_log="$(sed -n 's/^log=//p' "$failure_meta_file" | head -n 1)"
+  fi
   if [ "$TEST_CURRENT_CHECK_REPORTED" -eq 0 ]; then
     if [ "$TEST_LAST_TIMEOUT" -eq 1 ]; then
       test_fail "$TEST_CURRENT_CHECK timed out"
+    elif [ -n "$failure_meta_message" ]; then
+      if [ -n "$failure_meta_log" ]; then
+        TEST_FIRST_FAILURE_LOG="$failure_meta_log"
+      fi
+      test_fail "$failure_meta_message"
     else
       preserved_capture_file="$(mktemp "${TMPDIR:-$HOME/.cache}/repo-automation-template-named-check.XXXXXX")" || preserved_capture_file="$capture_file"
       cp -- "$capture_file" "$preserved_capture_file" >/dev/null 2>&1 || preserved_capture_file="$capture_file"
@@ -348,6 +415,7 @@ test_run_named_check() {
     fi
   fi
 
+  rm -f -- "$failure_meta_file" >/dev/null 2>&1 || true
   return 1
 }
 
@@ -620,6 +688,13 @@ test_run_with_timeout() {
       TEST_CLEANUP_RAN=1
       "$command_string"
       exit_code=$?
+      if [ "$exit_code" -ne 0 ] && [ -n "${TEST_NAMED_CHECK_FAILURE_META_FILE:-}" ] && [ "$TEST_FIRST_FAILURE_INDEX" -ge 0 ]; then
+        {
+          printf 'check=%s\n' "${TEST_EVENT_CHECK[$TEST_FIRST_FAILURE_INDEX]}"
+          printf 'message=%s\n' "${TEST_EVENT_MESSAGE[$TEST_FIRST_FAILURE_INDEX]}"
+          printf 'log=%s\n' "$TEST_FIRST_FAILURE_LOG"
+        } >"$TEST_NAMED_CHECK_FAILURE_META_FILE"
+      fi
       if [ "$exit_code" -eq 0 ]; then
         test_cleanup_registered_temp_dirs_from "$temp_dir_count_before"
       fi

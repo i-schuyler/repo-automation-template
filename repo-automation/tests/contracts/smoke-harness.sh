@@ -16,6 +16,10 @@ smoke_harness_silent_check() {
   return 1
 }
 
+smoke_harness_recorded_fail_check() {
+  test_fail "recorded internal failure"
+}
+
 smoke_harness_main_impl() {
   local status=0
   local base_dir=""
@@ -23,10 +27,28 @@ smoke_harness_main_impl() {
   test_register_temp_dir "$base_dir" || return 1
   local actionable_wrapper="$base_dir/actionable.sh"
   local silent_wrapper="$base_dir/silent.sh"
+  local recorded_wrapper="$base_dir/recorded.sh"
   local body_wrapper="$base_dir/body.sh"
   local stdout_file="$base_dir/stdout.txt"
   local stderr_file="$base_dir/stderr.txt"
   local json_file="$base_dir/out.json"
+  local qde_fixture="$base_dir/qde-fixture.txt"
+  local qde_path="$base_dir/example-path"
+  local qde_artifact="$base_dir/example-artifact"
+  local qde_log="$base_dir/example-log"
+  local body_wrapper_help_fix=""
+
+  cat > "$qde_fixture" <<EOF
+result=fail
+code=example-code
+step=example-step
+reason=example reason
+fix=example fix
+path=$qde_path
+artifact=$qde_artifact
+log=$qde_log
+excerpt=example excerpt
+EOF
 
   cat > "$actionable_wrapper" <<EOF
 #!/usr/bin/env bash
@@ -79,6 +101,31 @@ EOF
   sed -i "s#__SMOKE_COMMON__#$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh#g" "$silent_wrapper"
   chmod +x "$silent_wrapper" || return 1
 
+  cat > "$recorded_wrapper" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+# shellcheck source=/dev/null
+source "__SMOKE_COMMON__"
+
+smoke_harness_main_impl() {
+  smoke_run_named_check "smoke:harness-recorded-fail-check" smoke_harness_recorded_fail_check
+}
+
+smoke_harness_recorded_fail_check() {
+  test_fail "recorded internal failure"
+}
+
+smoke_main() {
+  smoke_run_focused_contract_wrapper smoke_harness_main_impl "\$@"
+}
+
+smoke_main "\$@"
+EOF
+  sed -i "s#__SMOKE_COMMON__#$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh#g" "$recorded_wrapper"
+  chmod +x "$recorded_wrapper" || return 1
+
   cat > "$body_wrapper" <<EOF
 #!/usr/bin/env bash
 set -u
@@ -99,6 +146,7 @@ smoke_main "\$@"
 EOF
   sed -i "s#__SMOKE_COMMON__#$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh#g" "$body_wrapper"
   chmod +x "$body_wrapper" || return 1
+  body_wrapper_help_fix="run $body_wrapper --help"
 
   if "$actionable_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
     test_fail "smoke harness actionable quiet should fail"
@@ -135,6 +183,16 @@ EOF
     status=1
   fi
 
+  if "$recorded_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness recorded quiet should fail"
+    status=1
+  elif grep -Fxq 'result=fail' "$stderr_file" && grep -Fxq 'code=named-check-failed' "$stderr_file" && grep -Fxq 'step=smoke:harness-recorded-fail-check' "$stderr_file" && grep -Fxq 'reason=recorded internal failure' "$stderr_file" && grep -Fxq 'fix=inspect the failing check' "$stderr_file" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness recorded quiet failure preserves internal test_fail"
+  else
+    test_fail "smoke harness recorded quiet failure preserves internal test_fail"
+    status=1
+  fi
+
   if "$body_wrapper" --quiet > "$stdout_file" 2> "$stderr_file"; then
     test_fail "smoke harness body quiet should fail"
     status=1
@@ -158,10 +216,127 @@ EOF
   if "$actionable_wrapper" --json > "$json_file" 2> "$stderr_file"; then
     test_fail "smoke harness json preserves first failure"
     status=1
-  elif python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("first_failure", {}).get("check") == "smoke:harness-actionable-check" and data.get("first_failure", {}).get("message") == "focused inner failure"'; then
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "actionable" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("code") == "named-check-failed" and data.get("step") == "smoke:harness-actionable-check" and data.get("reason") == "focused inner failure" and data.get("fix") == "inspect the failing check" and data.get("first_failure", {}).get("check") == "smoke:harness-actionable-check" and data.get("first_failure", {}).get("message") == "focused inner failure"'; then
     test_pass "smoke harness json preserves first failure"
   else
     test_fail "smoke harness json preserves first failure"
+    status=1
+  fi
+
+  if "$silent_wrapper" --json > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness json silent failure includes actionable fields"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "silent" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("code") == "named-check-failed" and data.get("step") == "smoke:harness-silent-check" and data.get("reason") == "smoke:harness-silent-check: check failed without actionable captured output" and data.get("fix") == "patch the failing check to emit fail/FAIL/STOP/ERROR before returning nonzero" and data.get("log")'; then
+    test_pass "smoke harness json silent failure includes actionable fields"
+  else
+    test_fail "smoke harness json silent failure includes actionable fields"
+    status=1
+  fi
+
+  if "$recorded_wrapper" --json > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness json recorded failure includes actionable fields"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "recorded" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("code") == "named-check-failed" and data.get("step") == "smoke:harness-recorded-fail-check" and data.get("reason") == "recorded internal failure" and data.get("fix") == "inspect the failing check"'; then
+    test_pass "smoke harness json recorded failure includes actionable fields"
+  else
+    test_fail "smoke harness json recorded failure includes actionable fields"
+    status=1
+  fi
+
+  if "$body_wrapper" --json > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness json body failure includes actionable fields"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "body" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("code") == "test-wrapper-body-failed" and data.get("step") == "smoke_harness_main_impl" and data.get("reason") == "smoke_harness_main_impl: wrapper body failed before reporting an actionable check" and data.get("fix") == "patch the wrapper body to emit fail/FAIL/STOP/ERROR or a named check failure before returning nonzero" and data.get("log")'; then
+    test_pass "smoke harness json body failure includes actionable fields"
+  else
+    test_fail "smoke harness json body failure includes actionable fields"
+    status=1
+  fi
+
+  if smoke_assert_quiet_failure_envelope "$qde_fixture" "example-code" "example-step" "example reason" "example fix" "$qde_path" "$qde_artifact" "$qde_log" "example excerpt"; then
+    test_pass "smoke harness quiet envelope helper supports optional fields"
+  else
+    test_fail "smoke harness quiet envelope helper supports optional fields"
+    status=1
+  fi
+
+  if "$body_wrapper" --quiet --explain > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects quiet explain conflict"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$stderr_file" "output-mode-conflict" "output-mode-parse" "incompatible output mode flags: --quiet --explain" "use exactly one of --quiet, --explain, or --json" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness rejects quiet explain conflict"
+  else
+    test_fail "smoke harness rejects quiet explain conflict"
+    status=1
+  fi
+
+  if "$body_wrapper" --json --explain > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects json explain conflict"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "body" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("status") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and data.get("reason") == "incompatible output mode flags: --json --explain" and data.get("fix") == "use exactly one of --quiet, --explain, or --json" and data.get("pass_count") == 0 and data.get("fail_count") == 0 and data.get("warn_count") == 0'; then
+    test_pass "smoke harness rejects json explain conflict"
+  else
+    test_fail "smoke harness rejects json explain conflict"
+    status=1
+  fi
+
+  if "$body_wrapper" --quiet --bogus > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects quiet unknown flag"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$stderr_file" "unknown-flag" "output-mode-parse" "unknown flag: --bogus" "$body_wrapper_help_fix" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness rejects quiet unknown flag"
+  else
+    test_fail "smoke harness rejects quiet unknown flag"
+    status=1
+  fi
+
+  if "$body_wrapper" --bogus > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects default unknown flag"
+    status=1
+  elif grep -Fxq 'fail: unknown flag: --bogus' "$stderr_file" && grep -Fxq "fix: $body_wrapper_help_fix" "$stderr_file" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness rejects default unknown flag"
+  else
+    test_fail "smoke harness rejects default unknown flag"
+    status=1
+  fi
+
+  if "$body_wrapper" --json --bogus > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects json unknown flag"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" "data.get(\"schema\") == \"repo-automation-helper-output/v1\" and data.get(\"script\") == \"body\" and data.get(\"mode\") == \"json\" and data.get(\"result\") == \"fail\" and data.get(\"status\") == \"fail\" and data.get(\"code\") == \"unknown-flag\" and data.get(\"step\") == \"output-mode-parse\" and data.get(\"reason\") == \"unknown flag: --bogus\" and data.get(\"fix\") == \"$body_wrapper_help_fix\""; then
+    test_pass "smoke harness rejects json unknown flag"
+  else
+    test_fail "smoke harness rejects json unknown flag"
+    status=1
+  fi
+
+  if "$body_wrapper" --quiet bogus > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects quiet unknown argument"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$stderr_file" "unknown-argument" "output-mode-parse" "unknown argument: bogus" "$body_wrapper_help_fix" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness rejects quiet unknown argument"
+  else
+    test_fail "smoke harness rejects quiet unknown argument"
+    status=1
+  fi
+
+  if "$body_wrapper" bogus > "$stdout_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects default unknown argument"
+    status=1
+  elif grep -Fxq 'fail: unknown argument: bogus' "$stderr_file" && grep -Fxq "fix: $body_wrapper_help_fix" "$stderr_file" && [ ! -s "$stdout_file" ]; then
+    test_pass "smoke harness rejects default unknown argument"
+  else
+    test_fail "smoke harness rejects default unknown argument"
+    status=1
+  fi
+
+  if "$body_wrapper" --json bogus > "$json_file" 2> "$stderr_file"; then
+    test_fail "smoke harness rejects json unknown argument"
+    status=1
+  elif [ ! -s "$stderr_file" ] && python3 -m json.tool "$json_file" >/dev/null && smoke_json_assert "$json_file" "data.get(\"schema\") == \"repo-automation-helper-output/v1\" and data.get(\"script\") == \"body\" and data.get(\"mode\") == \"json\" and data.get(\"result\") == \"fail\" and data.get(\"status\") == \"fail\" and data.get(\"code\") == \"unknown-argument\" and data.get(\"step\") == \"output-mode-parse\" and data.get(\"reason\") == \"unknown argument: bogus\" and data.get(\"fix\") == \"$body_wrapper_help_fix\""; then
+    test_pass "smoke harness rejects json unknown argument"
+  else
+    test_fail "smoke harness rejects json unknown argument"
     status=1
   fi
 

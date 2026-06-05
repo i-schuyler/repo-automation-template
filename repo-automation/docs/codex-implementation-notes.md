@@ -36,3 +36,30 @@ Recommended improvements:
 - Keep smoke/contract regressions fixture-light and isolated from the full template restore path.
 - Add a helper to generate/update managed-file registrations consistently.
 - Standardize quiet/default/JSON envelopes in shared test helpers, with a tiny per-helper contract spec next to each script.
+
+### 2026-06-04 smoke output-contract follow-up
+
+Challenges:
+- Focused-wrapper parse failures needed to stay compact while still distinguishing mode conflicts, unknown flags, and unknown arguments across quiet/default/JSON output.
+- The shared quiet-envelope helper had to accept optional QDE fields without falling back to brittle line-count assertions.
+
+What would have helped:
+- A single shared renderer for focused-wrapper parse errors, plus a tiny table of expected codes/reasons/fixes.
+- A quiet-envelope assertion helper that explicitly models optional fields instead of hard-coding five-line envelopes.
+
+Recommended improvements:
+- Keep output-mode parse errors and failure envelopes centralized in shared test helpers.
+
+### 2026-06-04 smoke named-check propagation repair
+
+Challenges:
+- Timeout-wrapped named checks could lose child `test_fail` labels unless the harness preserved the first failure metadata across the subshell boundary.
+- A newly added smoke-harness fixture path literal tripped the portability contract until it was rewritten to use temp-root paths.
+
+What would have helped:
+- A shared child-failure metadata channel for timeout-wrapped named checks.
+- A quick portability scan of the focused smoke harness fixture strings before landing.
+
+Recommended improvements:
+- Keep named-check failure metadata explicit when checks run under timeout subshells.
+- Prefer temp-root-derived paths in contract fixtures so portability checks stay quiet.

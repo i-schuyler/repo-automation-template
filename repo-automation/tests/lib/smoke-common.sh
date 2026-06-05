@@ -36,20 +36,66 @@ smoke_usage() {
   printf 'Usage: %s [--quiet] [--explain] [--json] [--help]\n' "${TEST_OUTPUT_SCRIPT_PATH:-repo-automation/tests/smoke.sh}"
 }
 
+smoke_render_output_mode_error() {
+  local render_mode="$1"
+  local code="$2"
+  local reason="$3"
+  local fix="$4"
+
+  case "$render_mode" in
+    json)
+      printf '{'
+      printf '"schema":"repo-automation-helper-output/v1",'
+      printf '"script":"%s",' "$(test_escape_json "${TEST_OUTPUT_SCRIPT:-smoke}")"
+      printf '"mode":"json",'
+      printf '"result":"fail",'
+      printf '"status":"fail",'
+      printf '"code":"%s",' "$(test_escape_json "$code")"
+      printf '"step":"output-mode-parse",'
+      printf '"reason":"%s",' "$(test_escape_json "$reason")"
+      printf '"fix":"%s",' "$(test_escape_json "$fix")"
+      printf '"pass_count":0,"warn_count":0,"fail_count":0,"checks":[]'
+      printf '}\n'
+      ;;
+    quiet)
+      printf 'result=fail\n' >&2
+      printf 'code=%s\n' "$code" >&2
+      printf 'step=output-mode-parse\n' >&2
+      printf 'reason=%s\n' "$reason" >&2
+      printf 'fix=%s\n' "$fix" >&2
+      ;;
+    *)
+      repo_auto_print_failure_footer fail "$reason" fix "$fix" >&2
+      ;;
+  esac
+}
+
 smoke_parse_output_mode() {
   local arg=""
+  local saw_quiet=0
+  local saw_explain=0
+  local saw_json=0
+  local mode_count=0
+  local render_mode="default"
+  local conflict_flags=()
+  local error_code=""
+  local error_reason=""
+  local error_fix=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
     case "$arg" in
       --quiet)
-        smoke_output_mode="quiet"
+        saw_quiet=1
+        conflict_flags+=("--quiet")
         ;;
       --explain)
-        smoke_output_mode="explain"
+        saw_explain=1
+        conflict_flags+=("--explain")
         ;;
       --json)
-        smoke_output_mode="json"
+        saw_json=1
+        conflict_flags+=("--json")
         ;;
       --help)
         smoke_usage
@@ -58,16 +104,45 @@ smoke_parse_output_mode() {
         return 0
         ;;
       *)
-        if [ "${arg#--}" != "$arg" ]; then
-          printf 'fail: unknown flag: %s\n' "$arg" >&2
-        else
-          printf 'fail: unknown argument: %s\n' "$arg" >&2
+        if [ -z "$error_code" ]; then
+          if [ "${arg#--}" != "$arg" ]; then
+            error_code="unknown-flag"
+            error_reason="unknown flag: $arg"
+          else
+            error_code="unknown-argument"
+            error_reason="unknown argument: $arg"
+          fi
+          error_fix="run ${TEST_OUTPUT_SCRIPT_PATH:-repo-automation/tests/smoke.sh} --help"
         fi
-        return 1
         ;;
     esac
     shift
   done
+
+  mode_count=$((saw_quiet + saw_explain + saw_json))
+  if [ "$mode_count" -gt 1 ] && [ -z "$error_code" ]; then
+    error_code="output-mode-conflict"
+    error_reason="incompatible output mode flags: ${conflict_flags[*]}"
+    error_fix="use exactly one of --quiet, --explain, or --json"
+  fi
+
+  if [ -n "$error_code" ]; then
+    if [ "$saw_json" -eq 1 ]; then
+      render_mode="json"
+    elif [ "$saw_quiet" -eq 1 ]; then
+      render_mode="quiet"
+    fi
+    smoke_render_output_mode_error "$render_mode" "$error_code" "$error_reason" "$error_fix"
+    return 1
+  fi
+
+  if [ "$saw_json" -eq 1 ]; then
+    smoke_output_mode="json"
+  elif [ "$saw_quiet" -eq 1 ]; then
+    smoke_output_mode="quiet"
+  elif [ "$saw_explain" -eq 1 ]; then
+    smoke_output_mode="explain"
+  fi
 
   TEST_OUTPUT_MODE="$smoke_output_mode"
   export TEST_OUTPUT_MODE
@@ -199,16 +274,86 @@ smoke_assert_quiet_failure_envelope() {
   local expected_step="$3"
   local expected_reason="$4"
   local expected_fix="$5"
+  local expected_path="${6:-}"
+  local expected_artifact="${7:-}"
+  local expected_log="${8:-}"
+  local expected_excerpt="${9:-}"
   local filtered_stderr_file=""
+  local line=""
+  local seen_result=0
+  local seen_code=0
+  local seen_step=0
+  local seen_reason=0
+  local seen_fix=0
+  local seen_path=0
+  local seen_artifact=0
+  local seen_log=0
+  local seen_excerpt=0
 
   filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/smoke-quiet-envelope.XXXXXX")" || return 1
   grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
-  if [ "$(wc -l < "$filtered_stderr_file" | tr -d '[:space:]')" = "5" ] &&
-    grep -Fxq 'result=fail' "$filtered_stderr_file" &&
-    grep -Fxq "code=$expected_code" "$filtered_stderr_file" &&
-    grep -Fxq "step=$expected_step" "$filtered_stderr_file" &&
-    grep -Fxq "reason=$expected_reason" "$filtered_stderr_file" &&
-    grep -Fxq "fix=$expected_fix" "$filtered_stderr_file"; then
+  # shellcheck disable=SC2094 # The temp file is only consumed after filtering completes.
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      '')
+        rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+        return 1
+        ;;
+      'result=fail')
+        seen_result=1
+        ;;
+      code=*)
+        [ "$line" = "code=$expected_code" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        seen_code=$((seen_code + 1))
+        ;;
+      step=*)
+        [ "$line" = "step=$expected_step" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        seen_step=$((seen_step + 1))
+        ;;
+      reason=*)
+        [ "$line" = "reason=$expected_reason" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        seen_reason=$((seen_reason + 1))
+        ;;
+      fix=*)
+        [ "$line" = "fix=$expected_fix" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        seen_fix=$((seen_fix + 1))
+        ;;
+      path=*)
+        if [ -n "$expected_path" ]; then
+          [ "$line" = "path=$expected_path" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        fi
+        seen_path=$((seen_path + 1))
+        ;;
+      artifact=*)
+        if [ -n "$expected_artifact" ]; then
+          [ "$line" = "artifact=$expected_artifact" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        fi
+        seen_artifact=$((seen_artifact + 1))
+        ;;
+      log=*)
+        if [ -n "$expected_log" ]; then
+          [ "$line" = "log=$expected_log" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        fi
+        seen_log=$((seen_log + 1))
+        ;;
+      excerpt=*)
+        if [ -n "$expected_excerpt" ]; then
+          [ "$line" = "excerpt=$expected_excerpt" ] || { rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true; return 1; }
+        fi
+        seen_excerpt=$((seen_excerpt + 1))
+        ;;
+      *)
+        rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+        return 1
+        ;;
+    esac
+  done < "$filtered_stderr_file"
+  if [ "$seen_result" -eq 1 ] && [ "$seen_code" -eq 1 ] && [ "$seen_step" -eq 1 ] && [ "$seen_reason" -eq 1 ] && [ "$seen_fix" -eq 1 ] &&
+    [ "$seen_path" -le 1 ] && [ "$seen_artifact" -le 1 ] && [ "$seen_log" -le 1 ] && [ "$seen_excerpt" -le 1 ] &&
+    { [ -z "$expected_path" ] || [ "$seen_path" -eq 1 ]; } &&
+    { [ -z "$expected_artifact" ] || [ "$seen_artifact" -eq 1 ]; } &&
+    { [ -z "$expected_log" ] || [ "$seen_log" -eq 1 ]; } &&
+    { [ -z "$expected_excerpt" ] || [ "$seen_excerpt" -eq 1 ]; }; then
     rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
     return 0
   fi
