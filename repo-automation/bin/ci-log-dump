@@ -34,6 +34,7 @@ ci_log_dump_log_path=""
 ci_log_dump_pr_head_branch=""
 ci_log_dump_pr_head_sha=""
 ci_log_dump_pr_lookup_modes=""
+ci_log_dump_selected_pr_number=""
 ci_log_dump_selected_run_id=""
 
 ci_log_dump_print_final_summary() {
@@ -63,7 +64,7 @@ ci_log_dump_print_final_summary() {
 }
 
 ci_log_dump_usage() {
-  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|current|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_log_dump_flag_error() {
@@ -595,6 +596,47 @@ ci_log_dump_pick_latest_failed_run() {
   return 0
 }
 
+ci_log_dump_pick_latest_pr() {
+  local gh_output
+  local gh_output_file
+
+  ci_log_dump_selected_pr_number=""
+  gh_output_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  if ! ci_log_dump_gh_output "listing open pull requests for repository $ci_log_dump_repo" 1 gh pr list --repo "$ci_log_dump_repo" --state open --limit 100 --json number,updatedAt,isDraft >"$gh_output_file"; then
+    rm -f "$gh_output_file" >/dev/null 2>&1 || true
+    return 1
+  fi
+  gh_output="$(cat "$gh_output_file")"
+  rm -f "$gh_output_file" >/dev/null 2>&1 || true
+  ci_log_dump_selected_pr_number="$(GH_OUTPUT_JSON="$gh_output" python3 - <<'PY'
+import json
+import os
+
+items = json.loads(os.environ.get('GH_OUTPUT_JSON', '[]'))
+has_draft_metadata = any('isDraft' in item for item in items)
+candidates = []
+for item in items:
+    if str(item.get('state', 'OPEN')).upper() != 'OPEN':
+        continue
+    if has_draft_metadata and item.get('isDraft') is True:
+        continue
+    number = item.get('number')
+    if number in (None, ''):
+        continue
+    try:
+        number_value = int(number)
+    except Exception:
+        continue
+    updated_at = str(item.get('updatedAt', ''))
+    candidates.append((updated_at, number_value))
+
+if candidates:
+    print(str(max(candidates, key=lambda item: (item[0], item[1]))[1]))
+PY
+)"
+  return 0
+}
+
 ci_log_dump_pick_run_id_for_pr() {
   local pr_number="$1"
   local run_id=""
@@ -858,19 +900,24 @@ ci_log_dump_main() {
       --pr=*)
         ci_log_dump_pr="${arg#--pr=}"
         if [ -z "$ci_log_dump_pr" ]; then
-          ci_log_dump_flag_error "empty flag value" "--pr" "use --pr=<number>"
+          ci_log_dump_flag_error "empty flag value" "--pr" "use --pr=<number|latest>"
           return 1
         fi
-        if ! repo_auto_is_positive_integer "$ci_log_dump_pr"; then
-          ci_log_dump_flag_error "invalid --pr value: $ci_log_dump_pr" "--pr" "use --pr=<number>"
+        if [ "$ci_log_dump_pr" = "latest" ]; then
+          :
+        elif [ "$ci_log_dump_pr" = "current" ]; then
+          ci_log_dump_flag_error "unsupported --pr alias: current" "--pr" "use --pr=<number> or --pr=latest"
+          return 1
+        elif ! repo_auto_is_positive_integer "$ci_log_dump_pr"; then
+          ci_log_dump_flag_error "invalid --pr value: $ci_log_dump_pr" "--pr" "use --pr=<number|latest>"
           return 1
         fi
         ;;
       --pr)
         if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
-          ci_log_dump_flag_error "flag format not accepted" "--pr" "use --pr=<number>"
+          ci_log_dump_flag_error "flag format not accepted" "--pr" "use --pr=<number|latest>"
         else
-          ci_log_dump_flag_error "missing flag value" "--pr" "use --pr=<number>"
+          ci_log_dump_flag_error "missing flag value" "--pr" "use --pr=<number|latest>"
         fi
         return 1
         ;;
@@ -1000,6 +1047,21 @@ ci_log_dump_main() {
       return 1
     }
   elif [ -n "$ci_log_dump_pr" ]; then
+    if [ "$ci_log_dump_pr" = "latest" ]; then
+      if ! ci_log_dump_pick_latest_pr; then
+        if [ -n "$ci_log_dump_failure_code" ]; then
+          ci_log_dump_render_pending_failure "unable to resolve latest pull request for repository $ci_log_dump_repo" "rerun with --pr=<number> after confirming GitHub CLI access"
+        else
+          ci_log_dump_fail "github-api-failure" "gh-api" "unable to resolve latest pull request for repository $ci_log_dump_repo" "check gh auth status and your network, then rerun" "$ci_log_dump_out_dir" "" ""
+        fi
+        return 1
+      fi
+      ci_log_dump_pr="$ci_log_dump_selected_pr_number"
+      [ -n "$ci_log_dump_pr" ] || {
+        ci_log_dump_fail "no-pr-found" "pr-lookup" "no open non-draft PR found for repository $ci_log_dump_repo" "pass --pr=<number> or open/update a non-draft PR, then rerun" "$ci_log_dump_out_dir" "" ""
+        return 1
+      }
+    fi
     ci_log_dump_pick_run_id_for_pr "$ci_log_dump_pr" || {
       if [ -n "$ci_log_dump_failure_code" ]; then
         ci_log_dump_render_pending_failure "unable to resolve head branch for PR #$ci_log_dump_pr" "rerun with --pr=<number> after confirming GitHub CLI access"

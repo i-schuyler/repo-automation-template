@@ -105,6 +105,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-06-02 / codex-session-resume-docs-slice / ids=none / score_delta=0 / signal=public-safe Codex interactive-resume-session metadata notes and future helper direction documented without implementation
 - 2026-06-02 / codex-status-phase1 / ids=none / score_delta=0 / signal=implemented read-only JSON-first codex-status helper with fixture-backed Phase 1 contract coverage
 - 2026-06-04 / PR #221 / smoke quiet-actionable / ids=slice-handoff-contract-opacity / score_delta=-1 / signal=quiet/default smoke and focused-wrapper failures now prefer the first actionable inner failure or a self-describing fallback when captured output is silent
+- 2026-06-06 / PR #232 / ci-log-dump latest-pr alias / ids=none / score_delta=0 / signal=implemented `--pr=latest` resolution and rejection of unsupported `--pr=current` without material friction
 
 ## Maintenance Notes
 

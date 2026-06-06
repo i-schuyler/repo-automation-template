@@ -18,6 +18,8 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_pr_format_stderr="$smoke_test_base/ci-log-dump-pr-format-$$.stderr"
   local ci_log_pr_missing_stderr="$smoke_test_base/ci-log-dump-pr-missing-$$.stderr"
   local ci_log_pr_empty_stderr="$smoke_test_base/ci-log-dump-pr-empty-$$.stderr"
+  local ci_log_pr_current_json="$smoke_test_base/ci-log-dump-pr-current-$$.json"
+  local ci_log_pr_current_err="$smoke_test_base/ci-log-dump-pr-current-$$.stderr"
   local ci_log_repo_empty_stderr="$smoke_test_base/ci-log-dump-repo-empty-$$.stderr"
   local ci_log_out_dir_empty_stderr="$smoke_test_base/ci-log-dump-out-dir-empty-$$.stderr"
   local ci_log_first_failure_value_stderr="$smoke_test_base/ci-log-dump-first-failure-value-$$.stderr"
@@ -30,6 +32,13 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_infer_json_err="$smoke_test_base/ci-log-dump-infer-json-$$.stderr"
   local ci_log_run_view_log="$smoke_test_base/ci-log-dump-run-view-$$.log"
   local ci_log_run_list_log="$smoke_test_base/ci-log-dump-run-list-$$.log"
+  local ci_log_latest_pr_json="$smoke_test_base/ci-log-dump-latest-pr-$$.json"
+  local ci_log_latest_pr_err="$smoke_test_base/ci-log-dump-latest-pr-$$.stderr"
+  local ci_log_latest_pr_view_log="$smoke_test_base/ci-log-dump-latest-pr-view-$$.log"
+  local ci_log_latest_pr_run_log="$smoke_test_base/ci-log-dump-latest-pr-run-$$.log"
+  local ci_log_latest_pr_no_open_json="$smoke_test_base/ci-log-dump-latest-no-open-$$.json"
+  local ci_log_latest_pr_no_open_err="$smoke_test_base/ci-log-dump-latest-no-open-$$.stderr"
+  local ci_log_latest_pr_quiet_err="$smoke_test_base/ci-log-dump-latest-no-open-quiet-$$.stderr"
   local ci_log_pr_no_run_json="$smoke_test_base/ci-log-dump-pr-no-run-$$.json"
   local ci_log_pr_no_run_err="$smoke_test_base/ci-log-dump-pr-no-run-$$.stderr"
   local ci_log_repo_infer_json="$smoke_test_base/ci-log-dump-repo-infer-$$.json"
@@ -56,7 +65,9 @@ smoke_check_ci_log_dump_contract() {
     repo-automation/bin/ci-log-dump --help > "$ci_log_help"
   ) && \
     grep -Fq -- '--repo=<owner/repo>' "$ci_log_help" && \
-    grep -Fq -- '--pr=<number|current|latest>' "$ci_log_help" && \
+    grep -Fq -- '--pr=<number|latest>' "$ci_log_help" && \
+    ! grep -Fq -- '--pr=<number|current|latest>' "$ci_log_help" && \
+    ! grep -Fq -- '--pr=current' "$ci_log_help" && \
     grep -Fq -- '--run-id=<id>' "$ci_log_help" && \
     grep -Fq -- '--out-dir=<path>' "$ci_log_help" && \
     grep -Fq -- '--tail=<lines>' "$ci_log_help" && \
@@ -70,6 +81,108 @@ smoke_check_ci_log_dump_contract() {
     test_pass "ci-log-dump help shows strict value syntax"
   else
     test_fail "ci-log-dump help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$ci_log_latest_pr_view_log" "$ci_log_latest_pr_run_log" >/dev/null 2>&1 || true
+    GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
+    GH_STUB_PR_LIST_JSON='[
+      {"number":101,"updatedAt":"2026-05-12T11:00:00Z","state":"OPEN","isDraft":false},
+      {"number":202,"updatedAt":"2026-05-12T13:00:00Z","state":"OPEN","isDraft":true},
+      {"number":303,"updatedAt":"2026-05-12T15:00:00Z","state":"OPEN","isDraft":false}
+    ]' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/latest-pr' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-303' \
+    GH_STUB_RUN_LIST_SHA_PR_JSON='[
+      {"databaseId":903,"conclusion":"failure","createdAt":"2026-05-12T15:30:00Z","event":"pull_request","headBranch":"feature/latest-pr","headSha":"current-sha-303","status":"completed","workflowName":"ci"}
+    ]' \
+    GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_latest_pr_json" 2> "$ci_log_latest_pr_err"
+  ); then
+    test_pass "ci-log-dump latest PR command succeeds"
+  else
+    test_fail "ci-log-dump latest PR command succeeds"
+    status=1
+  fi
+
+  if [ ! -s "$ci_log_latest_pr_err" ] && python3 -m json.tool "$ci_log_latest_pr_json" >/dev/null && \
+    smoke_json_assert "$ci_log_latest_pr_json" 'data.get("pr") == "303" and data.get("run_id") == "903" and data.get("first_failure_label") == "fail: contract/smoke" and data.get("file_size_bytes", 0) > 0 and data.get("log_path", "").startswith("'"$ci_log_out_dir"'/actions_run_903_")'; then
+    test_pass "ci-log-dump latest PR machine-json reports the selected PR and run"
+  else
+    test_fail "ci-log-dump latest PR machine-json reports the selected PR and run"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    grep -Fq -- 'gh pr view 303' "$ci_log_latest_pr_view_log" && ! grep -Eq -- 'gh pr view 101|gh pr view 202' "$ci_log_latest_pr_view_log"
+  ); then
+    test_pass "ci-log-dump latest PR bypasses older PRs"
+  else
+    test_fail "ci-log-dump latest PR bypasses older PRs"
+    status=1
+  fi
+
+  if grep -Fq -- '--commit current-sha-303' "$ci_log_latest_pr_run_log"; then
+    test_pass "ci-log-dump latest PR fetches the selected PR run"
+  else
+    test_fail "ci-log-dump latest PR fetches the selected PR run"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$ci_log_latest_pr_view_log" "$ci_log_latest_pr_run_log" >/dev/null 2>&1 || true
+    GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
+    GH_STUB_PR_LIST_JSON='[]' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_latest_pr_no_open_json" 2> "$ci_log_latest_pr_no_open_err"
+  ); then
+    test_fail "ci-log-dump latest PR machine-json fails cleanly when no open PR exists"
+    status=1
+  elif [ ! -s "$ci_log_latest_pr_no_open_err" ] && python3 -m json.tool "$ci_log_latest_pr_no_open_json" >/dev/null && \
+    smoke_json_assert "$ci_log_latest_pr_no_open_json" 'data.get("result") == "fail" and data.get("code") == "no-pr-found" and data.get("step") == "pr-lookup" and data.get("reason") == "no open non-draft PR found for repository i-schuyler/repo-automation-template" and data.get("fix") == "pass --pr=<number> or open/update a non-draft PR, then rerun" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("log_path") == ""' && \
+    [ ! -e "$ci_log_latest_pr_view_log" ] && [ ! -e "$ci_log_latest_pr_run_log" ]; then
+    test_pass "ci-log-dump latest PR machine-json fails cleanly when no open PR exists"
+  else
+    test_fail "ci-log-dump latest PR machine-json fails cleanly when no open PR exists"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$ci_log_latest_pr_view_log" "$ci_log_latest_pr_run_log" >/dev/null 2>&1 || true
+    GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
+    GH_STUB_PR_LIST_JSON='[]' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --out-dir="$ci_log_out_dir" --quiet > /dev/null 2> "$ci_log_latest_pr_quiet_err"
+  ); then
+    test_fail "ci-log-dump latest PR quiet fails cleanly when no open PR exists"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$ci_log_latest_pr_quiet_err" "no-pr-found" "pr-lookup" "no open non-draft PR found for repository i-schuyler/repo-automation-template" "pass --pr=<number> or open/update a non-draft PR, then rerun" "" "$ci_log_out_dir" "" "" && [ ! -e "$ci_log_latest_pr_view_log" ] && [ ! -e "$ci_log_latest_pr_run_log" ]; then
+    test_pass "ci-log-dump latest PR quiet fails cleanly when no open PR exists"
+  else
+    test_fail "ci-log-dump latest PR quiet fails cleanly when no open PR exists"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=current --machine-json > "$ci_log_pr_current_json" 2> "$ci_log_pr_current_err"
+  ); then
+    test_fail "ci-log-dump rejects --pr=current"
+    status=1
+  elif [ ! -s "$ci_log_pr_current_err" ] && python3 -m json.tool "$ci_log_pr_current_json" >/dev/null && \
+    smoke_json_assert "$ci_log_pr_current_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "unsupported --pr alias: current" and data.get("fix") == "use --pr=<number> or --pr=latest" and data.get("log_path") == ""' && \
+    [ ! -e "$ci_log_latest_pr_view_log" ] && [ ! -e "$ci_log_latest_pr_run_log" ]; then
+    test_pass "ci-log-dump rejects --pr=current"
+  else
+    test_fail "ci-log-dump rejects --pr=current"
     status=1
   fi
 
@@ -169,7 +282,7 @@ smoke_check_ci_log_dump_contract() {
   ); then
     test_fail "ci-log-dump rejects --pr <number>"
     status=1
-  elif smoke_assert_flag_error_shape "$ci_log_pr_format_stderr" "flag format not accepted" "--pr" "use --pr=<number>"; then
+  elif smoke_assert_flag_error_shape "$ci_log_pr_format_stderr" "flag format not accepted" "--pr" "use --pr=<number|latest>"; then
     test_pass "ci-log-dump rejects --pr <number>"
   else
     test_fail "ci-log-dump rejects --pr <number>"
@@ -182,7 +295,7 @@ smoke_check_ci_log_dump_contract() {
   ); then
     test_fail "ci-log-dump rejects missing --pr value"
     status=1
-  elif smoke_assert_flag_error_shape "$ci_log_pr_missing_stderr" "missing flag value" "--pr" "use --pr=<number>"; then
+  elif smoke_assert_flag_error_shape "$ci_log_pr_missing_stderr" "missing flag value" "--pr" "use --pr=<number|latest>"; then
     test_pass "ci-log-dump rejects missing --pr value"
   else
     test_fail "ci-log-dump rejects missing --pr value"
@@ -195,7 +308,7 @@ smoke_check_ci_log_dump_contract() {
   ); then
     test_fail "ci-log-dump rejects empty --pr value"
     status=1
-  elif smoke_assert_flag_error_shape "$ci_log_pr_empty_stderr" "empty flag value" "--pr" "use --pr=<number>"; then
+  elif smoke_assert_flag_error_shape "$ci_log_pr_empty_stderr" "empty flag value" "--pr" "use --pr=<number|latest>"; then
     test_pass "ci-log-dump rejects empty --pr value"
   else
     test_fail "ci-log-dump rejects empty --pr value"

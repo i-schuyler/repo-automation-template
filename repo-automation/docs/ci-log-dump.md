@@ -5,7 +5,7 @@
 ## What It Does
 
 - resolves the target repo from `--repo=OWNER/REPO` or the current repo's GitHub `origin` remote, including common HTTPS, SSH, and GitHub SSH-alias forms
-- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by PR head SHA/branch, or by the current branch
+- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by `--pr=<number|latest>`, or by the current branch
 - defaults to failed-only log output
 - writes the log to the configured output directory
 - prints a human summary or machine JSON
@@ -14,6 +14,8 @@
 
 For `--pr=<number>`, the helper resolves the PR head branch and, when supported by the local GitHub CLI, the PR head SHA. It prefers failed `pull_request` runs for that SHA, then falls back to branch/event lookup, then to failed runs filtered by the PR head SHA. It does not select an unrelated failed run when the PR head SHA is known.
 
+For `--pr=latest`, the helper lists open PRs in the target repo, excludes drafts when the GitHub CLI JSON includes `isDraft`, chooses the most recently updated remaining PR, and then reuses the normal PR run lookup path for that resolved number. If draft metadata is absent, it chooses the most recently updated open PR from the available fields.
+
 For `--run-id=<id>`, the helper treats the run id as authoritative and fetches that run directly without PR or branch lookup.
 
 ## Usage
@@ -21,6 +23,7 @@ For `--run-id=<id>`, the helper treats the run id as authoritative and fetches t
     repo-automation/bin/ci-log-dump --help
     repo-automation/bin/ci-log-dump --run-id=123456789
     repo-automation/bin/ci-log-dump --pr=34
+    repo-automation/bin/ci-log-dump --pr=latest
     repo-automation/bin/ci-log-dump --repo=OWNER/REPO --latest-failed
     repo-automation/bin/ci-log-dump --first-failure
     repo-automation/bin/ci-log-dump --machine-json
@@ -51,6 +54,8 @@ Mode conflicts are rejected before any GitHub CLI call:
 - `--machine-json --explain`
 - `--machine-json --quiet`
 - `--quiet --explain`
+
+`--pr=current` is not implemented in this slice; it is rejected as an unsupported alias before any GitHub CLI call.
 
 `--first-failure` parses the saved failed log locally and reports the first actionable failure label, excerpt, and next fix hint using the shared CI failure taxonomy.
 
