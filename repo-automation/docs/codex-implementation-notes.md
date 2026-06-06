@@ -78,6 +78,17 @@ Recommended improvements:
 - Keep child failure metadata explicit across subprocess boundaries.
 - Prefer negative downstream-invocation assertions near the trust boundary.
 
+### 2026-06-06 slice-handoff execution-submit scenario split
+
+Challenges:
+- One overloaded execution-submit smoke chain mixed plain success, false-positive blocker protection, and true blocker semantics with stale stdout-shape assumptions.
+
+What would have helped:
+- Separate scenario helpers for success, false-positive blocker, and true blocker; keep stdout shape assertions aligned with actual helper output instead of line-count heuristics.
+
+Recommended improvements:
+- Split trust-boundary subcases into named helpers whenever the same command path can succeed, false-positive, or hard-stop.
+
 
 ### 2026-06-05 slice-validator capability gate
 

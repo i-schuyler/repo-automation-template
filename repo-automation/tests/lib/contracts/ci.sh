@@ -115,7 +115,7 @@ smoke_check_ci_log_dump_contract() {
   fi
 
   if [ ! -s "$ci_log_latest_pr_err" ] && python3 -m json.tool "$ci_log_latest_pr_json" >/dev/null && \
-    smoke_json_assert "$ci_log_latest_pr_json" 'data.get("pr") == "303" and data.get("run_id") == "903" and data.get("first_failure_label") == "fail: contract/smoke" and data.get("file_size_bytes", 0) > 0 and data.get("log_path", "").startswith("'"$ci_log_out_dir"'/actions_run_903_")'; then
+    smoke_json_assert "$ci_log_latest_pr_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "ci-log-dump" and data.get("mode") == "json" and data.get("result") == "pass" and data.get("status") == "pass" and data.get("overall_status") == "pass" and data.get("pr") == "303" and data.get("run_id") == "903" and data.get("first_failure_label") == "fail: contract/smoke" and data.get("file_size_bytes", 0) > 0 and data.get("log_path", "").startswith("'"$ci_log_out_dir"'/actions_run_903_")'; then
     test_pass "ci-log-dump latest PR json reports the selected PR and run"
   else
     test_fail "ci-log-dump latest PR json reports the selected PR and run"
@@ -150,7 +150,7 @@ smoke_check_ci_log_dump_contract() {
     test_fail "ci-log-dump latest PR json fails cleanly when no open PR exists"
     status=1
   elif [ ! -s "$ci_log_latest_pr_no_open_err" ] && python3 -m json.tool "$ci_log_latest_pr_no_open_json" >/dev/null && \
-    smoke_json_assert "$ci_log_latest_pr_no_open_json" 'data.get("result") == "fail" and data.get("code") == "no-pr-found" and data.get("step") == "pr-lookup" and data.get("reason") == "no open non-draft PR found for repository i-schuyler/repo-automation-template" and data.get("fix") == "pass --pr=<number> or open/update a non-draft PR, then rerun" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("log_path") == ""' && \
+    smoke_json_assert "$ci_log_latest_pr_no_open_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "ci-log-dump" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("status") == "fail" and data.get("overall_status") == "fail" and data.get("code") == "no-pr-found" and data.get("step") == "pr-lookup" and data.get("reason") == "no open non-draft PR found for repository i-schuyler/repo-automation-template" and data.get("fix") == "pass --pr=<number> or open/update a non-draft PR, then rerun" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("log_path") == ""' && \
     [ ! -e "$ci_log_latest_pr_view_log" ] && [ ! -e "$ci_log_latest_pr_run_log" ]; then
     test_pass "ci-log-dump latest PR json fails cleanly when no open PR exists"
   else
@@ -493,7 +493,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     test_fail "ci-log-dump PR no-run json explains lookup modes"
     status=1
   elif [ ! -s "$ci_log_pr_no_run_err" ] && python3 -m json.tool "$ci_log_pr_no_run_json" >/dev/null && \
-    smoke_json_assert "$ci_log_pr_no_run_json" 'data.get("result") == "fail" and data.get("code") == "no-failed-run-found" and data.get("step") == "run-lookup" and data.get("reason", "").startswith("no failed run found for PR #123") and "lookup_modes_tried=sha-pull_request,branch-pull_request,sha-any,repo-failed-head-sha" in data.get("reason", "") and data.get("fix", "").startswith("rerun with --run-id=<id> or inspect the PR") and data.get("artifact_path") == "'"$ci_log_out_dir"'"' && \
+    smoke_json_assert "$ci_log_pr_no_run_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "ci-log-dump" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("status") == "fail" and data.get("overall_status") == "fail" and data.get("code") == "no-failed-run-found" and data.get("step") == "run-lookup" and data.get("reason", "").startswith("no failed run found for PR #123") and "lookup_modes_tried=sha-pull_request,branch-pull_request,sha-any,repo-failed-head-sha" in data.get("reason", "") and data.get("fix", "").startswith("rerun with --run-id=<id> or inspect the PR") and data.get("artifact_path") == "'"$ci_log_out_dir"'"' && \
     [ ! -e "$ci_log_run_view_log" ]; then
     test_pass "ci-log-dump PR no-run json explains lookup modes"
   else
@@ -578,7 +578,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
         {"databaseId":333,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"push","headBranch":"branch/new","headSha":"sha-333","status":"completed","workflowName":"ci"}
       ]' GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --latest-failed --out-dir="$ci_log_out_dir" --json > "$ci_log_repo_infer_json"
     ) && python3 -m json.tool "$ci_log_repo_infer_json" >/dev/null && \
-      smoke_json_assert "$ci_log_repo_infer_json" 'data.get("repo") == "owner/repo" and data.get("run_id") == "333"'; then
+      smoke_json_assert "$ci_log_repo_infer_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "ci-log-dump" and data.get("mode") == "json" and data.get("result") == "pass" and data.get("status") == "pass" and data.get("overall_status") == "pass" and data.get("repo") == "owner/repo" and data.get("run_id") == "333"'; then
       :
     else
       ci_log_infer_ok=0
@@ -640,7 +640,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     test_fail "ci-log-dump json stays pure on gh API failure"
     status=1
   elif [ ! -s "$ci_log_machine_api_err" ] && python3 -m json.tool "$ci_log_machine_api_json" >/dev/null && \
-    smoke_json_assert "$ci_log_machine_api_json" 'data.get("result") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("log_path") == "" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while listing latest failed runs for repository i-schuyler/repo-automation-template after 3 attempts:") and data.get("fix") == "check gh auth status and your network, then rerun"'; then
+    smoke_json_assert "$ci_log_machine_api_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "ci-log-dump" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("status") == "fail" and data.get("overall_status") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("log_path") == "" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while listing latest failed runs for repository i-schuyler/repo-automation-template after 3 attempts:") and data.get("fix") == "check gh auth status and your network, then rerun"'; then
     test_pass "ci-log-dump json stays pure on gh API failure"
   else
     test_fail "ci-log-dump json stays pure on gh API failure"
@@ -667,7 +667,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     test_fail "ci-log-dump json stays pure on log fetch failure"
     status=1
   elif [ ! -s "$ci_log_machine_view_err" ] && python3 -m json.tool "$ci_log_machine_view_json" >/dev/null && \
-    smoke_json_assert "$ci_log_machine_view_json" 'data.get("result") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("fix") == "check gh auth status and your network, then rerun" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while fetching failed log for run 777 after 3 attempts:")'; then
+    smoke_json_assert "$ci_log_machine_view_json" 'data.get("schema") == "repo-automation-helper-output/v1" and data.get("script") == "ci-log-dump" and data.get("mode") == "json" and data.get("result") == "fail" and data.get("status") == "fail" and data.get("overall_status") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("fix") == "check gh auth status and your network, then rerun" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while fetching failed log for run 777 after 3 attempts:")'; then
     test_pass "ci-log-dump json stays pure on log fetch failure"
   else
     test_fail "ci-log-dump json stays pure on log fetch failure"

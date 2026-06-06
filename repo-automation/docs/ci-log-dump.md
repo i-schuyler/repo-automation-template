@@ -43,7 +43,7 @@ Default success prints only the saved log path.
 
 `--quiet` keeps success silent. On expected failures it emits a QDE-style envelope on stderr with `result=fail`, `code`, `step`, `reason`, `fix`, and optional `artifact`, `log`, or `excerpt` fields.
 
-`--json` emits JSON only on stdout for both success and expected failure. Success includes `log_path`, `file_size_bytes`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes `result=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
+`--json` emits JSON only on stdout for both success and expected failure. Success uses the canonical helper envelope (`schema`, `script`, `mode`, `result`, `status`) and includes `repo`, `pr`, `run_id`, `out_dir`, `tail_lines`, `failed_only`, `latest_failed`, `log_path`, `file_size_bytes`, `overall_status`, `stop_reason`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes the same canonical envelope with `result=fail`, `status=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
 
 `--explain` prints the detailed human summary and ends with a final summary block even on early STOP. That summary is not emitted in JSON mode.
 

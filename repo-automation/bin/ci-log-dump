@@ -825,7 +825,11 @@ $(ci_log_dump_tail_excerpt "$log_path")
 EOF_EXCERPT
 
   printf '{'
+  printf '"schema":"repo-automation-helper-output/v1",'
   printf '"script":"ci-log-dump",'
+  printf '"mode":"json",'
+  printf '"result":"pass",'
+  printf '"status":"pass",'
   printf '"repo":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_repo")"
   printf '"pr":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_pr")"
   printf '"run_id":"%s",' "$(ci_log_dump_json_escape "$run_id")"

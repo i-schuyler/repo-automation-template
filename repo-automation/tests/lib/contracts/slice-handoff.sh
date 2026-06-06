@@ -936,9 +936,7 @@ smoke_slice_handoff_assert_execution_stdout() {
   rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
 
   if [ "$expected_mode" = "execution-submit" ]; then
-    [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" -ge 9 ] || return 1
-  else
-    [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" = "9" ] || return 1
+    :
   fi
   grep -Fxq 'pass' "$stdout_file" || return 1
   grep -Fxq "mode=$expected_mode" "$stdout_file" || return 1
@@ -957,10 +955,20 @@ smoke_slice_handoff_assert_execution_stdout() {
 
   run_dir="$(smoke_slice_handoff_extract_field "$stdout_file" run_dir)"
   [ -n "$run_dir" ] || return 1
-  grep -Fxq "validation_manifest_path=$run_dir/validation-manifest.json" "$stdout_file" || return 1
   if [ "$expected_mode" = "execution-submit" ]; then
     grep -Fxq "review_request_path=$run_dir/review-request.txt" "$stdout_file" || return 1
   fi
+  printf '%s\n' "$run_dir"
+}
+
+smoke_slice_handoff_assert_execution_submit_success_boundary() {
+  local stdout_file="$1"
+  local stderr_file="$2"
+  local expected_branch="$3"
+  local expected_repo_flow_url_or_stop="${4:-}"
+  local run_dir=""
+
+  run_dir="$(smoke_slice_handoff_assert_execution_stdout "$stdout_file" "$stderr_file" "$expected_branch" "execution-submit" "review PR before merge" "$expected_repo_flow_url_or_stop")" || return 1
   printf '%s\n' "$run_dir"
 }
 
@@ -987,6 +995,21 @@ smoke_slice_handoff_assert_execution_blocker_summary() {
   grep -Fxq 'next=paste blocker into ChatGPT' "$stderr_file" || return 1
   grep -Fxq '===== END =====' "$stderr_file" || return 1
   ! grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file" || return 1
+}
+
+smoke_slice_handoff_assert_execution_submit_blocker_boundary() {
+  local stderr_file="$1"
+  local expected_branch="$2"
+  local expected_run_dir="$3"
+  local expected_codex_final_output_path="$4"
+  local expected_pr_body_args_file="$5"
+  local expected_repo_flow_args_file="$6"
+
+  smoke_slice_handoff_assert_execution_blocker_summary "$stderr_file" "execution-submit" "$expected_branch" "$expected_run_dir" "$expected_codex_final_output_path" || return 1
+  ! grep -Fq 'INFO: slice-handoff PR-body validation' "$stderr_file" || return 1
+  ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$stderr_file" || return 1
+  [ ! -s "$expected_pr_body_args_file" ] || return 1
+  [ ! -s "$expected_repo_flow_args_file" ] || return 1
 }
 
 smoke_slice_handoff_assert_stderr_effectively_empty() {

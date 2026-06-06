@@ -364,8 +364,7 @@ case "\${REPO_AUTOMATION_SHELLCHECK_MODE:-verify}" in
 esac
 EOF
     chmod +x "$run_tests_shellcheck_stub_dir/shellcheck" || return 1
-    printf '\nif true; then\n' >> "$run_tests_shellcheck_target"
-    PATH="$run_tests_shellcheck_stub_dir:$PATH" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet >"$run_tests_shellcheck_focus_out" 2>"$run_tests_shellcheck_focus_log"
+    PATH="$run_tests_shellcheck_stub_dir:$PATH" RUN_TESTS_SKIP_SMOKE=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --quiet >"$run_tests_shellcheck_focus_out" 2>"$run_tests_shellcheck_focus_log"
   ); then
     :
   else
@@ -399,7 +398,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     cp "$run_tests_shellcheck_target_backup" "$run_tests_shellcheck_target" || return 1
-    REPO_AUTOMATION_SHELLCHECK_MODE=fail-focus PATH="$run_tests_shellcheck_stub_dir:$PATH" RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --quiet --log-file="$run_tests_shellcheck_focus_log" >"$run_tests_shellcheck_focus_out" 2>&1
+    REPO_AUTOMATION_SHELLCHECK_MODE=fail-focus PATH="$run_tests_shellcheck_stub_dir:$PATH" RUN_TESTS_SKIP_SMOKE=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --quiet --log-file="$run_tests_shellcheck_focus_log" >"$run_tests_shellcheck_focus_out" 2>&1
   ); then
     test_fail "run-tests shellcheck failure points to shellcheck-ci-parity"
     status=1
@@ -423,6 +422,7 @@ EOF
   rm -rf "$run_tests_shellcheck_stub_dir" >/dev/null 2>&1 || true
 
   rm -f "$smoke_test_dir/docs/run-tests-diagnostic.md" >/dev/null 2>&1 || true
+  mkdir -p "$run_tests_clean_temp_tmpdir" "$run_tests_no_clean_tmpdir" || return 1
 
   if (
     cd "$smoke_repo_root" || return 1
@@ -864,7 +864,8 @@ rm -rf -- "${TMPDIR:-$HOME/.cache}/repo-automation-template"/run-tests-* >/dev/n
 exit 0
 EOF
     chmod +x repo-automation/tests/smoke.sh || return 1
-    TMPDIR="$run_tests_missing_smoke_tmpdir" repo-automation/bin/run-tests --smoke --quiet > "$run_tests_missing_smoke_out" 2> "$run_tests_missing_smoke_err"
+    mkdir -p "$run_tests_missing_smoke_tmpdir" || return 1
+    TMPDIR="$run_tests_missing_smoke_tmpdir" REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_missing_smoke_out" 2> "$run_tests_missing_smoke_err"
   ) && [ ! -s "$run_tests_missing_smoke_out" ] && [ ! -s "$run_tests_missing_smoke_err" ]; then
     test_pass "run-tests quiet tolerates cleaned smoke capture logs"
   else
@@ -956,7 +957,7 @@ EOF
   : > "$run_tests_smoke_timeout_stub_log"
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --smoke --quiet > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
   ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
     grep -Fxq '300s' "$run_tests_smoke_timeout_stub_log"; then
     test_pass "run-tests defaults outer smoke timeout to 300 seconds"
@@ -968,7 +969,7 @@ EOF
   : > "$run_tests_smoke_timeout_stub_log"
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet --smoke-timeout=7 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --smoke --quiet --smoke-timeout=7 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
   ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
     grep -Fxq '7s' "$run_tests_smoke_timeout_stub_log"; then
     test_pass "run-tests accepts --smoke-timeout and applies it to smoke"
@@ -980,7 +981,7 @@ EOF
   : > "$run_tests_smoke_timeout_stub_log"
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet --timeout=9 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --smoke --quiet --timeout=9 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
   ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
     grep -Fxq '9s' "$run_tests_smoke_timeout_stub_log"; then
     test_pass "run-tests applies explicit --timeout to smoke when smoke-timeout is omitted"
@@ -992,7 +993,7 @@ EOF
   : > "$run_tests_smoke_timeout_stub_log"
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" repo-automation/bin/run-tests --smoke --quiet --timeout=9 --smoke-timeout=11 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --smoke --quiet --timeout=9 --smoke-timeout=11 > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
   ) && [ ! -s "$run_tests_smoke_timeout_out" ] && [ ! -s "$run_tests_smoke_timeout_err" ] &&
     grep -Fxq '11s' "$run_tests_smoke_timeout_stub_log" &&
     ! grep -Fxq '9s' "$run_tests_smoke_timeout_stub_log"; then
@@ -1005,7 +1006,7 @@ EOF
   : > "$run_tests_smoke_timeout_stub_log"
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" RUN_TESTS_TIMEOUT_STUB_MODE=expire repo-automation/bin/run-tests --smoke --quiet --smoke-timeout=1 --log-file="$run_tests_smoke_timeout_log" > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
+    PATH="$run_tests_smoke_timeout_stub_dir:$PATH" RUN_TESTS_TIMEOUT_STUB_LOG="$run_tests_smoke_timeout_stub_log" RUN_TESTS_TIMEOUT_STUB_MODE=expire REPO_AUTOMATION_RUN_TESTS_DISK_LOW_BYTES=1 REPO_AUTOMATION_RUN_TESTS_DISK_LOW_PERCENT=1 repo-automation/bin/run-tests --smoke --quiet --smoke-timeout=1 --log-file="$run_tests_smoke_timeout_log" > "$run_tests_smoke_timeout_out" 2> "$run_tests_smoke_timeout_err"
   ); then
     test_fail "run-tests reports outer smoke suite timeout blame"
     status=1
