@@ -108,6 +108,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-06-02 / codex-status-phase1 / ids=none / score_delta=0 / signal=implemented read-only JSON-first codex-status helper with fixture-backed Phase 1 contract coverage
 - 2026-06-04 / PR #221 / smoke quiet-actionable / ids=slice-handoff-contract-opacity / score_delta=-1 / signal=quiet/default smoke and focused-wrapper failures now prefer the first actionable inner failure or a self-describing fallback when captured output is silent
 - 2026-06-06 / PR #232 / ci-log-dump latest-pr alias / ids=none / score_delta=0 / signal=implemented `--pr=latest` resolution and rejection of unsupported `--pr=current` without material friction
+- 2026-06-06 / PR #232 / pr-finish-extensions shellcheck global / ids=none / score_delta=0 / signal=annotated smoke harness globals in pr-finish-extensions so SC2154 does not obscure contract coverage
 
 ## Maintenance Notes
 

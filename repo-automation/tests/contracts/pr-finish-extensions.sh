@@ -6,6 +6,9 @@ set -o pipefail
 
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
+# shellcheck disable=SC2154
+# smoke_test_base, smoke_test_dir, and smoke_repo_root are initialized by
+# smoke-common before the focused contract body runs.
 
 smoke_write_git_sync_stub() {
   local git_stub_dir="$1"
@@ -90,6 +93,7 @@ smoke_check_pr_finish_watch_refreshes_mergeability() {
   local git_stub_dir="$smoke_test_dir/git-stub"
   local merge_log_file="$smoke_test_dir/pr-finish-watch-refreshes-mergeability.gh-log"
   local stderr_file="$smoke_test_dir/pr-finish-watch-refreshes-mergeability.stderr"
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   local view_sequence_file="$smoke_test_base/pr-finish-watch-refreshes-mergeability.view-sequence"
   local local_bash_path=""
   local real_git=""
@@ -143,6 +147,7 @@ smoke_check_pr_finish_watch_reports_pending_mergeability() {
   local git_stub_dir="$smoke_test_dir/git-stub"
   local merge_log_file="$smoke_test_dir/pr-finish-watch-pending.gh-log"
   local stderr_file="$smoke_test_dir/pr-finish-watch-pending.stderr"
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
   local view_sequence_file="$smoke_test_base/pr-finish-watch-pending.view-sequence"
   local local_bash_path=""
   local real_git=""
