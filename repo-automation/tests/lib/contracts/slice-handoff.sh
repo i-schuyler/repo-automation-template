@@ -139,9 +139,128 @@ if old not in text:
     raise SystemExit(1)
 config_path.write_text(text.replace(old, new, 1), encoding='utf-8')
 PY
+  rm -rf -- "$smoke_test_dir/.prompts" || return 1
+  cp -R "$smoke_repo_root/.prompts" "$smoke_test_dir/.prompts" || return 1
   cp -- "$smoke_repo_root/repo-automation/bin/slice-handoff" "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
   chmod +x "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
   git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/slice-handoff || return 1
+  smoke_slice_handoff_install_runtime_helper "slice-validator" || return 1
+}
+
+smoke_slice_handoff_install_prompt_presets() {
+  local handoff_path="$1"
+  local prompt_dir="$(dirname "$handoff_path")/.prompts"
+
+  rm -rf -- "$prompt_dir" || return 1
+  cp -R "$smoke_repo_root/.prompts" "$prompt_dir" || return 1
+}
+
+smoke_slice_handoff_install_runtime_helper() {
+  local helper_name="$1"
+  local source_path="$smoke_repo_root/repo-automation/bin/$helper_name"
+  local target_path="$smoke_test_dir/repo-automation/bin/$helper_name"
+
+  cp -- "$source_path" "$target_path" || return 1
+  chmod +x "$target_path" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree "repo-automation/bin/$helper_name" || return 1
+}
+
+smoke_slice_handoff_assert_runtime_helper() {
+  local helper_name="$1"
+  local helper_path="$smoke_test_dir/repo-automation/bin/$helper_name"
+
+  if [ -x "$helper_path" ]; then
+    return 0
+  fi
+
+  printf 'fail: missing runtime helper in smoke repo: %s\n' "$helper_path" >&2
+  printf 'fix: install or copy the child helper into the smoke temp repo before running slice-handoff\n' >&2
+  return 1
+}
+
+smoke_slice_handoff_install_fake_slice_validator() {
+  local validator_path="$smoke_test_dir/repo-automation/bin/slice-validator"
+
+  cat > "$validator_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="${FAKE_SLICE_VALIDATOR_ARGS_FILE:-}"
+stdout_text="${FAKE_SLICE_VALIDATOR_STDOUT_TEXT:-}"
+stderr_text="${FAKE_SLICE_VALIDATOR_STDERR_TEXT:-}"
+exit_code="${FAKE_SLICE_VALIDATOR_EXIT_CODE:-0}"
+artifact_dir=""
+manifest_out=""
+submit_requested=0
+json_requested=0
+file_path=""
+
+if [ -n "$args_file" ]; then
+  printf '%s\n' "$@" > "$args_file"
+fi
+
+for arg in "$@"; do
+  case "$arg" in
+    --submit)
+      submit_requested=1
+      ;;
+    --json)
+      json_requested=1
+      ;;
+    --file=*)
+      file_path="${arg#--file=}"
+      ;;
+    --artifact-dir=*)
+      artifact_dir="${arg#--artifact-dir=}"
+      ;;
+    --manifest-out=*)
+      manifest_out="${arg#--manifest-out=}"
+      ;;
+  esac
+done
+
+if [ -n "$artifact_dir" ]; then
+  mkdir -p "$artifact_dir" || exit 1
+  printf 'fake validator prompt\n' > "$artifact_dir/codex-prompt.md" || exit 1
+  printf 'fake validator review request\n' > "$artifact_dir/review-request.txt" || exit 1
+  if [ "$submit_requested" -eq 1 ]; then
+    printf 'fake validator pr body\n' > "$artifact_dir/pr-body.md" || exit 1
+  fi
+fi
+
+if [ -n "$manifest_out" ]; then
+  mkdir -p "$(dirname "$manifest_out")" || exit 1
+  cat > "$manifest_out" <<EOF2
+{
+  "schema": "repo-automation-slice-validator/v1",
+  "result": "pass",
+  "branch": "feature/slice-handoff-smoke",
+  "title": "Slice handoff smoke",
+  "codex_profile": "default",
+  "submit_mode": "none",
+  "commit_message": "",
+  "prompt_path": "${artifact_dir}/codex-prompt.md",
+  "review_request_path": "${artifact_dir}/review-request.txt",
+  "pr_body_path": ""
+}
+EOF2
+fi
+
+if [ "$json_requested" -eq 1 ]; then
+  printf '{"schema":"repo-automation-helper-output/v1","script":"slice-validator","mode":"json","result":"pass","manifest_path":"%s","artifact_dir":"%s","branch":"feature/slice-handoff-smoke","title":"Slice handoff smoke","submit_mode":"none","codex_profile":"default","validated_capabilities":{"preflight":true,"codex_run":true,"codex_status":true,"pr_body_check":false,"repo_flow_submit":false,"review_request_render":true},"forbidden_steps":["pr-body-check","repo-flow submit"],"next":"codex-slice-preflight"}\n' "$manifest_out" "$artifact_dir"
+fi
+
+if [ -n "$stdout_text" ]; then
+  printf '%s\n' "$stdout_text"
+fi
+if [ -n "$stderr_text" ]; then
+  printf '%s\n' "$stderr_text" >&2
+fi
+
+exit "$exit_code"
+EOF
+  chmod +x "$validator_path" || return 1
 }
 
 smoke_slice_handoff_install_fake_repo_flow() {
@@ -264,9 +383,31 @@ args_file="${FAKE_PR_BODY_CHECK_ARGS_FILE:-}"
 stdout_text="${FAKE_PR_BODY_CHECK_STDOUT_TEXT:-pass}"
 stderr_text="${FAKE_PR_BODY_CHECK_STDERR_TEXT:-}"
 exit_code="${FAKE_PR_BODY_CHECK_EXIT_CODE:-0}"
+body_file=""
+json_mode=0
 
 if [ -n "$args_file" ]; then
   printf '%s\n' "$@" > "$args_file"
+fi
+
+for arg in "$@"; do
+  case "$arg" in
+    --body-file=*)
+      body_file="${arg#--body-file=}"
+      ;;
+    --json)
+      json_mode=1
+      ;;
+  esac
+done
+
+if [ "$json_mode" -eq 1 ]; then
+  if [ "$exit_code" -eq 0 ]; then
+    printf '{"schema":"repo-automation-helper-output/v1","script":"pr-body-check","mode":"json","result":"pass","body_file":"%s"}\n' "$body_file"
+  else
+    printf '{"schema":"repo-automation-helper-output/v1","script":"pr-body-check","mode":"json","result":"fail","code":"pr-body-check-failed","step":"pr-body-check","reason":"%s","fix":"replace branch/base/ahead/behind scaffolding with real PR body content","body_file":"%s"}\n' "${stderr_text:-body validation failed}" "$body_file"
+  fi
+  exit "$exit_code"
 fi
 
 if [ -n "$stdout_text" ]; then
@@ -382,6 +523,7 @@ smoke_slice_handoff_write_file() {
   local pr_review_prompt_id="${10:-}"
 
   mkdir -p "$(dirname "$path")" || return 1
+  smoke_slice_handoff_install_prompt_presets "$path" || return 1
   {
     printf 'schema: repo-automation-slice-handoff/v1\n'
     if [ -n "$branch" ]; then
@@ -630,15 +772,21 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   if ! (
     PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run_with_isolated_temp_env "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"
   ); then
-    run_dir="$(find "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
-    if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "$run_dir" "stop_reason=working tree must be clean before preflight"; then
-      status=1
-    elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
-      status=1
-    elif [ ! -e "$dirty_execution_sentinel" ]; then
+    if [ ! -d "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" ]; then
+      printf 'fail: slice-handoff dirty-preflight run dir root missing: %s\n' "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" >&2
+      printf 'fix: ensure slice-handoff creates the run-dir root before preflight failure handling\n' >&2
+      test_fail "dirty-preflight-run-dir"
       status=1
     else
-      if ! python3 - "$run_dir" "$dirty_execution_sentinel" "$dirty_execution_smoke_test_dir" "$saved_smoke_test_base" "$TEST_TEMP_ROOT" <<'PY'
+      run_dir="$(smoke_slice_handoff_latest_run_dir "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "dirty-preflight")" || return 1
+      if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "$run_dir" "stop_reason=working tree must be clean before preflight"; then
+        status=1
+      elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
+        status=1
+      elif [ ! -e "$dirty_execution_sentinel" ]; then
+        status=1
+      else
+        if ! python3 - "$run_dir" "$dirty_execution_sentinel" "$dirty_execution_smoke_test_dir" "$saved_smoke_test_base" "$TEST_TEMP_ROOT" <<'PY'
 from pathlib import Path
 import json
 import sys
@@ -664,8 +812,9 @@ for path in paths:
 if not sentinel_path.exists():
     raise SystemExit(1)
 PY
-      then
-      status=1
+        then
+          status=1
+        fi
       fi
     fi
   else
@@ -728,6 +877,31 @@ smoke_slice_handoff_assert_child_failure_shape() {
   return 1
 }
 
+smoke_slice_handoff_assert_validator_failure_shape() {
+  local stderr_file="$1"
+  local expected_reason="$2"
+  local expected_fix="$3"
+  local expected_next="${4:-fix the reported validator failure and rerun slice-handoff}"
+  local filtered_stderr_file=""
+
+  filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-validator-error.XXXXXX")" || return 1
+  grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
+  if grep -Fxq 'fail: slice-handoff child boundary failed' "$filtered_stderr_file" &&
+    grep -Fxq 'step=slice-validator' "$filtered_stderr_file" &&
+    grep -Fq 'command_class=repo-automation/bin/slice-validator' "$filtered_stderr_file" &&
+    grep -Fq 'command=repo-automation/bin/slice-validator' "$filtered_stderr_file" &&
+    grep -Fxq 'exit_code=1' "$filtered_stderr_file" &&
+    grep -Fq "reason=$expected_reason" "$filtered_stderr_file" &&
+    grep -Fq "excerpt=reason=$expected_reason" "$filtered_stderr_file" &&
+    grep -Fxq 'fix=paste this blocker into ChatGPT' "$filtered_stderr_file" &&
+    grep -Fxq "next=$expected_next" "$filtered_stderr_file"; then
+    rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+    return 0
+  fi
+  rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
+  return 1
+}
+
 smoke_slice_handoff_assert_text_file() {
   local path="$1"
   local expected="$2"
@@ -763,7 +937,7 @@ smoke_slice_handoff_assert_execution_stdout() {
   if [ "$expected_mode" = "execution-submit" ]; then
     [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" -ge 9 ] || return 1
   else
-    [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" = "8" ] || return 1
+    [ "$(wc -l < "$stdout_file" | tr -d '[:space:]')" = "9" ] || return 1
   fi
   grep -Fxq 'pass' "$stdout_file" || return 1
   grep -Fxq "mode=$expected_mode" "$stdout_file" || return 1
@@ -782,6 +956,7 @@ smoke_slice_handoff_assert_execution_stdout() {
 
   run_dir="$(smoke_slice_handoff_extract_field "$stdout_file" run_dir)"
   [ -n "$run_dir" ] || return 1
+  grep -Fxq "validation_manifest_path=$run_dir/validation-manifest.json" "$stdout_file" || return 1
   if [ "$expected_mode" = "execution-submit" ]; then
     grep -Fxq "review_request_path=$run_dir/review-request.txt" "$stdout_file" || return 1
   fi
@@ -922,6 +1097,7 @@ smoke_slice_handoff_assert_execution_run_dir() {
     codex-run.stderr \
     slice-handoff-summary.txt \
     slice-handoff-execution-summary.txt \
+    validation-manifest.json \
     codex-prompt.md \
     review-request.txt \
     codex-run/codex-final.txt \
@@ -997,6 +1173,7 @@ PY
   grep -Fxq "submit_mode=$submit_mode" "$run_dir/slice-handoff-summary.txt" || return 1
   grep -Fxq "codex_prompt_path=$run_dir/codex-prompt.md" "$run_dir/slice-handoff-summary.txt" || return 1
   grep -Fxq "review_request_path=$run_dir/review-request.txt" "$run_dir/slice-handoff-summary.txt" || return 1
+  grep -Fxq "validation_manifest_path=$run_dir/validation-manifest.json" "$run_dir/slice-handoff-summary.txt" || return 1
   if [ "$submit_mode" = "repo-flow-submit-all" ]; then
     grep -Fxq "pr_body_path=$run_dir/pr-body.md" "$run_dir/slice-handoff-summary.txt" || return 1
   else
@@ -1020,6 +1197,7 @@ PY
   grep -Fxq "codex_run_stderr_path=$run_dir/codex-run.stderr" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "codex_run_summary_path=$run_dir/codex-run/codex-run-summary.txt" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$run_dir/slice-handoff-execution-summary.txt" || return 1
+  grep -Fxq "validation_manifest_path=$run_dir/validation-manifest.json" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   grep -Fxq "result=pass" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   if [ "$expected_execution_mode" = "execution-submit" ]; then
     grep -Fxq "pr_body_check_stdout_path=$run_dir/pr-body-check.stdout" "$run_dir/slice-handoff-execution-summary.txt" || return 1
@@ -1034,14 +1212,26 @@ PY
 }
 
 smoke_slice_handoff_latest_run_dir() {
-  python3 - <<'PY'
+  python3 - "$@" <<'PY'
 from pathlib import Path
 import os
 import sys
 
-root = Path(os.environ.get('TMPDIR', str(Path.home() / '.cache'))) / 'repo-automation' / 'slice-handoff-runs'
+args = sys.argv[1:]
+if args:
+    root = Path(args[0])
+    context = args[1] if len(args) > 1 else 'slice-handoff'
+else:
+    root = Path(os.environ.get('TMPDIR', str(Path.home() / '.cache'))) / 'repo-automation' / 'slice-handoff-runs'
+    context = 'slice-handoff'
+if not root.is_dir():
+    print(f'fail: {context} run dir root missing: {root}', file=sys.stderr)
+    print(f'fix: ensure slice-handoff creates the run-dir root before returning from {context}', file=sys.stderr)
+    raise SystemExit(1)
 dirs = [path for path in root.iterdir() if path.is_dir()]
 if not dirs:
+    print(f'fail: {context} run dir missing: {root}', file=sys.stderr)
+    print(f'fix: ensure slice-handoff creates a run directory before returning from {context}', file=sys.stderr)
     raise SystemExit(1)
 dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
 print(dirs[0])
@@ -1101,6 +1291,28 @@ smoke_slice_handoff_expect_failure() {
   fi
 
   if smoke_slice_handoff_assert_error_shape "$stderr_file" "$reason" "$fix"; then
+    test_pass "$label"
+    return 0
+  fi
+
+  test_fail "$label"
+  return 1
+}
+
+smoke_slice_handoff_expect_validator_failure() {
+  local label="$1"
+  local reason="$2"
+  local fix="$3"
+  local stdout_file="$smoke_test_base/slice-handoff-${label}.out"
+  local stderr_file="$smoke_test_base/slice-handoff-${label}.err"
+
+  shift 3
+  if smoke_slice_handoff_run "$stdout_file" "$stderr_file" "$@"; then
+    test_fail "$label"
+    return 1
+  fi
+
+  if smoke_slice_handoff_assert_validator_failure_shape "$stderr_file" "$reason" "$fix"; then
     test_pass "$label"
     return 0
   fi

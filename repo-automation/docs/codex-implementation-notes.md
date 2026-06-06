@@ -92,3 +92,21 @@ What would have helped:
 Recommended improvements:
 - Keep capability-grant manifests explicit and separate them from preflight readiness.
 - Reuse PR-body validation as a distinct helper contract instead of embedding body checks in multiple places.
+
+### 2026-06-06 slice-handoff validator wiring
+
+Challenges:
+- The orchestrator needed to consume validator manifest paths rather than assume fixed artifact names.
+- Validate-only dry runs for submit-capable handoffs needed to stay allowed when bare `--submit` was not requested.
+- Repo-relative child-helper tests needed to install or assert helpers inside the smoke temp repo, not rely on PATH/env selection.
+- Validation-manifest copies needed their artifact paths rewritten to the final out-dir/run-dir locations so the public summaries stayed inspectable.
+
+What would have helped:
+- A single manifest-path contract example showing how orchestrators map validator output back into helper state.
+- One focused test for the submit-mode/no-submit split before the execution run dir starts.
+
+Recommended improvements:
+- Keep orchestrator glue manifest-driven and avoid hardcoding validator artifact paths.
+- Preserve the validate-only path for submit-capable handoffs until bare `--submit` crosses the trust boundary.
+- Add a small reusable smoke helper for repo-relative child-helper assertions and fake installation.
+- When copying validator manifests into public artifacts, rewrite artifact paths to the final published locations.

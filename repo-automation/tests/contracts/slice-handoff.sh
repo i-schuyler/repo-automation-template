@@ -37,6 +37,7 @@ smoke_check_slice_handoff_contract() {
   local valid_none_out_dir="$smoke_test_base/out-valid-none"
   local valid_submit_out_dir="$smoke_test_base/out-valid-submit"
   local valid_preset_out_dir="$smoke_test_base/out-valid-preset"
+  local submit_mode_validate_only_out_dir="$smoke_test_base/out-submit-mode-validate-only"
   local valid_quiet_out_dir="$smoke_test_base/out-quiet"
   local valid_explain_out_dir="$smoke_test_base/out-explain"
   local execution_tmp_root="$smoke_test_base/slice-handoff-tmp"
@@ -46,6 +47,15 @@ smoke_check_slice_handoff_contract() {
   local execution_quiet_out_dir="$execution_artifact_root/out-execution-quiet"
   local execution_explain_out_dir="$execution_artifact_root/out-execution-explain"
   local invalid_out_dir="$smoke_test_base/out-invalid-validation"
+  local validator_path=""
+  local validator_backup_path=""
+  local validator_fake_args_file=""
+  local validator_fake_artifact_dir=""
+  local validator_failure_isolation_root=""
+  local validator_failure_tmpdir=""
+  local validator_failure_home=""
+  local validator_failure_stdout_file=""
+  local validator_failure_stderr_file=""
   local inside_repo_out_dir="$smoke_test_dir/slice-handoff-out-inside-repo"
   local expected_none_stdout
   local expected_submit_stdout
@@ -84,6 +94,7 @@ smoke_check_slice_handoff_contract() {
   local missing_commit_file="$smoke_check_root/missing-commit.md"
   local missing_pr_body_file="$smoke_check_root/missing-pr-body.md"
   local invalid_submit_file="$smoke_check_root/invalid-submit-pr-body.md"
+  local submit_mode_validate_only_file="$smoke_check_root/submit-mode-validate-only.md"
   local empty_review_request_file="$smoke_check_root/empty-review-request.md"
   local valid_preset_file="$smoke_check_root/valid-preset.md"
   local invalid_prompt_conflict_file="$smoke_check_root/invalid-pr-review-conflict.md"
@@ -131,7 +142,12 @@ smoke_check_slice_handoff_contract() {
   local invalid_submit_body_text
 
   mkdir -p "$smoke_check_root" || return 1
+  rm -rf -- "$smoke_check_root/.prompts" || return 1
+  cp -R "$smoke_repo_root/.prompts" "$smoke_check_root/.prompts" || return 1
   mkdir -p "$execution_tmp_root" || return 1
+  mkdir -p "$execution_artifact_root" || return 1
+  rm -rf -- "$execution_artifact_root/.prompts" || return 1
+  cp -R "$smoke_repo_root/.prompts" "$execution_artifact_root/.prompts" || return 1
   case "$execution_artifact_root" in
     "$smoke_test_base"/*) : ;;
     *) return 1 ;;
@@ -211,7 +227,7 @@ Please review this PR before merge:
 
 <PR_URL>
 
-Slice: Slice handoff smoke
+Slice handoff smoke
 Branch: feature/slice-handoff-smoke
 
 Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.
@@ -224,7 +240,7 @@ Please review this PR before merge:
 
 <PR_URL>
 
-Slice: Slice handoff submit smoke
+Slice handoff submit smoke
 Branch: feature/slice-handoff-submit
 
 Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.
@@ -233,10 +249,10 @@ Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describ
 EOF
 )"
   expected_preset_review_request="$(cat "$smoke_test_dir/.prompts/repo-automation-template-pr-review.md")"
-  expected_none_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_none_out_dir" "$valid_none_out_dir")"
-  expected_quiet_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
-  expected_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
-  expected_submit_noauth_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_none_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
+  expected_quiet_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-smoke\ntitle=Slice handoff smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
+  expected_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_submit_noauth_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-submit\ntitle=Slice handoff submit smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
   expected_none_preview="$(cat <<EOF
 dry_run_mode=enabled
 branch=feature/slice-handoff-smoke
@@ -509,11 +525,11 @@ Expected future final outcomes
 expected_future_final_outcomes=blocker or review request
 EOF
 )"
-  expected_none_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
-  expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
-  expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
-  expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
-  expected_preset_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt' "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir")"
+  expected_none_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir" "$valid_none_out_dir")"
+  expected_none_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir" "$valid_quiet_out_dir")"
+  expected_submit_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_explicit_review_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir" "$valid_submit_out_dir")"
+  expected_preset_stdout="$(printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir")"
   expected_execution_none_summary="${expected_none_summary//$valid_none_out_dir/$execution_none_out_dir}"
   expected_execution_quiet_summary="${expected_quiet_summary//$valid_quiet_out_dir/$execution_quiet_out_dir}"
 
@@ -580,7 +596,7 @@ EOF
       smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/codex-prompt.md" "$expected_none_prompt" &&
       smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/dry-run-preview.txt" "$expected_preset_preview" &&
       smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/review-request.txt" "$expected_preset_review_request" &&
-      smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/slice-handoff-summary.txt" "$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt' "$valid_preset_out_dir" "$valid_preset_out_dir")"
+      smoke_slice_handoff_assert_text_file "$valid_preset_out_dir/slice-handoff-summary.txt" "$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=default\nsubmit_mode=none\ncommit_message=\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$valid_preset_out_dir" "$valid_preset_out_dir" "$valid_preset_out_dir")"
   ); then
     :
   else
@@ -590,8 +606,33 @@ EOF
 
   if (
     rm -rf -- "$invalid_out_dir" &&
-      smoke_slice_handoff_expect_failure "out-dir-submit-invalid-pr-body" "missing required heading: ## Scope" "use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template" --file="$invalid_submit_file" --dry-run --out-dir="$invalid_out_dir" &&
-      [ ! -e "$invalid_out_dir" ]
+      smoke_slice_handoff_expect_success "out-dir-submit-invalid-pr-body" "$(cat <<EOF
+pass
+out_dir=$invalid_out_dir
+codex_prompt_path=$invalid_out_dir/codex-prompt.md
+preview_path=$invalid_out_dir/dry-run-preview.txt
+review_request_path=$invalid_out_dir/review-request.txt
+summary_path=$invalid_out_dir/slice-handoff-summary.txt
+validation_manifest_path=$invalid_out_dir/validation-manifest.json
+EOF
+)" "" --file="$invalid_submit_file" --dry-run --out-dir="$invalid_out_dir" &&
+      smoke_slice_handoff_assert_text_file "$invalid_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
+      [ -s "$invalid_out_dir/dry-run-preview.txt" ] &&
+      smoke_slice_handoff_assert_text_file "$invalid_out_dir/review-request.txt" "$expected_submit_default_review_request" &&
+      smoke_slice_handoff_assert_text_file "$invalid_out_dir/slice-handoff-summary.txt" "$(cat <<EOF
+schema=repo-automation-slice-handoff/v1
+branch=feature/slice-handoff-submit
+title=Slice handoff submit smoke
+codex_profile=review
+submit_mode=repo-flow-submit-all
+commit_message=chore: slice-handoff smoke
+codex_prompt_path=$invalid_out_dir/codex-prompt.md
+pr_body_path=
+review_request_path=$invalid_out_dir/review-request.txt
+validation_manifest_path=$invalid_out_dir/validation-manifest.json
+EOF
+)" &&
+      [ ! -e "$invalid_out_dir/pr-body.md" ]
   ); then
     :
   else
@@ -599,19 +640,19 @@ EOF
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "pr-review-conflict" "conflicting PR review sources: explicit ## PR Review Request and pr_review_prompt_id" "remove one of the review request sources before rerunning slice-handoff" --file="$invalid_prompt_conflict_file" --dry-run; then
+  if smoke_slice_handoff_expect_validator_failure "pr-review-conflict" "conflicting PR review sources: explicit ## PR Review Request and pr_review_prompt_id" "paste this blocker into ChatGPT" --file="$invalid_prompt_conflict_file" --dry-run; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "pr-review-invalid-id" "invalid pr_review_prompt_id: -bad" "use a basename ID like repo-automation-template-pr-review (letters, digits, underscore, hyphen; no slashes, whitespace, leading dash, or ..)" --file="$invalid_prompt_id_file" --dry-run; then
+  if smoke_slice_handoff_expect_validator_failure "pr-review-invalid-id" "invalid pr_review_prompt_id: -bad" "paste this blocker into ChatGPT" --file="$invalid_prompt_id_file" --dry-run; then
     :
   else
     status=1
   fi
 
-  if smoke_slice_handoff_expect_failure "pr-review-missing-preset" "missing PR review prompt preset: $smoke_test_dir/.prompts/missing-preset.md" "add the preset file or remove pr_review_prompt_id" --file="$missing_prompt_file" --dry-run; then
+  if smoke_slice_handoff_expect_validator_failure "pr-review-missing-preset" "missing PR review prompt preset: $smoke_check_root/.prompts/missing-preset.md" "paste this blocker into ChatGPT" --file="$missing_prompt_file" --dry-run; then
     :
   else
     status=1
@@ -703,12 +744,12 @@ EOF
   expected_execution_submit_preview="${expected_execution_submit_preview//Slice handoff submit smoke/Slice handoff preset review smoke}"
   expected_execution_submit_preview="${expected_execution_submit_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   expected_execution_submit_preview="${expected_execution_submit_preview//$expected_planned_run_dir_root/$expected_execution_planned_run_dir_root}"
-  expected_execution_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt' "$execution_submit_out_dir" "$execution_submit_out_dir" "$execution_submit_out_dir")"
+  expected_execution_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$execution_submit_out_dir" "$execution_submit_out_dir" "$execution_submit_out_dir" "$execution_submit_out_dir")"
   expected_execution_quiet_preview="${expected_quiet_preview//$valid_quiet_out_dir/$execution_quiet_out_dir}"
   expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_dry_run_repo_root/$expected_execution_repo_root}"
   expected_execution_quiet_preview="${expected_execution_quiet_preview//$expected_planned_run_dir_root/$expected_execution_planned_run_dir_root}"
   expected_execution_explain_preview="${expected_execution_submit_preview//$execution_submit_out_dir/$execution_explain_out_dir}"
-  expected_execution_explain_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt' "$execution_explain_out_dir" "$execution_explain_out_dir" "$execution_explain_out_dir")"
+  expected_execution_explain_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$execution_explain_out_dir" "$execution_explain_out_dir" "$execution_explain_out_dir" "$execution_explain_out_dir")"
   if (
     rm -rf -- "$valid_explain_out_dir" &&
       smoke_slice_handoff_write_file "$valid_none_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "$valid_prompt" &&
@@ -788,7 +829,7 @@ EOF
     test_fail "execution-submit codex blocker"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit codex blocker")" || return 1
     if smoke_slice_handoff_assert_execution_blocker_summary "$execution_artifact_root/slice-handoff-execution-submit-blocker.err" "execution-submit" "feature/slice-handoff-pr-review" "$run_dir" "$run_dir/codex-run/codex-final.txt" &&
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-submit-blocker.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-submit-blocker.err" &&
@@ -808,7 +849,7 @@ EOF
     test_fail "execution-non-submit codex blocker"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-non-submit codex blocker")" || return 1
     if smoke_slice_handoff_assert_execution_blocker_summary "$execution_artifact_root/slice-handoff-execution-blocker-crlf.err" "execution-codex-run" "feature/slice-handoff-smoke" "$run_dir" "$run_dir/codex-run/codex-final.txt" &&
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-blocker-crlf.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-blocker-crlf.err" &&
@@ -828,7 +869,7 @@ EOF
     test_fail "execution-submit missing codex-final"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit missing codex-final")" || return 1
     if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-missing-final.err" "codex-run-output-contract" "codex-run output contract" "0" "$run_dir/codex-run.stdout" "$run_dir/codex-run.stderr" "final output file is missing or empty" "final output file is missing or empty" "repair codex-run output contract and rerun slice-handoff" &&
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-missing-final.err" &&
@@ -850,7 +891,7 @@ EOF
     test_fail "execution-submit codex-run failure"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit codex-run failure")" || return 1
     if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" "codex-run" "repo-automation/bin/codex-run" "1" "$run_dir/codex-run.stdout" "$run_dir/codex-run.stderr" "fail: forced codex-run blocker from smoke" "fail: forced codex-run blocker from smoke" "fix codex-run and rerun slice-handoff" &&
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$execution_artifact_root/slice-handoff-execution-codex-run-failure.err" &&
@@ -1071,20 +1112,9 @@ EOF
     test_fail "execution-submit pr-body-check failure"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
-    if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" "pr-body-check" "repo-automation/bin/pr-body-check" "1" "$run_dir/pr-body-check.stdout" "$run_dir/pr-body-check.stderr" "fail: forced pr-body-check blocker from smoke" "fail: forced pr-body-check blocker from smoke" "fix the PR body and rerun slice-handoff" &&
-      grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
-      grep -Fxq 'result=fail' "$run_dir/slice-handoff-execution-summary.txt" &&
-      grep -Fxq "pr_body_check_stdout_path=$run_dir/pr-body-check.stdout" "$run_dir/slice-handoff-execution-summary.txt" &&
-      grep -Fxq "pr_body_check_stderr_path=$run_dir/pr-body-check.stderr" "$run_dir/slice-handoff-execution-summary.txt" &&
-      grep -Fxq 'repo_flow_submit_stdout_path=' "$run_dir/slice-handoff-execution-summary.txt" &&
-      grep -Fxq 'repo_flow_submit_stderr_path=' "$run_dir/slice-handoff-execution-summary.txt" &&
-      grep -Fxq 'pass' "$run_dir/codex-run.stdout" &&
-      ! grep -Fq '===== PR REVIEW REQUEST =====' "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" &&
-      [ ! -s "$fake_repo_flow_args_submit_file" ] &&
-      [ ! -s "$run_dir/repo-flow-submit.stdout" ] &&
-      [ ! -e "$run_dir/repo-flow-submit.stderr" ]; then
-      :
+    if smoke_slice_handoff_assert_validator_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" "fail: forced pr-body-check blocker from smoke" "paste this blocker into ChatGPT" &&
+      [ ! -s "$fake_repo_flow_args_submit_file" ]; then
+      test_pass "execution-submit pr-body-check failure"
     else
       test_fail "execution-submit pr-body-check failure"
       status=1
@@ -1098,7 +1128,7 @@ EOF
     test_fail "execution-submit repo-flow failure"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit")" || return 1
     if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" "repo-flow-submit" "repo-automation/bin/repo-flow submit" "1" "$run_dir/repo-flow-submit.stdout" "$run_dir/repo-flow-submit.stderr" "repo-flow submit blocker from smoke" "repo-flow submit blocker from smoke" "fix repo-flow submit and rerun slice-handoff" &&
       grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'result=fail' "$run_dir/slice-handoff-execution-summary.txt" &&
@@ -1123,7 +1153,7 @@ EOF
     test_fail "execution-submit repo-flow output-contract failure"
     status=1
   else
-    run_dir="$(find "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" -maxdepth 1 -mindepth 1 -type d | sort | tail -n 1)" || return 1
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-quiet")" || return 1
     if smoke_slice_handoff_assert_child_failure_shape "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" "repo-flow-submit-output-contract" "repo-automation/bin/repo-flow submit output contract" "0" "$run_dir/repo-flow-submit.stdout" "$run_dir/repo-flow-submit.stderr" "missing PR URL in repo-flow submit url_or_stop output" "missing PR URL in repo-flow submit url_or_stop output" "repair repo-flow submit output contract and rerun slice-handoff" &&
       ! grep -Fq '===== PR REVIEW REQUEST =====' "$execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" &&
       grep -Fxq 'fake repo-flow stdout' "$run_dir/repo-flow-submit.stdout" &&
@@ -1268,6 +1298,59 @@ EOF
   smoke_slice_handoff_write_file "$valid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$submit_prompt" "$submit_body" || return 1
 
   if (
+    python3 - "$valid_submit_file" "$submit_mode_validate_only_file" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+filtered = []
+skip = False
+for line in source:
+    if line == '## PR Body':
+        skip = True
+        continue
+    if skip:
+        continue
+    filtered.append(line)
+Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_success "submit-mode-validate-only" "$(cat <<EOF
+pass
+out_dir=$submit_mode_validate_only_out_dir
+codex_prompt_path=$submit_mode_validate_only_out_dir/codex-prompt.md
+preview_path=$submit_mode_validate_only_out_dir/dry-run-preview.txt
+review_request_path=$submit_mode_validate_only_out_dir/review-request.txt
+summary_path=$submit_mode_validate_only_out_dir/slice-handoff-summary.txt
+validation_manifest_path=$submit_mode_validate_only_out_dir/validation-manifest.json
+EOF
+)" "" --file="$submit_mode_validate_only_file" --dry-run --out-dir="$submit_mode_validate_only_out_dir"; then
+    if smoke_slice_handoff_assert_text_file "$submit_mode_validate_only_out_dir/codex-prompt.md" "$expected_submit_prompt" &&
+      [ -s "$submit_mode_validate_only_out_dir/dry-run-preview.txt" ] &&
+      smoke_slice_handoff_assert_text_file "$submit_mode_validate_only_out_dir/review-request.txt" "$expected_submit_default_review_request" &&
+      smoke_slice_handoff_assert_text_file "$submit_mode_validate_only_out_dir/slice-handoff-summary.txt" "$(cat <<EOF
+schema=repo-automation-slice-handoff/v1
+branch=feature/slice-handoff-submit
+title=Slice handoff submit smoke
+codex_profile=review
+submit_mode=repo-flow-submit-all
+commit_message=chore: slice-handoff smoke
+codex_prompt_path=$submit_mode_validate_only_out_dir/codex-prompt.md
+pr_body_path=
+review_request_path=$submit_mode_validate_only_out_dir/review-request.txt
+validation_manifest_path=$submit_mode_validate_only_out_dir/validation-manifest.json
+EOF
+)"; then
+      test_pass "submit-mode-validate-only"
+    else
+      test_fail "submit-mode-validate-only"
+      status=1
+    fi
+  else
+    test_fail "submit-mode-validate-only"
+    status=1
+  fi
+
+  if ! (
     python3 - "$valid_none_file" "$missing_schema_file" <<'PY'
 from pathlib import Path
 import sys
@@ -1276,7 +1359,89 @@ source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 filtered = [line for line in source if not line.startswith('schema: ')]
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-schema" "missing schema" "set schema: repo-automation-slice-handoff/v1" --file="$missing_schema_file" --dry-run; then
+  ); then
+    return 1
+  fi
+
+  validator_failure_isolation_root="$(smoke_slice_handoff_owned_env_root "validator-failure")" || return 1
+  validator_failure_tmpdir="$validator_failure_isolation_root/tmpdir"
+  validator_failure_home="$validator_failure_isolation_root/home"
+  validator_failure_stdout_file="$validator_failure_isolation_root/slice-handoff.out"
+  validator_failure_stderr_file="$validator_failure_isolation_root/slice-handoff.err"
+  mkdir -p "$validator_failure_tmpdir" "$validator_failure_home" || return 1
+  rm -rf -- "$invalid_out_dir" || return 1
+  if (
+    smoke_slice_handoff_run_with_isolated_temp_env "$validator_failure_tmpdir" "$validator_failure_home" smoke_slice_handoff_run "$validator_failure_stdout_file" "$validator_failure_stderr_file" --file="$missing_schema_file" --dry-run --out-dir="$invalid_out_dir"
+  ); then
+    test_fail "validator-failure-stops-before-run-dir"
+    status=1
+  else
+    if smoke_slice_handoff_assert_validator_failure_shape "$validator_failure_stderr_file" "missing schema" "paste this blocker into ChatGPT" &&
+      [ ! -e "$invalid_out_dir" ] &&
+      [ ! -e "$validator_failure_tmpdir/repo-automation/slice-handoff-runs" ]; then
+      test_pass "validator-failure-stops-before-run-dir"
+    else
+      test_fail "validator-failure-stops-before-run-dir"
+      status=1
+    fi
+  fi
+
+  if smoke_slice_handoff_assert_runtime_helper "slice-validator" &&
+    smoke_slice_handoff_expect_success "validator-manifest-paths" "$(cat <<EOF
+pass
+out_dir=$valid_none_out_dir
+codex_prompt_path=$valid_none_out_dir/codex-prompt.md
+preview_path=$valid_none_out_dir/dry-run-preview.txt
+review_request_path=$valid_none_out_dir/review-request.txt
+summary_path=$valid_none_out_dir/slice-handoff-summary.txt
+validation_manifest_path=$valid_none_out_dir/validation-manifest.json
+EOF
+)" "" --file="$valid_none_file" --dry-run --out-dir="$valid_none_out_dir" &&
+    smoke_slice_handoff_assert_text_file "$valid_none_out_dir/codex-prompt.md" "$expected_none_prompt" &&
+    smoke_slice_handoff_assert_text_file "$valid_none_out_dir/review-request.txt" "$expected_default_review_request" &&
+    smoke_slice_handoff_assert_text_file "$valid_none_out_dir/slice-handoff-summary.txt" "$(cat <<EOF
+schema=repo-automation-slice-handoff/v1
+branch=feature/slice-handoff-smoke
+title=Slice handoff smoke
+codex_profile=default
+submit_mode=none
+commit_message=
+codex_prompt_path=$valid_none_out_dir/codex-prompt.md
+pr_body_path=
+review_request_path=$valid_none_out_dir/review-request.txt
+validation_manifest_path=$valid_none_out_dir/validation-manifest.json
+EOF
+)" &&
+    python3 - "$valid_none_out_dir/validation-manifest.json" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding='utf-8'))
+assert data["schema"] == "repo-automation-slice-validator/v1"
+assert data["result"] == "pass"
+assert data["prompt_path"] == str(path.parent / "codex-prompt.md")
+assert data["review_request_path"] == str(path.parent / "review-request.txt")
+assert data.get("pr_body_path", "") in ("", None)
+PY
+  then
+    test_pass "validator-manifest-paths"
+  else
+    test_fail "validator-manifest-paths"
+    status=1
+  fi
+
+  if (
+    python3 - "$valid_none_file" "$missing_schema_file" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+filtered = [line for line in source if not line.startswith('schema: ')]
+Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
+PY
+  ) && smoke_slice_handoff_expect_validator_failure "missing-schema" "missing schema" "paste this blocker into ChatGPT" --file="$missing_schema_file" --dry-run; then
     :
   else
     status=1
@@ -1290,7 +1455,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('schema: repo-automation-slice-handoff/v1', 'schema: repo-automation-slice-handoff/v2', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "invalid-schema" "invalid schema" "set schema: repo-automation-slice-handoff/v1" --file="$invalid_schema_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "invalid-schema" "invalid schema" "paste this blocker into ChatGPT" --file="$invalid_schema_file" --dry-run; then
     :
   else
     status=1
@@ -1305,7 +1470,7 @@ source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 filtered = [line for line in source if not line.startswith('branch: ')]
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-branch" "missing branch" "set a non-empty branch in the envelope" --file="$missing_branch_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "missing-branch" "missing branch" "paste this blocker into ChatGPT" --file="$missing_branch_file" --dry-run; then
     :
   else
     status=1
@@ -1319,7 +1484,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('branch: feature/slice-handoff-smoke', 'branch: -bad branch', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "invalid-branch" "invalid branch: -bad branch" "use a conservative feature branch name without whitespace or shell metacharacters" --file="$invalid_branch_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "invalid-branch" "invalid branch: -bad branch" "paste this blocker into ChatGPT" --file="$invalid_branch_file" --dry-run; then
     :
   else
     status=1
@@ -1333,7 +1498,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('codex_profile: default', 'codex_profile: ../profile', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "invalid-profile" "invalid codex_profile: ../profile" "use one of default, lean, medium, high, repair, or review" --file="$invalid_profile_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "invalid-profile" "invalid codex_profile: ../profile" "paste this blocker into ChatGPT" --file="$invalid_profile_file" --dry-run; then
     :
   else
     status=1
@@ -1348,7 +1513,7 @@ source = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 filtered = [line for line in source if not line.startswith('commit_message: ')]
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-commit-message" "missing commit_message" "set commit_message when submit_mode is repo-flow-submit-all" --file="$missing_commit_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "missing-commit-message" "missing commit_message" "paste this blocker into ChatGPT" --file="$missing_commit_file" --dry-run; then
     :
   else
     status=1
@@ -1371,7 +1536,7 @@ for line in source:
     filtered.append(line)
 Path(sys.argv[2]).write_text('\n'.join(filtered) + '\n', encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "missing-pr-body" "missing ## PR Body" "add ## PR Body when submit_mode is repo-flow-submit-all" --file="$missing_pr_body_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_success "missing-pr-body" "pass" "" --file="$missing_pr_body_file" --dry-run; then
     :
   else
     status=1
@@ -1399,7 +1564,7 @@ Implement the slice exactly as specified.
     encoding='utf-8',
 )
 PY
-  ) && smoke_slice_handoff_expect_failure "empty-review-request" "missing PR Review Request payload" "add text under ## PR Review Request" --file="$empty_review_request_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "empty-review-request" "missing PR Review Request payload" "paste this blocker into ChatGPT" --file="$empty_review_request_file" --dry-run; then
     :
   else
     status=1
@@ -1413,7 +1578,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Use previous chat and do the rest.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "placeholder-reject" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "placeholder-reject" "unsafe placeholder text in Codex Prompt: use previous chat" "paste this blocker into ChatGPT" --file="$placeholder_file" --dry-run; then
     :
   else
     status=1
@@ -1427,7 +1592,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Please create a PR and merge it after checkout.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-reject" "Codex Prompt contains lifecycle instruction: create a pr" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-reject" "Codex Prompt contains lifecycle instruction: create a pr" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1441,7 +1606,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge this.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-this" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-merge-this" "Codex Prompt contains lifecycle instruction: merge" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1455,7 +1620,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge the PR.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-pr" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-merge-pr" "Codex Prompt contains lifecycle instruction: merge" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1469,7 +1634,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Merge after CI passes.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-merge-after-ci" "Codex Prompt contains lifecycle instruction: merge" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-merge-after-ci" "Codex Prompt contains lifecycle instruction: merge" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1483,7 +1648,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Run repo-flow submit.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-run-submit" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-run-submit" "Codex Prompt contains lifecycle instruction: repo-flow submit" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1497,7 +1662,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Branch: feature/foo', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-branch" "Codex Prompt contains lifecycle instruction: branch:" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-branch" "Codex Prompt contains lifecycle instruction: branch:" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1511,7 +1676,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Checkout main.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-checkout" "Codex Prompt contains lifecycle instruction: checkout" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1525,7 +1690,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'Checkout feature/foo.', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-checkout-feature" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-checkout-feature" "Codex Prompt contains lifecycle instruction: checkout" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1539,7 +1704,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'git checkout main', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-git-checkout" "Codex Prompt contains lifecycle instruction: checkout" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-git-checkout" "Codex Prompt contains lifecycle instruction: checkout" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1553,7 +1718,7 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding='utf-8').replace('Implement the slice exactly as specified.', 'repo-flow submit --all', 1)
 Path(sys.argv[2]).write_text(text, encoding='utf-8')
 PY
-  ) && smoke_slice_handoff_expect_failure "lifecycle-submit-all" "Codex Prompt contains lifecycle instruction: repo-flow submit" "remove execution and workflow instructions from the prompt" --file="$lifecycle_file" --dry-run; then
+  ) && smoke_slice_handoff_expect_validator_failure "lifecycle-submit-all" "Codex Prompt contains lifecycle instruction: repo-flow submit" "paste this blocker into ChatGPT" --file="$lifecycle_file" --dry-run; then
     :
   else
     status=1
@@ -1643,7 +1808,7 @@ PY
     test_fail "self-modifying-helper-reject"
     status=1
   else
-    if smoke_slice_handoff_assert_error_shape "$self_modifying_guard_stderr_file" "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff" "changing the running helper through slice-handoff is unsafe; use the direct Codex lane or same-branch repair lane instead" &&
+    if smoke_slice_handoff_assert_validator_failure_shape "$self_modifying_guard_stderr_file" "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff" "paste this blocker into ChatGPT" &&
       [ ! -s "$self_modifying_guard_args_file" ] &&
       [ ! -e "$self_modifying_guard_tmpdir/repo-automation/slice-handoff-runs" ]; then
       test_pass "self-modifying-helper-reject"
@@ -1663,7 +1828,7 @@ PY
 
   if (
     rm -rf -- "$invalid_out_dir" &&
-      smoke_slice_handoff_expect_failure "out-dir-validation-fail" "unsafe placeholder text in Codex Prompt: use previous chat" "replace the placeholder prompt with concrete slice instructions" --file="$placeholder_file" --dry-run --out-dir="$invalid_out_dir" &&
+      smoke_slice_handoff_expect_validator_failure "out-dir-validation-fail" "unsafe placeholder text in Codex Prompt: use previous chat" "paste this blocker into ChatGPT" --file="$placeholder_file" --dry-run --out-dir="$invalid_out_dir" &&
       [ ! -e "$invalid_out_dir" ]
   ); then
     :

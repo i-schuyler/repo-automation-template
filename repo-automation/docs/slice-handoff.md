@@ -70,7 +70,7 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 
 When `--dry-run` is omitted, `slice-handoff` runs execution flow:
 
-- validate the handoff
+- validate the handoff by calling `slice-validator` before `codex-slice-preflight`
 - create and preserve a marked active run directory for the lifetime of the future execution
 - clean up stale marked run dirs through `slice-run-dir` without touching unmarked directories
 - run preflight with JSON child diagnostics from the checked-out repo root
@@ -144,13 +144,13 @@ Default success stays compact and names the manifest path. Default failure stays
 
 Over time, run-shape checks should move out of `slice-handoff` and `codex-slice-preflight` into `slice-validator`: handoff envelope fields, mode/flag compatibility, submit authorization, PR body static readiness, Codex prompt lifecycle and boundary checks, self-modifying target checks, review-request source compatibility, and downstream helper contract assumptions. Repo/worktree/environment checks stay in `codex-slice-preflight`.
 
-Downstream helpers keep local invariant validation for standalone, debug, and repair use. Orchestrated calls may eventually pass a `--validation-manifest=<path>` or equivalent, but The current implementation does not require that behavior. Direct standalone helper use should remain intact in the first implementation.
+Downstream helpers keep local invariant validation for standalone, debug, and repair use. `slice-handoff` records the validator manifest path in the dry-run and execution summaries, but downstream helper calls still do not require a `--validation-manifest=<path>` flag in this slice. Direct standalone helper use should remain intact.
 
 Phased plan:
 
 1. Spec recorded.
 2. Implemented: `slice-validator` emits a manifest and has focused contract tests.
-3. Wire `slice-handoff` to call `slice-validator` before `codex-slice-preflight`.
+3. Implemented: `slice-handoff` calls `slice-validator` before `codex-slice-preflight`.
 4. Pass the manifest to downstream helpers in orchestrated mode.
 5. Selectively require the manifest for high-risk orchestrated downstream operations while preserving standalone repair/debug paths.
 
