@@ -869,12 +869,6 @@ ci_log_dump_main() {
       --json)
         ci_log_dump_machine_json=1
         ;;
-      --machine-json=*)
-        ci_log_dump_machine_json=1
-        ;;
-      --machine-json)
-        ci_log_dump_machine_json=1
-        ;;
       --quiet)
         ci_log_dump_quiet=1
         ;;
@@ -1008,7 +1002,8 @@ ci_log_dump_main() {
         return 1
         ;;
       --machine-json)
-        ci_log_dump_machine_json=1
+        ci_log_dump_flag_error "unsupported flag" "--machine-json" "use --json"
+        return 1
         ;;
       --quiet)
         ci_log_dump_quiet=1

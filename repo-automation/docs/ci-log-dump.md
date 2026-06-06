@@ -45,8 +45,6 @@ Default success prints only the saved log path.
 
 `--json` emits JSON only on stdout for both success and expected failure. Success includes `log_path`, `file_size_bytes`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes `result=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
 
-Compatibility note: `--machine-json` is still accepted as an undocumented alias for `--json`.
-
 `--explain` prints the detailed human summary and ends with a final summary block even on early STOP. That summary is not emitted in JSON mode.
 
 Mode conflicts are rejected before any GitHub CLI call:

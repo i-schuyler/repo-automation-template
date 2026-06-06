@@ -122,29 +122,6 @@ smoke_check_ci_log_dump_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    rm -f "$ci_log_latest_pr_view_log" "$ci_log_latest_pr_run_log" >/dev/null 2>&1 || true
-    GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
-    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
-    GH_STUB_PR_LIST_JSON='[
-      {"number":101,"updatedAt":"2026-05-12T11:00:00Z","state":"OPEN","isDraft":false},
-      {"number":202,"updatedAt":"2026-05-12T13:00:00Z","state":"OPEN","isDraft":true},
-      {"number":303,"updatedAt":"2026-05-12T15:00:00Z","state":"OPEN","isDraft":false}
-    ]' \
-    GH_STUB_PR_VIEW_HEAD_REF='feature/latest-pr' \
-    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-303' \
-    GH_STUB_RUN_LIST_SHA_PR_JSON='[
-      {"databaseId":903,"conclusion":"failure","createdAt":"2026-05-12T15:30:00Z","event":"pull_request","headBranch":"feature/latest-pr","headSha":"current-sha-303","status":"completed","workflowName":"ci"}
-    ]' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_latest_pr_json" 2> "$ci_log_latest_pr_err"
-  ); then
-    test_pass "ci-log-dump latest PR machine-json compatibility alias succeeds"
-  else
-    test_fail "ci-log-dump latest PR machine-json compatibility alias succeeds"
-    status=1
-  fi
-
-  if (
-    cd "$smoke_test_dir" || return 1
     grep -Fq -- 'gh pr view 303' "$ci_log_latest_pr_view_log" && ! grep -Eq -- 'gh pr view 101|gh pr view 202' "$ci_log_latest_pr_view_log"
   ); then
     test_pass "ci-log-dump latest PR bypasses older PRs"
@@ -210,6 +187,21 @@ smoke_check_ci_log_dump_contract() {
     test_pass "ci-log-dump rejects --pr=current"
   else
     test_fail "ci-log-dump rejects --pr=current"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --machine-json > "$ci_log_json_value_json" 2> "$ci_log_json_value_err"
+  ); then
+    test_fail "ci-log-dump rejects --machine-json"
+    status=1
+  elif smoke_assert_flag_error_shape "$ci_log_json_value_err" "unsupported flag" "--machine-json" "use --json" && [ ! -s "$ci_log_json_value_json" ] && [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+    test_pass "ci-log-dump rejects --machine-json"
+  else
+    test_fail "ci-log-dump rejects --machine-json"
     status=1
   fi
 
