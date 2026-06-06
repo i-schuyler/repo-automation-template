@@ -125,7 +125,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | ci-log-dump | partial | partial | needs-audit | docs/output-modes.md | confirm declared JSON/quiet contract and failure artifact paths |
 | run-tests | partial | partial | needs-audit | docs/output-modes.md | verify umbrella failure shapes and JSON output purity |
 | managed-file-check | partial | partial | needs-audit | docs/output-modes.md | confirm changed-path failure boundaries and quiet behavior |
-| slice-handoff | partial | partial | partial | PR #223 | finish broader output-mode migration and record coverage evidence |
+| slice-handoff | partial | partial | partial | PR #223 + PR #229 | finish broader output-mode migration and record coverage evidence |
 | pr-body-check | partial | partial | needs-audit | docs/output-modes.md | verify submit-gate failure wording and JSON failure shape |
 | repo-flow | partial | partial | needs-audit | docs/output-modes.md | baseline submit/merge contract and child-boundary coverage |
 | codex-status | partial | partial | needs-audit | docs/output-modes.md | verify declared JSON contract and failure fields |
