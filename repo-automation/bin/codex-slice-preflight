@@ -44,15 +44,18 @@ preflight_flag_error() {
 }
 
 preflight_info() {
+  [ "$preflight_json" -eq 0 ] || return 0
   printf 'INFO: %s\n' "$*" >&2
 }
 
 preflight_warn() {
+  [ "$preflight_json" -eq 0 ] || return 0
   printf 'WARN: %s\n' "$*" >&2
 }
 
 preflight_stop() {
   preflight_stop_reason="$*"
+  [ "$preflight_json" -eq 0 ] || return 1
   printf 'STOP: %s\n' "$*" >&2
   return 1
 }

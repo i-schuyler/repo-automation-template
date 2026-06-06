@@ -1708,7 +1708,7 @@ PY
   else
     if python3 -m json.tool "$preflight_low_disk_json" >/dev/null &&
       smoke_json_assert "$preflight_low_disk_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "fail" and data.get("mode") == "check-only" and data.get("rc") == 1 and data.get("branch") == "feature/preflight-smoke" and data.get("disk") == "fail" and data.get("stop_reason") == "available disk space below threshold"' &&
-      grep -Fq 'STOP: available disk space below threshold' "$preflight_low_disk_json_err"; then
+      [ ! -s "$preflight_low_disk_json_err" ]; then
       test_pass "preflight json failure stays valid on low disk"
     else
       test_fail "preflight json failure stays valid on low disk"
