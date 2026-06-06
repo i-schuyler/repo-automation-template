@@ -38,6 +38,15 @@ shift 2 >/dev/null 2>&1 || true
       printf '%s\n' "${GH_STUB_PR_VIEW_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
       exit 1
     fi
+    if [ -n "${GH_STUB_PR_VIEW_SEQUENCE_FILE:-}" ] && [ -f "$GH_STUB_PR_VIEW_SEQUENCE_FILE" ] && [[ " $* " != *' --jq '* ]]; then
+      first_line="$(sed -n '1p' "$GH_STUB_PR_VIEW_SEQUENCE_FILE" 2>/dev/null || true)"
+      rest_lines="$(sed -n '2,$p' "$GH_STUB_PR_VIEW_SEQUENCE_FILE" 2>/dev/null || true)"
+      if [ -n "$first_line" ]; then
+        printf '%s\n' "$first_line"
+        printf '%s\n' "$rest_lines" > "$GH_STUB_PR_VIEW_SEQUENCE_FILE"
+        exit 0
+      fi
+    fi
     case " $* " in
       *' --json '*)
         if [[ " $* " != *' --jq '* ]]; then
@@ -331,6 +340,7 @@ smoke_reset_gh_stub_state() {
     GH_STUB_PR_VIEW_STATE \
     GH_STUB_PR_VIEW_TITLE \
     GH_STUB_PR_VIEW_URL \
+    GH_STUB_PR_VIEW_SEQUENCE_FILE \
     GH_STUB_RUN_LIST_FAIL_ONCE_FILE \
     GH_STUB_RUN_LIST_FAIL_ONCE_STDERR \
     GH_STUB_RUN_LIST_JSON \

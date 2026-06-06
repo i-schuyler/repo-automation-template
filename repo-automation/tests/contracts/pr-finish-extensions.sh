@@ -34,6 +34,7 @@ smoke_check_pr_finish_watch_latest() {
   # shellcheck disable=SC2154 # smoke_test_dir is provided by the smoke harness.
   local gh_stub_dir="$smoke_test_dir/gh-stub"
   local git_stub_dir="$smoke_test_dir/git-stub"
+  local view_log_file="$smoke_test_dir/pr-finish-watch-latest.pr-view.log"
   local stderr_file="$smoke_test_dir/pr-finish-watch-latest.stderr"
   local git_log_file="$smoke_test_dir/pr-finish-watch-latest.git-log"
   local local_bash_path=""
@@ -52,26 +53,141 @@ smoke_check_pr_finish_watch_latest() {
     PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
     SMOKE_REAL_GIT="$real_git" \
     SMOKE_GIT_LOG_FILE="$git_log_file" \
-    GH_STUB_PR_LIST_NUMBER=901 \
-    GH_STUB_PR_LIST_JSON='[{"number":901}]' \
+    GH_STUB_PR_LIST_JSON='[{"number":904,"updatedAt":"2026-05-12T14:00:00Z","isDraft":true},{"number":903,"updatedAt":"2026-05-12T13:00:00Z","isDraft":false},{"number":902,"updatedAt":"2026-05-12T12:00:00Z","isDraft":false}]' \
+    GH_STUB_PR_VIEW_LOG_FILE="$view_log_file" \
+    GH_STUB_PR_VIEW_NUMBER=903 \
     GH_STUB_PR_VIEW_TITLE='watch latest title' \
-    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/901' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/903' \
     GH_STUB_PR_VIEW_STATE='OPEN' \
     GH_STUB_PR_VIEW_IS_DRAFT='false' \
     GH_STUB_PR_VIEW_MERGEABLE='MERGEABLE' \
-    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-901' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-903' \
     GH_STUB_PR_VIEW_HEAD_REF='feature/watch-latest' \
-    GH_STUB_RUN_LIST_JSON='[{"databaseId":901,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-latest","headSha":"current-sha-901","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":903,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-latest","headSha":"current-sha-903","status":"completed","workflowName":"ci"}]' \
     "$local_bash_path" repo-automation/bin/pr-finish --watch --timeout=10 --pr=latest --explain > /dev/null 2> "$stderr_file"
   ); then
-    if grep -q 'mode: watch' "$stderr_file"; then
-      test_pass "pr-finish watch selects latest PR without syncing main"
+    if grep -q 'mode: watch' "$stderr_file" &&
+      grep -q 'pr: #903 watch latest title' "$stderr_file" &&
+      grep -q 'mergeability status: ready' "$stderr_file" &&
+      grep -Fq 'gh pr view 903' "$view_log_file" &&
+      ! grep -Fq 'gh pr view 904' "$view_log_file"; then
+      test_pass "pr-finish watch selects latest non-draft PR without syncing main"
     else
-      test_fail "pr-finish watch selects latest PR without syncing main"
+      test_fail "pr-finish watch selects latest non-draft PR without syncing main"
       status=1
     fi
   else
-    test_fail "pr-finish watch selects latest PR without syncing main"
+    test_fail "pr-finish watch selects latest non-draft PR without syncing main"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_pr_finish_watch_refreshes_mergeability() {
+  local status=0
+  local gh_stub_dir="$smoke_test_dir/gh-stub"
+  local git_stub_dir="$smoke_test_dir/git-stub"
+  local merge_log_file="$smoke_test_dir/pr-finish-watch-refreshes-mergeability.gh-log"
+  local stderr_file="$smoke_test_dir/pr-finish-watch-refreshes-mergeability.stderr"
+  local view_sequence_file="$smoke_test_base/pr-finish-watch-refreshes-mergeability.view-sequence"
+  local local_bash_path=""
+  local real_git=""
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_write_git_sync_stub "$git_stub_dir" "$merge_log_file" >/dev/null || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
+
+  cat > "$view_sequence_file" <<'EOF'
+{"number":903,"title":"watch refresh title","url":"https://github.com/i-schuyler/repo-automation-template/pull/903","state":"OPEN","isDraft":false,"mergeable":"UNKNOWN","headRefOid":"current-sha-903","headRefName":"feature/watch-refresh"}
+{"number":903,"title":"watch refresh title","url":"https://github.com/i-schuyler/repo-automation-template/pull/903","state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","headRefOid":"current-sha-903","headRefName":"feature/watch-refresh"}
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    GH_STUB_PR_VIEW_SEQUENCE_FILE="$view_sequence_file" \
+    GH_STUB_PR_VIEW_NUMBER=903 \
+    GH_STUB_PR_VIEW_TITLE='watch refresh title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/903' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='UNKNOWN' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-903' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/watch-refresh' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":903,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-refresh","headSha":"current-sha-903","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
+    "$local_bash_path" repo-automation/bin/pr-finish --watch --merge --timeout=10 --pr=903 --explain > /dev/null 2> "$stderr_file"
+  ) && grep -q 'checks status: green' "$stderr_file" &&
+    grep -q 'mergeability status: ready' "$stderr_file" &&
+    grep -Fvq 'pr-not-mergeable:UNKNOWN' "$stderr_file" &&
+    grep -Fq 'gh pr merge 903' "$merge_log_file"; then
+    test_pass "pr-finish refreshes mergeability before merge-gate evaluation"
+  else
+    test_fail "pr-finish refreshes mergeability before merge-gate evaluation"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_pr_finish_watch_reports_pending_mergeability() {
+  local status=0
+  local gh_stub_dir="$smoke_test_dir/gh-stub"
+  local git_stub_dir="$smoke_test_dir/git-stub"
+  local merge_log_file="$smoke_test_dir/pr-finish-watch-pending.gh-log"
+  local stderr_file="$smoke_test_dir/pr-finish-watch-pending.stderr"
+  local view_sequence_file="$smoke_test_base/pr-finish-watch-pending.view-sequence"
+  local local_bash_path=""
+  local real_git=""
+
+  trap 'test_cleanup' EXIT INT TERM
+
+  smoke_setup_temp_repo || return 1
+  smoke_write_gh_stub "$gh_stub_dir" || return 1
+  smoke_write_git_sync_stub "$git_stub_dir" "$merge_log_file" >/dev/null || return 1
+  local_bash_path="$(command -v bash)" || return 1
+  real_git="$(command -v git)" || return 1
+
+  cat > "$view_sequence_file" <<'EOF'
+{"number":904,"title":"watch pending title","url":"https://github.com/i-schuyler/repo-automation-template/pull/904","state":"OPEN","isDraft":false,"mergeable":"UNKNOWN","headRefOid":"current-sha-904","headRefName":"feature/watch-pending"}
+{"number":904,"title":"watch pending title","url":"https://github.com/i-schuyler/repo-automation-template/pull/904","state":"OPEN","isDraft":false,"mergeable":"UNKNOWN","headRefOid":"current-sha-904","headRefName":"feature/watch-pending"}
+EOF
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$git_stub_dir:$gh_stub_dir:$PATH" \
+    SMOKE_REAL_GIT="$real_git" \
+    GH_STUB_PR_VIEW_SEQUENCE_FILE="$view_sequence_file" \
+    GH_STUB_PR_VIEW_NUMBER=904 \
+    GH_STUB_PR_VIEW_TITLE='watch pending title' \
+    GH_STUB_PR_VIEW_URL='https://github.com/i-schuyler/repo-automation-template/pull/904' \
+    GH_STUB_PR_VIEW_STATE='OPEN' \
+    GH_STUB_PR_VIEW_IS_DRAFT='false' \
+    GH_STUB_PR_VIEW_MERGEABLE='UNKNOWN' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-904' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/watch-pending' \
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' \
+    GH_STUB_RUN_LIST_JSON='[{"databaseId":904,"conclusion":"success","createdAt":"2026-05-12T10:00:00Z","event":"pull_request","headBranch":"feature/watch-pending","headSha":"current-sha-904","status":"completed","workflowName":"ci"}]' \
+    GH_STUB_PR_MERGE_LOG_FILE="$merge_log_file" \
+    "$local_bash_path" repo-automation/bin/pr-finish --watch --merge --timeout=10 --pr=904 --explain > /dev/null 2> "$stderr_file"
+  ); then
+    test_fail "pr-finish reports mergeability pending after CI watch"
+    status=1
+  elif grep -q 'checks status: green' "$stderr_file" &&
+    grep -q 'mergeability status: pending' "$stderr_file" &&
+    grep -Fq 'pr-mergeability-pending:UNKNOWN' "$stderr_file" &&
+    ! grep -Fq 'pr-not-mergeable:UNKNOWN' "$stderr_file" &&
+    [ ! -s "$merge_log_file" ]; then
+    test_pass "pr-finish reports mergeability pending after CI watch"
+  else
+    test_fail "pr-finish reports mergeability pending after CI watch"
     status=1
   fi
 
@@ -519,6 +635,8 @@ smoke_main_impl() {
   smoke_setup_temp_repo || return 1
 
   smoke_run_named_check "smoke:pr-finish-watch-latest" smoke_check_pr_finish_watch_latest || status=1
+  smoke_run_named_check "smoke:pr-finish-watch-refreshes-mergeability" smoke_check_pr_finish_watch_refreshes_mergeability || status=1
+  smoke_run_named_check "smoke:pr-finish-watch-pending-mergeability" smoke_check_pr_finish_watch_reports_pending_mergeability || status=1
   smoke_run_named_check "smoke:pr-finish-status-current" smoke_check_pr_finish_status_current || status=1
   smoke_run_named_check "smoke:pr-finish-pr-flag-shapes" smoke_check_pr_finish_pr_flag_shapes || status=1
   smoke_run_named_check "smoke:pr-finish-merge-current-sync-main" smoke_check_pr_finish_merge_current_sync_main || status=1

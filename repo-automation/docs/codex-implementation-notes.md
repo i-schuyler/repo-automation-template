@@ -89,6 +89,20 @@ What would have helped:
 Recommended improvements:
 - Split trust-boundary subcases into named helpers whenever the same command path can succeed, false-positive, or hard-stop.
 
+### 2026-06-06 pr-finish mergeability refresh and review-request ergonomics
+
+Challenges:
+- GitHub mergeability can lag behind a green CI watch, so merge gating needed an explicit metadata refresh before treating `UNKNOWN` as a hard block.
+- `repo-flow submit` only prints a PR Review block when a review-request source is supplied, so submit guidance had to be explicit about `--body-file` versus review-request flags.
+
+What would have helped:
+- A tiny helper for refreshing PR metadata after CI watch succeeds.
+- One short docs note near submit examples explaining that PR Review blocks require `--review-request-file` or `--review-request-id`.
+
+Recommended improvements:
+- Keep CI status and GitHub mergeability separate in finish workflows.
+- Document review-block source requirements next to standard submit guidance.
+
 
 ### 2026-06-05 slice-validator capability gate
 
