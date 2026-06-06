@@ -66,7 +66,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | slice-validator | pre-preflight run-contract gate | quiet=yes json=yes | direct-call helper implemented; slice-handoff now delegates and records manifest paths before preflight | review the capability manifest shape and downstream usage | near-term |
 | codex-slice-preflight | preflight gate | quiet=no json=yes | declared strict flags, JSON, explain, and cleanup boundaries are now covered by focused contract tests | run-tests | next |
 | codex-run | core child output producer | quiet=yes json=no | quiet QDE, child failure, final-output contract, and block-write boundaries are now covered; JSON remains unsupported | monitor for regressions | monitor |
-| ci-log-dump | CI artifact helper | quiet=yes json=yes | later output-contract target | baseline contract now has focused default/quiet/machine-json, latest-PR, and artifact-path coverage | monitor |
+| ci-log-dump | CI artifact helper | quiet=yes json=yes | later output-contract target | baseline contract now has focused default/quiet/json, latest-PR, and artifact-path coverage | monitor |
 | run-tests | broad umbrella runner | quiet=yes json=yes | later output-contract target | improve step/reason/fix/artifact clarity | near-term |
 | managed-file-check | inventory guardrail | quiet=yes json=no | later output-contract target | keep changed-path failures actionable | near-term |
 | slice-handoff | high-risk umbrella; PR-submit trust boundary | quiet=yes json=no | blocker/child-failure boundary hardened in PR #223, validator gate now runs before preflight, and validation-manifest paths are surfaced in summaries | finish remaining output-contract gaps | done-foundation |

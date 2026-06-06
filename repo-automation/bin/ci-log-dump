@@ -64,7 +64,7 @@ ci_log_dump_print_final_summary() {
 }
 
 ci_log_dump_usage() {
-  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_log_dump_flag_error() {
@@ -91,7 +91,7 @@ ci_log_dump_validate_output_modes() {
 
   if [ "$ci_log_dump_machine_json" -eq 1 ]; then
     mode_count=$((mode_count + 1))
-    flags="${flags:+$flags }--machine-json"
+    flags="${flags:+$flags }--json"
   fi
   if [ "$ci_log_dump_quiet" -eq 1 ]; then
     mode_count=$((mode_count + 1))
@@ -110,11 +110,11 @@ ci_log_dump_validate_output_modes() {
   ci_log_dump_stop_reason="incompatible output mode flags: $flags"
 
   if [ "$ci_log_dump_machine_json" -eq 1 ]; then
-    ci_log_dump_print_failure_json "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --machine-json, --quiet, or --explain" "" "" ""
+    ci_log_dump_print_failure_json "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain" "" "" ""
   elif [ "$ci_log_dump_quiet" -eq 1 ]; then
-    ci_log_dump_print_failure_quiet "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --machine-json, --quiet, or --explain" "" "" ""
+    ci_log_dump_print_failure_quiet "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain" "" "" ""
   else
-    ci_log_dump_print_failure_human "$ci_log_dump_stop_reason" "use only one of --machine-json, --quiet, or --explain"
+    ci_log_dump_print_failure_human "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain"
   fi
   return 1
 }
@@ -863,6 +863,15 @@ ci_log_dump_main() {
 
   for arg in "$@"; do
     case "$arg" in
+      --json=*)
+        ci_log_dump_machine_json=1
+        ;;
+      --json)
+        ci_log_dump_machine_json=1
+        ;;
+      --machine-json=*)
+        ci_log_dump_machine_json=1
+        ;;
       --machine-json)
         ci_log_dump_machine_json=1
         ;;
@@ -985,6 +994,17 @@ ci_log_dump_main() {
         ;;
       --first-failure=*)
         ci_log_dump_flag_error "flag format not accepted" "--first-failure" "use --first-failure"
+        return 1
+        ;;
+      --json=*)
+        ci_log_dump_flag_error "flag format not accepted" "--json" "use --json"
+        return 1
+        ;;
+      --json)
+        ci_log_dump_machine_json=1
+        ;;
+      --machine-json=*)
+        ci_log_dump_flag_error "flag format not accepted" "--machine-json" "use --json"
         return 1
         ;;
       --machine-json)

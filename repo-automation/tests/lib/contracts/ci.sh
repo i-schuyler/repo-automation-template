@@ -44,6 +44,8 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_repo_infer_json="$smoke_test_base/ci-log-dump-repo-infer-$$.json"
   local ci_log_conflict_json="$smoke_test_base/ci-log-dump-conflict-$$.json"
   local ci_log_conflict_err="$smoke_test_base/ci-log-dump-conflict-$$.stderr"
+  local ci_log_json_value_json="$smoke_test_base/ci-log-dump-json-value-$$.json"
+  local ci_log_json_value_err="$smoke_test_base/ci-log-dump-json-value-$$.stderr"
   local ci_log_machine_invalid_tail_json="$smoke_test_base/ci-log-dump-invalid-tail-$$.json"
   local ci_log_machine_invalid_tail_err="$smoke_test_base/ci-log-dump-invalid-tail-$$.stderr"
   local ci_log_machine_invalid_run_id_json="$smoke_test_base/ci-log-dump-invalid-run-id-$$.json"
@@ -68,6 +70,8 @@ smoke_check_ci_log_dump_contract() {
     grep -Fq -- '--pr=<number|latest>' "$ci_log_help" && \
     ! grep -Fq -- '--pr=<number|current|latest>' "$ci_log_help" && \
     ! grep -Fq -- '--pr=current' "$ci_log_help" && \
+    grep -Fq -- '--json' "$ci_log_help" && \
+    ! grep -Fq -- '--machine-json' "$ci_log_help" && \
     grep -Fq -- '--run-id=<id>' "$ci_log_help" && \
     grep -Fq -- '--out-dir=<path>' "$ci_log_help" && \
     grep -Fq -- '--tail=<lines>' "$ci_log_help" && \
@@ -100,19 +104,42 @@ smoke_check_ci_log_dump_contract() {
       {"databaseId":903,"conclusion":"failure","createdAt":"2026-05-12T15:30:00Z","event":"pull_request","headBranch":"feature/latest-pr","headSha":"current-sha-303","status":"completed","workflowName":"ci"}
     ]' \
     GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_latest_pr_json" 2> "$ci_log_latest_pr_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --first-failure --out-dir="$ci_log_out_dir" --json > "$ci_log_latest_pr_json" 2> "$ci_log_latest_pr_err"
   ); then
-    test_pass "ci-log-dump latest PR command succeeds"
+    test_pass "ci-log-dump latest PR json command succeeds"
   else
-    test_fail "ci-log-dump latest PR command succeeds"
+    test_fail "ci-log-dump latest PR json command succeeds"
     status=1
   fi
 
   if [ ! -s "$ci_log_latest_pr_err" ] && python3 -m json.tool "$ci_log_latest_pr_json" >/dev/null && \
     smoke_json_assert "$ci_log_latest_pr_json" 'data.get("pr") == "303" and data.get("run_id") == "903" and data.get("first_failure_label") == "fail: contract/smoke" and data.get("file_size_bytes", 0) > 0 and data.get("log_path", "").startswith("'"$ci_log_out_dir"'/actions_run_903_")'; then
-    test_pass "ci-log-dump latest PR machine-json reports the selected PR and run"
+    test_pass "ci-log-dump latest PR json reports the selected PR and run"
   else
-    test_fail "ci-log-dump latest PR machine-json reports the selected PR and run"
+    test_fail "ci-log-dump latest PR json reports the selected PR and run"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    rm -f "$ci_log_latest_pr_view_log" "$ci_log_latest_pr_run_log" >/dev/null 2>&1 || true
+    GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
+    GH_STUB_PR_LIST_JSON='[
+      {"number":101,"updatedAt":"2026-05-12T11:00:00Z","state":"OPEN","isDraft":false},
+      {"number":202,"updatedAt":"2026-05-12T13:00:00Z","state":"OPEN","isDraft":true},
+      {"number":303,"updatedAt":"2026-05-12T15:00:00Z","state":"OPEN","isDraft":false}
+    ]' \
+    GH_STUB_PR_VIEW_HEAD_REF='feature/latest-pr' \
+    GH_STUB_PR_VIEW_HEAD_SHA='current-sha-303' \
+    GH_STUB_RUN_LIST_SHA_PR_JSON='[
+      {"databaseId":903,"conclusion":"failure","createdAt":"2026-05-12T15:30:00Z","event":"pull_request","headBranch":"feature/latest-pr","headSha":"current-sha-303","status":"completed","workflowName":"ci"}
+    ]' \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_latest_pr_json" 2> "$ci_log_latest_pr_err"
+  ); then
+    test_pass "ci-log-dump latest PR machine-json compatibility alias succeeds"
+  else
+    test_fail "ci-log-dump latest PR machine-json compatibility alias succeeds"
     status=1
   fi
 
@@ -139,16 +166,16 @@ smoke_check_ci_log_dump_contract() {
     GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
     GH_STUB_PR_LIST_JSON='[]' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_latest_pr_no_open_json" 2> "$ci_log_latest_pr_no_open_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=latest --out-dir="$ci_log_out_dir" --json > "$ci_log_latest_pr_no_open_json" 2> "$ci_log_latest_pr_no_open_err"
   ); then
-    test_fail "ci-log-dump latest PR machine-json fails cleanly when no open PR exists"
+    test_fail "ci-log-dump latest PR json fails cleanly when no open PR exists"
     status=1
   elif [ ! -s "$ci_log_latest_pr_no_open_err" ] && python3 -m json.tool "$ci_log_latest_pr_no_open_json" >/dev/null && \
     smoke_json_assert "$ci_log_latest_pr_no_open_json" 'data.get("result") == "fail" and data.get("code") == "no-pr-found" and data.get("step") == "pr-lookup" and data.get("reason") == "no open non-draft PR found for repository i-schuyler/repo-automation-template" and data.get("fix") == "pass --pr=<number> or open/update a non-draft PR, then rerun" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("log_path") == ""' && \
     [ ! -e "$ci_log_latest_pr_view_log" ] && [ ! -e "$ci_log_latest_pr_run_log" ]; then
-    test_pass "ci-log-dump latest PR machine-json fails cleanly when no open PR exists"
+    test_pass "ci-log-dump latest PR json fails cleanly when no open PR exists"
   else
-    test_fail "ci-log-dump latest PR machine-json fails cleanly when no open PR exists"
+    test_fail "ci-log-dump latest PR json fails cleanly when no open PR exists"
     status=1
   fi
 
@@ -173,7 +200,7 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_LOG_FILE="$ci_log_latest_pr_view_log" \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_latest_pr_run_log" \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=current --machine-json > "$ci_log_pr_current_json" 2> "$ci_log_pr_current_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=current --json > "$ci_log_pr_current_json" 2> "$ci_log_pr_current_err"
   ); then
     test_fail "ci-log-dump rejects --pr=current"
     status=1
@@ -190,16 +217,16 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --machine-json --quiet > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --json --quiet > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
   ); then
-    test_fail "ci-log-dump rejects --machine-json --quiet"
+    test_fail "ci-log-dump rejects --json --quiet"
     status=1
   elif [ ! -s "$ci_log_conflict_err" ] && python3 -m json.tool "$ci_log_conflict_json" >/dev/null && \
-    smoke_json_assert "$ci_log_conflict_json" 'data.get("result") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and "incompatible output mode flags: --machine-json --quiet" in data.get("reason", "") and "use only one of --machine-json, --quiet, or --explain" in data.get("fix", "")' && \
+    smoke_json_assert "$ci_log_conflict_json" 'data.get("result") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and "incompatible output mode flags: --json --quiet" in data.get("reason", "") and "use only one of --json, --quiet, or --explain" in data.get("fix", "")' && \
     [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
-    test_pass "ci-log-dump rejects --machine-json --quiet"
+    test_pass "ci-log-dump rejects --json --quiet"
   else
-    test_fail "ci-log-dump rejects --machine-json --quiet"
+    test_fail "ci-log-dump rejects --json --quiet"
     status=1
   fi
 
@@ -207,16 +234,33 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --machine-json --explain > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --json=unexpected > "$ci_log_json_value_json" 2> "$ci_log_json_value_err"
   ); then
-    test_fail "ci-log-dump rejects --machine-json --explain"
+    test_fail "ci-log-dump rejects --json=<value>"
+    status=1
+  elif [ ! -s "$ci_log_json_value_err" ] && python3 -m json.tool "$ci_log_json_value_json" >/dev/null && \
+    smoke_json_assert "$ci_log_json_value_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "flag format not accepted" and data.get("fix") == "use --json"' && \
+    [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+    test_pass "ci-log-dump rejects --json=<value>"
+  else
+    test_fail "ci-log-dump rejects --json=<value>"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --json --explain > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
+  ); then
+    test_fail "ci-log-dump rejects --json --explain"
     status=1
   elif [ ! -s "$ci_log_conflict_err" ] && python3 -m json.tool "$ci_log_conflict_json" >/dev/null && \
-    smoke_json_assert "$ci_log_conflict_json" 'data.get("result") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and "incompatible output mode flags: --machine-json --explain" in data.get("reason", "") and "use only one of --machine-json, --quiet, or --explain" in data.get("fix", "")' && \
+    smoke_json_assert "$ci_log_conflict_json" 'data.get("result") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and "incompatible output mode flags: --json --explain" in data.get("reason", "") and "use only one of --json, --quiet, or --explain" in data.get("fix", "")' && \
     [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
-    test_pass "ci-log-dump rejects --machine-json --explain"
+    test_pass "ci-log-dump rejects --json --explain"
   else
-    test_fail "ci-log-dump rejects --machine-json --explain"
+    test_fail "ci-log-dump rejects --json --explain"
     status=1
   fi
 
@@ -228,7 +272,7 @@ smoke_check_ci_log_dump_contract() {
   ); then
     test_fail "ci-log-dump rejects --quiet --explain"
     status=1
-  elif smoke_assert_quiet_failure_envelope "$ci_log_conflict_err" "output-mode-conflict" "output-mode-parse" "incompatible output mode flags: --quiet --explain" "use only one of --machine-json, --quiet, or --explain" "" "" "" && [ ! -s "$ci_log_conflict_json" ] && [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+  elif smoke_assert_quiet_failure_envelope "$ci_log_conflict_err" "output-mode-conflict" "output-mode-parse" "incompatible output mode flags: --quiet --explain" "use only one of --json, --quiet, or --explain" "" "" "" && [ ! -s "$ci_log_conflict_json" ] && [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
     test_pass "ci-log-dump rejects --quiet --explain"
   else
     test_fail "ci-log-dump rejects --quiet --explain"
@@ -237,29 +281,29 @@ smoke_check_ci_log_dump_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --run-id=abc --machine-json > "$ci_log_machine_invalid_run_id_json" 2> "$ci_log_machine_invalid_run_id_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --run-id=abc --json > "$ci_log_machine_invalid_run_id_json" 2> "$ci_log_machine_invalid_run_id_err"
   ); then
-    test_fail "ci-log-dump machine-json rejects invalid --run-id"
+    test_fail "ci-log-dump json rejects invalid --run-id"
     status=1
   elif [ ! -s "$ci_log_machine_invalid_run_id_err" ] && python3 -m json.tool "$ci_log_machine_invalid_run_id_json" >/dev/null && \
     smoke_json_assert "$ci_log_machine_invalid_run_id_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "invalid --run-id value: abc" and data.get("fix") == "use --run-id=<id>"'; then
-    test_pass "ci-log-dump machine-json rejects invalid --run-id"
+    test_pass "ci-log-dump json rejects invalid --run-id"
   else
-    test_fail "ci-log-dump machine-json rejects invalid --run-id"
+    test_fail "ci-log-dump json rejects invalid --run-id"
     status=1
   fi
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --tail=abc --machine-json > "$ci_log_machine_invalid_tail_json" 2> "$ci_log_machine_invalid_tail_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --tail=abc --json > "$ci_log_machine_invalid_tail_json" 2> "$ci_log_machine_invalid_tail_err"
   ); then
-    test_fail "ci-log-dump machine-json rejects invalid --tail"
+    test_fail "ci-log-dump json rejects invalid --tail"
     status=1
   elif [ ! -s "$ci_log_machine_invalid_tail_err" ] && python3 -m json.tool "$ci_log_machine_invalid_tail_json" >/dev/null && \
     smoke_json_assert "$ci_log_machine_invalid_tail_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "invalid --tail value: abc" and data.get("fix") == "use --tail=<lines>"'; then
-    test_pass "ci-log-dump machine-json rejects invalid --tail"
+    test_pass "ci-log-dump json rejects invalid --tail"
   else
-    test_fail "ci-log-dump machine-json rejects invalid --tail"
+    test_fail "ci-log-dump json rejects invalid --tail"
     status=1
   fi
 
@@ -424,11 +468,11 @@ line two
 line three
 FAIL: ci run failed
 tail one
-tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_json"
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --tail=2 --out-dir="$ci_log_out_dir" --json > "$ci_log_json"
   ) && python3 -m json.tool "$ci_log_json" >/dev/null &&     smoke_json_assert "$ci_log_json" 'data.get("script") == "ci-log-dump" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("run_id") == "222" and "actions_run_222_" in data.get("log_path", "") and data.get("log_path", "").endswith(".log") and data.get("file_size_bytes", 0) > 0 and data.get("tail_excerpt", []) == ["tail one", "tail two"]'; then
-    test_pass "ci-log-dump machine-json reports the saved path and tail excerpt"
+    test_pass "ci-log-dump json reports the saved path and tail excerpt"
   else
-    test_fail "ci-log-dump machine-json reports the saved path and tail excerpt"
+    test_fail "ci-log-dump json reports the saved path and tail excerpt"
     status=1
   fi
 
@@ -444,7 +488,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     ]' \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
     GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_json"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --out-dir="$ci_log_out_dir" --json > "$ci_log_json"
   ) && python3 -m json.tool "$ci_log_json" >/dev/null && \
     smoke_json_assert "$ci_log_json" 'data.get("pr") == "123" and data.get("run_id") == "702" and data.get("first_failure_label") == "fail: contract/smoke" and "FAIL: smoke:slice-handoff-contract" in data.get("first_failure_excerpt", "")' && \
     grep -Fq -- '--commit current-sha-321' "$ci_log_run_list_log"; then
@@ -467,16 +511,16 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
     GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_VIEW_FAILED_LOG='should not fetch logs' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_pr_no_run_json" 2> "$ci_log_pr_no_run_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --out-dir="$ci_log_out_dir" --json > "$ci_log_pr_no_run_json" 2> "$ci_log_pr_no_run_err"
   ); then
-    test_fail "ci-log-dump PR no-run machine-json explains lookup modes"
+    test_fail "ci-log-dump PR no-run json explains lookup modes"
     status=1
   elif [ ! -s "$ci_log_pr_no_run_err" ] && python3 -m json.tool "$ci_log_pr_no_run_json" >/dev/null && \
     smoke_json_assert "$ci_log_pr_no_run_json" 'data.get("result") == "fail" and data.get("code") == "no-failed-run-found" and data.get("step") == "run-lookup" and data.get("reason", "").startswith("no failed run found for PR #123") and "lookup_modes_tried=sha-pull_request,branch-pull_request,sha-any,repo-failed-head-sha" in data.get("reason", "") and data.get("fix", "").startswith("rerun with --run-id=<id> or inspect the PR") and data.get("artifact_path") == "'"$ci_log_out_dir"'"' && \
     [ ! -e "$ci_log_run_view_log" ]; then
-    test_pass "ci-log-dump PR no-run machine-json explains lookup modes"
+    test_pass "ci-log-dump PR no-run json explains lookup modes"
   else
-    test_fail "ci-log-dump PR no-run machine-json explains lookup modes"
+    test_fail "ci-log-dump PR no-run json explains lookup modes"
     status=1
   fi
 
@@ -500,7 +544,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
     GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --run-id=777 --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_json"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --run-id=777 --first-failure --out-dir="$ci_log_out_dir" --json > "$ci_log_json"
   ) && python3 -m json.tool "$ci_log_json" >/dev/null && \
     smoke_json_assert "$ci_log_json" 'data.get("run_id") == "777" and data.get("first_failure_label") == "fail: contract/smoke"' && \
     [ ! -s "$ci_log_run_list_log" ] && [ -e "$ci_log_run_view_log" ]; then
@@ -555,7 +599,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
       git remote set-url origin "$ci_log_remote_url" || return 1
       GH_STUB_RUN_LIST_JSON='[
         {"databaseId":333,"conclusion":"failure","createdAt":"2026-05-12T13:00:00Z","event":"push","headBranch":"branch/new","headSha":"sha-333","status":"completed","workflowName":"ci"}
-      ]' GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --latest-failed --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_repo_infer_json"
+      ]' GH_STUB_RUN_VIEW_FAILED_LOG='FAIL: smoke:slice-handoff-contract' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --latest-failed --out-dir="$ci_log_out_dir" --json > "$ci_log_repo_infer_json"
     ) && python3 -m json.tool "$ci_log_repo_infer_json" >/dev/null && \
       smoke_json_assert "$ci_log_repo_infer_json" 'data.get("repo") == "owner/repo" and data.get("run_id") == "333"'; then
       :
@@ -587,14 +631,14 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
   if (
     cd "$smoke_test_dir" || return 1
     git remote remove origin >/dev/null 2>&1 || true
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --machine-json > "$ci_log_infer_json" 2> "$ci_log_infer_json_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --json > "$ci_log_infer_json" 2> "$ci_log_infer_json_err"
   ); then
-    test_fail "ci-log-dump machine-json early STOP stays JSON-only"
+    test_fail "ci-log-dump json early STOP stays JSON-only"
     status=1
   elif [ ! -s "$ci_log_infer_json_err" ] && python3 -m json.tool "$ci_log_infer_json" >/dev/null && grep -Fq '"stop_reason":"unable to infer --repo from origin remote; pass --repo=<owner/repo>"' "$ci_log_infer_json" && ! grep -Fq 'FINAL SUMMARY' "$ci_log_infer_json"; then
-    test_pass "ci-log-dump machine-json early STOP stays JSON-only"
+    test_pass "ci-log-dump json early STOP stays JSON-only"
   else
-    test_fail "ci-log-dump machine-json early STOP stays JSON-only"
+    test_fail "ci-log-dump json early STOP stays JSON-only"
     status=1
   fi
 
@@ -614,15 +658,15 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_RUN_LIST_JSON='not-json' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_machine_api_json" 2> "$ci_log_machine_api_err"
+    GH_STUB_RUN_LIST_JSON='not-json' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" --json > "$ci_log_machine_api_json" 2> "$ci_log_machine_api_err"
   ); then
-    test_fail "ci-log-dump machine-json stays pure on gh API failure"
+    test_fail "ci-log-dump json stays pure on gh API failure"
     status=1
   elif [ ! -s "$ci_log_machine_api_err" ] && python3 -m json.tool "$ci_log_machine_api_json" >/dev/null && \
     smoke_json_assert "$ci_log_machine_api_json" 'data.get("result") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("log_path") == "" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while listing latest failed runs for repository i-schuyler/repo-automation-template after 3 attempts:") and data.get("fix") == "check gh auth status and your network, then rerun"'; then
-    test_pass "ci-log-dump machine-json stays pure on gh API failure"
+    test_pass "ci-log-dump json stays pure on gh API failure"
   else
-    test_fail "ci-log-dump machine-json stays pure on gh API failure"
+    test_fail "ci-log-dump json stays pure on gh API failure"
     status=1
   fi
 
@@ -641,15 +685,15 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=777 --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_machine_view_json" 2> "$ci_log_machine_view_err"
+    GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=777 --out-dir="$ci_log_out_dir" --json > "$ci_log_machine_view_json" 2> "$ci_log_machine_view_err"
   ); then
-    test_fail "ci-log-dump machine-json stays pure on log fetch failure"
+    test_fail "ci-log-dump json stays pure on log fetch failure"
     status=1
   elif [ ! -s "$ci_log_machine_view_err" ] && python3 -m json.tool "$ci_log_machine_view_json" >/dev/null && \
     smoke_json_assert "$ci_log_machine_view_json" 'data.get("result") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("fix") == "check gh auth status and your network, then rerun" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while fetching failed log for run 777 after 3 attempts:")'; then
-    test_pass "ci-log-dump machine-json stays pure on log fetch failure"
+    test_pass "ci-log-dump json stays pure on log fetch failure"
   else
-    test_fail "ci-log-dump machine-json stays pure on log fetch failure"
+    test_fail "ci-log-dump json stays pure on log fetch failure"
     status=1
   fi
 

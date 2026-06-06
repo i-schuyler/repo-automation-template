@@ -8,7 +8,7 @@
 - finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by `--pr=<number|latest>`, or by the current branch
 - defaults to failed-only log output
 - writes the log to the configured output directory
-- prints a human summary or machine JSON
+- prints a human summary or JSON output
 
 `--latest-failed` selects the most recent failed workflow run for the target repo regardless of branch.
 
@@ -26,7 +26,7 @@ For `--run-id=<id>`, the helper treats the run id as authoritative and fetches t
     repo-automation/bin/ci-log-dump --pr=latest
     repo-automation/bin/ci-log-dump --repo=OWNER/REPO --latest-failed
     repo-automation/bin/ci-log-dump --first-failure
-    repo-automation/bin/ci-log-dump --machine-json
+    repo-automation/bin/ci-log-dump --json
 
 ## Output Directory
 
@@ -43,16 +43,16 @@ Default success prints only the saved log path.
 
 `--quiet` keeps success silent. On expected failures it emits a QDE-style envelope on stderr with `result=fail`, `code`, `step`, `reason`, `fix`, and optional `artifact`, `log`, or `excerpt` fields.
 
-`--machine-json` emits JSON only on stdout for both success and expected failure. Success includes `log_path`, `file_size_bytes`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes `result=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
+`--json` emits JSON only on stdout for both success and expected failure. Success includes `log_path`, `file_size_bytes`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes `result=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
 
-The helper currently uses `--machine-json` rather than a `--json` alias.
+Compatibility note: `--machine-json` is still accepted as an undocumented alias for `--json`.
 
-`--explain` prints the detailed human summary and ends with a final summary block even on early STOP. That summary is not emitted in machine-json mode.
+`--explain` prints the detailed human summary and ends with a final summary block even on early STOP. That summary is not emitted in JSON mode.
 
 Mode conflicts are rejected before any GitHub CLI call:
 
-- `--machine-json --explain`
-- `--machine-json --quiet`
+- `--json --explain`
+- `--json --quiet`
 - `--quiet --explain`
 
 `--pr=current` is not implemented in this slice; it is rejected as an unsupported alias before any GitHub CLI call.
