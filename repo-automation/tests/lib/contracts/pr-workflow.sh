@@ -1333,6 +1333,8 @@ smoke_check_preflight_json() {
   local preflight_cleanup_json_err="$smoke_test_dir/preflight-cleanup.err"
   local preflight_cleanup_preserve_json="$smoke_test_dir/preflight-cleanup-preserve.json"
   local preflight_cleanup_preserve_err="$smoke_test_dir/preflight-cleanup-preserve.err"
+  local preflight_json_explain_stdout="$smoke_test_dir/preflight-json-explain.out"
+  local preflight_json_explain_stderr="$smoke_test_dir/preflight-json-explain.err"
   local preflight_wrapper_json="$smoke_test_base/preflight-wrapper.json"
   local preflight_wrapper_stderr="$smoke_test_base/preflight-wrapper.stderr"
   local preflight_help="$smoke_test_dir/preflight-help.txt"
@@ -1354,6 +1356,8 @@ smoke_check_preflight_json() {
   local preflight_healthy_disk_stub_dir="$smoke_test_base/preflight-healthy-disk-stub"
   local preflight_low_disk_stub_dir="$smoke_test_base/preflight-low-disk-stub"
   local preflight_low_disk_explain_stderr="$smoke_test_base/preflight-low-disk.err"
+  local preflight_low_disk_json="$smoke_test_base/preflight-low-disk.json"
+  local preflight_low_disk_json_err="$smoke_test_base/preflight-low-disk-json.err"
   local preflight_clean_tmpdir="$smoke_test_base/preflight-clean-tmp"
   local preflight_clean_home="$smoke_test_base/preflight-clean-home"
   local preflight_clean_json_tmpdir="$smoke_test_base/preflight-clean-json-tmp"
@@ -1432,7 +1436,12 @@ EOF
     cd "$smoke_test_dir" || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_json"
   ) && python3 -m json.tool "$preflight_json" >/dev/null; then
-    test_pass "preflight json is parseable"
+    if smoke_json_assert "$preflight_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "pass" and data.get("mode") == "check-only" and data.get("rc") == 0 and data.get("branch") == "feature/preflight-smoke" and data.get("disk") == "pass" and data.get("stop_reason") == "" and data.get("default_branch") == "main" and data.get("current_branch") == "main"'; then
+      test_pass "preflight json is parseable"
+    else
+      test_fail "preflight json is parseable"
+      status=1
+    fi
   else
     test_fail "preflight json is parseable"
     status=1
@@ -1467,7 +1476,7 @@ EOF
     [ ! -s "$preflight_cleanup_json_err" ] &&
     ! grep -Fxq 'pass' "$preflight_cleanup_json" &&
     ! grep -Fq 'INFO:' "$preflight_cleanup_json" &&
-    smoke_json_assert "$preflight_cleanup_json" 'data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 8 and data.get("cleanup_deleted_paths") and data.get("cleanup_preserved_path") is None and data.get("cleanup_skipped_paths") is None and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""'; then
+    smoke_json_assert "$preflight_cleanup_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "pass" and data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 8 and data.get("cleanup_deleted_paths") and data.get("cleanup_preserved_path") is None and data.get("cleanup_skipped_paths") is None and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""'; then
     test_pass "preflight clean-test-cache json is machine-readable"
   else
     test_fail "preflight clean-test-cache json is machine-readable"
@@ -1503,7 +1512,7 @@ EOF
       repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path="$preflight_clean_json_preserve_inside_path" --json > "$preflight_cleanup_preserve_json" 2> "$preflight_cleanup_preserve_err"
   ) && python3 -m json.tool "$preflight_cleanup_preserve_json" >/dev/null &&
     [ ! -s "$preflight_cleanup_preserve_err" ] &&
-    smoke_json_assert "$preflight_cleanup_preserve_json" 'data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 7 and data.get("cleanup_preserved_path", "").endswith("/repo-automation/active-run") and data.get("cleanup_skipped_paths", "").endswith("/repo-automation") and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""' &&
+    smoke_json_assert "$preflight_cleanup_preserve_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "pass" and data.get("mode") == "clean-test-cache" and data.get("rc") == 0 and data.get("disk") == "pass" and data.get("cleanup_deleted_count") == 7 and data.get("cleanup_preserved_path", "").endswith("/repo-automation/active-run") and data.get("cleanup_skipped_paths", "").endswith("/repo-automation") and data.get("cleanup_free_before_bytes") == 2000000000 and data.get("cleanup_free_after_bytes") == 2000000000 and data.get("stop_reason") == ""' &&
     [ -e "$preflight_clean_json_tmpdir/repo-automation/active-run/keep.txt" ] &&
     [ ! -e "$preflight_clean_json_tmpdir/repo-automation-template-tests/marker.txt" ] &&
     [ ! -e "$preflight_clean_json_tmpdir/repo-automation-template/marker.txt" ] &&
@@ -1537,7 +1546,7 @@ EOF
   if (
     cd "$smoke_test_dir" || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --help > "$preflight_help"
-  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && grep -Fq -- '--preserve-path=<path>' "$preflight_help" && grep -Fq -- '--explain' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
+  ) && grep -Fq -- '--branch=<name>' "$preflight_help" && grep -Fq -- '--preserve-path=<path>' "$preflight_help" && grep -Fq -- '--json' "$preflight_help" && grep -Fq -- '--explain' "$preflight_help" && ! grep -Fq -- '--quiet' "$preflight_help" && ! grep -Fq -- '--branch BRANCH' "$preflight_help"; then
     test_pass "preflight help shows strict branch syntax"
   else
     test_fail "preflight help shows strict branch syntax"
@@ -1546,6 +1555,21 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --json --explain --check-only --branch=feature/preflight-smoke > "$preflight_json_explain_stdout" 2> "$preflight_json_explain_stderr"
+  ); then
+    test_fail "preflight rejects --json --explain"
+    status=1
+  elif [ ! -s "$preflight_json_explain_stdout" ] &&
+    smoke_assert_flag_error_shape "$preflight_json_explain_stderr" "incompatible flag combination" "--json --explain" "use one output mode at a time"; then
+    test_pass "preflight rejects --json --explain"
+  else
+    test_fail "preflight rejects --json --explain"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    git checkout main >/dev/null 2>&1 || return 1
     git reset --hard >/dev/null 2>&1 || return 1
     git clean -fd >/dev/null 2>&1 || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke > "$preflight_explain_stdout" 2> "$preflight_explain_stderr"
@@ -1667,6 +1691,29 @@ PY
   else
     test_fail "preflight stops before branch setup on low disk"
     status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_low_disk_stub_dir/df" \
+      PREFLIGHT_DF_BLOCKS=1000000 \
+      PREFLIGHT_DF_USED=840000 \
+      PREFLIGHT_DF_AVAILABLE=1048576 \
+      PREFLIGHT_DF_USE_PERCENT=84 \
+      repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_low_disk_json" 2> "$preflight_low_disk_json_err"
+    return 1
+  ); then
+    test_fail "preflight json failure stays valid on low disk"
+    status=1
+  else
+    if python3 -m json.tool "$preflight_low_disk_json" >/dev/null &&
+      smoke_json_assert "$preflight_low_disk_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "fail" and data.get("mode") == "check-only" and data.get("rc") == 1 and data.get("branch") == "feature/preflight-smoke" and data.get("disk") == "fail" and data.get("stop_reason") == "available disk space below threshold"' &&
+      [ ! -s "$preflight_low_disk_json_err" ]; then
+      test_pass "preflight json failure stays valid on low disk"
+    else
+      test_fail "preflight json failure stays valid on low disk"
+      status=1
+    fi
   fi
 
   mkdir -p "$preflight_clean_tmpdir/repo-automation-template-tests" \

@@ -44,15 +44,18 @@ preflight_flag_error() {
 }
 
 preflight_info() {
+  [ "$preflight_json" -eq 0 ] || return 0
   printf 'INFO: %s\n' "$*" >&2
 }
 
 preflight_warn() {
+  [ "$preflight_json" -eq 0 ] || return 0
   printf 'WARN: %s\n' "$*" >&2
 }
 
 preflight_stop() {
   preflight_stop_reason="$*"
+  [ "$preflight_json" -eq 0 ] || return 1
   printf 'STOP: %s\n' "$*" >&2
   return 1
 }
@@ -400,8 +403,15 @@ preflight_print_json() {
   local stop_reason="$8"
   local exit_code="$9"
   local disk_value="${10:-skip}"
+  local result_value="fail"
+
+  if [ "$exit_code" -eq 0 ]; then
+    result_value="pass"
+  fi
 
   printf '{'
+  printf '"script":"codex-slice-preflight",'
+  printf '"result":"%s",' "$(preflight_json_escape "$result_value")"
   printf '"branch":"%s",' "$(preflight_json_escape "$branch")"
   printf '"mode":"%s",' "$(preflight_json_escape "$preflight_mode")"
   printf '"rc":%s,' "$exit_code"
@@ -539,6 +549,11 @@ preflight_main() {
         ;;
     esac
   done
+
+  if [ "$preflight_json" -eq 1 ] && [ "$preflight_explain" -eq 1 ]; then
+    preflight_flag_error "incompatible flag combination" "--json --explain" "use one output mode at a time" || true
+    return 1
+  fi
 
   if [ "$command_status" -eq 0 ] && [ "$clean_test_cache" -eq 1 ] && [ -n "$preserve_path" ]; then
     preserve_path_abs="$(preflight_resolve_existing_path "$preserve_path")" || {

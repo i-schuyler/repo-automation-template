@@ -8,6 +8,13 @@ Use `${TMPDIR:-$HOME/.cache}` for temp files; never assume `/tmp`.
 
 When adding, moving, or deleting files under `repo-automation/`, keep managed-file coverage aligned with `repo-automation/bin/managed-file-add`, `repo-automation/bin/managed-file-check --changed --quiet`, and `repo-automation/tests/version-consistency.sh --quiet`.
 
+When testing a parent helper that invokes a repo-relative child helper, install child fakes at the same repo-relative path the parent resolves at runtime, usually:
+`$smoke_test_dir/repo-automation/bin/<child-helper>`
+
+Do not rely on PATH-only or env-only fake injection to prove child-helper wiring. Environment variables may configure an installed fake, but they must not select the fake.
+
+Use or add smoke helper assertions that fail actionably when the runtime helper is missing.
+
 Do not run tests, commit, push, merge, tag, publish releases, or perform GitHub write operations unless explicitly asked.
 
 For implementation PRs, update `repo-automation/docs/implementation-friction-ledger.md`.
