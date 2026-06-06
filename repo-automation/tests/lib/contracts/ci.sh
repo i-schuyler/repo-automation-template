@@ -24,6 +24,7 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_unknown_stderr="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
   local ci_log_first_failure_human="$smoke_test_base/ci-log-dump-first-failure-$$.txt"
   local ci_log_quiet="$smoke_test_base/ci-log-dump-quiet-$$.txt"
+  local ci_log_quiet_err="$smoke_test_base/ci-log-dump-quiet-$$.stderr"
   local ci_log_infer_stop="$smoke_test_base/ci-log-dump-infer-stop-$$.txt"
   local ci_log_infer_json="$smoke_test_base/ci-log-dump-infer-json-$$.json"
   local ci_log_infer_json_err="$smoke_test_base/ci-log-dump-infer-json-$$.stderr"
@@ -32,6 +33,20 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_pr_no_run_json="$smoke_test_base/ci-log-dump-pr-no-run-$$.json"
   local ci_log_pr_no_run_err="$smoke_test_base/ci-log-dump-pr-no-run-$$.stderr"
   local ci_log_repo_infer_json="$smoke_test_base/ci-log-dump-repo-infer-$$.json"
+  local ci_log_conflict_json="$smoke_test_base/ci-log-dump-conflict-$$.json"
+  local ci_log_conflict_err="$smoke_test_base/ci-log-dump-conflict-$$.stderr"
+  local ci_log_machine_invalid_tail_json="$smoke_test_base/ci-log-dump-invalid-tail-$$.json"
+  local ci_log_machine_invalid_tail_err="$smoke_test_base/ci-log-dump-invalid-tail-$$.stderr"
+  local ci_log_machine_invalid_run_id_json="$smoke_test_base/ci-log-dump-invalid-run-id-$$.json"
+  local ci_log_machine_invalid_run_id_err="$smoke_test_base/ci-log-dump-invalid-run-id-$$.stderr"
+  local ci_log_quiet_no_run_err="$smoke_test_base/ci-log-dump-no-run-quiet-$$.stderr"
+  local ci_log_quiet_api_err="$smoke_test_base/ci-log-dump-api-quiet-$$.stderr"
+  local ci_log_quiet_out_dir_err="$smoke_test_base/ci-log-dump-out-dir-quiet-$$.stderr"
+  local ci_log_blocked_out_dir="$smoke_test_base/ci-log-dump-blocked-out-dir-$$"
+  local ci_log_machine_api_json="$smoke_test_base/ci-log-dump-api-json-$$.json"
+  local ci_log_machine_api_err="$smoke_test_base/ci-log-dump-api-json-$$.stderr"
+  local ci_log_machine_view_json="$smoke_test_base/ci-log-dump-view-json-$$.json"
+  local ci_log_machine_view_err="$smoke_test_base/ci-log-dump-view-json-$$.stderr"
 
   smoke_write_gh_stub "$gh_stub_dir" || return 1
   mkdir -p "$ci_log_out_dir" || return 1
@@ -55,6 +70,96 @@ smoke_check_ci_log_dump_contract() {
     test_pass "ci-log-dump help shows strict value syntax"
   else
     test_fail "ci-log-dump help shows strict value syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --machine-json --quiet > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
+  ); then
+    test_fail "ci-log-dump rejects --machine-json --quiet"
+    status=1
+  elif [ ! -s "$ci_log_conflict_err" ] && python3 -m json.tool "$ci_log_conflict_json" >/dev/null && \
+    smoke_json_assert "$ci_log_conflict_json" 'data.get("result") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and "incompatible output mode flags: --machine-json --quiet" in data.get("reason", "") and "use only one of --machine-json, --quiet, or --explain" in data.get("fix", "")' && \
+    [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+    test_pass "ci-log-dump rejects --machine-json --quiet"
+  else
+    test_fail "ci-log-dump rejects --machine-json --quiet"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --machine-json --explain > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
+  ); then
+    test_fail "ci-log-dump rejects --machine-json --explain"
+    status=1
+  elif [ ! -s "$ci_log_conflict_err" ] && python3 -m json.tool "$ci_log_conflict_json" >/dev/null && \
+    smoke_json_assert "$ci_log_conflict_json" 'data.get("result") == "fail" and data.get("code") == "output-mode-conflict" and data.get("step") == "output-mode-parse" and "incompatible output mode flags: --machine-json --explain" in data.get("reason", "") and "use only one of --machine-json, --quiet, or --explain" in data.get("fix", "")' && \
+    [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+    test_pass "ci-log-dump rejects --machine-json --explain"
+  else
+    test_fail "ci-log-dump rejects --machine-json --explain"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
+    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --quiet --explain > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
+  ); then
+    test_fail "ci-log-dump rejects --quiet --explain"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$ci_log_conflict_err" "output-mode-conflict" "output-mode-parse" "incompatible output mode flags: --quiet --explain" "use only one of --machine-json, --quiet, or --explain" "" "" "" && [ ! -s "$ci_log_conflict_json" ] && [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+    test_pass "ci-log-dump rejects --quiet --explain"
+  else
+    test_fail "ci-log-dump rejects --quiet --explain"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --run-id=abc --machine-json > "$ci_log_machine_invalid_run_id_json" 2> "$ci_log_machine_invalid_run_id_err"
+  ); then
+    test_fail "ci-log-dump machine-json rejects invalid --run-id"
+    status=1
+  elif [ ! -s "$ci_log_machine_invalid_run_id_err" ] && python3 -m json.tool "$ci_log_machine_invalid_run_id_json" >/dev/null && \
+    smoke_json_assert "$ci_log_machine_invalid_run_id_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "invalid --run-id value: abc" and data.get("fix") == "use --run-id=<id>"'; then
+    test_pass "ci-log-dump machine-json rejects invalid --run-id"
+  else
+    test_fail "ci-log-dump machine-json rejects invalid --run-id"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --tail=abc --machine-json > "$ci_log_machine_invalid_tail_json" 2> "$ci_log_machine_invalid_tail_err"
+  ); then
+    test_fail "ci-log-dump machine-json rejects invalid --tail"
+    status=1
+  elif [ ! -s "$ci_log_machine_invalid_tail_err" ] && python3 -m json.tool "$ci_log_machine_invalid_tail_json" >/dev/null && \
+    smoke_json_assert "$ci_log_machine_invalid_tail_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "invalid --tail value: abc" and data.get("fix") == "use --tail=<lines>"'; then
+    test_pass "ci-log-dump machine-json rejects invalid --tail"
+  else
+    test_fail "ci-log-dump machine-json rejects invalid --tail"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --run-id=abc --quiet > /dev/null 2> "$ci_log_quiet_err"
+  ); then
+    test_fail "ci-log-dump quiet rejects invalid --run-id"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$ci_log_quiet_err" "flag-parse-failed" "flag-parse" "invalid --run-id value: abc" "use --run-id=<id>" "" "" "" ""; then
+    test_pass "ci-log-dump quiet rejects invalid --run-id"
+  else
+    test_fail "ci-log-dump quiet rejects invalid --run-id"
     status=1
   fi
 
@@ -239,6 +344,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
   if (
     cd "$smoke_test_dir" || return 1
     : > "$ci_log_run_list_log"
+    rm -f "$ci_log_run_view_log" >/dev/null 2>&1 || true
     GH_STUB_PR_VIEW_HEAD_REF='feature/demo' \
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
     GH_STUB_RUN_LIST_BRANCH_PR_JSON='[]' \
@@ -246,16 +352,31 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     GH_STUB_RUN_LIST_SHA_JSON='[]' \
     GH_STUB_RUN_LIST_JSON='[]' \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
+    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_VIEW_FAILED_LOG='should not fetch logs' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --machine-json > "$ci_log_pr_no_run_json" 2> "$ci_log_pr_no_run_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --pr=123 --first-failure --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_pr_no_run_json" 2> "$ci_log_pr_no_run_err"
   ); then
     test_fail "ci-log-dump PR no-run machine-json explains lookup modes"
     status=1
   elif [ ! -s "$ci_log_pr_no_run_err" ] && python3 -m json.tool "$ci_log_pr_no_run_json" >/dev/null && \
-    smoke_json_assert "$ci_log_pr_no_run_json" 'data.get("overall_status") == "fail" and "head_branch=resolved:feature/demo" in data.get("stop_reason", "") and "head_sha=resolved:current-sha-321" in data.get("stop_reason", "") and "lookup_modes_tried=sha-pull_request,branch-pull_request,sha-any,repo-failed-head-sha" in data.get("stop_reason", "")'; then
+    smoke_json_assert "$ci_log_pr_no_run_json" 'data.get("result") == "fail" and data.get("code") == "no-failed-run-found" and data.get("step") == "run-lookup" and data.get("reason", "").startswith("no failed run found for PR #123") and "lookup_modes_tried=sha-pull_request,branch-pull_request,sha-any,repo-failed-head-sha" in data.get("reason", "") and data.get("fix", "").startswith("rerun with --run-id=<id> or inspect the PR") and data.get("artifact_path") == "'"$ci_log_out_dir"'"' && \
+    [ ! -e "$ci_log_run_view_log" ]; then
     test_pass "ci-log-dump PR no-run machine-json explains lookup modes"
   else
     test_fail "ci-log-dump PR no-run machine-json explains lookup modes"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='[]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" --quiet > /dev/null 2> "$ci_log_quiet_no_run_err"
+  ); then
+    test_fail "ci-log-dump latest-failed quiet no-run fails quietly"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$ci_log_quiet_no_run_err" "no-failed-run-found" "run-lookup" "no failed run found for repository i-schuyler/repo-automation-template" "rerun with --run-id=<id> or inspect GitHub Actions for the missing failure" "" "$ci_log_out_dir" "" ""; then
+    test_pass "ci-log-dump latest-failed quiet no-run fails quietly"
+  else
+    test_fail "ci-log-dump latest-failed quiet no-run fails quietly"
     status=1
   fi
 
@@ -378,6 +499,62 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='not-json' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_machine_api_json" 2> "$ci_log_machine_api_err"
+  ); then
+    test_fail "ci-log-dump machine-json stays pure on gh API failure"
+    status=1
+  elif [ ! -s "$ci_log_machine_api_err" ] && python3 -m json.tool "$ci_log_machine_api_json" >/dev/null && \
+    smoke_json_assert "$ci_log_machine_api_json" 'data.get("result") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("log_path") == "" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while listing latest failed runs for repository i-schuyler/repo-automation-template after 3 attempts:") and data.get("fix") == "check gh auth status and your network, then rerun"'; then
+    test_pass "ci-log-dump machine-json stays pure on gh API failure"
+  else
+    test_fail "ci-log-dump machine-json stays pure on gh API failure"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_LIST_JSON='not-json' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --latest-failed --out-dir="$ci_log_out_dir" --quiet > /dev/null 2> "$ci_log_quiet_api_err"
+  ); then
+    test_fail "ci-log-dump quiet gh API failure stays compact"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$ci_log_quiet_api_err" "github-api-failure" "gh-api" "BLOCKER: GitHub API failure while listing latest failed runs for repository i-schuyler/repo-automation-template after 3 attempts: not-json" "check gh auth status and your network, then rerun" "" "$ci_log_out_dir" "" ""; then
+    test_pass "ci-log-dump quiet gh API failure stays compact"
+  else
+    test_fail "ci-log-dump quiet gh API failure stays compact"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_ALWAYS_FAIL_STDERR='net/http: TLS handshake timeout' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=777 --out-dir="$ci_log_out_dir" --machine-json > "$ci_log_machine_view_json" 2> "$ci_log_machine_view_err"
+  ); then
+    test_fail "ci-log-dump machine-json stays pure on log fetch failure"
+    status=1
+  elif [ ! -s "$ci_log_machine_view_err" ] && python3 -m json.tool "$ci_log_machine_view_json" >/dev/null && \
+    smoke_json_assert "$ci_log_machine_view_json" 'data.get("result") == "fail" and data.get("code") == "github-api-failure" and data.get("step") == "gh-api" and data.get("artifact_path") == "'"$ci_log_out_dir"'" and data.get("fix") == "check gh auth status and your network, then rerun" and data.get("reason", "").startswith("BLOCKER: GitHub API failure while fetching failed log for run 777 after 3 attempts:")'; then
+    test_pass "ci-log-dump machine-json stays pure on log fetch failure"
+  else
+    test_fail "ci-log-dump machine-json stays pure on log fetch failure"
+    status=1
+  fi
+
+  : > "$ci_log_blocked_out_dir"
+  if (
+    cd "$smoke_test_dir" || return 1
+    GH_STUB_RUN_VIEW_FAILED_LOG='tail one
+tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=777 --out-dir="$ci_log_blocked_out_dir" --quiet > /dev/null 2> "$ci_log_quiet_out_dir_err"
+  ); then
+    test_fail "ci-log-dump quiet output-dir failure stays compact"
+    status=1
+  elif smoke_assert_quiet_failure_envelope "$ci_log_quiet_out_dir_err" "output-dir-create-failed" "output-dir" "unable to create output directory: $ci_log_blocked_out_dir" "pick a writable --out-dir or set TMPDIR/HOME to a writable location" "" "$ci_log_blocked_out_dir" "" ""; then
+    test_pass "ci-log-dump quiet output-dir failure stays compact"
+  else
+    test_fail "ci-log-dump quiet output-dir failure stays compact"
+    status=1
+  fi
+
   local ci_log_empty_marker="$smoke_test_base/ci-log-dump-run-view-called-$$.marker"
   local ci_log_empty_status=0
   (
@@ -391,7 +568,7 @@ tail two' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-sch
     status=1
   fi
 
-  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" "$ci_log_quiet" "$ci_log_run_view_log" "$ci_log_run_list_log" "$ci_log_pr_no_run_json" "$ci_log_pr_no_run_err" "$ci_log_repo_infer_json" >/dev/null 2>&1 || true
+  rm -f "$ci_log_human" "$ci_log_json" "$ci_log_empty_marker" "$ci_log_help" "$ci_log_pr_format_stderr" "$ci_log_pr_missing_stderr" "$ci_log_pr_empty_stderr" "$ci_log_repo_empty_stderr" "$ci_log_out_dir_empty_stderr" "$ci_log_first_failure_value_stderr" "$ci_log_unknown_stderr" "$ci_log_first_failure_human" "$ci_log_quiet" "$ci_log_quiet_err" "$ci_log_run_view_log" "$ci_log_run_list_log" "$ci_log_pr_no_run_json" "$ci_log_pr_no_run_err" "$ci_log_repo_infer_json" "$ci_log_conflict_json" "$ci_log_conflict_err" "$ci_log_machine_invalid_tail_json" "$ci_log_machine_invalid_tail_err" "$ci_log_machine_invalid_run_id_json" "$ci_log_machine_invalid_run_id_err" "$ci_log_quiet_no_run_err" "$ci_log_quiet_api_err" "$ci_log_quiet_out_dir_err" "$ci_log_machine_api_json" "$ci_log_machine_api_err" "$ci_log_machine_view_json" "$ci_log_machine_view_err" "$ci_log_blocked_out_dir" >/dev/null 2>&1 || true
   find "$ci_log_out_dir" -maxdepth 1 -type f -name 'actions_run_222_*.log' -delete >/dev/null 2>&1 || true
   rmdir "$ci_log_out_dir" >/dev/null 2>&1 || true
   return "$status"

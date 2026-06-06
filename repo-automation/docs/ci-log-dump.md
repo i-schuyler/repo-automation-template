@@ -1,6 +1,6 @@
 # CI Log Dump
 
-`repo-automation/bin/ci-log-dump` is a read-only helper that saves a failed GitHub Actions log to a durable directory and prints the saved path plus either a tail excerpt or a compact first-failure diagnosis.
+`repo-automation/bin/ci-log-dump` is a read-only helper that saves a failed GitHub Actions log to a durable directory and reports the saved path plus either a tail excerpt or a compact first-failure diagnosis.
 
 ## What It Does
 
@@ -34,12 +34,24 @@ The helper writes to:
 
 The saved file name uses the format `actions_run_<run-id>_<timestamp>.log`.
 
-## Machine Output
+## Output Modes
+
+Default success prints only the saved log path.
+
+`--quiet` keeps success silent. On expected failures it emits a QDE-style envelope on stderr with `result=fail`, `code`, `step`, `reason`, `fix`, and optional `artifact`, `log`, or `excerpt` fields.
+
+`--machine-json` emits JSON only on stdout for both success and expected failure. Success includes `log_path`, `file_size_bytes`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes `result=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
+
+The helper currently uses `--machine-json` rather than a `--json` alias.
+
+`--explain` prints the detailed human summary and ends with a final summary block even on early STOP. That summary is not emitted in machine-json mode.
+
+Mode conflicts are rejected before any GitHub CLI call:
+
+- `--machine-json --explain`
+- `--machine-json --quiet`
+- `--quiet --explain`
 
 `--first-failure` parses the saved failed log locally and reports the first actionable failure label, excerpt, and next fix hint using the shared CI failure taxonomy.
 
-`--machine-json` emits a single JSON object with the repo, PR number when present, run id, saved path, file size, and tail excerpt. With `--first-failure`, it also includes `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`.
-
-`--quiet` suppresses clean-success output. `--explain` prints the detailed human summary and ends with a final summary block even on early STOP. `--machine-json` stays JSON-only. Default success is the saved path only.
-
-When no failed run is found for a PR, STOP output includes whether the PR head branch and head SHA were resolved and which lookup modes were attempted.
+When no failed run is found for a PR, STOP output includes whether the PR head branch and head SHA were resolved and which lookup modes were attempted. Failure output keeps the artifact directory or saved log path when that path is the next useful debugging surface.

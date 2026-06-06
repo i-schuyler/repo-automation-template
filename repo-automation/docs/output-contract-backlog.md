@@ -64,9 +64,9 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | Helper | Role / risk | Output support | Current known gap | Next action | Priority lane |
 | --- | --- | --- | --- | --- | --- |
 | slice-validator | pre-preflight run-contract gate | quiet=yes json=yes | direct-call helper implemented; slice-handoff now delegates and records manifest paths before preflight | review the capability manifest shape and downstream usage | near-term |
-| codex-slice-preflight | preflight gate | quiet=no json=yes | declared strict flags, JSON, explain, and cleanup boundaries are now covered by focused contract tests | ci-log-dump | next |
+| codex-slice-preflight | preflight gate | quiet=no json=yes | declared strict flags, JSON, explain, and cleanup boundaries are now covered by focused contract tests | run-tests | next |
 | codex-run | core child output producer | quiet=yes json=no | quiet QDE, child failure, final-output contract, and block-write boundaries are now covered; JSON remains unsupported | monitor for regressions | monitor |
-| ci-log-dump | CI artifact helper | quiet=yes json=yes | later output-contract target | tighten failure detail and artifact paths | near-term |
+| ci-log-dump | CI artifact helper | quiet=yes json=yes | later output-contract target | baseline contract now has focused default/quiet/machine-json and artifact-path coverage | monitor |
 | run-tests | broad umbrella runner | quiet=yes json=yes | later output-contract target | improve step/reason/fix/artifact clarity | near-term |
 | managed-file-check | inventory guardrail | quiet=yes json=no | later output-contract target | keep changed-path failures actionable | near-term |
 | slice-handoff | high-risk umbrella; PR-submit trust boundary | quiet=yes json=no | blocker/child-failure boundary hardened in PR #223, validator gate now runs before preflight, and validation-manifest paths are surfaced in summaries | finish remaining output-contract gaps | done-foundation |
@@ -122,7 +122,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | slice-validator | declared | partial | partial | repo-automation/tests/contracts/slice-validator.sh | review the capability manifest shape and downstream usage |
 | codex-slice-preflight | partial | partial | needs-audit | repo-automation/tests/contracts/codex-slice-preflight.sh | declare the remaining branch/runtime boundary checks and move to the next helper audit |
 | codex-run | partial | partial | needs-audit | repo-automation/tests/contracts/codex-run.sh + PR #231 | monitor quiet/final-output regression coverage |
-| ci-log-dump | partial | partial | needs-audit | docs/output-modes.md | confirm declared JSON/quiet contract and failure artifact paths |
+| ci-log-dump | partial | partial | needs-audit | repo-automation/tests/contracts/ci-log-dump.sh + PR #232 | confirm remaining alias/current-latest edge cases and keep failure-path diagnostics aligned |
 | run-tests | partial | partial | needs-audit | docs/output-modes.md | verify umbrella failure shapes and JSON output purity |
 | managed-file-check | partial | partial | needs-audit | docs/output-modes.md | confirm changed-path failure boundaries and quiet behavior |
 | slice-handoff | partial | partial | partial | PR #223 + PR #229 | finish broader output-mode migration and record coverage evidence |
@@ -161,10 +161,9 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Near-term order
 
-1. ci-log-dump
+1. run-tests
 2. verify the declared-contract baseline stays aligned with the current helper docs and output modes
-3. run-tests
-4. managed-file-check
+3. managed-file-check
 
 ## Do not do yet
 
@@ -189,5 +188,5 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 `slice-handoff` now calls `repo-automation/bin/slice-validator` before `codex-slice-preflight`.
 Keep `helper-metadata.json`, managed docs and registration surfaces, and the compliance tracking matrix aligned.
-The next behavior slice advances to ci-log-dump.
+The next behavior slice advances to run-tests.
 Future helper slices should update the tracking matrix when helper behavior, tests, evidence, or status changes.
