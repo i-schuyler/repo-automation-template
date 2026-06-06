@@ -29,7 +29,7 @@ The helper accepts `--repo=<owner/repo>` only, not `--repo OWNER/REPO`.
 
 Machine output:
 
-    repo-automation/bin/github-settings-check --machine-json
+    repo-automation/bin/github-settings-check --json
 
 Quiet human output:
 

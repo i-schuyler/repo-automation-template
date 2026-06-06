@@ -13,12 +13,12 @@ Supported flags:
 
 - `--base=REF` selects the left side of the diff range
 - `--head=REF` selects the right side of the diff range
-- `--machine-json` returns machine-readable output
+- `--json` returns machine-readable output
 
 Examples:
 
     repo-automation/bin/touched-files
     repo-automation/bin/touched-files --base=main --head=HEAD
-    repo-automation/bin/touched-files --machine-json
+    repo-automation/bin/touched-files --json
 
 The helper is read-only and does not write commits, tags, or GitHub objects.

@@ -11,12 +11,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   return 2 2>/dev/null || exit 2
 }
 
-starter_template_ready_machine_json=0
+starter_template_ready_json_mode=0
 starter_template_ready_source_root=""
 starter_template_ready_check_current=0
 
 starter_template_ready_usage() {
-  printf 'Usage: repo-automation/bin/starter-template-ready [--help] [--machine-json] [--source-root=<path>] [--check-current]\n'
+  printf 'Usage: repo-automation/bin/starter-template-ready [--help] [--json] [--source-root=<path>] [--check-current]\n'
 }
 
 starter_template_ready_stop() {
@@ -37,8 +37,8 @@ starter_template_ready_main() {
         starter_template_ready_usage
         return 0
         ;;
-      --machine-json)
-        starter_template_ready_machine_json=1
+      --json)
+        starter_template_ready_json_mode=1
         ;;
       --source-root=*)
         starter_template_ready_source_root="${arg#--source-root=}"
@@ -114,7 +114,7 @@ starter_template_ready_main() {
     return 1
   fi
 
-  STARTER_TEMPLATE_READY_MACHINE_JSON="$starter_template_ready_machine_json" \
+  STARTER_TEMPLATE_READY_MACHINE_JSON="$starter_template_ready_json_mode" \
     python3 - "$starter_template_ready_source_root" "$freshness_helper" "$manifest_path" <<'PY'
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ from pathlib import Path
 source_root = Path(sys.argv[1])
 freshness_helper = Path(sys.argv[2])
 manifest_path = Path(sys.argv[3])
-machine_json = os.environ.get("STARTER_TEMPLATE_READY_MACHINE_JSON") == "1"
+json_mode = os.environ.get("STARTER_TEMPLATE_READY_MACHINE_JSON") == "1"
 
 starter_template_paths = [
     ".github/pull_request_template.md",
@@ -178,7 +178,7 @@ else:
     fail("config-exists", f"missing repo automation config: {config_path}")
 
 freshness_proc = subprocess.run(
-    [str(freshness_helper), "--machine-json", f"--source-root={source_root}"],
+    [str(freshness_helper), "--json", f"--source-root={source_root}"],
     check=False,
     capture_output=True,
     text=True,
@@ -226,7 +226,7 @@ else:
 if result["fail_count"] == 0:
     result["overall_status"] = "pass"
 
-if machine_json:
+if json_mode:
     print(json.dumps(result, separators=(",", ":")))
 else:
     if result["overall_status"] == "pass":

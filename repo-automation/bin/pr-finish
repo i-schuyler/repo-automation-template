@@ -71,8 +71,89 @@ pr_finish_now_seconds() {
   date +%s
 }
 
+pr_finish_load_pr_view_json() {
+  local pr_selector="${1:-}"
+
+  if [ -n "$pr_selector" ]; then
+    gh pr view "$pr_selector" --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName 2>/dev/null
+  else
+    gh pr view --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName 2>/dev/null
+  fi
+}
+
+pr_finish_apply_pr_view_json() {
+  local pr_view_json="${1:-}"
+  local pr_view_assignments=""
+
+  pr_view_assignments="$(python3 - "$pr_view_json" <<'PY'
+import json
+import shlex
+import sys
+
+data = json.loads(sys.argv[1])
+fields = [
+    ("pr_number", data.get("number", "")),
+    ("pr_title", data.get("title", "")),
+    ("pr_url", data.get("url", "")),
+    ("pr_state", data.get("state", "")),
+    ("is_draft", "true" if data.get("isDraft", False) else "false"),
+    ("mergeable", data.get("mergeable", "")),
+    ("pr_head_sha", data.get("headRefOid", "")),
+]
+for name, value in fields:
+    if value is None:
+        value = ""
+    print(f"{name}={shlex.quote(str(value))}")
+PY
+)" || return 1
+  [ -n "$pr_view_assignments" ] || return 1
+  eval "$pr_view_assignments"
+}
+
+pr_finish_refresh_pr_metadata() {
+  local pr_selector="${1:-}"
+  local refreshed_json=""
+
+  refreshed_json="$(pr_finish_load_pr_view_json "$pr_selector")" || return 1
+  [ -n "$refreshed_json" ] || return 1
+  pr_finish_apply_pr_view_json "$refreshed_json"
+}
+
 pr_finish_resolve_latest_pr_number() {
-  gh pr list --state open --limit 1 --json number --jq 'if length == 0 then empty else .[0].number end' 2>/dev/null
+  local pr_list_json=""
+
+  pr_list_json="$(gh pr list --state open --limit 100 --json number,updatedAt,isDraft 2>/dev/null)" || return 1
+  python3 - "$pr_list_json" <<'PY'
+import json
+import sys
+
+try:
+    items = json.loads(sys.argv[1])
+except Exception:
+    raise SystemExit(1)
+
+best_key = None
+best_number = None
+for item in items if isinstance(items, list) else []:
+    if item.get("isDraft", False):
+        continue
+    number = item.get("number")
+    updated_at = item.get("updatedAt") or ""
+    if number in (None, ""):
+        continue
+    try:
+        number_key = int(number)
+    except Exception:
+        continue
+    key = (updated_at, number_key)
+    if best_key is None or key > best_key:
+        best_key = key
+        best_number = number_key
+
+if best_number is None:
+    raise SystemExit(1)
+print(best_number)
+PY
 }
 
 pr_finish_write_state_file() {
@@ -105,7 +186,7 @@ pr_finish_checks_collect() {
   local checks_json=""
   local checks_summary=""
 
-  checks_json="$(repo-automation/bin/ci-status --pr="$pr_number" --machine-json 2>/dev/null)" || rc=$?
+  checks_json="$(repo-automation/bin/ci-status --pr="$pr_number" --json 2>/dev/null)" || rc=$?
   if [ -n "$checks_json" ]; then
     checks_status="$(python3 - "$checks_json" <<'PY'
 import json
@@ -165,9 +246,9 @@ pr_finish_diagnose_on_fail() {
   local diagnosis_reason=""
 
   if [ -n "$run_id" ]; then
-    diagnosis_json="$(repo-automation/bin/ci-log-dump --run-id="$run_id" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+    diagnosis_json="$(repo-automation/bin/ci-log-dump --run-id="$run_id" --first-failure --json 2>&1)" || diagnosis_status=$?
   else
-    diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+    diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --json 2>&1)" || diagnosis_status=$?
   fi
 
   if [ "$diagnosis_status" -eq 0 ]; then
@@ -222,6 +303,17 @@ pr_finish_print_human_status() {
   pr_finish_info "pr state: $pr_state"
   pr_finish_info "draft: $is_draft"
   pr_finish_info "mergeable: $mergeable"
+  case "$mergeable" in
+    MERGEABLE)
+      pr_finish_info "mergeability status: ready"
+      ;;
+    ""|UNKNOWN)
+      pr_finish_info "mergeability status: pending (GitHub is still computing)"
+      ;;
+    *)
+      pr_finish_info "mergeability status: blocked"
+      ;;
+  esac
   pr_finish_info "checks status: $checks_status"
   pr_finish_info "checks summary: $checks_summary"
   pr_finish_info "merge mode: $merge_mode"
@@ -323,8 +415,9 @@ pr_finish_main() {
   local pr_finish_timing_merge_seconds=0
   local pr_finish_timing_sync_main_seconds=0
   local pr_view_json=""
-  local pr_view_assignments=""
   local pr_view_selector=""
+  local mergeability_block_reason=""
+  local watch_head_sha=""
 
   pr_finish_started_at="$(pr_finish_now_seconds)"
 
@@ -522,10 +615,10 @@ pr_finish_main() {
         fi
         ;;
       latest)
-        pr_target="latest open PR"
+        pr_target="latest open non-draft PR"
         pr_number=$(pr_finish_resolve_latest_pr_number) || pr_number=""
         if ! repo_auto_is_positive_integer "$pr_number"; then
-          pr_finish_stop "unable to find latest open PR"
+          pr_finish_stop "unable to find latest open non-draft PR"
           command_status=1
         fi
         ;;
@@ -550,41 +643,19 @@ pr_finish_main() {
     fi
 
     if [ -n "$pr_view_selector" ]; then
-      pr_view_json="$(gh pr view "$pr_view_selector" --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName 2>/dev/null)" || pr_view_json=""
+      pr_view_json="$(pr_finish_load_pr_view_json "$pr_view_selector")" || pr_view_json=""
     else
-      pr_view_json="$(gh pr view --json number,title,url,state,isDraft,mergeable,headRefOid,headRefName 2>/dev/null)" || pr_view_json=""
+      pr_view_json="$(pr_finish_load_pr_view_json)" || pr_view_json=""
     fi
 
     if [ -z "$pr_view_json" ]; then
       pr_finish_stop "failed to load PR metadata for ${pr_target:-$current_branch}"
       command_status=1
     else
-      pr_view_assignments="$(python3 - "$pr_view_json" <<'PY'
-import json
-import shlex
-import sys
-
-data = json.loads(sys.argv[1])
-fields = [
-    ("pr_number", data.get("number", "")),
-    ("pr_title", data.get("title", "")),
-    ("pr_url", data.get("url", "")),
-    ("pr_state", data.get("state", "")),
-    ("is_draft", "true" if data.get("isDraft", False) else "false"),
-    ("mergeable", data.get("mergeable", "")),
-    ("pr_head_sha", data.get("headRefOid", "")),
-]
-for name, value in fields:
-    if value is None:
-        value = ""
-    print(f"{name}={shlex.quote(str(value))}")
-PY
-)"
-      if [ -z "$pr_view_assignments" ]; then
+      if ! pr_finish_apply_pr_view_json "$pr_view_json"; then
         pr_finish_stop "failed to parse PR metadata for ${pr_target:-$current_branch}"
         command_status=1
       else
-        eval "$pr_view_assignments"
         pr_finish_timing_pr_lookup_seconds="$(( $(pr_finish_now_seconds) - pr_finish_lookup_started_at ))"
         if [ -z "$pr_number" ] || ! repo_auto_is_positive_integer "$pr_number"; then
           pr_finish_stop "unable to find PR for target: ${pr_target:-$current_branch}"
@@ -629,6 +700,20 @@ PY
     fi
   fi
 
+  if [ "$command_status" -eq 0 ] && [ "$do_watch" -eq 1 ] && [ "$checks_status" = "green" ]; then
+    watch_head_sha="$pr_head_sha"
+    if ! pr_finish_refresh_pr_metadata "${pr_number:-$pr_target}"; then
+      pr_finish_stop "failed to refresh PR metadata after watch"
+      command_status=1
+    elif [ -z "$pr_head_sha" ]; then
+      pr_finish_stop "unable to determine current PR head SHA after watch"
+      command_status=1
+    elif [ -n "$watch_head_sha" ] && [ "$pr_head_sha" != "$watch_head_sha" ]; then
+      checks_status="pending"
+      checks_summary="current head changed after watch"
+    fi
+  fi
+
   if [ "$command_status" -eq 0 ]; then
     if [ "$do_watch" -eq 1 ] && [ "$checks_status" = "green" ]; then
       :
@@ -646,9 +731,17 @@ PY
       block_reasons+=("pr-is-draft")
     fi
 
-    if [ "$mergeable" != "MERGEABLE" ]; then
-      block_reasons+=("pr-not-mergeable:$mergeable")
-    fi
+    case "$mergeable" in
+      MERGEABLE)
+        ;;
+      ""|UNKNOWN)
+        mergeability_block_reason="pr-mergeability-pending:${mergeable:-UNKNOWN}"
+        block_reasons+=("$mergeability_block_reason")
+        ;;
+      *)
+        block_reasons+=("pr-not-mergeable:$mergeable")
+        ;;
+    esac
 
     case "$checks_status" in
       green)
@@ -669,6 +762,10 @@ PY
 
     if [ "$do_merge" -eq 1 ] && [ "$json" -eq 0 ] && [ "$pr_finish_explain" -eq 0 ] && [ "$checks_status" != "green" ]; then
       pr_finish_warn "checks-$checks_status"
+    fi
+
+    if [ "$do_merge" -eq 1 ] && [ "$json" -eq 0 ] && [ "$pr_finish_explain" -eq 0 ] && [ -n "$mergeability_block_reason" ]; then
+      pr_finish_warn "mergeability still pending from GitHub: ${mergeable:-UNKNOWN}"
     fi
 
     if [ "$do_watch" -eq 1 ] && [ "$checks_status" != "green" ]; then

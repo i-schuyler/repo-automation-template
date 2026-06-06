@@ -9,14 +9,14 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
 touched_files_base="main"
 touched_files_head="HEAD"
-touched_files_machine_json=0
+touched_files_json_mode=0
 touched_files_mode="commit-range"
 touched_files_commit_range_files=()
 touched_files_working_tree_tracked_files=()
 touched_files_untracked_files=()
 
 touched_files_usage() {
-  printf 'Usage: repo-automation/bin/touched-files [--base=<ref>] [--head=<ref>] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/touched-files [--base=<ref>] [--head=<ref>] [--json] [--help]\n'
 }
 
 touched_files_json_escape() {
@@ -156,7 +156,7 @@ touched_files_print_human() {
 touched_files_print_json() {
   printf '{'
   printf '"script":"touched-files",'
-  printf '"machine_json":true,'
+  printf '"json_mode":true,'
   printf '"base":"%s",' "$(touched_files_json_escape "$touched_files_base")"
   printf '"head":"%s",' "$(touched_files_json_escape "$touched_files_head")"
   printf '"mode":"%s",' "$(touched_files_json_escape "$touched_files_mode")"
@@ -183,8 +183,8 @@ touched_files_main() {
       --head|--head=*)
         repo_auto_parse_value_flag_strict "$arg" "--head" "use --head=<ref>" touched_files_head "${2:-}" || return 1
         ;;
-      --machine-json)
-        touched_files_machine_json=1
+      --json)
+        touched_files_json_mode=1
         ;;
       *)
         if [ "${arg#--}" != "$arg" ]; then
@@ -200,7 +200,7 @@ touched_files_main() {
 
   touched_files_collect || return 1
 
-  if [ "$touched_files_machine_json" -eq 1 ]; then
+  if [ "$touched_files_json_mode" -eq 1 ]; then
     touched_files_print_json
   else
     touched_files_print_human

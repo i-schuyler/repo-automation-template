@@ -574,7 +574,7 @@ repo_doctor_check_automation_freshness() {
   mkdir -p "$temp_root" >/dev/null 2>&1 || true
   freshness_json="$temp_root/repo-doctor-automation-freshness.json"
 
-  if repo-automation/bin/automation-freshness --machine-json > "$freshness_json" 2>/dev/null; then
+  if repo-automation/bin/automation-freshness --json > "$freshness_json" 2>/dev/null; then
     :
   else
     status=1
@@ -624,7 +624,7 @@ repo_doctor_check_starter_template_readiness() {
   mkdir -p "$temp_root" >/dev/null 2>&1 || true
   readiness_json="$temp_root/repo-doctor-starter-template-ready.json"
 
-  if repo-automation/bin/starter-template-ready --check-current --machine-json > "$readiness_json" 2>/dev/null; then
+  if repo-automation/bin/starter-template-ready --check-current --json > "$readiness_json" 2>/dev/null; then
     :
   else
     status=1
@@ -905,7 +905,7 @@ repo_doctor_check_github_settings_readiness() {
 
   mkdir -p "$temp_root" >/dev/null 2>&1 || true
 
-  if ! repo-automation/bin/github-settings-check --repo="$repo_slug" --machine-json --quiet > "$helper_json" 2>/dev/null; then
+  if ! repo-automation/bin/github-settings-check --repo="$repo_slug" --json --quiet > "$helper_json" 2>/dev/null; then
     status=1
   fi
 

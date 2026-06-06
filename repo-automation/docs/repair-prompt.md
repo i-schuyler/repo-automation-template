@@ -4,7 +4,7 @@
 
 ## Behavior
 
-- `--source=ci` gathers CI evidence when needed, preferring `ci-log-dump --first-failure --machine-json`
+- `--source=ci` gathers CI evidence when needed, preferring `ci-log-dump --first-failure --json`
 - `--source=local` gathers local failure evidence when needed
 - `--target=codex` creates a prompt artifact only
 - stops cleanly when required evidence does not exist

@@ -114,13 +114,13 @@ def as_bool(value: object) -> bool | None:
 
 def print_help() -> None:
     print(
-        """Usage: repo-automation/bin/github-settings-check [--repo=<owner/repo>] [--machine-json] [--quiet] [--explain] [--help]
+        """Usage: repo-automation/bin/github-settings-check [--repo=<owner/repo>] [--json] [--quiet] [--explain] [--help]
 
 Check GitHub repository settings readiness for the current checkout or an explicit repo.
 
 Flags:
   --repo=<owner/repo>   Check the named repository instead of inferring origin
-  --machine-json        Emit machine-readable JSON output
+  --json        Emit machine-readable JSON output
   --quiet               Suppress clean-success output in human mode
   --explain             Show the full compact report in human mode
   --help                Show this help text and exit
@@ -137,7 +137,7 @@ def flag_error(reason: str, flag: str, fix: str) -> int:
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace | int:
-    machine_json = False
+    json_mode = False
     quiet = False
     explain = False
     repo = ""
@@ -148,8 +148,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace | int:
         if arg == "--help":
             print_help()
             return 0
-        if arg == "--machine-json":
-            machine_json = True
+        if arg == "--json":
+            json_mode = True
             index += 1
             continue
         if arg == "--quiet":
@@ -174,7 +174,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace | int:
         if arg.startswith("-"):
             return flag_error("unknown flag", arg, "run repo-automation/bin/github-settings-check --help")
         return flag_error("unknown flag", arg, "run repo-automation/bin/github-settings-check --help")
-    return argparse.Namespace(repo=repo, machine_json=machine_json, quiet=quiet, explain=explain)
+    return argparse.Namespace(repo=repo, json_mode=json_mode, quiet=quiet, explain=explain)
 
 
 def main() -> int:
@@ -193,7 +193,7 @@ def main() -> int:
 
     result: dict[str, object] = {
         "script": "github-settings-check",
-        "mode": "machine-json" if args.machine_json else ("quiet" if args.quiet else ("explain" if args.explain else "summary")),
+        "mode": "json" if args.json_mode else ("quiet" if args.quiet else ("explain" if args.explain else "summary")),
         "repo": repo,
         "repo_source": repo_source,
         "worktree_root": str(worktree_root),
@@ -444,7 +444,7 @@ def main() -> int:
                     result["stop_reason"] = check["message"]
                     break
 
-    if args.machine_json:
+    if args.json_mode:
         print(json.dumps(result, separators=(",", ":")))
         return 0 if result["overall_status"] != "fail" else 1
 

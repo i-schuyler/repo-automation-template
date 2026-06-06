@@ -71,11 +71,11 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
-    TMPDIR="$temp_root" repo-automation/bin/failure-log --kind=run-tests --lines=2 --machine-json > "$kind_json"
+    TMPDIR="$temp_root" repo-automation/bin/failure-log --kind=run-tests --lines=2 --json > "$kind_json"
   ) && python3 -m json.tool "$kind_json" >/dev/null &&     smoke_json_assert "$kind_json" 'data.get("script") == "failure-log" and data.get("kind") == "run-tests" and data.get("lines") == 2 and data.get("log_file", "").endswith("run-tests-20260512-120000.log") and len(data.get("excerpt", [])) == 2 and "FAIL: latest run-tests failure" in data.get("excerpt", [])'; then
-    test_pass "failure-log kind filter, line limits, and machine-json work"
+    test_pass "failure-log kind filter, line limits, and json work"
   else
-    test_fail "failure-log kind filter, line limits, and machine-json work"
+    test_fail "failure-log kind filter, line limits, and json work"
     status=1
   fi
 

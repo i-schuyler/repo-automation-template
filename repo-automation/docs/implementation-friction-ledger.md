@@ -64,6 +64,9 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-06-06 / PR #232 / ci-log-dump output-contract baseline / ids=none / score_delta=0 / signal=focused output-mode conflict, json, quiet, and artifact-path coverage landed without material friction; canonical JSON cleanup removed the legacy compatibility path across ci-log-dump, ci-status, and ci-watch
+- 2026-06-06 / PR #232 follow-up / slice-handoff execution-submit scenario split / ids=slice-handoff-contract-opacity / score_delta=0 / signal=split the overloaded execution-submit smoke coverage into explicit success, false-positive, and true-blocker contracts without changing product behavior
+- 2026-06-06 / PR #232 follow-up / pr-finish mergeability refresh and review-request ergonomics / ids=none / score_delta=0 / signal=refreshed pr-finish metadata after watch so stale mergeable=UNKNOWN now reports pending mergeability, and clarified submit docs so PR Review blocks only appear when review-request sources are supplied
 - 2026-06-06 / PR #231 / codex-run child/final-output hardening / ids=none / score_delta=0 / signal=quiet QDE, output-mode conflict gating, child failure metadata, final-output contract failures, and final-output block write coverage were added without material friction
 - 2026-06-06 / PR #230 / codex-slice-preflight JSON stderr repair / ids=none / score_delta=0 / signal=JSON failure stderr was suppressed in preflight while keeping human/explain and parser behavior unchanged
 - 2026-06-06 / codex-slice-preflight declared-contract baseline / ids=none / score_delta=0 / signal=focused preflight contract tests now cover strict help syntax, JSON/explain boundaries, and declared cleanup behavior without material friction
@@ -104,6 +107,8 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-06-02 / codex-session-resume-docs-slice / ids=none / score_delta=0 / signal=public-safe Codex interactive-resume-session metadata notes and future helper direction documented without implementation
 - 2026-06-02 / codex-status-phase1 / ids=none / score_delta=0 / signal=implemented read-only JSON-first codex-status helper with fixture-backed Phase 1 contract coverage
 - 2026-06-04 / PR #221 / smoke quiet-actionable / ids=slice-handoff-contract-opacity / score_delta=-1 / signal=quiet/default smoke and focused-wrapper failures now prefer the first actionable inner failure or a self-describing fallback when captured output is silent
+- 2026-06-06 / PR #232 / ci-log-dump latest-pr alias / ids=none / score_delta=0 / signal=implemented `--pr=latest` resolution and rejection of unsupported `--pr=current` without material friction
+- 2026-06-06 / PR #232 / pr-finish-extensions shellcheck global / ids=none / score_delta=0 / signal=annotated smoke harness globals in pr-finish-extensions so SC2154 does not obscure contract coverage
 
 ## Maintenance Notes
 

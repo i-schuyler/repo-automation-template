@@ -1,18 +1,20 @@
 # CI Log Dump
 
-`repo-automation/bin/ci-log-dump` is a read-only helper that saves a failed GitHub Actions log to a durable directory and prints the saved path plus either a tail excerpt or a compact first-failure diagnosis.
+`repo-automation/bin/ci-log-dump` is a read-only helper that saves a failed GitHub Actions log to a durable directory and reports the saved path plus either a tail excerpt or a compact first-failure diagnosis.
 
 ## What It Does
 
 - resolves the target repo from `--repo=OWNER/REPO` or the current repo's GitHub `origin` remote, including common HTTPS, SSH, and GitHub SSH-alias forms
-- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by PR head SHA/branch, or by the current branch
+- finds a failed run by `--run-id`, by repo-wide `--latest-failed`, by `--pr=<number|latest>`, or by the current branch
 - defaults to failed-only log output
 - writes the log to the configured output directory
-- prints a human summary or machine JSON
+- prints a human summary or JSON output
 
 `--latest-failed` selects the most recent failed workflow run for the target repo regardless of branch.
 
 For `--pr=<number>`, the helper resolves the PR head branch and, when supported by the local GitHub CLI, the PR head SHA. It prefers failed `pull_request` runs for that SHA, then falls back to branch/event lookup, then to failed runs filtered by the PR head SHA. It does not select an unrelated failed run when the PR head SHA is known.
+
+For `--pr=latest`, the helper lists open PRs in the target repo, excludes drafts when the GitHub CLI JSON includes `isDraft`, chooses the most recently updated remaining PR, and then reuses the normal PR run lookup path for that resolved number. If draft metadata is absent, it chooses the most recently updated open PR from the available fields.
 
 For `--run-id=<id>`, the helper treats the run id as authoritative and fetches that run directly without PR or branch lookup.
 
@@ -21,9 +23,10 @@ For `--run-id=<id>`, the helper treats the run id as authoritative and fetches t
     repo-automation/bin/ci-log-dump --help
     repo-automation/bin/ci-log-dump --run-id=123456789
     repo-automation/bin/ci-log-dump --pr=34
+    repo-automation/bin/ci-log-dump --pr=latest
     repo-automation/bin/ci-log-dump --repo=OWNER/REPO --latest-failed
     repo-automation/bin/ci-log-dump --first-failure
-    repo-automation/bin/ci-log-dump --machine-json
+    repo-automation/bin/ci-log-dump --json
 
 ## Output Directory
 
@@ -34,12 +37,24 @@ The helper writes to:
 
 The saved file name uses the format `actions_run_<run-id>_<timestamp>.log`.
 
-## Machine Output
+## Output Modes
+
+Default success prints only the saved log path.
+
+`--quiet` keeps success silent. On expected failures it emits a QDE-style envelope on stderr with `result=fail`, `code`, `step`, `reason`, `fix`, and optional `artifact`, `log`, or `excerpt` fields.
+
+`--json` emits JSON only on stdout for both success and expected failure. Success uses the canonical helper envelope (`schema`, `script`, `mode`, `result`, `status`) and includes `repo`, `pr`, `run_id`, `out_dir`, `tail_lines`, `failed_only`, `latest_failed`, `log_path`, `file_size_bytes`, `overall_status`, `stop_reason`, and `tail_excerpt`; `--first-failure` also adds `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`. Failure JSON includes the same canonical envelope with `result=fail`, `status=fail`, `code`, `step`, `reason`, `fix`, and any useful `artifact_path`/`log_path` clues.
+
+`--explain` prints the detailed human summary and ends with a final summary block even on early STOP. That summary is not emitted in JSON mode.
+
+Mode conflicts are rejected before any GitHub CLI call:
+
+- `--json --explain`
+- `--json --quiet`
+- `--quiet --explain`
+
+`--pr=current` is not implemented in this slice; it is rejected as an unsupported alias before any GitHub CLI call.
 
 `--first-failure` parses the saved failed log locally and reports the first actionable failure label, excerpt, and next fix hint using the shared CI failure taxonomy.
 
-`--machine-json` emits a single JSON object with the repo, PR number when present, run id, saved path, file size, and tail excerpt. With `--first-failure`, it also includes `first_failure_label`, `first_failure_excerpt`, and `recommended_fix`.
-
-`--quiet` suppresses clean-success output. `--explain` prints the detailed human summary and ends with a final summary block even on early STOP. `--machine-json` stays JSON-only. Default success is the saved path only.
-
-When no failed run is found for a PR, STOP output includes whether the PR head branch and head SHA were resolved and which lookup modes were attempted.
+When no failed run is found for a PR, STOP output includes whether the PR head branch and head SHA were resolved and which lookup modes were attempted. Failure output keeps the artifact directory or saved log path when that path is the next useful debugging surface.

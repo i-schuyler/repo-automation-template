@@ -14,7 +14,7 @@ ci_log_dump_out_dir=""
 ci_log_dump_tail_lines=160
 ci_log_dump_failed_only=1
 ci_log_dump_latest_failed=0
-ci_log_dump_machine_json=0
+ci_log_dump_json=0
 ci_log_dump_quiet=0
 ci_log_dump_explain=0
 ci_log_dump_first_failure=0
@@ -22,17 +22,25 @@ ci_log_dump_first_failure_label=""
 ci_log_dump_first_failure_excerpt=""
 ci_log_dump_first_failure_recommended_fix=""
 ci_log_dump_gh_failure_message=""
+ci_log_dump_failure_code=""
+ci_log_dump_failure_step=""
+ci_log_dump_failure_reason=""
+ci_log_dump_failure_fix=""
+ci_log_dump_failure_artifact=""
+ci_log_dump_failure_log_path=""
+ci_log_dump_failure_excerpt=""
 ci_log_dump_stop_reason=""
 ci_log_dump_log_path=""
 ci_log_dump_pr_head_branch=""
 ci_log_dump_pr_head_sha=""
 ci_log_dump_pr_lookup_modes=""
+ci_log_dump_selected_pr_number=""
 ci_log_dump_selected_run_id=""
 
 ci_log_dump_print_final_summary() {
   local rc="${1:-0}"
 
-  if [ "$ci_log_dump_explain" -ne 1 ] || [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_explain" -ne 1 ] || [ "$ci_log_dump_json" -eq 1 ]; then
     return 0
   fi
 
@@ -56,7 +64,7 @@ ci_log_dump_print_final_summary() {
 }
 
 ci_log_dump_usage() {
-  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|current|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--machine-json] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-log-dump [--repo=<owner/repo>] [--pr=<number|latest>] [--run-id=<id>] [--out-dir=<path>] [--tail=<lines>] [--failed-only] [--latest-failed] [--first-failure] [--json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_log_dump_flag_error() {
@@ -64,9 +72,51 @@ ci_log_dump_flag_error() {
   local flag="$2"
   local fix="$3"
 
-  printf 'fail: %s\n' "$reason" >&2
-  printf 'flag: %s\n' "$flag" >&2
-  printf 'fix: %s\n' "$fix" >&2
+  ci_log_dump_stop_reason="$reason"
+  if [ "$ci_log_dump_json" -eq 1 ]; then
+    ci_log_dump_print_failure_json "flag-parse-failed" "flag-parse" "$reason" "$fix" "" "" ""
+  elif [ "$ci_log_dump_quiet" -eq 1 ]; then
+    ci_log_dump_print_failure_quiet "flag-parse-failed" "flag-parse" "$reason" "$fix" "" "" ""
+  else
+    printf 'fail: %s\n' "$reason" >&2
+    printf 'flag: %s\n' "$flag" >&2
+    printf 'fix: %s\n' "$fix" >&2
+  fi
+  return 1
+}
+
+ci_log_dump_validate_output_modes() {
+  local mode_count=0
+  local flags=""
+
+  if [ "$ci_log_dump_json" -eq 1 ]; then
+    mode_count=$((mode_count + 1))
+    flags="${flags:+$flags }--json"
+  fi
+  if [ "$ci_log_dump_quiet" -eq 1 ]; then
+    mode_count=$((mode_count + 1))
+    flags="${flags:+$flags }--quiet"
+  fi
+  if [ "$ci_log_dump_explain" -eq 1 ]; then
+    mode_count=$((mode_count + 1))
+    flags="${flags:+$flags }--explain"
+  fi
+
+  if [ "$mode_count" -le 1 ]; then
+    return 0
+  fi
+
+  ci_log_dump_explain=0
+  ci_log_dump_stop_reason="incompatible output mode flags: $flags"
+
+  if [ "$ci_log_dump_json" -eq 1 ]; then
+    ci_log_dump_print_failure_json "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain" "" "" ""
+  elif [ "$ci_log_dump_quiet" -eq 1 ]; then
+    ci_log_dump_print_failure_quiet "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain" "" "" ""
+  else
+    ci_log_dump_print_failure_human "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain"
+  fi
+  return 1
 }
 
 ci_log_dump_json_escape() {
@@ -79,33 +129,141 @@ ci_log_dump_json_escape() {
   printf '%s' "$input"
 }
 
-ci_log_dump_stop() {
-  local message="$1"
-  ci_log_dump_stop_reason="$message"
+ci_log_dump_clear_failure() {
+  ci_log_dump_failure_code=""
+  ci_log_dump_failure_step=""
+  ci_log_dump_failure_reason=""
+  ci_log_dump_failure_fix=""
+  ci_log_dump_failure_artifact=""
+  ci_log_dump_failure_log_path=""
+  ci_log_dump_failure_excerpt=""
+}
 
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
-    printf '{'
-    printf '"script":"ci-log-dump",'
-    printf '"repo":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_repo")"
-    printf '"pr":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_pr")"
-    printf '"run_id":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_run_id")"
-    printf '"out_dir":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_out_dir")"
-    printf '"tail_lines":%s,' "$ci_log_dump_tail_lines"
-    printf '"failed_only":%s,' "$ci_log_dump_failed_only"
-    printf '"latest_failed":%s,' "$ci_log_dump_latest_failed"
-    printf '"log_path":"",'
-    printf '"file_size_bytes":0,'
-    printf '"overall_status":"fail",'
-    printf '"stop_reason":"%s",' "$(ci_log_dump_json_escape "$message")"
-    printf '"first_failure_label":"",'
-    printf '"first_failure_excerpt":"",'
-    printf '"recommended_fix":"",'
-    printf '"tail_excerpt":[]'
-    printf '}\n'
+ci_log_dump_print_failure_json() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local artifact_path="${5:-}"
+  local log_path="${6:-}"
+  local excerpt="${7:-}"
+
+  printf '{'
+  printf '"schema":"repo-automation-helper-output/v1",'
+  printf '"script":"ci-log-dump",'
+  printf '"mode":"json",'
+  printf '"result":"fail",'
+  printf '"status":"fail",'
+  printf '"code":"%s",' "$(ci_log_dump_json_escape "$code")"
+  printf '"step":"%s",' "$(ci_log_dump_json_escape "$step")"
+  printf '"reason":"%s",' "$(ci_log_dump_json_escape "$reason")"
+  printf '"fix":"%s",' "$(ci_log_dump_json_escape "$fix")"
+  printf '"log_path":"%s",' "$(ci_log_dump_json_escape "$log_path")"
+  printf '"artifact_path":"%s",' "$(ci_log_dump_json_escape "$artifact_path")"
+  printf '"artifact":"%s",' "$(ci_log_dump_json_escape "$artifact_path")"
+  printf '"overall_status":"fail",'
+  printf '"stop_reason":"%s",' "$(ci_log_dump_json_escape "$reason")"
+  printf '"file_size_bytes":0,'
+  printf '"first_failure_label":"",'
+  printf '"first_failure_excerpt":"",'
+  printf '"recommended_fix":"",'
+  printf '"tail_excerpt":[]'
+  if [ -n "$excerpt" ]; then
+    printf ',"excerpt":"%s"' "$(ci_log_dump_json_escape "$excerpt")"
+  fi
+  printf '}\n'
+}
+
+ci_log_dump_print_failure_quiet() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local artifact_path="${5:-}"
+  local log_path="${6:-}"
+  local excerpt="${7:-}"
+
+  printf 'result=fail\n' >&2
+  printf 'code=%s\n' "$code" >&2
+  printf 'step=%s\n' "$step" >&2
+  printf 'reason=%s\n' "$reason" >&2
+  printf 'fix=%s\n' "$fix" >&2
+  if [ -n "$artifact_path" ]; then
+    printf 'artifact=%s\n' "$artifact_path" >&2
+  fi
+  if [ -n "$log_path" ]; then
+    printf 'log=%s\n' "$log_path" >&2
+  fi
+  if [ -n "$excerpt" ]; then
+    printf 'excerpt=%s\n' "$excerpt" >&2
+  fi
+}
+
+ci_log_dump_print_failure_human() {
+  local reason="$1"
+  local fix="$2"
+  local artifact_path="${3:-}"
+  local log_path="${4:-}"
+  local excerpt="${5:-}"
+
+  printf 'STOP: %s\n' "$reason" >&2
+  if [ -n "$fix" ]; then
+    printf 'fix: %s\n' "$fix" >&2
+  fi
+  if [ -n "$artifact_path" ]; then
+    printf 'artifact: %s\n' "$artifact_path" >&2
+  fi
+  if [ -n "$log_path" ]; then
+    printf 'log: %s\n' "$log_path" >&2
+  fi
+  if [ -n "$excerpt" ]; then
+    printf 'excerpt:\n%s\n' "$excerpt" >&2
+  fi
+}
+
+ci_log_dump_emit_failure() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local artifact_path="${5:-}"
+  local log_path="${6:-}"
+  local excerpt="${7:-}"
+
+  ci_log_dump_stop_reason="$reason"
+  ci_log_dump_failure_code="$code"
+  ci_log_dump_failure_step="$step"
+  ci_log_dump_failure_reason="$reason"
+  ci_log_dump_failure_fix="$fix"
+  ci_log_dump_failure_artifact="$artifact_path"
+  ci_log_dump_failure_log_path="$log_path"
+  ci_log_dump_failure_excerpt="$excerpt"
+
+  if [ "$ci_log_dump_json" -eq 1 ]; then
+    ci_log_dump_print_failure_json "$code" "$step" "$reason" "$fix" "$artifact_path" "$log_path" "$excerpt"
+  elif [ "$ci_log_dump_quiet" -eq 1 ]; then
+    ci_log_dump_print_failure_quiet "$code" "$step" "$reason" "$fix" "$artifact_path" "$log_path" "$excerpt"
   else
-    printf 'STOP: %s\n' "$message" >&2
+    ci_log_dump_print_failure_human "$reason" "$fix" "$artifact_path" "$log_path" "$excerpt"
   fi
   return 1
+}
+
+ci_log_dump_stop() {
+  local message="$1"
+  ci_log_dump_emit_failure "stop" "ci-log-dump" "$message" "" "" "" ""
+}
+
+ci_log_dump_fail() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local artifact_path="${5:-}"
+  local log_path="${6:-}"
+  local excerpt="${7:-}"
+
+  ci_log_dump_emit_failure "$code" "$step" "$reason" "$fix" "$artifact_path" "$log_path" "$excerpt"
 }
 
 ci_log_dump_repo_from_remote() {
@@ -230,6 +388,7 @@ ci_log_dump_gh_output() {
   local gh_stdout
   local gh_stderr
 
+  ci_log_dump_clear_failure
   gh_stdout="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   gh_stderr="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   ci_log_dump_gh_failure_message=""
@@ -267,7 +426,14 @@ PY
     break
   done
 
-  ci_log_dump_stop "BLOCKER: GitHub API failure while $operation after $attempts attempts: $(ci_log_dump_gh_excerpt "$gh_stderr" "$gh_stdout")"
+  ci_log_dump_gh_failure_message="BLOCKER: GitHub API failure while $operation after $attempts attempts: $(ci_log_dump_gh_excerpt "$gh_stderr" "$gh_stdout")"
+  ci_log_dump_failure_code="github-api-failure"
+  ci_log_dump_failure_step="gh-api"
+  ci_log_dump_failure_reason="$ci_log_dump_gh_failure_message"
+  ci_log_dump_failure_fix="check gh auth status and your network, then rerun"
+  ci_log_dump_failure_artifact="$ci_log_dump_out_dir"
+  ci_log_dump_failure_log_path=""
+  ci_log_dump_failure_excerpt="$(ci_log_dump_gh_excerpt "$gh_stderr" "$gh_stdout")"
   rm -f "$gh_stdout" "$gh_stderr" >/dev/null 2>&1 || true
   return 1
 }
@@ -290,6 +456,27 @@ PY
 
   : >"$stdout_file"
   return 1
+}
+
+ci_log_dump_render_pending_failure() {
+  local default_reason="$1"
+  local default_fix="$2"
+  local artifact_path="${3:-}"
+  local log_path="${4:-}"
+  local excerpt="${5:-}"
+
+  if [ -n "$ci_log_dump_failure_code" ]; then
+    ci_log_dump_emit_failure \
+      "$ci_log_dump_failure_code" \
+      "$ci_log_dump_failure_step" \
+      "$ci_log_dump_failure_reason" \
+      "$ci_log_dump_failure_fix" \
+      "$ci_log_dump_failure_artifact" \
+      "$ci_log_dump_failure_log_path" \
+      "$ci_log_dump_failure_excerpt"
+  else
+    ci_log_dump_fail "ci-log-dump-failed" "ci-log-dump" "$default_reason" "$default_fix" "$artifact_path" "$log_path" "$excerpt"
+  fi
 }
 
 ci_log_dump_pick_head_branch() {
@@ -357,9 +544,16 @@ ci_log_dump_pick_run_id_for_branch() {
   local event_name="$2"
   local expected_sha="${3:-}"
   local gh_output
+  local gh_output_file
 
-  gh_output="$(ci_log_dump_gh_output "listing failed runs for branch $branch_name ($event_name)" 1 gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,headSha,status,workflowName)" || return 1
-  GH_OUTPUT_JSON="$gh_output" python3 - "$expected_sha" "$branch_name" "$event_name" <<'PY'
+  gh_output_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  if ! ci_log_dump_gh_output "listing failed runs for branch $branch_name ($event_name)" 1 gh run list --repo "$ci_log_dump_repo" --branch "$branch_name" --event "$event_name" --status failure --limit 50 --json databaseId,conclusion,createdAt,event,headBranch,headSha,status,workflowName >"$gh_output_file"; then
+    rm -f "$gh_output_file" >/dev/null 2>&1 || true
+    return 1
+  fi
+  gh_output="$(cat "$gh_output_file")"
+  rm -f "$gh_output_file" >/dev/null 2>&1 || true
+  ci_log_dump_selected_run_id="$(GH_OUTPUT_JSON="$gh_output" python3 - "$expected_sha" "$branch_name" "$event_name" <<'PY'
 import json
 import os
 import sys
@@ -382,13 +576,65 @@ for item in items:
     matches.append(item)
 print(str(max(matches, key=lambda item: item.get('createdAt', '')).get('databaseId', '')) if matches else '')
 PY
+)"
+  [ -n "$ci_log_dump_selected_run_id" ] || return 0
+  return 0
 }
 
 ci_log_dump_pick_latest_failed_run() {
   local gh_output
+  local gh_output_file
 
-  gh_output="$(ci_log_dump_gh_output "listing latest failed runs for repository $ci_log_dump_repo" 1 gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName)" || return 1
-  printf '%s' "$gh_output" | python3 -c 'import json,sys; items=json.load(sys.stdin); failed=[item for item in items if item.get("conclusion")=="failure"]; print(max(failed, key=lambda item: item.get("createdAt","")).get("databaseId","") if failed else "")'
+  gh_output_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  if ! ci_log_dump_gh_output "listing latest failed runs for repository $ci_log_dump_repo" 1 gh run list --repo "$ci_log_dump_repo" --status failure --limit 100 --json databaseId,conclusion,createdAt,event,headBranch,status,workflowName >"$gh_output_file"; then
+    rm -f "$gh_output_file" >/dev/null 2>&1 || true
+    return 1
+  fi
+  gh_output="$(cat "$gh_output_file")"
+  rm -f "$gh_output_file" >/dev/null 2>&1 || true
+  ci_log_dump_selected_run_id="$(printf '%s' "$gh_output" | python3 -c 'import json,sys; items=json.load(sys.stdin); failed=[item for item in items if item.get("conclusion")=="failure"]; print(max(failed, key=lambda item: item.get("createdAt","")).get("databaseId","") if failed else "")')"
+  return 0
+}
+
+ci_log_dump_pick_latest_pr() {
+  local gh_output
+  local gh_output_file
+
+  ci_log_dump_selected_pr_number=""
+  gh_output_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
+  if ! ci_log_dump_gh_output "listing open pull requests for repository $ci_log_dump_repo" 1 gh pr list --repo "$ci_log_dump_repo" --state open --limit 100 --json number,updatedAt,isDraft >"$gh_output_file"; then
+    rm -f "$gh_output_file" >/dev/null 2>&1 || true
+    return 1
+  fi
+  gh_output="$(cat "$gh_output_file")"
+  rm -f "$gh_output_file" >/dev/null 2>&1 || true
+  ci_log_dump_selected_pr_number="$(GH_OUTPUT_JSON="$gh_output" python3 - <<'PY'
+import json
+import os
+
+items = json.loads(os.environ.get('GH_OUTPUT_JSON', '[]'))
+has_draft_metadata = any('isDraft' in item for item in items)
+candidates = []
+for item in items:
+    if str(item.get('state', 'OPEN')).upper() != 'OPEN':
+        continue
+    if has_draft_metadata and item.get('isDraft') is True:
+        continue
+    number = item.get('number')
+    if number in (None, ''):
+        continue
+    try:
+        number_value = int(number)
+    except Exception:
+        continue
+    updated_at = str(item.get('updatedAt', ''))
+    candidates.append((updated_at, number_value))
+
+if candidates:
+    print(str(max(candidates, key=lambda item: (item[0], item[1]))[1]))
+PY
+)"
+  return 0
 }
 
 ci_log_dump_pick_run_id_for_pr() {
@@ -417,7 +663,10 @@ ci_log_dump_pick_run_id_for_pr() {
   fi
 
   ci_log_dump_record_lookup_mode "branch-pull_request"
-  run_id="$(ci_log_dump_pick_run_id_for_branch "$ci_log_dump_pr_head_branch" pull_request "$ci_log_dump_pr_head_sha")" || return 1
+  if ! ci_log_dump_pick_run_id_for_branch "$ci_log_dump_pr_head_branch" pull_request "$ci_log_dump_pr_head_sha"; then
+    return 1
+  fi
+  run_id="$ci_log_dump_selected_run_id"
   [ -n "$run_id" ] && {
     ci_log_dump_selected_run_id="$run_id"
     return 0
@@ -576,7 +825,11 @@ $(ci_log_dump_tail_excerpt "$log_path")
 EOF_EXCERPT
 
   printf '{'
+  printf '"schema":"repo-automation-helper-output/v1",'
   printf '"script":"ci-log-dump",'
+  printf '"mode":"json",'
+  printf '"result":"pass",'
+  printf '"status":"pass",'
   printf '"repo":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_repo")"
   printf '"pr":"%s",' "$(ci_log_dump_json_escape "$ci_log_dump_pr")"
   printf '"run_id":"%s",' "$(ci_log_dump_json_escape "$run_id")"
@@ -612,6 +865,23 @@ ci_log_dump_main() {
 
   trap 'ci_log_dump_print_final_summary "$?"' EXIT
 
+  for arg in "$@"; do
+    case "$arg" in
+      --json=*)
+        ci_log_dump_json=1
+        ;;
+      --json)
+        ci_log_dump_json=1
+        ;;
+      --quiet)
+        ci_log_dump_quiet=1
+        ;;
+      --explain)
+        ci_log_dump_explain=1
+        ;;
+    esac
+  done
+
   while [ "$#" -gt 0 ]; do
     arg="$1"
     case "$arg" in
@@ -637,19 +907,24 @@ ci_log_dump_main() {
       --pr=*)
         ci_log_dump_pr="${arg#--pr=}"
         if [ -z "$ci_log_dump_pr" ]; then
-          ci_log_dump_flag_error "empty flag value" "--pr" "use --pr=<number>"
+          ci_log_dump_flag_error "empty flag value" "--pr" "use --pr=<number|latest>"
           return 1
         fi
-        if ! repo_auto_is_positive_integer "$ci_log_dump_pr"; then
-          ci_log_dump_stop "invalid --pr value: $ci_log_dump_pr"
+        if [ "$ci_log_dump_pr" = "latest" ]; then
+          :
+        elif [ "$ci_log_dump_pr" = "current" ]; then
+          ci_log_dump_flag_error "unsupported --pr alias: current" "--pr" "use --pr=<number> or --pr=latest"
+          return 1
+        elif ! repo_auto_is_positive_integer "$ci_log_dump_pr"; then
+          ci_log_dump_flag_error "invalid --pr value: $ci_log_dump_pr" "--pr" "use --pr=<number|latest>"
           return 1
         fi
         ;;
       --pr)
         if [ "$#" -gt 1 ] && [ "${2#-}" = "$2" ]; then
-          ci_log_dump_flag_error "flag format not accepted" "--pr" "use --pr=<number>"
+          ci_log_dump_flag_error "flag format not accepted" "--pr" "use --pr=<number|latest>"
         else
-          ci_log_dump_flag_error "missing flag value" "--pr" "use --pr=<number>"
+          ci_log_dump_flag_error "missing flag value" "--pr" "use --pr=<number|latest>"
         fi
         return 1
         ;;
@@ -660,7 +935,7 @@ ci_log_dump_main() {
           return 1
         fi
         if ! repo_auto_is_positive_integer "$ci_log_dump_run_id"; then
-          ci_log_dump_stop "invalid --run-id value: $ci_log_dump_run_id"
+          ci_log_dump_flag_error "invalid --run-id value: $ci_log_dump_run_id" "--run-id" "use --run-id=<id>"
           return 1
         fi
         ;;
@@ -694,7 +969,7 @@ ci_log_dump_main() {
           return 1
         fi
         if ! repo_auto_is_positive_integer "$ci_log_dump_tail_lines"; then
-          ci_log_dump_stop "invalid --tail value: $ci_log_dump_tail_lines"
+          ci_log_dump_flag_error "invalid --tail value: $ci_log_dump_tail_lines" "--tail" "use --tail=<lines>"
           return 1
         fi
         ;;
@@ -719,8 +994,12 @@ ci_log_dump_main() {
         ci_log_dump_flag_error "flag format not accepted" "--first-failure" "use --first-failure"
         return 1
         ;;
-      --machine-json)
-        ci_log_dump_machine_json=1
+      --json=*)
+        ci_log_dump_flag_error "flag format not accepted" "--json" "use --json"
+        return 1
+        ;;
+      --json)
+        ci_log_dump_json=1
         ;;
       --quiet)
         ci_log_dump_quiet=1
@@ -739,6 +1018,10 @@ ci_log_dump_main() {
     esac
     shift
   done
+
+  if ! ci_log_dump_validate_output_modes; then
+    return 1
+  fi
 
   worktree_root="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
   if [ -z "$ci_log_dump_repo" ]; then
@@ -761,30 +1044,46 @@ ci_log_dump_main() {
   if [ -n "$ci_log_dump_run_id" ]; then
     run_id="$ci_log_dump_run_id"
   elif [ "$ci_log_dump_latest_failed" -eq 1 ]; then
-    run_id="$(ci_log_dump_pick_latest_failed_run)" || {
-      if [ -n "$ci_log_dump_gh_failure_message" ]; then
-        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+    if ! ci_log_dump_pick_latest_failed_run; then
+      if [ -n "$ci_log_dump_failure_code" ]; then
+        ci_log_dump_render_pending_failure "no failed run found for repository $ci_log_dump_repo" "rerun with --run-id=<id> or inspect GitHub Actions for the missing failure"
       else
-        ci_log_dump_stop "no failed run found for repository $ci_log_dump_repo"
+        ci_log_dump_emit_failure "no-failed-run-found" "run-lookup" "no failed run found for repository $ci_log_dump_repo" "rerun with --run-id=<id> or inspect GitHub Actions for the missing failure" "$ci_log_dump_out_dir" "" ""
       fi
       return 1
-    }
+    fi
+    run_id="$ci_log_dump_selected_run_id"
     [ -n "$run_id" ] || {
-      ci_log_dump_stop "no failed run found for repository $ci_log_dump_repo"
+      ci_log_dump_fail "no-failed-run-found" "run-lookup" "no failed run found for repository $ci_log_dump_repo" "rerun with --run-id=<id> or inspect GitHub Actions for the missing failure" "$ci_log_dump_out_dir" "" ""
       return 1
     }
   elif [ -n "$ci_log_dump_pr" ]; then
+    if [ "$ci_log_dump_pr" = "latest" ]; then
+      if ! ci_log_dump_pick_latest_pr; then
+        if [ -n "$ci_log_dump_failure_code" ]; then
+          ci_log_dump_render_pending_failure "unable to resolve latest pull request for repository $ci_log_dump_repo" "rerun with --pr=<number> after confirming GitHub CLI access"
+        else
+          ci_log_dump_fail "github-api-failure" "gh-api" "unable to resolve latest pull request for repository $ci_log_dump_repo" "check gh auth status and your network, then rerun" "$ci_log_dump_out_dir" "" ""
+        fi
+        return 1
+      fi
+      ci_log_dump_pr="$ci_log_dump_selected_pr_number"
+      [ -n "$ci_log_dump_pr" ] || {
+        ci_log_dump_fail "no-pr-found" "pr-lookup" "no open non-draft PR found for repository $ci_log_dump_repo" "pass --pr=<number> or open/update a non-draft PR, then rerun" "$ci_log_dump_out_dir" "" ""
+        return 1
+      }
+    fi
     ci_log_dump_pick_run_id_for_pr "$ci_log_dump_pr" || {
-      if [ -n "$ci_log_dump_gh_failure_message" ]; then
-        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+      if [ -n "$ci_log_dump_failure_code" ]; then
+        ci_log_dump_render_pending_failure "unable to resolve head branch for PR #$ci_log_dump_pr" "rerun with --pr=<number> after confirming GitHub CLI access"
       else
-        ci_log_dump_stop "unable to resolve head branch for PR #$ci_log_dump_pr"
+        ci_log_dump_fail "pr-head-lookup-failed" "run-lookup" "unable to resolve head branch for PR #$ci_log_dump_pr" "rerun with --pr=<number> after confirming GitHub CLI access" "$ci_log_dump_out_dir" "" ""
       fi
       return 1
     }
     run_id="$ci_log_dump_selected_run_id"
     [ -n "$run_id" ] || {
-      ci_log_dump_stop "$(ci_log_dump_pr_no_run_message)"
+      ci_log_dump_fail "no-failed-run-found" "run-lookup" "$(ci_log_dump_pr_no_run_message)" "rerun with --run-id=<id> or inspect the PR's CI runs" "$ci_log_dump_out_dir" "" ""
       return 1
     }
   else
@@ -793,31 +1092,28 @@ ci_log_dump_main() {
       ci_log_dump_stop 'unable to determine current branch; pass --pr or --run-id'
       return 1
     }
-    run_id="$(ci_log_dump_pick_run_id_for_branch "$target_repo" push)" || {
-      if [ -n "$ci_log_dump_gh_failure_message" ]; then
-        ci_log_dump_stop "$ci_log_dump_gh_failure_message"
+    if ! ci_log_dump_pick_run_id_for_branch "$target_repo" push; then
+      if [ -n "$ci_log_dump_failure_code" ]; then
+        ci_log_dump_render_pending_failure 'no failed run found for the current branch' 'rerun after confirming the branch has a failed GitHub Actions run'
       else
-        ci_log_dump_stop 'no failed run found for the current branch'
+        ci_log_dump_fail 'no-failed-run-found' 'run-lookup' 'no failed run found for the current branch' 'rerun after confirming the branch has a failed GitHub Actions run' "$ci_log_dump_out_dir" "" ""
       fi
       return 1
-    }
+    fi
+    run_id="$ci_log_dump_selected_run_id"
   fi
   ci_log_dump_run_id="$run_id"
 
   gh_log_file="$(mktemp "${TMPDIR:-$HOME/.cache}/ci-log-dump.XXXXXX")"
   if [ "$ci_log_dump_failed_only" -eq 1 ]; then
     if ! ci_log_dump_gh_output "fetching failed log for run $run_id" 0 gh run view "$run_id" --repo "$ci_log_dump_repo" --log-failed >"$gh_log_file"; then
-      if [ "$ci_log_dump_machine_json" -eq 1 ] && [ -s "$gh_log_file" ]; then
-        cat "$gh_log_file"
-      fi
+      ci_log_dump_render_pending_failure "unable to fetch failed log for run $run_id" "retry after confirming GitHub Actions log access"
       rm -f "$gh_log_file" >/dev/null 2>&1 || true
       return 1
     fi
   else
     if ! ci_log_dump_gh_output "fetching log for run $run_id" 0 gh run view "$run_id" --repo "$ci_log_dump_repo" --log >"$gh_log_file"; then
-      if [ "$ci_log_dump_machine_json" -eq 1 ] && [ -s "$gh_log_file" ]; then
-        cat "$gh_log_file"
-      fi
+      ci_log_dump_render_pending_failure "unable to fetch log for run $run_id" "retry after confirming GitHub Actions log access"
       rm -f "$gh_log_file" >/dev/null 2>&1 || true
       return 1
     fi
@@ -825,7 +1121,7 @@ ci_log_dump_main() {
 
   mkdir -p "$ci_log_dump_out_dir" >/dev/null 2>&1 || {
     rm -f "$gh_log_file" >/dev/null 2>&1 || true
-    ci_log_dump_stop "unable to create output directory: $ci_log_dump_out_dir"
+    ci_log_dump_fail "output-dir-create-failed" "output-dir" "unable to create output directory: $ci_log_dump_out_dir" "pick a writable --out-dir or set TMPDIR/HOME to a writable location" "$ci_log_dump_out_dir" "" ""
     return 1
   }
 
@@ -835,7 +1131,7 @@ ci_log_dump_main() {
   size_bytes="$(wc -c <"$log_path" | tr -d '[:space:]')"
   rm -f "$gh_log_file" >/dev/null 2>&1 || true
 
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_json" -eq 1 ]; then
     if [ "$ci_log_dump_first_failure" -eq 1 ]; then
       ci_log_dump_first_failure_details "$log_path"
     fi

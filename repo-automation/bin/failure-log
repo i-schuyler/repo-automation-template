@@ -10,10 +10,10 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 failure_log_kind="any"
 failure_log_latest=1
 failure_log_lines=20
-failure_log_machine_json=0
+failure_log_json_mode=0
 
 failure_log_usage() {
-  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=<run-tests|repo-doctor|any>] [--lines=<lines>] [--machine-json] [--help]\n'
+  printf 'Usage: repo-automation/bin/failure-log [--latest] [--kind=<run-tests|repo-doctor|any>] [--lines=<lines>] [--json] [--help]\n'
 }
 
 failure_log_json_escape() {
@@ -33,7 +33,7 @@ failure_log_temp_root() {
 failure_log_output_stop() {
   local message="$1"
 
-  if [ "$failure_log_machine_json" -eq 1 ]; then
+  if [ "$failure_log_json_mode" -eq 1 ]; then
     printf '{'
     printf '"script":"failure-log",'
     printf '"kind":"%s",' "$(failure_log_json_escape "$failure_log_kind")"
@@ -222,8 +222,8 @@ failure_log_main() {
           return 1
         fi
         ;;
-      --machine-json)
-        failure_log_machine_json=1
+      --json)
+        failure_log_json_mode=1
         ;;
       *)
         repo_auto_flag_error "unknown flag" "$arg" "run repo-automation/bin/failure-log --help" || return 1
@@ -245,7 +245,7 @@ failure_log_main() {
     return 1
   fi
 
-  if [ "$failure_log_machine_json" -eq 1 ]; then
+  if [ "$failure_log_json_mode" -eq 1 ]; then
     failure_log_print_json "$log_file" "$failure_log_lines"
   else
     failure_log_print_human "$log_file" "$failure_log_lines"

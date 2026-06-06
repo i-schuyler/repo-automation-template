@@ -13,12 +13,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 prepare_release_mode="check"
 prepare_release_version=""
-prepare_release_machine_json=0
+prepare_release_json_mode=0
 prepare_release_explain=0
 prepare_release_help=0
 
 prepare_release_usage() {
-  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=<semver>] [--dry-run] [--apply] [--machine-json] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/prepare-release [--check] [--version=<semver>] [--dry-run] [--apply] [--json] [--explain] [--help]\n'
 }
 
 prepare_release_stop() {
@@ -60,8 +60,8 @@ prepare_release_main() {
         prepare_release_usage
         return 0
         ;;
-      --machine-json)
-        prepare_release_machine_json=1
+      --json)
+        prepare_release_json_mode=1
         ;;
       --explain)
         prepare_release_explain=1
@@ -147,7 +147,7 @@ prepare_release_main() {
 
     PREPARE_RELEASE_MODE="$prepare_release_mode" \
     PREPARE_RELEASE_VERSION="$prepare_release_version" \
-    PREPARE_RELEASE_MACHINE_JSON="$prepare_release_machine_json" \
+    PREPARE_RELEASE_MACHINE_JSON="$prepare_release_json_mode" \
     PREPARE_RELEASE_EXPLAIN="$prepare_release_explain" \
     PREPARE_RELEASE_HELP="$prepare_release_help" \
     python3 - "$repo_root" <<'PY'
@@ -162,7 +162,7 @@ from pathlib import Path
 repo_root = Path(sys.argv[1])
 mode = os.environ.get("PREPARE_RELEASE_MODE", "check")
 requested_version = os.environ.get("PREPARE_RELEASE_VERSION", "")
-machine_json = os.environ.get("PREPARE_RELEASE_MACHINE_JSON") == "1"
+json_mode = os.environ.get("PREPARE_RELEASE_MACHINE_JSON") == "1"
 explain = os.environ.get("PREPARE_RELEASE_EXPLAIN") == "1"
 
 version_pattern = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9][A-Za-z0-9._-]*)?$")
@@ -186,7 +186,7 @@ result = {
 
 def stop(message: str) -> int:
     result["stop_reason"] = message
-    if machine_json:
+    if json_mode:
         print(json.dumps(result, separators=(",", ":")))
     else:
         print(f"STOP: {message}", file=sys.stderr)
@@ -527,7 +527,7 @@ try:
     else:
         result["overall_status"] = "pass"
 
-    if machine_json:
+    if json_mode:
         print(json.dumps(result, separators=(",", ":")))
     else:
         emit_human()

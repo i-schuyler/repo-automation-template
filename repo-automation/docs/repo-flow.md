@@ -13,6 +13,7 @@ When submit stops for unrequested worktree changes, human failure output prints 
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
 `--all` stages all non-ignored working-tree changes with `git add -A -- .` and is mutually exclusive with `--modified`, `--paths`, and `--staged`.
 For most PRs, use the generated body from `repo-flow`; it is the default and easiest path. Use `--body-file=<path>` only for a human-authored custom PR body that passes `repo-automation/bin/pr-body-check`.
+Passing `--body-file` alone refreshes the PR body, but it does not request a `PR REVIEW REQUEST` block. Add `--review-request-file=<path>` or `--review-request-id=<id>` whenever you expect `repo-flow submit --explain` to print that block.
 Use `--review-request-file=<path>` or `--review-request-id=<id>` when `repo-flow submit --explain` should print a PR-review handoff after the PR exists.
 `--review-request-file` reads a regular readable non-empty text template.
 `--review-request-id` resolves `.prompts/<id>.md` under the repo root; IDs are conservative basenames with letters, digits, underscores, and hyphens only, and no slashes, leading dot, leading dash, shell metacharacters, or `..`.

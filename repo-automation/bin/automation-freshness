@@ -11,11 +11,11 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   return 2 2>/dev/null || exit 2
 }
 
-automation_freshness_machine_json=0
+automation_freshness_json_mode=0
 automation_freshness_source_root=""
 
 automation_freshness_usage() {
-  printf 'Usage: repo-automation/bin/automation-freshness [--machine-json] [--source-root=<path>] [--help]\n'
+  printf 'Usage: repo-automation/bin/automation-freshness [--json] [--source-root=<path>] [--help]\n'
 }
 
 automation_freshness_stop() {
@@ -35,8 +35,8 @@ automation_freshness_main() {
         automation_freshness_usage
         return 0
         ;;
-      --machine-json)
-        automation_freshness_machine_json=1
+      --json)
+        automation_freshness_json_mode=1
         ;;
       --source-root=*)
         automation_freshness_source_root="${arg#--source-root=}"
@@ -85,7 +85,7 @@ automation_freshness_main() {
     return 1
   fi
 
-  AUTOMATION_FRESHNESS_MACHINE_JSON="$automation_freshness_machine_json" \
+  AUTOMATION_FRESHNESS_MACHINE_JSON="$automation_freshness_json_mode" \
     python3 - "$manifest_path" "$automation_freshness_source_root" <<'PY'
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ from pathlib import Path
 
 manifest_path = Path(sys.argv[1])
 source_root = Path(sys.argv[2])
-machine_json = os.environ.get("AUTOMATION_FRESHNESS_MACHINE_JSON") == "1"
+json_mode = os.environ.get("AUTOMATION_FRESHNESS_MACHINE_JSON") == "1"
 installed_target = (
     (source_root / ".repo-automation.conf").is_file()
     and (source_root / "repo-automation" / "docs" / "README.md").is_file()
@@ -217,7 +217,7 @@ if validation_errors or missing_files:
 else:
     result["overall_status"] = "pass"
 
-if machine_json:
+if json_mode:
     print(json.dumps(result, separators=(",", ":")))
 else:
     if result["overall_status"] == "pass":

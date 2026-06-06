@@ -18,15 +18,15 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/run-tests` compact defaults, quiet success silence, `--smoke`, `--docs`, `--version`, `--changed`, `--explain`, JSON levels, log files, and no-log behavior
 - smoke coverage for `repo-automation/bin/repo-doctor` compact defaults, quiet success silence, the repo-root artifact guard, `--explain`, JSON levels, log files, and missing-config safe failure behavior
 - smoke coverage for `repo-automation/bin/check-tooling` first-run tool audit reporting, compact defaults, quiet success silence, `--explain`, JSON output, and platform-specific install suggestions
-- smoke coverage for `repo-automation/bin/github-settings-check` read-only settings reporting, machine JSON, and repo-doctor integration when GitHub CLI auth and a GitHub remote are available
+- smoke coverage for `repo-automation/bin/github-settings-check` read-only settings reporting, JSON, and repo-doctor integration when GitHub CLI auth and a GitHub remote are available
 - smoke coverage for `repo-automation/bin/managed-file-check` changed-path review and `repo-automation/bin/managed-file-add` manifest/installer updates
-- smoke coverage for `repo-automation/bin/failure-log` latest log excerpts, kind filtering, line limits, and machine JSON
-- smoke coverage for `repo-automation/bin/touched-files` commit-range output, working-tree fallback, and machine JSON
-- smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and machine JSON
-- smoke coverage for `repo-automation/bin/ci-watch` read-only polling, timeout handling, and machine JSON
-- smoke coverage for `repo-automation/bin/ci-log-dump` read-only failed-run discovery, durable log capture, tail excerpts, and machine JSON
+- smoke coverage for `repo-automation/bin/failure-log` latest log excerpts, kind filtering, line limits, and JSON
+- smoke coverage for `repo-automation/bin/touched-files` commit-range output, working-tree fallback, and JSON
+- smoke coverage for `repo-automation/bin/ci-status` read-only PR and branch snapshots, auth/offline/no-PR failures, and JSON
+- smoke coverage for `repo-automation/bin/ci-watch` read-only polling, timeout handling, and JSON
+- smoke coverage for `repo-automation/bin/ci-log-dump` read-only failed-run discovery, durable log capture, tail excerpts, and JSON
 - smoke coverage for `repo-automation/bin/contract-debt-report` advisory report generation, strict flag parsing, compact human output, JSON parseability, and seeded debt/advisory warnings
-- smoke coverage for `repo-automation/bin/status-packet` human default output, `--explain` FINAL SUMMARY output, machine JSON, and compact repo state reporting
+- smoke coverage for `repo-automation/bin/status-packet` human default output, `--explain` FINAL SUMMARY output, JSON, and compact repo state reporting
 - smoke coverage for `repo-automation/bin/post-codex-review` default FINAL SUMMARY output, `--quiet`, `--explain`, `--json`, `--packet` bundle creation, and ≤25-line output contract
 - smoke coverage for `repo-automation/bin/post-codex-packet` packet assembly, tracked and staged diff capture, safe untracked file copying, skip rules, and zip output
 - smoke coverage for `repo-automation/bin/repo-zip` repository snapshot assembly, tracked and untracked file inclusion, ignored-file exclusion, `.git/` exclusion, and generated artifact exclusion
@@ -34,8 +34,8 @@ CI runs the same core checks:
 - smoke coverage for `repo-automation/bin/review-pack` fallback review bundle / prompt generation, review-target validation, and no-Codex invocation behavior
 - smoke coverage for `repo-automation/bin/repair-prompt` CI/local evidence gathering, prompt redaction, evidence-file support, and no-Codex invocation behavior
 - smoke coverage for artifact-safety fixtures covering `.env`, ignored cache files, safe dotfiles, safe untracked docs, generated packet/log artifacts, build outputs, and nested dependency/cache directories
-- smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--machine-json`, and `--source-root=/path/to/checkout`
-- smoke coverage for `repo-automation/bin/starter-template-ready` human default output, `--machine-json`, `--source-root=/path/to/checkout`, and `--check-current`
+- smoke coverage for `repo-automation/bin/automation-freshness` human default output, `--json`, and `--source-root=/path/to/checkout`
+- smoke coverage for `repo-automation/bin/starter-template-ready` human default output, `--json`, `--source-root=/path/to/checkout`, and `--check-current`
 - smoke coverage for `repo-automation/bin/repo-automation-install` plan/json, dry-run, apply-to-temp-repo, update detection, local-overrides preservation, starter-template profile template installation, and downstream install contract auditing in temporary repos, with manifest-driven checks for installed helpers/tests, executable surfaces, and `--include-tests` contract coverage under `repo-automation/tests/contracts/`
 - starter-template install smoke coverage that exercises `repo-automation/bin/repo-automation-install --starter-template --apply` in a temporary target repo, verifies `repo-automation/bin/starter-template-ready --check-current`, verifies `repo-automation/bin/repo-doctor --quick --no-run-tests`, and checks that the source repo artifact guard stays clean after the run
 - smoke coverage for `repo-automation/bin/prepare-release` help, check, dry-run, apply, machine-JSON, and managed version placement updates in a temporary repo
@@ -82,7 +82,7 @@ It keeps run-owned temp output under `${TMPDIR:-$HOME/.cache}/repo-automation-te
 
 If `repo-automation/bin/codex-slice-preflight` stops on disk, rerun it with `--clean-test-cache --explain` to clear the recurring repo-automation temp/cache roots, then rerun the normal preflight command.
 
-The freshness helper keeps a smaller contract: human output by default, `--machine-json` for machine output, and `--source-root=/path/to/checkout` when checking a different checkout.
+The freshness helper keeps a smaller contract: human output by default, `--json` for machine output, and `--source-root=/path/to/checkout` when checking a different checkout.
 
 ShellCheck is required in CI. Locally, `repo-automation/bin/run-tests` runs ShellCheck when available and warns when missing.
 When CI reports a ShellCheck failure, open the `shellcheck.log` artifact instead of rerunning the full suite locally on Android.
