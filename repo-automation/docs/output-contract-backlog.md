@@ -63,13 +63,13 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 | Helper | Role / risk | Output support | Current known gap | Next action | Priority lane |
 | --- | --- | --- | --- | --- | --- |
-| slice-validator | pre-preflight run-contract gate | quiet=yes json=yes | direct-call helper implemented; slice-handoff wiring still pending | wire slice-handoff to call the capability gate | next |
-| codex-slice-preflight | preflight gate | quiet=no json=yes | default/JSON/explain failure clarity still needs tighter fields and artifact paths | resume declared-contract baseline after validator wiring | near-term |
+| slice-validator | pre-preflight run-contract gate | quiet=yes json=yes | direct-call helper implemented; slice-handoff now delegates and records manifest paths before preflight | review the capability manifest shape and downstream usage | near-term |
+| codex-slice-preflight | preflight gate | quiet=no json=yes | default/JSON/explain failure clarity still needs tighter fields and artifact paths | resume declared-contract baseline | active |
 | codex-run | core child output producer | quiet=yes json=no | child/final-output boundaries and quiet QDE audit remain | harden child/final-output boundaries | near-term |
 | ci-log-dump | CI artifact helper | quiet=yes json=yes | later output-contract target | tighten failure detail and artifact paths | near-term |
 | run-tests | broad umbrella runner | quiet=yes json=yes | later output-contract target | improve step/reason/fix/artifact clarity | near-term |
 | managed-file-check | inventory guardrail | quiet=yes json=no | later output-contract target | keep changed-path failures actionable | near-term |
-| slice-handoff | high-risk umbrella; PR-submit trust boundary | quiet=yes json=no | blocker/child-failure boundary hardened in PR #223, broader output-mode migration still incomplete | finish remaining output-contract gaps | done-foundation |
+| slice-handoff | high-risk umbrella; PR-submit trust boundary | quiet=yes json=no | blocker/child-failure boundary hardened in PR #223, validator gate now runs before preflight, and validation-manifest paths are surfaced in summaries | finish remaining output-contract gaps | done-foundation |
 | pr-body-check | submit gate | quiet=yes json=yes | boundary diagnostics still matter on failures | preserve concise actionable failure output | next |
 | repo-flow | submit/merge workflow | quiet=no json=yes | submit-output boundary clarity still needs explicit coverage | keep submit and output-contract failures step-specific | next |
 | codex-status | status helper | quiet=no json=yes | still needs consistent actionable failure fields | align failure envelopes with output-modes.md | later |
@@ -119,13 +119,13 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 | Helper | Declared contract | Test coverage | Compliance status | Evidence | Next verification action |
 | --- | --- | --- | --- | --- | --- |
-| slice-validator | declared | partial | partial | repo-automation/tests/contracts/slice-validator.sh | wire slice-handoff and then review the capability manifest shape |
-| codex-slice-preflight | partial | partial | needs-audit | docs/output-modes.md | resume declared-contract baseline after validator wiring |
+| slice-validator | declared | partial | partial | repo-automation/tests/contracts/slice-validator.sh | review the capability manifest shape and downstream usage |
+| codex-slice-preflight | partial | partial | needs-audit | docs/output-modes.md | resume declared-contract baseline |
 | codex-run | partial | partial | needs-audit | docs/output-modes.md | verify child-output boundaries and quiet behavior |
 | ci-log-dump | partial | partial | needs-audit | docs/output-modes.md | confirm declared JSON/quiet contract and failure artifact paths |
 | run-tests | partial | partial | needs-audit | docs/output-modes.md | verify umbrella failure shapes and JSON output purity |
 | managed-file-check | partial | partial | needs-audit | docs/output-modes.md | confirm changed-path failure boundaries and quiet behavior |
-| slice-handoff | partial | partial | partial | PR #223 | finish broader output-mode migration and record coverage evidence |
+| slice-handoff | partial | partial | partial | PR #223 + PR #229 | finish broader output-mode migration and record coverage evidence |
 | pr-body-check | partial | partial | needs-audit | docs/output-modes.md | verify submit-gate failure wording and JSON failure shape |
 | repo-flow | partial | partial | needs-audit | docs/output-modes.md | baseline submit/merge contract and child-boundary coverage |
 | codex-status | partial | partial | needs-audit | docs/output-modes.md | verify declared JSON contract and failure fields |
@@ -161,8 +161,8 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Near-term order
 
-1. wire `slice-handoff` to call `slice-validator` before `codex-slice-preflight`
-2. resume `codex-slice-preflight` declared-contract baseline
+1. resume `codex-slice-preflight` declared-contract baseline
+2. verify the declared-contract baseline stays aligned with the current helper docs and output modes
 3. codex-run child/final-output boundaries
 4. ci-log-dump
 5. run-tests
@@ -189,7 +189,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Next implementation handoff
 
-With `slice-validator` implemented, the next behavior slice should wire `slice-handoff` to call `repo-automation/bin/slice-validator` before `codex-slice-preflight`.
-When `slice-validator` is wired into the public sequence, keep `helper-metadata.json`, managed docs and registration surfaces, and the compliance tracking matrix aligned.
-After that, resume codex-slice-preflight declared-contract baseline.
+`slice-handoff` now calls `repo-automation/bin/slice-validator` before `codex-slice-preflight`.
+Keep `helper-metadata.json`, managed docs and registration surfaces, and the compliance tracking matrix aligned.
+The next behavior slice resumes codex-slice-preflight declared-contract baseline.
 Future helper slices should update the tracking matrix when helper behavior, tests, evidence, or status changes.
