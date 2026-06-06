@@ -64,7 +64,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
-- 2026-06-06 / codex-run child/final-output hardening / ids=none / score_delta=0 / signal=quiet QDE, output-mode conflict gating, child failure metadata, final-output contract failures, and final-output block write coverage were added without material friction
+- 2026-06-06 / PR #231 / codex-run child/final-output hardening / ids=none / score_delta=0 / signal=quiet QDE, output-mode conflict gating, child failure metadata, final-output contract failures, and final-output block write coverage were added without material friction
 - 2026-06-06 / PR #230 / codex-slice-preflight JSON stderr repair / ids=none / score_delta=0 / signal=JSON failure stderr was suppressed in preflight while keeping human/explain and parser behavior unchanged
 - 2026-06-06 / codex-slice-preflight declared-contract baseline / ids=none / score_delta=0 / signal=focused preflight contract tests now cover strict help syntax, JSON/explain boundaries, and declared cleanup behavior without material friction
 - 2026-06-04 / PR #221 follow-up / smoke-output-contract-foundation / ids=slice-handoff-contract-opacity / score_delta=0 / signal=focused-wrapper output-mode parsing now rejects conflicts, JSON failures carry actionable fields, and quiet-envelope assertions accept optional QDE fields

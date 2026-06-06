@@ -121,7 +121,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | --- | --- | --- | --- | --- | --- |
 | slice-validator | declared | partial | partial | repo-automation/tests/contracts/slice-validator.sh | review the capability manifest shape and downstream usage |
 | codex-slice-preflight | partial | partial | needs-audit | repo-automation/tests/contracts/codex-slice-preflight.sh | declare the remaining branch/runtime boundary checks and move to the next helper audit |
-| codex-run | partial | partial | needs-audit | docs/output-modes.md | monitor quiet/final-output regression coverage |
+| codex-run | partial | partial | needs-audit | repo-automation/tests/contracts/codex-run.sh + PR #231 | monitor quiet/final-output regression coverage |
 | ci-log-dump | partial | partial | needs-audit | docs/output-modes.md | confirm declared JSON/quiet contract and failure artifact paths |
 | run-tests | partial | partial | needs-audit | docs/output-modes.md | verify umbrella failure shapes and JSON output purity |
 | managed-file-check | partial | partial | needs-audit | docs/output-modes.md | confirm changed-path failure boundaries and quiet behavior |
