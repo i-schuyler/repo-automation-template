@@ -149,8 +149,9 @@ PY
 
 smoke_slice_handoff_install_prompt_presets() {
   local handoff_path="$1"
-  local prompt_dir="$(dirname "$handoff_path")/.prompts"
+  local prompt_dir=""
 
+  prompt_dir="$(dirname "$handoff_path")/.prompts" || return 1
   rm -rf -- "$prompt_dir" || return 1
   cp -R "$smoke_repo_root/.prompts" "$prompt_dir" || return 1
 }
@@ -880,7 +881,7 @@ smoke_slice_handoff_assert_child_failure_shape() {
 smoke_slice_handoff_assert_validator_failure_shape() {
   local stderr_file="$1"
   local expected_reason="$2"
-  local expected_fix="$3"
+  local _expected_fix="${3:-}"
   local expected_next="${4:-fix the reported validator failure and rerun slice-handoff}"
   local filtered_stderr_file=""
 
