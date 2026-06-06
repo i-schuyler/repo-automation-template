@@ -54,7 +54,7 @@ repair_prompt_init_paths() {
 
 repair_prompt_collect_ci_evidence() {
   local ci_tmp_file=""
-  local ci_cmd=(repo-automation/bin/ci-log-dump --first-failure --machine-json)
+  local ci_cmd=(repo-automation/bin/ci-log-dump --first-failure --json)
 
   if [ -n "$repair_prompt_pr" ]; then
     ci_cmd+=("--pr=$repair_prompt_pr")
@@ -105,7 +105,7 @@ repair_prompt_collect_evidence() {
   case "$repair_prompt_source" in
     ci)
       repair_prompt_collect_ci_evidence || {
-        repair_prompt_fail "required CI evidence is unavailable" "run ci-log-dump --first-failure --machine-json or pass --evidence-file=<path>" || return 1
+        repair_prompt_fail "required CI evidence is unavailable" "run ci-log-dump --first-failure --json or pass --evidence-file=<path>" || return 1
         return 1
       }
       ;;

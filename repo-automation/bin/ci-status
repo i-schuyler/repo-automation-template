@@ -10,7 +10,6 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 ci_status_pr=""
 ci_status_branch=""
 ci_status_json=0
-ci_status_machine_json=0
 ci_status_quiet=0
 ci_status_explain=0
 ci_status_summary_json=""
@@ -18,7 +17,7 @@ ci_status_overall_status=""
 ci_status_expected_head_sha="${CI_STATUS_EXPECTED_HEAD_SHA:-}"
 
 ci_status_usage() {
-  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--json] [--machine-json] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/ci-status [--pr=<number> | --branch=<name>] [--json] [--quiet] [--explain] [--help]\n'
 }
 
 ci_status_flag_error() {
@@ -151,7 +150,7 @@ import sys
 
 pr_number = sys.argv[1]
 head_sha = sys.argv[2]
-print(json.dumps({'overall_status': 'pending', 'latest_run': {}, 'matching_run_count': 0, 'run_count': 0, 'head_sha': head_sha, 'script': 'ci-status', 'machine_json': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''}))
+print(json.dumps({'overall_status': 'pending', 'latest_run': {}, 'matching_run_count': 0, 'run_count': 0, 'head_sha': head_sha, 'script': 'ci-status', 'json_mode': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''}))
 PY
 )"
     ci_status_overall_status="pending"
@@ -196,7 +195,7 @@ import sys
 
 pr_number = sys.argv[1]
 head_sha = sys.argv[2]
-print(json.dumps({'overall_status': 'pending', 'latest_run': {}, 'matching_run_count': 0, 'run_count': 0, 'head_sha': head_sha, 'script': 'ci-status', 'machine_json': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''}))
+print(json.dumps({'overall_status': 'pending', 'latest_run': {}, 'matching_run_count': 0, 'run_count': 0, 'head_sha': head_sha, 'script': 'ci-status', 'json_mode': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''}))
 PY
 )"
     ci_status_overall_status="pending"
@@ -224,7 +223,7 @@ import sys
 
 summary = json.loads(sys.argv[1])
 pr_number = sys.argv[2]
-summary.update({'script': 'ci-status', 'machine_json': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''})
+summary.update({'script': 'ci-status', 'json_mode': True, 'mode': 'pr', 'pr': pr_number, 'branch': ''})
 print(json.dumps(summary))
 PY
 )"
@@ -306,7 +305,7 @@ import sys
 
 summary = json.loads(sys.argv[1])
 branch_name = sys.argv[2]
-summary.update({'script': 'ci-status', 'machine_json': True, 'mode': 'branch', 'pr': '', 'branch': branch_name})
+summary.update({'script': 'ci-status', 'json_mode': True, 'mode': 'branch', 'pr': '', 'branch': branch_name})
 print(json.dumps(summary))
 PY
 )"
@@ -418,9 +417,6 @@ ci_status_main() {
         fi
         return 1
         ;;
-      --machine-json)
-        ci_status_machine_json=1
-        ;;
       --json)
         ci_status_json=1
         ;;
@@ -450,7 +446,7 @@ ci_status_main() {
   ci_status_check_auth || return 1
   ci_status_collect || return 1
 
-  if [ "$ci_status_json" -eq 1 ] || [ "$ci_status_machine_json" -eq 1 ]; then
+  if [ "$ci_status_json" -eq 1 ]; then
     ci_status_print_json
   else
     if [ "$ci_status_quiet" -eq 1 ] && [ "$(printf '%s' "$ci_status_summary_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("overall_status","fail"))')" = "pass" ]; then

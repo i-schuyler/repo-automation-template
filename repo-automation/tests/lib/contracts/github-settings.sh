@@ -67,7 +67,7 @@ smoke_check_github_settings_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --repo=i-schuyler/repo-automation-template --machine-json > "$github_settings_repo_json"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --repo=i-schuyler/repo-automation-template --json > "$github_settings_repo_json"
   ) && python3 -m json.tool "$github_settings_repo_json" >/dev/null && \
     smoke_json_assert "$github_settings_repo_json" 'data.get("overall_status") == "pass" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("repo_source") == "flag"'; then
     test_pass "github-settings-check accepts explicit repo syntax"
@@ -130,12 +130,12 @@ smoke_check_github_settings_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --machine-json > "$github_settings_json"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/github-settings-check --json > "$github_settings_json"
   ) && python3 -m json.tool "$github_settings_json" >/dev/null && \
     smoke_json_assert "$github_settings_json" 'data.get("overall_status") == "pass" and data.get("repo") == "i-schuyler/repo-automation-template" and data.get("default_branch") == "main" and data.get("actions_enabled") is True and data.get("pr_template_exists") is True and data.get("issue_templates_exist") is True and data.get("ci_workflow_exists") is True'; then
-    test_pass "github-settings-check machine-json is parseable"
+    test_pass "github-settings-check json is parseable"
   else
-    test_fail "github-settings-check machine-json is parseable"
+    test_fail "github-settings-check json is parseable"
     status=1
   fi
 

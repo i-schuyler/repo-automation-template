@@ -44,8 +44,8 @@ smoke_check_ci_log_dump_contract() {
   local ci_log_repo_infer_json="$smoke_test_base/ci-log-dump-repo-infer-$$.json"
   local ci_log_conflict_json="$smoke_test_base/ci-log-dump-conflict-$$.json"
   local ci_log_conflict_err="$smoke_test_base/ci-log-dump-conflict-$$.stderr"
-  local ci_log_json_value_json="$smoke_test_base/ci-log-dump-json-value-$$.json"
-  local ci_log_json_value_err="$smoke_test_base/ci-log-dump-json-value-$$.stderr"
+  local ci_log_unknown_json="$smoke_test_base/ci-log-dump-unknown-$$.json"
+  local ci_log_unknown_err="$smoke_test_base/ci-log-dump-unknown-$$.stderr"
   local ci_log_machine_invalid_tail_json="$smoke_test_base/ci-log-dump-invalid-tail-$$.json"
   local ci_log_machine_invalid_tail_err="$smoke_test_base/ci-log-dump-invalid-tail-$$.stderr"
   local ci_log_machine_invalid_run_id_json="$smoke_test_base/ci-log-dump-invalid-run-id-$$.json"
@@ -66,12 +66,14 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/ci-log-dump --help > "$ci_log_help"
   ) && \
+    ci_log_legacy_flag="--machine" && \
+    ci_log_legacy_flag="$ci_log_legacy_flag-json" && \
     grep -Fq -- '--repo=<owner/repo>' "$ci_log_help" && \
     grep -Fq -- '--pr=<number|latest>' "$ci_log_help" && \
     ! grep -Fq -- '--pr=<number|current|latest>' "$ci_log_help" && \
     ! grep -Fq -- '--pr=current' "$ci_log_help" && \
     grep -Fq -- '--json' "$ci_log_help" && \
-    ! grep -Fq -- '--machine-json' "$ci_log_help" && \
+    ! grep -Fq -- "$ci_log_legacy_flag" "$ci_log_help" && \
     grep -Fq -- '--run-id=<id>' "$ci_log_help" && \
     grep -Fq -- '--out-dir=<path>' "$ci_log_help" && \
     grep -Fq -- '--tail=<lines>' "$ci_log_help" && \
@@ -194,21 +196,6 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --machine-json > "$ci_log_json_value_json" 2> "$ci_log_json_value_err"
-  ); then
-    test_fail "ci-log-dump rejects --machine-json"
-    status=1
-  elif smoke_assert_flag_error_shape "$ci_log_json_value_err" "unsupported flag" "--machine-json" "use --json" && [ ! -s "$ci_log_json_value_json" ] && [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
-    test_pass "ci-log-dump rejects --machine-json"
-  else
-    test_fail "ci-log-dump rejects --machine-json"
-    status=1
-  fi
-
-  if (
-    cd "$smoke_test_dir" || return 1
-    GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
-    GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
     PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --json --quiet > "$ci_log_conflict_json" 2> "$ci_log_conflict_err"
   ); then
     test_fail "ci-log-dump rejects --json --quiet"
@@ -226,16 +213,14 @@ smoke_check_ci_log_dump_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_RUN_VIEW_CALLED_FILE="$ci_log_run_view_log" \
     GH_STUB_RUN_LIST_LOG_FILE="$ci_log_run_list_log" \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --repo=i-schuyler/repo-automation-template --run-id=123 --json=unexpected > "$ci_log_json_value_json" 2> "$ci_log_json_value_err"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-log-dump --not-a-real-flag > "$ci_log_unknown_json" 2> "$ci_log_unknown_err"
   ); then
-    test_fail "ci-log-dump rejects --json=<value>"
+    test_fail "ci-log-dump rejects unknown flags"
     status=1
-  elif [ ! -s "$ci_log_json_value_err" ] && python3 -m json.tool "$ci_log_json_value_json" >/dev/null && \
-    smoke_json_assert "$ci_log_json_value_json" 'data.get("result") == "fail" and data.get("code") == "flag-parse-failed" and data.get("step") == "flag-parse" and data.get("reason") == "flag format not accepted" and data.get("fix") == "use --json"' && \
-    [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
-    test_pass "ci-log-dump rejects --json=<value>"
+  elif smoke_assert_flag_error_shape "$ci_log_unknown_err" "unknown flag" "--not-a-real-flag" "run repo-automation/bin/ci-log-dump --help" && [ ! -s "$ci_log_unknown_json" ] && [ ! -e "$ci_log_run_view_log" ] && [ ! -e "$ci_log_run_list_log" ]; then
+    test_pass "ci-log-dump rejects unknown flags"
   else
-    test_fail "ci-log-dump rejects --json=<value>"
+    test_fail "ci-log-dump rejects unknown flags"
     status=1
   fi
 
@@ -763,7 +748,6 @@ smoke_check_ci_status_watch_contract() {
     grep -Fq -- '--pr=<number>' "$ci_status_help" && \
     grep -Fq -- '--branch=<name>' "$ci_status_help" && \
     grep -Fq -- '--json' "$ci_status_help" && \
-    grep -Fq -- '--machine-json' "$ci_status_help" && \
     grep -Fq -- '--quiet' "$ci_status_help" && \
     grep -Fq -- '--explain' "$ci_status_help" && \
     ! grep -Fq -- '--pr=NUMBER' "$ci_status_help" && \
@@ -783,7 +767,6 @@ smoke_check_ci_status_watch_contract() {
     grep -Fq -- '--poll-seconds=<seconds>' "$ci_watch_help" && \
     grep -Fq -- '--timeout=<seconds>' "$ci_watch_help" && \
     grep -Fq -- '--json' "$ci_watch_help" && \
-    grep -Fq -- '--machine-json' "$ci_watch_help" && \
     grep -Fq -- '--quiet' "$ci_watch_help" && \
     grep -Fq -- '--explain' "$ci_watch_help" && \
     ! grep -Fq -- '--pr=NUMBER' "$ci_watch_help" && \
@@ -798,12 +781,12 @@ smoke_check_ci_status_watch_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --machine-json > "$ci_status_pr_json"
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pending","state":"IN_PROGRESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --json > "$ci_status_pr_json"
   ) && python3 -m json.tool "$ci_status_pr_json" >/dev/null && \
     smoke_json_assert "$ci_status_pr_json" 'data.get("mode") == "pr" and data.get("overall_status") == "pending" and len(data.get("checks", [])) == 1'; then
-    test_pass "ci-status pr machine-json is parseable"
+    test_pass "ci-status pr json is parseable"
   else
-    test_fail "ci-status pr machine-json is parseable"
+    test_fail "ci-status pr json is parseable"
     status=1
   fi
 
@@ -852,7 +835,7 @@ smoke_check_ci_status_watch_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":701,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-321","status":"completed","workflowName":"ci"},{"databaseId":702,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-321","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --machine-json > "$ci_status_pr_json_mode"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr=123 --json > "$ci_status_pr_json_mode"
   ) && python3 -m json.tool "$ci_status_pr_json_mode" >/dev/null && \
     smoke_json_assert "$ci_status_pr_json_mode" 'data.get("mode") == "pr" and data.get("overall_status") == "pass" and data.get("matching_run_count") == 1 and data.get("latest_run", {}).get("databaseId") == 702'; then
     test_pass "ci-status ignores stale prior SHA runs"
@@ -863,18 +846,18 @@ smoke_check_ci_status_watch_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[{"number":99,"name":"ci","status":"completed","conclusion":"success"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/demo --machine-json > "$ci_status_branch_json"
+    GH_STUB_PR_LIST_JSON='[]' GH_STUB_RUN_LIST_JSON='[{"number":99,"name":"ci","status":"completed","conclusion":"success"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --branch=feature/demo --json > "$ci_status_branch_json"
   ) && python3 -m json.tool "$ci_status_branch_json" >/dev/null && \
     smoke_json_assert "$ci_status_branch_json" 'data.get("mode") == "branch" and data.get("overall_status") == "pass" and data.get("latest_run", {}).get("number") == 99'; then
-    test_pass "ci-status branch machine-json is parseable"
+    test_pass "ci-status branch json is parseable"
   else
-    test_fail "ci-status branch machine-json is parseable"
+    test_fail "ci-status branch json is parseable"
     status=1
   fi
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_PR_CHECKS_JSON='[]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr 123 --machine-json > /dev/null 2> "$ci_status_pr_format_stderr"
+    GH_STUB_PR_CHECKS_JSON='[]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr 123 --json > /dev/null 2> "$ci_status_pr_format_stderr"
   ); then
     test_fail "ci-status rejects --pr <number>"
     status=1
@@ -887,7 +870,7 @@ smoke_check_ci_status_watch_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr --machine-json > /dev/null 2> "$ci_status_pr_missing_stderr"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr --json > /dev/null 2> "$ci_status_pr_missing_stderr"
   ); then
     test_fail "ci-status rejects missing --pr value"
     status=1
@@ -900,7 +883,7 @@ smoke_check_ci_status_watch_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr= --machine-json > /dev/null 2> "$ci_status_pr_empty_stderr"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-status --pr= --json > /dev/null 2> "$ci_status_pr_empty_stderr"
   ); then
     test_fail "ci-status rejects empty --pr value"
     status=1
@@ -941,7 +924,7 @@ smoke_check_ci_status_watch_contract() {
     cd "$smoke_test_dir" || return 1
     GH_STUB_PR_VIEW_HEAD_SHA='current-sha-321' \
     GH_STUB_RUN_LIST_JSON='[{"databaseId":701,"conclusion":"failure","createdAt":"2026-05-12T11:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"old-sha-321","status":"completed","workflowName":"ci"},{"databaseId":702,"conclusion":"success","createdAt":"2026-05-12T12:00:00Z","event":"pull_request","headBranch":"feature/demo","headSha":"current-sha-321","status":"completed","workflowName":"ci"}]' \
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
   ) && python3 -m json.tool "$ci_watch_pass_json" >/dev/null && \
     smoke_json_assert "$ci_watch_pass_json" 'data.get("overall_status") == "pass" and data.get("ci_status", {}).get("mode") == "pr" and data.get("ci_status", {}).get("matching_run_count") == 1 and data.get("ci_status", {}).get("latest_run", {}).get("databaseId") == 702'; then
     test_pass "ci-watch ignores stale prior SHA runs"
@@ -967,7 +950,7 @@ smoke_check_ci_status_watch_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"pass","state":"SUCCESS","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --json > "$ci_watch_pass_json" 2> "$ci_watch_pass_stderr"
   ) && python3 -m json.tool "$ci_watch_pass_json" >/dev/null && \
     smoke_json_assert "$ci_watch_pass_json" 'data.get("overall_status") == "pass"'; then
     test_pass "ci-watch pass exits cleanly"
@@ -1019,7 +1002,7 @@ smoke_check_ci_status_watch_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --machine-json > "$ci_watch_fail_json" 2> "$ci_watch_fail_stderr"
+    GH_STUB_PR_CHECKS_JSON='[{"name":"build","bucket":"fail","state":"FAILURE","workflow":"ci"}]' PATH="$gh_stub_dir:$PATH" repo-automation/bin/ci-watch --pr=123 --poll-seconds=1 --timeout=1 --json > "$ci_watch_fail_json" 2> "$ci_watch_fail_stderr"
   ); then
     test_fail "ci-watch fail exits nonzero"
     status=1

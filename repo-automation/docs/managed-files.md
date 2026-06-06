@@ -42,12 +42,12 @@ Clean success prints `pass`; failures print a single `fail:` line on stderr.
 
 Machine output:
 
-    repo-automation/bin/automation-freshness --machine-json
+    repo-automation/bin/automation-freshness --json
 
 Check another checkout or source root:
 
     repo-automation/bin/automation-freshness --source-root=/path/to/checkout
-    repo-automation/bin/automation-freshness --source-root=/path/to/checkout --machine-json
+    repo-automation/bin/automation-freshness --source-root=/path/to/checkout --json
 
 ## Managed-File Helpers
 

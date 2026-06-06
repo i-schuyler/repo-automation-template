@@ -152,7 +152,7 @@ evidence_bundle_capture_touched_files() {
   touched_tmp_file="$(mktemp "${TMPDIR:-$HOME/.cache}/evidence-bundle-touched.XXXXXX")" || return 1
   if (
     cd "$evidence_bundle_repo_root" || exit 1
-    repo-automation/bin/touched-files --machine-json
+    repo-automation/bin/touched-files --json
   ) > "$touched_tmp_file"; then
     mv "$touched_tmp_file" "$evidence_bundle_touched_json_file" || return 1
     evidence_bundle_record_section evidence_bundle_included_sections "touched-files"

@@ -1072,7 +1072,7 @@ EOF
 set -u
 printf '%s\n' "\$*" >> "$ci_stub_log"
 case "\$*" in
-  *'--first-failure'*'--machine-json'*)
+  *'--first-failure'*'--json'*)
     :
     ;;
   *)
@@ -1398,7 +1398,7 @@ EOF
   fi
 
   ci_prompt_file="$(sed -n '1p' "$ci_output_file" | tr -d '\r')"
-  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--machine-json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && grep -Fq 'Output: pass or blocker only.' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && ! grep -Fq 'Checks allowed' "$ci_prompt_file" && smoke_assert_single_path_output "$ci_output_file"; then
+  if grep -Fq -- '--first-failure' "$ci_stub_log" && grep -Fq -- '--json' "$ci_stub_log" && grep -Fq -- '--pr=123' "$ci_stub_log" && [ -f "$ci_prompt_file" ] && grep -Fq 'gathered CI failure' "$ci_prompt_file" && grep -Fq 'fix the CI path' "$ci_prompt_file" && grep -Fq 'Output: pass or blocker only.' "$ci_prompt_file" && ! grep -Fq 'supersecret' "$ci_prompt_file" && ! grep -Fq 'Checks allowed' "$ci_prompt_file" && smoke_assert_single_path_output "$ci_output_file"; then
     test_pass "repair-prompt gathers CI evidence with ci-log-dump"
   else
     test_fail "repair-prompt gathers CI evidence with ci-log-dump"

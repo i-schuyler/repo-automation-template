@@ -9,7 +9,6 @@ Supported flags:
 - `--poll-seconds=SECONDS` sets the polling interval
 - `--timeout=SECONDS` sets the overall wait limit
 - `--json` returns compact machine-readable output
-- `--machine-json` keeps the legacy/specialized machine-readable output shape
 - `--quiet` suppresses the clean-success `pass` line
 - `--explain` prints the elapsed status report
 

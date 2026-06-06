@@ -14,7 +14,7 @@ ci_log_dump_out_dir=""
 ci_log_dump_tail_lines=160
 ci_log_dump_failed_only=1
 ci_log_dump_latest_failed=0
-ci_log_dump_machine_json=0
+ci_log_dump_json=0
 ci_log_dump_quiet=0
 ci_log_dump_explain=0
 ci_log_dump_first_failure=0
@@ -40,7 +40,7 @@ ci_log_dump_selected_run_id=""
 ci_log_dump_print_final_summary() {
   local rc="${1:-0}"
 
-  if [ "$ci_log_dump_explain" -ne 1 ] || [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_explain" -ne 1 ] || [ "$ci_log_dump_json" -eq 1 ]; then
     return 0
   fi
 
@@ -73,7 +73,7 @@ ci_log_dump_flag_error() {
   local fix="$3"
 
   ci_log_dump_stop_reason="$reason"
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_json" -eq 1 ]; then
     ci_log_dump_print_failure_json "flag-parse-failed" "flag-parse" "$reason" "$fix" "" "" ""
   elif [ "$ci_log_dump_quiet" -eq 1 ]; then
     ci_log_dump_print_failure_quiet "flag-parse-failed" "flag-parse" "$reason" "$fix" "" "" ""
@@ -89,7 +89,7 @@ ci_log_dump_validate_output_modes() {
   local mode_count=0
   local flags=""
 
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_json" -eq 1 ]; then
     mode_count=$((mode_count + 1))
     flags="${flags:+$flags }--json"
   fi
@@ -109,7 +109,7 @@ ci_log_dump_validate_output_modes() {
   ci_log_dump_explain=0
   ci_log_dump_stop_reason="incompatible output mode flags: $flags"
 
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_json" -eq 1 ]; then
     ci_log_dump_print_failure_json "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain" "" "" ""
   elif [ "$ci_log_dump_quiet" -eq 1 ]; then
     ci_log_dump_print_failure_quiet "output-mode-conflict" "output-mode-parse" "$ci_log_dump_stop_reason" "use only one of --json, --quiet, or --explain" "" "" ""
@@ -239,7 +239,7 @@ ci_log_dump_emit_failure() {
   ci_log_dump_failure_log_path="$log_path"
   ci_log_dump_failure_excerpt="$excerpt"
 
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_json" -eq 1 ]; then
     ci_log_dump_print_failure_json "$code" "$step" "$reason" "$fix" "$artifact_path" "$log_path" "$excerpt"
   elif [ "$ci_log_dump_quiet" -eq 1 ]; then
     ci_log_dump_print_failure_quiet "$code" "$step" "$reason" "$fix" "$artifact_path" "$log_path" "$excerpt"
@@ -864,10 +864,10 @@ ci_log_dump_main() {
   for arg in "$@"; do
     case "$arg" in
       --json=*)
-        ci_log_dump_machine_json=1
+        ci_log_dump_json=1
         ;;
       --json)
-        ci_log_dump_machine_json=1
+        ci_log_dump_json=1
         ;;
       --quiet)
         ci_log_dump_quiet=1
@@ -995,15 +995,7 @@ ci_log_dump_main() {
         return 1
         ;;
       --json)
-        ci_log_dump_machine_json=1
-        ;;
-      --machine-json=*)
-        ci_log_dump_flag_error "flag format not accepted" "--machine-json" "use --json"
-        return 1
-        ;;
-      --machine-json)
-        ci_log_dump_flag_error "unsupported flag" "--machine-json" "use --json"
-        return 1
+        ci_log_dump_json=1
         ;;
       --quiet)
         ci_log_dump_quiet=1
@@ -1135,7 +1127,7 @@ ci_log_dump_main() {
   size_bytes="$(wc -c <"$log_path" | tr -d '[:space:]')"
   rm -f "$gh_log_file" >/dev/null 2>&1 || true
 
-  if [ "$ci_log_dump_machine_json" -eq 1 ]; then
+  if [ "$ci_log_dump_json" -eq 1 ]; then
     if [ "$ci_log_dump_first_failure" -eq 1 ]; then
       ci_log_dump_first_failure_details "$log_path"
     fi

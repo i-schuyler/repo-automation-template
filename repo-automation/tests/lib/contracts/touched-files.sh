@@ -43,7 +43,7 @@ smoke_check_touched_files_contract() {
     cd "$smoke_test_dir" || return 1
     printf '\nsmoke touched-files\n' >> README.md || return 1
     : > scratch.txt || return 1
-    PATH="$gh_stub_dir:$PATH" repo-automation/bin/touched-files --machine-json > "$touched_worktree_json"
+    PATH="$gh_stub_dir:$PATH" repo-automation/bin/touched-files --json > "$touched_worktree_json"
   ) && python3 -m json.tool "$touched_worktree_json" >/dev/null && \
     smoke_json_assert "$touched_worktree_json" 'data.get("mode") == "working-tree" and "README.md" in data.get("working_tree_tracked_files", []) and "scratch.txt" in data.get("untracked_files", [])'; then
     test_pass "touched-files working-tree fallback is parseable"
@@ -73,7 +73,7 @@ range touch
 ' >> repo-automation/docs/testing.md || return 1
     git add repo-automation/docs/testing.md || return 1
     git commit -m "range touch" >/dev/null || return 1
-    repo-automation/bin/touched-files --machine-json > "$touched_range_json"
+    repo-automation/bin/touched-files --json > "$touched_range_json"
   ) && python3 -m json.tool "$touched_range_json" >/dev/null &&     smoke_json_assert "$touched_range_json" 'data.get("mode") == "commit-range" and "repo-automation/docs/testing.md" in data.get("commit_range_files", [])'; then
     test_pass "touched-files commit-range output is parseable"
   else

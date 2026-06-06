@@ -13,7 +13,7 @@ Default human output includes:
 
 Supported flags:
 
-- `--machine-json` returns machine-readable output.
+- `--json` returns machine-readable output.
 - `--explain` emits a compact handoff block for operator review:
 
 ```text
@@ -36,12 +36,12 @@ FINAL_SUMMARY_BEFORE_END_HOOK="recap"
 The FINAL SUMMARY block stays compact and must remain at or below 25 lines.
 When present, those hook values come from `.repo-automation.local.conf`, not the tracked config.
 
-## `--machine-json`
+## `--json`
 
-`--machine-json` returns only these fields:
+`--json` returns only these fields:
 
 - `script` (`"status-packet"`)
-- `machine_json` (`true`)
+- `json_mode` (`true`)
 - `branch` (string)
 - `status_short` (string)
 - `changed_tracked_files` (array of strings)
@@ -62,6 +62,6 @@ Examples:
 
     repo-automation/bin/status-packet
     repo-automation/bin/status-packet --explain
-    repo-automation/bin/status-packet --machine-json
+    repo-automation/bin/status-packet --json
 
 The helper does not print full diffs or full logs, and it skips PR lookup cleanly when `gh` is missing or unavailable.

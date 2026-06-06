@@ -86,7 +86,7 @@ Examples:
 --merge
 --delete-branch
 --sync-main
---machine-json
+--json
 ```
 
 Rules:
@@ -193,7 +193,7 @@ Use these flags consistently.
 | `--quiet` | a human-readable check should output nothing on success and only first failure on failure |
 | `--explain` | a human needs detailed findings or log paths |
 | `--json` | a helper exposes JSON mode |
-| `--machine-json` | a helper exposes machine JSON mode |
+| `--json` | a helper exposes JSON mode |
 | `--json-level=fail` | only failures are useful |
 | `--json-level=warn` | failures and warnings are useful |
 | `--json-level=all` | all check details are needed |

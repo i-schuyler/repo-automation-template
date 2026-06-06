@@ -105,7 +105,7 @@ pr_finish_checks_collect() {
   local checks_json=""
   local checks_summary=""
 
-  checks_json="$(repo-automation/bin/ci-status --pr="$pr_number" --machine-json 2>/dev/null)" || rc=$?
+  checks_json="$(repo-automation/bin/ci-status --pr="$pr_number" --json 2>/dev/null)" || rc=$?
   if [ -n "$checks_json" ]; then
     checks_status="$(python3 - "$checks_json" <<'PY'
 import json
@@ -165,9 +165,9 @@ pr_finish_diagnose_on_fail() {
   local diagnosis_reason=""
 
   if [ -n "$run_id" ]; then
-    diagnosis_json="$(repo-automation/bin/ci-log-dump --run-id="$run_id" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+    diagnosis_json="$(repo-automation/bin/ci-log-dump --run-id="$run_id" --first-failure --json 2>&1)" || diagnosis_status=$?
   else
-    diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --machine-json 2>&1)" || diagnosis_status=$?
+    diagnosis_json="$(repo-automation/bin/ci-log-dump --pr="$pr_number" --first-failure --json 2>&1)" || diagnosis_status=$?
   fi
 
   if [ "$diagnosis_status" -eq 0 ]; then

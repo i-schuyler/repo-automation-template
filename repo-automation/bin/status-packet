@@ -7,7 +7,7 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/common.sh"
 
-status_packet_machine_json=0
+status_packet_json_mode=0
 status_packet_final_summary=0
 status_packet_warnings=()
 status_packet_script_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -26,7 +26,7 @@ status_packet_pr_head_ref=""
 status_packet_pr_base_ref=""
 
 status_packet_usage() {
-  printf 'Usage: repo-automation/bin/status-packet [--machine-json] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/status-packet [--json] [--explain] [--help]\n'
 }
 
 status_packet_json_escape() {
@@ -97,7 +97,7 @@ status_packet_collect_touched_files() {
 
   if [ -x "$status_packet_script_dir/touched-files" ]; then
     touched_json_file="$(mktemp "${TMPDIR:-$HOME/.cache}/status-packet-touched.XXXXXX")"
-    if "$status_packet_script_dir/touched-files" --machine-json >"$touched_json_file" 2>/dev/null; then
+    if "$status_packet_script_dir/touched-files" --json >"$touched_json_file" 2>/dev/null; then
       touched_lines="$(python3 - "$touched_json_file" <<'INNERPY'
 import json
 import pathlib
@@ -428,7 +428,7 @@ status_packet_json_array() {
 status_packet_print_json() {
   printf '{'
   printf '"script":"status-packet",'
-  printf '"machine_json":true,'
+  printf '"json_mode":true,'
   printf '"branch":"%s",' "$(status_packet_json_escape "$status_packet_branch")"
   printf '"status_short":"%s",' "$(status_packet_json_escape "$status_packet_status_short")"
   printf '"changed_tracked_files":[%s],' "$(status_packet_json_array "${status_packet_tracked_files[@]}")"
@@ -453,8 +453,8 @@ status_packet_main() {
         status_packet_usage
         return 0
         ;;
-      --machine-json)
-        status_packet_machine_json=1
+      --json)
+        status_packet_json_mode=1
         ;;
       --explain)
         status_packet_final_summary=1
@@ -476,7 +476,7 @@ status_packet_main() {
   status_packet_collect_recent_logs "$temp_root"
   status_packet_collect_pr_info "$status_packet_branch" "$temp_root"
 
-  if [ "$status_packet_machine_json" -eq 1 ]; then
+  if [ "$status_packet_json_mode" -eq 1 ]; then
     status_packet_print_json
   elif [ "$status_packet_final_summary" -eq 1 ]; then
     status_packet_print_final_summary

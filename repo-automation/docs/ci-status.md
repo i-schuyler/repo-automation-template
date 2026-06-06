@@ -7,7 +7,6 @@ Supported flags:
 - `--pr=NUMBER` checks a pull request directly
 - `--branch=NAME` checks a branch by looking for its PR first and then recent workflow runs
 - `--json` returns compact machine-readable output
-- `--machine-json` keeps the legacy/specialized machine-readable output shape
 - `--quiet` suppresses the compact clean `pass` line
 - `--explain` prints the full compact status report
 

@@ -27,6 +27,6 @@ Check another checkout:
 
 Machine output:
 
-    repo-automation/bin/starter-template-ready --machine-json
+    repo-automation/bin/starter-template-ready --json
 
 The helper reports actionable failures when the repo is missing starter-template automation files or when the managed automation tree is stale.
