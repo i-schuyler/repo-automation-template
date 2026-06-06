@@ -64,7 +64,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | Helper | Role / risk | Output support | Current known gap | Next action | Priority lane |
 | --- | --- | --- | --- | --- | --- |
 | slice-validator | pre-preflight run-contract gate | quiet=yes json=yes | direct-call helper implemented; slice-handoff now delegates and records manifest paths before preflight | review the capability manifest shape and downstream usage | near-term |
-| codex-slice-preflight | preflight gate | quiet=no json=yes | default/JSON/explain failure clarity still needs tighter fields and artifact paths | resume declared-contract baseline | active |
+| codex-slice-preflight | preflight gate | quiet=no json=yes | declared strict flags, JSON, explain, and cleanup boundaries are now covered by focused contract tests | codex-run child/final-output boundaries | next |
 | codex-run | core child output producer | quiet=yes json=no | child/final-output boundaries and quiet QDE audit remain | harden child/final-output boundaries | near-term |
 | ci-log-dump | CI artifact helper | quiet=yes json=yes | later output-contract target | tighten failure detail and artifact paths | near-term |
 | run-tests | broad umbrella runner | quiet=yes json=yes | later output-contract target | improve step/reason/fix/artifact clarity | near-term |
@@ -120,7 +120,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | Helper | Declared contract | Test coverage | Compliance status | Evidence | Next verification action |
 | --- | --- | --- | --- | --- | --- |
 | slice-validator | declared | partial | partial | repo-automation/tests/contracts/slice-validator.sh | review the capability manifest shape and downstream usage |
-| codex-slice-preflight | partial | partial | needs-audit | docs/output-modes.md | resume declared-contract baseline |
+| codex-slice-preflight | partial | partial | needs-audit | repo-automation/tests/contracts/codex-slice-preflight.sh | declare the remaining branch/runtime boundary checks and move to the next helper audit |
 | codex-run | partial | partial | needs-audit | docs/output-modes.md | verify child-output boundaries and quiet behavior |
 | ci-log-dump | partial | partial | needs-audit | docs/output-modes.md | confirm declared JSON/quiet contract and failure artifact paths |
 | run-tests | partial | partial | needs-audit | docs/output-modes.md | verify umbrella failure shapes and JSON output purity |
@@ -161,12 +161,11 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 ## Near-term order
 
-1. resume `codex-slice-preflight` declared-contract baseline
+1. codex-run child/final-output boundaries
 2. verify the declared-contract baseline stays aligned with the current helper docs and output modes
-3. codex-run child/final-output boundaries
-4. ci-log-dump
-5. run-tests
-6. managed-file-check
+3. ci-log-dump
+4. run-tests
+5. managed-file-check
 
 ## Do not do yet
 
@@ -191,5 +190,5 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 
 `slice-handoff` now calls `repo-automation/bin/slice-validator` before `codex-slice-preflight`.
 Keep `helper-metadata.json`, managed docs and registration surfaces, and the compliance tracking matrix aligned.
-The next behavior slice resumes codex-slice-preflight declared-contract baseline.
+The next behavior slice advances to codex-run child/final-output boundaries.
 Future helper slices should update the tracking matrix when helper behavior, tests, evidence, or status changes.
