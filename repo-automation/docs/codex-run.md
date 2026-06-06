@@ -27,6 +27,12 @@ In `--explain` mode, successful runs print the `FINAL SUMMARY` first and then a 
 
 The block content comes from `codex-final.txt`. Default non-explain output stays compact, and `codex-run-summary.txt` stays key=value machine-readable.
 
+Quiet failures use Quiet Diagnostic Envelope v1 on stderr: `result=fail`, `code`, `step`, `reason`, `fix`, and optional `log`/`artifact`/`excerpt` fields. Child-process failures keep the child stdout/stderr artifacts, final-output contract failures name the missing or empty `codex-final.txt`, and block-write failures name the block artifact path.
+
+Output modes stay mutually exclusive. `--quiet --explain` fails compactly before Codex runs, `--json` remains unsupported, and `--quiet --json` / `--json --explain` do not invoke Codex.
+
+Default failures stay compact and human-readable with step, exit code when relevant, reason, excerpt, log/artifact path, and fix.
+
 ## Test contract
 
 The contract tests inject a fake `codex` binary through `PATH`, so CI does not require a real Codex install.

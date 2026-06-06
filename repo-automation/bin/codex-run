@@ -19,6 +19,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 codex_run_quiet=0
 codex_run_explain=0
+codex_run_json=0
 codex_run_prompt_file=""
 codex_run_out_dir=""
 codex_run_out_dir_abs=""
@@ -39,8 +40,12 @@ codex_run_exit_code=0
 codex_run_result="pass"
 codex_run_final_output_status="missing"
 codex_run_failure_step=""
+codex_run_failure_code=""
+codex_run_failure_reason=""
+codex_run_failure_fix=""
 codex_run_failure_log=""
 codex_run_failure_excerpt=""
+codex_run_failure_artifact=""
 
 codex_run_usage() {
   printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
@@ -138,6 +143,17 @@ codex_run_first_excerpt() {
   printf '(no output)\n'
 }
 
+codex_run_first_excerpt_line() {
+  local path="$1"
+
+  if [ -f "$path" ] && [ -s "$path" ]; then
+    awk 'NF { print; exit }' "$path"
+    return 0
+  fi
+
+  printf '(no output)\n'
+}
+
 codex_run_write_summary() {
   cat > "$codex_run_summary_path" <<EOF
 script=codex-run
@@ -156,6 +172,27 @@ stderr_path=$codex_run_stderr_path
 final_output_path=$codex_run_final_output_path
 final_output_status=$codex_run_final_output_status
 EOF
+  if [ -n "$codex_run_failure_step" ]; then
+    printf 'failure_step=%s\n' "$codex_run_failure_step" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_failure_code" ]; then
+    printf 'failure_code=%s\n' "$codex_run_failure_code" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_failure_reason" ]; then
+    printf 'failure_reason=%s\n' "$codex_run_failure_reason" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_failure_fix" ]; then
+    printf 'failure_fix=%s\n' "$codex_run_failure_fix" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_failure_log" ]; then
+    printf 'failure_log=%s\n' "$codex_run_failure_log" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_failure_artifact" ]; then
+    printf 'failure_artifact=%s\n' "$codex_run_failure_artifact" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_failure_excerpt" ]; then
+    printf 'failure_excerpt=%s\n' "$codex_run_failure_excerpt" >> "$codex_run_summary_path"
+  fi
   if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
     printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path" >> "$codex_run_summary_path"
   fi
@@ -182,16 +219,82 @@ codex_run_print_final_summary() {
 codex_run_print_failure_block() {
   local step="$1"
   local exit_code="$2"
-  local log_path="$3"
-  local excerpt_path="$4"
+  local reason="$3"
+  local log_path="$4"
+  local artifact_path="$5"
+  local excerpt_text="$6"
+  local fix="$7"
 
   printf 'fail: codex-run failed\n'
   printf 'step: %s\n' "$step"
   printf 'exit_code: %s\n' "$exit_code"
+  printf 'reason: %s\n' "$reason"
   printf 'excerpt:\n'
-  codex_run_first_excerpt "$excerpt_path"
-  printf 'log: %s\n' "$log_path"
-  printf 'fix: paste this blocker into ChatGPT\n'
+  printf '%s\n' "$excerpt_text"
+  if [ -n "$log_path" ]; then
+    printf 'log: %s\n' "$log_path"
+  elif [ -n "$artifact_path" ]; then
+    printf 'artifact: %s\n' "$artifact_path"
+  fi
+  printf 'fix: %s\n' "$fix"
+}
+
+codex_run_print_quiet_failure() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local log_path="$5"
+  local artifact_path="$6"
+  local excerpt_text="$7"
+
+  printf 'result=fail\n'
+  printf 'code=%s\n' "$code"
+  printf 'step=%s\n' "$step"
+  printf 'reason=%s\n' "$reason"
+  printf 'fix=%s\n' "$fix"
+  if [ -n "$log_path" ]; then
+    printf 'log=%s\n' "$log_path"
+  fi
+  if [ -n "$artifact_path" ]; then
+    printf 'artifact=%s\n' "$artifact_path"
+  fi
+  if [ -n "$excerpt_text" ]; then
+    printf 'excerpt=%s\n' "$excerpt_text"
+  fi
+}
+
+codex_run_finish_failure() {
+  local quiet_code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+  local exit_code="$5"
+  local log_path="$6"
+  local artifact_path="$7"
+  local excerpt_text="$8"
+
+  codex_run_result="fail"
+  codex_run_failure_step="$step"
+  codex_run_failure_code="$quiet_code"
+  codex_run_failure_reason="$reason"
+  codex_run_failure_fix="$fix"
+  codex_run_failure_log="$log_path"
+  codex_run_failure_artifact="$artifact_path"
+  codex_run_failure_excerpt="$excerpt_text"
+  codex_run_write_summary || return 1
+
+  if [ "$codex_run_quiet" -eq 1 ]; then
+    codex_run_print_quiet_failure "$quiet_code" "$step" "$reason" "$fix" "$log_path" "$artifact_path" "$excerpt_text" >&2
+  else
+      codex_run_print_failure_block "$step" "$exit_code" "$reason" "$log_path" "$artifact_path" "$excerpt_text" "$fix" >&2
+  fi
+
+  if [ "$codex_run_explain" -eq 1 ]; then
+    codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
+  fi
+
+  return 1
 }
 
 codex_run_main() {
@@ -200,6 +303,7 @@ codex_run_main() {
   local final_output_value="none"
   local summary_value="none"
   local status_value="fail"
+  local codex_run_failure_excerpt_block=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -215,8 +319,7 @@ codex_run_main() {
         codex_run_explain=1
         ;;
       --json)
-        codex_run_flag_value_error "unsupported flag" "--json" "use --quiet or --explain; JSON output is not implemented yet"
-        return 1
+        codex_run_json=1
         ;;
       --prompt-file=*)
         codex_run_prompt_file="${arg#--prompt-file=}"
@@ -306,44 +409,90 @@ codex_run_main() {
     return 1
   fi
 
+  if [ "$codex_run_json" -eq 1 ]; then
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "unsupported-json" "output-modes" "JSON output is not implemented yet" "use --quiet or --explain without --json" "" "" "" >&2
+    else
+      codex_run_flag_value_error "unsupported flag" "--json" "use --quiet or --explain; JSON output is not implemented yet"
+    fi
+    return 1
+  fi
+
+  if [ "$codex_run_quiet" -eq 1 ] && [ "$codex_run_explain" -eq 1 ]; then
+    codex_run_print_quiet_failure "output-mode-conflict" "output-modes" "quiet and explain cannot be combined" "use only one output mode" "" "" "" >&2
+    return 1
+  fi
+
   if [ ! -e "$codex_run_prompt_file" ]; then
-    codex_run_fail "prompt file does not exist: $codex_run_prompt_file" "provide an existing prompt file"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "missing-prompt-file" "prompt-file" "prompt file does not exist" "provide an existing prompt file" "" "$codex_run_prompt_file" "" >&2
+    else
+      codex_run_fail "prompt file does not exist: $codex_run_prompt_file" "provide an existing prompt file"
+    fi
     return 1
   fi
 
   if [ -d "$codex_run_prompt_file" ]; then
-    codex_run_fail "prompt file is a directory: $codex_run_prompt_file" "provide a regular readable prompt file"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "invalid-prompt-file" "prompt-file" "prompt file is a directory" "provide a regular readable prompt file" "" "$codex_run_prompt_file" "" >&2
+    else
+      codex_run_fail "prompt file is a directory: $codex_run_prompt_file" "provide a regular readable prompt file"
+    fi
     return 1
   fi
 
   if [ ! -f "$codex_run_prompt_file" ]; then
-    codex_run_fail "prompt file is not a regular file: $codex_run_prompt_file" "provide a regular readable prompt file"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "invalid-prompt-file" "prompt-file" "prompt file is not a regular file" "provide a regular readable prompt file" "" "$codex_run_prompt_file" "" >&2
+    else
+      codex_run_fail "prompt file is not a regular file: $codex_run_prompt_file" "provide a regular readable prompt file"
+    fi
     return 1
   fi
 
   if [ ! -r "$codex_run_prompt_file" ]; then
-    codex_run_fail "prompt file is not readable: $codex_run_prompt_file" "fix file permissions or choose a readable prompt file"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "unreadable-prompt-file" "prompt-file" "prompt file is not readable" "fix file permissions or choose a readable prompt file" "" "$codex_run_prompt_file" "" >&2
+    else
+      codex_run_fail "prompt file is not readable: $codex_run_prompt_file" "fix file permissions or choose a readable prompt file"
+    fi
     return 1
   fi
 
   if [ ! -s "$codex_run_prompt_file" ]; then
-    codex_run_fail "prompt file is empty: $codex_run_prompt_file" "provide a non-empty prompt file"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "empty-prompt-file" "prompt-file" "prompt file is empty" "provide a non-empty prompt file" "" "$codex_run_prompt_file" "" >&2
+    else
+      codex_run_fail "prompt file is empty: $codex_run_prompt_file" "provide a non-empty prompt file"
+    fi
     return 1
   fi
 
   if ! codex_run_is_conservative_token "$codex_run_profile"; then
-    codex_run_fail "invalid profile: $codex_run_profile" "use a conservative profile name without spaces, paths, or shell metacharacters"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "invalid-profile" "profile" "invalid profile" "use a conservative profile name without spaces, paths, or shell metacharacters" "" "$codex_run_profile" "" >&2
+    else
+      codex_run_fail "invalid profile: $codex_run_profile" "use a conservative profile name without spaces, paths, or shell metacharacters"
+    fi
     return 1
   fi
 
   if ! codex_run_is_conservative_token "$codex_run_sandbox"; then
-    codex_run_fail "invalid sandbox: $codex_run_sandbox" "use a conservative sandbox mode without spaces, paths, or shell metacharacters"
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "invalid-sandbox" "sandbox" "invalid sandbox" "use a conservative sandbox mode without spaces, paths, or shell metacharacters" "" "$codex_run_sandbox" "" >&2
+    else
+      codex_run_fail "invalid sandbox: $codex_run_sandbox" "use a conservative sandbox mode without spaces, paths, or shell metacharacters"
+    fi
     return 1
   fi
 
   case "$codex_run_timeout" in
     ''|*[!0-9]*)
-      codex_run_fail "invalid timeout: $codex_run_timeout" "use --timeout=<seconds> with a non-negative integer"
+      if [ "$codex_run_quiet" -eq 1 ]; then
+        codex_run_print_quiet_failure "invalid-timeout" "timeout" "invalid timeout" "use --timeout=<seconds> with a non-negative integer" "" "$codex_run_timeout" "" >&2
+      else
+        codex_run_fail "invalid timeout: $codex_run_timeout" "use --timeout=<seconds> with a non-negative integer"
+      fi
       return 1
       ;;
   esac
@@ -357,20 +506,24 @@ codex_run_main() {
     fi
   fi
 
-  codex_run_cd="${codex_run_cd:-$codex_run_repo_root}"
-  codex_run_cd_abs="$(codex_run_resolve_existing_dir "$codex_run_cd")" || return 1
-
-  codex_run_codex_path="$(command -v codex 2>/dev/null || true)"
-  if [ -z "$codex_run_codex_path" ]; then
-    codex_run_fail "codex command not found on PATH" "install Codex or adjust PATH so repo-automation/bin/codex-run can invoke codex exec"
-    return 1
-  fi
-
   codex_run_stdout_path="$codex_run_out_dir_abs/codex.stdout"
   codex_run_stderr_path="$codex_run_out_dir_abs/codex.stderr"
   codex_run_final_output_path="$codex_run_out_dir_abs/codex-final.txt"
   codex_run_final_output_block_path="$codex_run_out_dir_abs/codex-final-output-block.txt"
   codex_run_summary_path="$codex_run_out_dir_abs/codex-run-summary.txt"
+
+  codex_run_cd="${codex_run_cd:-$codex_run_repo_root}"
+  codex_run_cd_abs="$(codex_run_resolve_existing_dir "$codex_run_cd")" || return 1
+
+  codex_run_codex_path="$(command -v codex 2>/dev/null || true)"
+  if [ -z "$codex_run_codex_path" ]; then
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "missing-codex" "codex" "codex command not found on PATH" "install Codex or adjust PATH so repo-automation/bin/codex-run can invoke codex exec" "" "codex" "" >&2
+    else
+      codex_run_fail "codex command not found on PATH" "install Codex or adjust PATH so repo-automation/bin/codex-run can invoke codex exec"
+    fi
+    return 1
+  fi
 
   codex_run_timeout_enforced="not_enforced"
 
@@ -402,37 +555,51 @@ codex_run_main() {
   codex_run_exit_code=$?
 
   if [ "$codex_run_exit_code" -ne 0 ]; then
-    codex_run_result="fail"
-    codex_run_failure_step="codex"
+    codex_run_failure_reason="codex exec exited with status $codex_run_exit_code"
+    codex_run_failure_fix="inspect the child failure log and rerun codex-run"
     codex_run_failure_log="$codex_run_stderr_path"
     if [ ! -s "$codex_run_failure_log" ] && [ -s "$codex_run_stdout_path" ]; then
       codex_run_failure_log="$codex_run_stdout_path"
     fi
-    codex_run_failure_excerpt="$(codex_run_first_excerpt "$codex_run_failure_log")"
+    codex_run_failure_excerpt="$(codex_run_first_excerpt_line "$codex_run_failure_log")"
+    codex_run_failure_excerpt_block="$(codex_run_first_excerpt "$codex_run_failure_log")"
+    codex_run_failure_code="codex-child-failed"
+    codex_run_failure_artifact=""
+    codex_run_result="fail"
+    codex_run_failure_step="codex"
     codex_run_write_summary || return 1
-    codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_log" "$codex_run_failure_log" >&2
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_log" "" "$(codex_run_first_excerpt_line "$codex_run_failure_log")" >&2
+    else
+      codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "$codex_run_failure_log" "" "$codex_run_failure_excerpt_block" "$codex_run_failure_fix" >&2
+    fi
     if [ "$codex_run_explain" -eq 1 ]; then
       codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
     fi
     return 1
   fi
 
-  if [ -s "$codex_run_final_output_path" ]; then
+  if [ -f "$codex_run_final_output_path" ] && [ ! -s "$codex_run_final_output_path" ]; then
+    codex_run_final_output_status="empty"
+  elif [ -s "$codex_run_final_output_path" ]; then
     codex_run_final_output_status="present"
     final_output_value="$codex_run_final_output_path"
     codex_run_result="pass"
     if ! repo_operator_output_write_file_block "CODEX FINAL OUTPUT" "$codex_run_final_output_path" "$codex_run_final_output_block_path"; then
-      codex_run_result="fail"
+      codex_run_failure_code="codex-final-output-block-write-failed"
       codex_run_failure_step="final-output-block"
-      codex_run_failure_log="$codex_run_final_output_block_path"
-      codex_run_failure_excerpt="failed to write Codex final output block artifact"
+      codex_run_failure_reason="failed to write final output block artifact"
+      codex_run_failure_fix="ensure the final output file stays readable while codex-run writes the block artifact"
+      codex_run_failure_log="$codex_run_final_output_path"
+      codex_run_failure_artifact="$codex_run_final_output_block_path"
+      codex_run_failure_excerpt="$codex_run_failure_reason"
+      codex_run_result="fail"
       codex_run_write_summary || return 1
-      printf 'fail: codex-run failed\n' >&2
-      printf 'step: %s\n' "$codex_run_failure_step" >&2
-      printf 'exit_code: %s\n' "$codex_run_exit_code" >&2
-      printf 'excerpt:\n%s\n' "$codex_run_failure_excerpt" >&2
-      printf 'log: %s\n' "$codex_run_failure_log" >&2
-      printf 'fix: paste this blocker into ChatGPT\n' >&2
+      if [ "$codex_run_quiet" -eq 1 ]; then
+        codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_log" "$codex_run_failure_artifact" "$codex_run_failure_reason" >&2
+      else
+        codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "$codex_run_failure_log" "$codex_run_failure_artifact" "$codex_run_failure_reason" "$codex_run_failure_fix" >&2
+      fi
       if [ "$codex_run_explain" -eq 1 ]; then
         codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
       fi
@@ -453,17 +620,25 @@ codex_run_main() {
     return 0
   fi
 
-  codex_run_result="fail"
+  codex_run_failure_code="final-output-contract-failed"
   codex_run_failure_step="final-output-contract"
-  codex_run_failure_log="$codex_run_final_output_path"
-  codex_run_failure_excerpt="codex exec exited 0 but final output file is missing or empty"
+  if [ "$codex_run_final_output_status" = "empty" ]; then
+    codex_run_failure_reason="final output file is empty"
+  else
+    codex_run_final_output_status="missing"
+    codex_run_failure_reason="final output file is missing"
+  fi
+  codex_run_failure_fix="ensure codex exec writes a non-empty final output file"
+  codex_run_failure_log=""
+  codex_run_failure_artifact="$codex_run_final_output_path"
+  codex_run_failure_excerpt="codex exec exited 0 but $codex_run_failure_reason"
+  codex_run_result="fail"
   codex_run_write_summary || return 1
-  printf 'fail: codex-run failed\n' >&2
-  printf 'step: %s\n' "$codex_run_failure_step" >&2
-  printf 'exit_code: %s\n' "$codex_run_exit_code" >&2
-  printf 'excerpt:\n%s\n' "$codex_run_failure_excerpt" >&2
-  printf 'log: %s\n' "$codex_run_failure_log" >&2
-  printf 'fix: paste this blocker into ChatGPT\n' >&2
+  if [ "$codex_run_quiet" -eq 1 ]; then
+    codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" >&2
+  else
+    codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" >&2
+  fi
   if [ "$codex_run_explain" -eq 1 ]; then
     codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
   fi

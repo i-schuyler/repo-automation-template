@@ -27,6 +27,7 @@ stdout_text="${FAKE_CODEX_STDOUT_TEXT:-}"
 stderr_text="${FAKE_CODEX_STDERR_TEXT:-}"
 write_final="${FAKE_CODEX_WRITE_FINAL:-1}"
 write_empty_final="${FAKE_CODEX_WRITE_EMPTY_FINAL:-0}"
+final_chmod="${FAKE_CODEX_FINAL_CHMOD:-}"
 capture_stdin="${FAKE_CODEX_CAPTURE_STDIN:-1}"
 output_last_message=""
 prev=""
@@ -64,6 +65,9 @@ if [ -n "$output_last_message" ] && [ "$write_final" -eq 1 ] 2>/dev/null; then
   else
     printf '%s\n' "$final_text" > "$output_last_message"
   fi
+  if [ -n "$final_chmod" ]; then
+    chmod "$final_chmod" "$output_last_message"
+  fi
 fi
 
 if [ -n "$log_file" ]; then
@@ -97,6 +101,11 @@ codex_run_contract_assert_text() {
 codex_run_contract_assert_file_exists() {
   local path="$1"
   [ -f "$path" ]
+}
+
+codex_run_contract_assert_not_exists() {
+  local path="$1"
+  [ ! -e "$path" ]
 }
 
 codex_run_contract_assert_empty() {
@@ -139,6 +148,9 @@ codex_run_contract_main_impl() {
   child_fail_out_dir="$smoke_test_base/codex-run-child-fail"
   missing_final_out_dir="$smoke_test_base/codex-run-missing-final"
   empty_final_out_dir="$smoke_test_base/codex-run-empty-final"
+  conflict_out_dir="$smoke_test_base/codex-run-conflict"
+  json_out_dir="$smoke_test_base/codex-run-json"
+  block_fail_out_dir="$smoke_test_base/codex-run-block-fail"
   stdout_file="$contract_root/stdout"
   stderr_file="$contract_root/stderr"
 
@@ -225,6 +237,73 @@ EOF
   fi
 
   if (
+    rm -rf -- "$conflict_out_dir" &&
+      mkdir -p "$conflict_out_dir" &&
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$conflict_out_dir" --quiet --explain >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "quiet-explain-conflict"
+    status=1
+  else
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'result=fail' "$stderr_file" &&
+      codex_run_contract_assert_grep 'code=output-mode-conflict' "$stderr_file" &&
+      codex_run_contract_assert_grep 'step=output-modes' "$stderr_file" &&
+      codex_run_contract_assert_grep 'reason=quiet and explain cannot be combined' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix=use only one output mode' "$stderr_file" &&
+      codex_run_contract_assert_not_exists "$conflict_out_dir/codex.args"; then
+      :
+    else
+      test_fail "quiet-explain-conflict"
+      status=1
+    fi
+  fi
+
+  if (
+    rm -rf -- "$json_out_dir" &&
+      mkdir -p "$json_out_dir" &&
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$json_out_dir" --json --explain >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "json-unsupported"
+    status=1
+  else
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'fail: unsupported flag' "$stderr_file" &&
+      codex_run_contract_assert_grep 'flag: --json' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix: use --quiet or --explain; JSON output is not implemented yet' "$stderr_file" &&
+      codex_run_contract_assert_not_exists "$json_out_dir/codex.args"; then
+      :
+    else
+      test_fail "json-unsupported"
+      status=1
+    fi
+  fi
+
+  if (
+    rm -rf -- "$json_out_dir" &&
+      mkdir -p "$json_out_dir" &&
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$json_out_dir" --quiet --json >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "quiet-json-unsupported"
+    status=1
+  else
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'result=fail' "$stderr_file" &&
+      codex_run_contract_assert_grep 'code=unsupported-json' "$stderr_file" &&
+      codex_run_contract_assert_grep 'step=output-modes' "$stderr_file" &&
+      codex_run_contract_assert_grep 'reason=JSON output is not implemented yet' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix=use --quiet or --explain without --json' "$stderr_file" &&
+      codex_run_contract_assert_not_exists "$json_out_dir/codex.args"; then
+      :
+    else
+      test_fail "quiet-json-unsupported"
+      status=1
+    fi
+  fi
+
+  if (
     rm -rf -- "$explain_out_dir" &&
       mkdir -p "$explain_out_dir" &&
       PATH="$fake_bin_dir:$PATH" \
@@ -290,6 +369,8 @@ PY
 
   if (
     FAKE_CODEX_EXIT_CODE=17 \
+      FAKE_CODEX_STDERR_TEXT='child failure line one
+child failure line two' \
       PATH="$fake_bin_dir:$PATH" \
       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$child_fail_out_dir" >"$stdout_file" 2>"$stderr_file"
   ); then
@@ -299,10 +380,38 @@ PY
     if codex_run_contract_assert_grep 'fail: codex-run failed' "$stderr_file" &&
       codex_run_contract_assert_grep 'step: codex' "$stderr_file" &&
       codex_run_contract_assert_grep 'exit_code: 17' "$stderr_file" &&
-      codex_run_contract_assert_grep 'fix: paste this blocker into ChatGPT' "$stderr_file"; then
+      codex_run_contract_assert_grep 'reason: codex exec exited with status 17' "$stderr_file" &&
+      codex_run_contract_assert_grep 'log: '"$child_fail_out_dir"'/codex.stderr' "$stderr_file" &&
+      codex_run_contract_assert_grep 'child failure line one' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix: inspect the child failure log and rerun codex-run' "$stderr_file"; then
       :
     else
       test_fail "child-failure"
+      status=1
+    fi
+  fi
+
+  if (
+    FAKE_CODEX_EXIT_CODE=17 \
+      FAKE_CODEX_STDERR_TEXT='child failure line one
+child failure line two' \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$child_fail_out_dir" --quiet >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "quiet-child-failure"
+    status=1
+  else
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'result=fail' "$stderr_file" &&
+      codex_run_contract_assert_grep 'code=codex-child-failed' "$stderr_file" &&
+      codex_run_contract_assert_grep 'step=codex' "$stderr_file" &&
+      codex_run_contract_assert_grep 'reason=codex exec exited with status 17' "$stderr_file" &&
+      codex_run_contract_assert_grep 'log='"$child_fail_out_dir"'/codex.stderr' "$stderr_file" &&
+      codex_run_contract_assert_grep 'excerpt=child failure line one' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix=inspect the child failure log and rerun codex-run' "$stderr_file"; then
+      :
+    else
+      test_fail "quiet-child-failure"
       status=1
     fi
   fi
@@ -316,7 +425,11 @@ PY
     status=1
   else
     if codex_run_contract_assert_grep 'step: final-output-contract' "$stderr_file" &&
-      codex_run_contract_assert_grep 'codex exec exited 0 but final output file is missing or empty' "$stderr_file"; then
+      codex_run_contract_assert_grep 'reason: final output file is missing' "$stderr_file" &&
+      codex_run_contract_assert_grep 'artifact: '"$missing_final_out_dir"'/codex-final.txt' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix: ensure codex exec writes a non-empty final output file' "$stderr_file" &&
+      codex_run_contract_assert_grep 'failure_step=final-output-contract' "$missing_final_out_dir/codex-run-summary.txt" &&
+      codex_run_contract_assert_grep 'final_output_status=missing' "$missing_final_out_dir/codex-run-summary.txt"; then
       :
     else
       test_fail "missing-final-output"
@@ -325,18 +438,70 @@ PY
   fi
 
   if (
+    FAKE_CODEX_WRITE_FINAL=0 \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$missing_final_out_dir" --quiet >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "quiet-missing-final-output"
+    status=1
+  else
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'result=fail' "$stderr_file" &&
+      codex_run_contract_assert_grep 'code=final-output-contract-failed' "$stderr_file" &&
+      codex_run_contract_assert_grep 'step=final-output-contract' "$stderr_file" &&
+      codex_run_contract_assert_grep 'reason=final output file is missing' "$stderr_file" &&
+      codex_run_contract_assert_grep 'artifact='"$missing_final_out_dir"'/codex-final.txt' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix=ensure codex exec writes a non-empty final output file' "$stderr_file"; then
+      :
+    else
+      test_fail "quiet-missing-final-output"
+      status=1
+    fi
+  fi
+
+  if (
     FAKE_CODEX_WRITE_EMPTY_FINAL=1 \
       PATH="$fake_bin_dir:$PATH" \
-      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$empty_final_out_dir" >"$stdout_file" 2>"$stderr_file"
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$empty_final_out_dir" --quiet >"$stdout_file" 2>"$stderr_file"
   ); then
     test_fail "empty-final-output"
     status=1
   else
-    if codex_run_contract_assert_grep 'step: final-output-contract' "$stderr_file" &&
-      codex_run_contract_assert_grep 'codex exec exited 0 but final output file is missing or empty' "$stderr_file"; then
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'result=fail' "$stderr_file" &&
+      codex_run_contract_assert_grep 'code=final-output-contract-failed' "$stderr_file" &&
+      codex_run_contract_assert_grep 'step=final-output-contract' "$stderr_file" &&
+      codex_run_contract_assert_grep 'reason=final output file is empty' "$stderr_file" &&
+      codex_run_contract_assert_grep 'artifact='"$empty_final_out_dir"'/codex-final.txt' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix=ensure codex exec writes a non-empty final output file' "$stderr_file" &&
+      codex_run_contract_assert_not_exists "$empty_final_out_dir/codex-final-output-block.txt"; then
       :
     else
       test_fail "empty-final-output"
+      status=1
+    fi
+  fi
+
+  if (
+    FAKE_CODEX_WRITE_FINAL=1 \
+      FAKE_CODEX_FINAL_CHMOD=000 \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$block_fail_out_dir" --quiet >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "final-output-block-failure"
+    status=1
+  else
+    if codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'result=fail' "$stderr_file" &&
+      codex_run_contract_assert_grep 'code=codex-final-output-block-write-failed' "$stderr_file" &&
+      codex_run_contract_assert_grep 'step=final-output-block' "$stderr_file" &&
+      codex_run_contract_assert_grep 'reason=failed to write final output block artifact' "$stderr_file" &&
+      codex_run_contract_assert_grep 'artifact='"$block_fail_out_dir"'/codex-final-output-block.txt' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix=ensure the final output file stays readable while codex-run writes the block artifact' "$stderr_file" &&
+      codex_run_contract_assert_not_exists "$block_fail_out_dir/codex-final-output-block.txt"; then
+      :
+    else
+      test_fail "final-output-block-failure"
       status=1
     fi
   fi
