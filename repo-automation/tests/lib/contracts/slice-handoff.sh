@@ -1112,9 +1112,7 @@ smoke_slice_handoff_prepare_contract_context() {
   smoke_slice_handoff_valid_none_out_dir="$smoke_test_base/out-valid-none"
   smoke_slice_handoff_valid_submit_out_dir="$smoke_test_base/out-valid-submit"
   smoke_slice_handoff_valid_preset_out_dir="$smoke_test_base/out-valid-preset"
-  smoke_slice_handoff_submit_mode_validate_only_out_dir="$smoke_test_base/out-submit-mode-validate-only"
   smoke_slice_handoff_valid_quiet_out_dir="$smoke_test_base/out-quiet"
-  smoke_slice_handoff_valid_explain_out_dir="$smoke_test_base/out-explain"
   smoke_slice_handoff_execution_tmp_root="$smoke_test_base/slice-handoff-tmp"
   smoke_slice_handoff_execution_artifact_root="$smoke_slice_handoff_execution_tmp_root/slice-handoff-execution"
   smoke_slice_handoff_execution_none_out_dir="$smoke_slice_handoff_execution_artifact_root/out-execution-none"
@@ -1122,22 +1120,11 @@ smoke_slice_handoff_prepare_contract_context() {
   smoke_slice_handoff_execution_quiet_out_dir="$smoke_slice_handoff_execution_artifact_root/out-execution-quiet"
   smoke_slice_handoff_execution_explain_out_dir="$smoke_slice_handoff_execution_artifact_root/out-execution-explain"
   smoke_slice_handoff_invalid_out_dir="$smoke_test_base/out-invalid-validation"
-  smoke_slice_handoff_inside_repo_out_dir="$smoke_repo_root/slice-handoff-out-inside-repo"
-  smoke_slice_handoff_missing_schema_file="$smoke_slice_handoff_check_root/missing-schema.md"
-  smoke_slice_handoff_invalid_schema_file="$smoke_slice_handoff_check_root/invalid-schema.md"
-  smoke_slice_handoff_missing_branch_file="$smoke_slice_handoff_check_root/missing-branch.md"
-  smoke_slice_handoff_invalid_branch_file="$smoke_slice_handoff_check_root/invalid-branch.md"
-  smoke_slice_handoff_invalid_profile_file="$smoke_slice_handoff_check_root/invalid-profile.md"
-  smoke_slice_handoff_missing_commit_file="$smoke_slice_handoff_check_root/missing-commit.md"
-  smoke_slice_handoff_missing_pr_body_file="$smoke_slice_handoff_check_root/missing-pr-body.md"
   smoke_slice_handoff_invalid_submit_file="$smoke_slice_handoff_check_root/invalid-submit-pr-body.md"
-  smoke_slice_handoff_submit_mode_validate_only_file="$smoke_slice_handoff_check_root/submit-mode-validate-only.md"
-  smoke_slice_handoff_empty_review_request_file="$smoke_slice_handoff_check_root/empty-review-request.md"
   smoke_slice_handoff_valid_preset_file="$smoke_slice_handoff_check_root/valid-preset.md"
   smoke_slice_handoff_invalid_prompt_conflict_file="$smoke_slice_handoff_check_root/invalid-pr-review-conflict.md"
   smoke_slice_handoff_invalid_prompt_id_file="$smoke_slice_handoff_check_root/invalid-pr-review-id.md"
   smoke_slice_handoff_missing_prompt_file="$smoke_slice_handoff_check_root/missing-pr-review-preset.md"
-  smoke_slice_handoff_placeholder_file="$smoke_slice_handoff_check_root/placeholder.md"
   smoke_slice_handoff_lifecycle_file="$smoke_slice_handoff_check_root/lifecycle.md"
   smoke_slice_handoff_self_modifying_helper_file="$smoke_slice_handoff_check_root/self-modifying-helper.md"
   smoke_slice_handoff_helper_command_mention_file="$smoke_slice_handoff_check_root/helper-command-mention.md"
@@ -1303,6 +1290,101 @@ smoke_slice_handoff_prepare_execution_context() {
   smoke_slice_handoff_execution_fake_repo_flow_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-repo-flow-submit.args"
   smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-pr-body-check-submit.args"
   smoke_slice_handoff_install_fake_codex_run || return 1
+  : \
+    "$smoke_slice_handoff_check_root" \
+    "$smoke_slice_handoff_valid_none_file" \
+    "$smoke_slice_handoff_valid_submit_file" \
+    "$smoke_slice_handoff_valid_none_out_dir" \
+    "$smoke_slice_handoff_valid_submit_out_dir" \
+    "$smoke_slice_handoff_valid_preset_out_dir" \
+    "$smoke_slice_handoff_valid_quiet_out_dir" \
+    "$smoke_slice_handoff_invalid_out_dir" \
+    "$smoke_slice_handoff_execution_tmp_root" \
+    "$smoke_slice_handoff_execution_artifact_root" \
+    "$smoke_slice_handoff_execution_none_out_dir" \
+    "$smoke_slice_handoff_execution_submit_out_dir" \
+    "$smoke_slice_handoff_execution_quiet_out_dir" \
+    "$smoke_slice_handoff_execution_explain_out_dir" \
+    "$smoke_slice_handoff_valid_preset_file" \
+    "$smoke_slice_handoff_invalid_prompt_conflict_file" \
+    "$smoke_slice_handoff_invalid_prompt_id_file" \
+    "$smoke_slice_handoff_missing_prompt_file" \
+    "$smoke_slice_handoff_lifecycle_file" \
+    "$smoke_slice_handoff_self_modifying_helper_file" \
+    "$smoke_slice_handoff_helper_command_mention_file" \
+    "$smoke_slice_handoff_top_level_fixture_baseline_file" \
+    "$smoke_slice_handoff_top_level_fixture_after_file" \
+    "$smoke_slice_handoff_valid_prompt" \
+    "$smoke_slice_handoff_submit_prompt" \
+    "$smoke_slice_handoff_invalid_submit_body" \
+    "$smoke_slice_handoff_submit_body" \
+    "$smoke_slice_handoff_explicit_review_request_text" \
+    "$smoke_slice_handoff_expected_dry_run_repo_root" \
+    "$smoke_slice_handoff_expected_planned_run_dir_root" \
+    "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" \
+    "$smoke_slice_handoff_expected_submit_repo_flow_pr" \
+    "$smoke_slice_handoff_expected_submit_commit_sha" \
+    "$smoke_slice_handoff_expected_submit_watched" \
+    "$smoke_slice_handoff_expected_submit_ci_state" \
+    "$smoke_slice_handoff_expected_default_review_request" \
+    "$smoke_slice_handoff_expected_submit_default_review_request" \
+    "$smoke_slice_handoff_expected_none_prompt" \
+    "$smoke_slice_handoff_expected_submit_prompt" \
+    "$smoke_slice_handoff_expected_none_preview" \
+    "$smoke_slice_handoff_expected_submit_noauth_preview" \
+    "$smoke_slice_handoff_expected_submit_preview" \
+    "$smoke_slice_handoff_expected_quiet_preview" \
+    "$smoke_slice_handoff_expected_preset_preview" \
+    "$smoke_slice_handoff_expected_none_review_stdout" \
+    "$smoke_slice_handoff_expected_explicit_review_stdout" \
+    "$smoke_slice_handoff_expected_submit_review_request_rendered" \
+    "$smoke_slice_handoff_expected_preset_review_request" \
+    "$smoke_slice_handoff_expected_none_stdout" \
+    "$smoke_slice_handoff_expected_submit_stdout_value" \
+    "$smoke_slice_handoff_expected_preset_stdout" \
+    "$smoke_slice_handoff_expected_none_summary" \
+    "$smoke_slice_handoff_expected_quiet_summary" \
+    "$smoke_slice_handoff_expected_submit_summary" \
+    "$smoke_slice_handoff_expected_submit_noauth_summary" \
+    "$smoke_slice_handoff_expected_execution_none_summary" \
+    "$smoke_slice_handoff_expected_execution_quiet_summary" \
+    "$smoke_slice_handoff_expected_execution_review_request_head" \
+    "$smoke_slice_handoff_expected_execution_submit_summary" \
+    "$smoke_slice_handoff_expected_execution_explain_preview" \
+    "$smoke_slice_handoff_expected_execution_explain_summary" \
+    "$smoke_slice_handoff_execution_fake_codex_bin_dir" \
+    "$smoke_slice_handoff_execution_fake_codex_run_final_text_file" \
+    "$FAKE_CODEX_RUN_FINAL_TEXT_FILE" \
+    "$smoke_slice_handoff_execution_fake_codex_args_none_file" \
+    "$smoke_slice_handoff_execution_fake_codex_args_submit_file" \
+    "$smoke_slice_handoff_execution_fake_codex_args_submit_blocker_file" \
+    "$smoke_slice_handoff_execution_fake_codex_args_submit_blocker_crlf_file" \
+    "$smoke_slice_handoff_execution_fake_codex_args_submit_missing_final_file" \
+    "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" \
+    "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file"
+}
+
+smoke_slice_handoff_prepare_execution_submit_context() {
+  local scenario_slug="$1"
+
+  smoke_slice_handoff_execution_submit_out_dir="$smoke_slice_handoff_execution_artifact_root/out-execution-$scenario_slug"
+  smoke_slice_handoff_execution_fake_codex_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-$scenario_slug.args"
+  smoke_slice_handoff_execution_fake_codex_args_submit_blocker_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-blocker-$scenario_slug.args"
+  smoke_slice_handoff_execution_fake_codex_args_submit_blocker_crlf_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-blocker-crlf-$scenario_slug.args"
+  smoke_slice_handoff_execution_fake_codex_args_submit_missing_final_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-missing-final-$scenario_slug.args"
+  smoke_slice_handoff_execution_fake_repo_flow_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-repo-flow-submit-$scenario_slug.args"
+  smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-pr-body-check-submit-$scenario_slug.args"
+  smoke_slice_handoff_execution_fake_codex_run_final_text_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-run-final-$scenario_slug.txt"
+  FAKE_CODEX_RUN_FINAL_TEXT_FILE="$smoke_slice_handoff_execution_fake_codex_run_final_text_file"
+
+  smoke_slice_handoff_expected_execution_submit_preview="${smoke_slice_handoff_expected_submit_preview//$smoke_slice_handoff_valid_submit_out_dir/$smoke_slice_handoff_execution_submit_out_dir}"
+  smoke_slice_handoff_expected_execution_submit_preview="${smoke_slice_handoff_expected_execution_submit_preview//feature\/slice-handoff-submit/feature\/slice-handoff-pr-review}"
+  smoke_slice_handoff_expected_execution_submit_preview="${smoke_slice_handoff_expected_execution_submit_preview//Slice handoff submit smoke/Slice handoff preset review smoke}"
+  smoke_slice_handoff_expected_execution_submit_preview="${smoke_slice_handoff_expected_execution_submit_preview//$smoke_slice_handoff_expected_dry_run_repo_root/$smoke_slice_handoff_expected_execution_repo_root}"
+  smoke_slice_handoff_expected_execution_submit_preview="${smoke_slice_handoff_expected_execution_submit_preview//$smoke_slice_handoff_expected_planned_run_dir_root/$smoke_slice_handoff_expected_execution_planned_run_dir_root}"
+  smoke_slice_handoff_expected_execution_submit_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$smoke_slice_handoff_execution_submit_out_dir" "$smoke_slice_handoff_execution_submit_out_dir" "$smoke_slice_handoff_execution_submit_out_dir" "$smoke_slice_handoff_execution_submit_out_dir")"
+  smoke_slice_handoff_expected_execution_explain_preview="${smoke_slice_handoff_expected_execution_submit_preview//$smoke_slice_handoff_execution_submit_out_dir/$smoke_slice_handoff_execution_explain_out_dir}"
+  smoke_slice_handoff_expected_execution_explain_summary="$(printf 'schema=repo-automation-slice-handoff/v1\nbranch=feature/slice-handoff-pr-review\ntitle=Slice handoff preset review smoke\ncodex_profile=review\nsubmit_mode=repo-flow-submit-all\ncommit_message=chore: slice-handoff smoke\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' "$smoke_slice_handoff_execution_explain_out_dir" "$smoke_slice_handoff_execution_explain_out_dir" "$smoke_slice_handoff_execution_explain_out_dir" "$smoke_slice_handoff_execution_explain_out_dir")"
 }
 
 smoke_slice_handoff_extract_field() {
@@ -1397,14 +1479,14 @@ smoke_slice_handoff_assert_execution_submit_blocker_boundary() {
   local expected_branch="$2"
   local expected_run_dir="$3"
   local expected_codex_final_output_path="$4"
-  local expected_pr_body_args_file="$5"
-  local expected_repo_flow_args_file="$6"
 
   smoke_slice_handoff_assert_execution_blocker_summary "$stderr_file" "execution-submit" "$expected_branch" "$expected_run_dir" "$expected_codex_final_output_path" || return 1
   ! grep -Fq 'INFO: slice-handoff PR-body validation' "$stderr_file" || return 1
   ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$stderr_file" || return 1
-  [ ! -s "$expected_pr_body_args_file" ] || return 1
-  [ ! -s "$expected_repo_flow_args_file" ] || return 1
+  [ ! -e "$expected_run_dir/pr-body-check.stdout" ] || return 1
+  [ ! -e "$expected_run_dir/pr-body-check.stderr" ] || return 1
+  [ ! -e "$expected_run_dir/repo-flow-submit.stdout" ] || return 1
+  [ ! -e "$expected_run_dir/repo-flow-submit.stderr" ] || return 1
 }
 
 smoke_slice_handoff_assert_stderr_effectively_empty() {

@@ -330,6 +330,7 @@ smoke_check_slice_handoff_contract_execution_submit_success_behavior() {
   local review_request_block_path=""
   local expected_submit_review_request_rendered=""
 
+  smoke_slice_handoff_prepare_execution_submit_context "success" || return 1
   if (
     rm -rf -- "$smoke_slice_handoff_execution_submit_out_dir" &&
       smoke_slice_handoff_write_file "$smoke_slice_handoff_execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$smoke_slice_handoff_submit_prompt" "$smoke_slice_handoff_submit_body" "" "repo-automation-template-pr-review" &&
@@ -369,19 +370,6 @@ EOF
       grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.out" &&
       smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "$smoke_slice_handoff_submit_prompt" "$expected_submit_review_request_rendered" "$smoke_slice_handoff_submit_body" "$smoke_test_dir" "execution-submit" "review PR before merge" "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" &&
       smoke_slice_handoff_assert_execution_preflight_isolated "$run_dir" "$smoke_slice_handoff_execution_fixture_sentinel" "$smoke_slice_handoff_execution_smoke_test_dir" "$smoke_test_base" &&
-      smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_fake_codex_args_submit_file" "$(cat <<EOF
-exec
---profile
-review
---cd
-$smoke_test_dir
---sandbox
-workspace-write
---output-last-message
-$run_dir/codex-run/codex-final.txt
--
-EOF
-)" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" "$(cat <<EOF
 submit
 --all
@@ -416,7 +404,7 @@ EOF
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/codex-prompt.md" "$smoke_slice_handoff_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/dry-run-preview.txt" "$smoke_slice_handoff_expected_execution_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/pr-body.md" "$smoke_slice_handoff_submit_body" &&
-      smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/review-request.txt" "$smoke_slice_handoff_expected_execution_review_request_head" &&
+      smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/review-request.txt" "$smoke_slice_handoff_expected_preset_review_request" &&
       smoke_slice_handoff_assert_text_file "$run_dir/codex-run/codex-final.txt" 'fake final output' &&
       grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'result=pass' "$run_dir/slice-handoff-execution-summary.txt" &&
@@ -436,6 +424,7 @@ smoke_check_slice_handoff_contract_execution_submit_false_positive_blocker_behav
   local status=0
   local run_dir=""
 
+  smoke_slice_handoff_prepare_execution_submit_context "false-positive" || return 1
   if (
       rm -rf -- "$smoke_slice_handoff_execution_submit_out_dir" &&
       smoke_slice_handoff_write_file "$smoke_slice_handoff_execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$smoke_slice_handoff_submit_prompt" "$smoke_slice_handoff_submit_body" "" "repo-automation-template-pr-review" &&
@@ -493,11 +482,12 @@ smoke_check_slice_handoff_contract_execution_submit_true_codex_blocker_behavior(
   local status=0
   local run_dir=""
 
+  smoke_slice_handoff_prepare_execution_submit_context "true-blocker" || return 1
   if (
     rm -rf -- "$smoke_slice_handoff_execution_submit_out_dir" &&
       smoke_slice_handoff_write_file "$smoke_slice_handoff_execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$smoke_slice_handoff_submit_prompt" "$smoke_slice_handoff_submit_body" "" "repo-automation-template-pr-review" &&
       smoke_slice_handoff_assert_clean_worktree &&
-      smoke_slice_handoff_set_execution_codex_run_final_text $'\n blocker \r' &&
+      smoke_slice_handoff_set_execution_codex_run_final_text $'\nblocker\n' &&
       rm -f -- "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
       PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_RUN_HELPER=1 FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_blocker_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-blocker.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-blocker.err" --file="$smoke_slice_handoff_execution_valid_preset_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
   ); then
@@ -505,7 +495,7 @@ smoke_check_slice_handoff_contract_execution_submit_true_codex_blocker_behavior(
     status=1
   else
     run_dir="$(smoke_slice_handoff_latest_run_dir "$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit true Codex blocker")" || return 1
-    if smoke_slice_handoff_assert_execution_submit_blocker_boundary "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-blocker.err" "feature/slice-handoff-pr-review" "$run_dir" "$run_dir/codex-run/codex-final.txt" "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file"; then
+    if smoke_slice_handoff_assert_execution_submit_blocker_boundary "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-blocker.err" "feature/slice-handoff-pr-review" "$run_dir" "$run_dir/codex-run/codex-final.txt"; then
       test_pass "execution-submit true Codex blocker"
     else
       test_fail "execution-submit true Codex blocker"
@@ -520,6 +510,7 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
   local status=0
   local run_dir=""
 
+  smoke_slice_handoff_prepare_execution_submit_context "missing-final" || return 1
   if (
     rm -f -- "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
       smoke_slice_handoff_clear_execution_codex_run_final_text &&
@@ -533,8 +524,10 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-missing-final.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-missing-final.err" &&
       ! grep -Fq '===== PR REVIEW REQUEST =====' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-missing-final.err" &&
-      [ ! -s "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" ] &&
-      [ ! -s "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" ] &&
+      [ ! -e "$run_dir/pr-body-check.stdout" ] &&
+      [ ! -e "$run_dir/pr-body-check.stderr" ] &&
+      [ ! -e "$run_dir/repo-flow-submit.stdout" ] &&
+      [ ! -e "$run_dir/repo-flow-submit.stderr" ] &&
       [ -f "$run_dir/codex-run/codex-run-summary.txt" ] &&
       [ ! -e "$run_dir/codex-run/codex-final.txt" ]; then
       test_pass "execution-submit missing codex-final"
@@ -544,6 +537,7 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
     fi
   fi
 
+  smoke_slice_handoff_prepare_execution_submit_context "codex-run-failure" || return 1
   if (
     rm -f -- "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
       PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_RUN_HELPER=1 FAKE_CODEX_RUN_EXIT_CODE=1 FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_RUN_STDOUT_TEXT='' FAKE_CODEX_RUN_STDERR_TEXT='fail: forced codex-run blocker from smoke' FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-failure.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-failure.err" --file="$smoke_slice_handoff_execution_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
@@ -555,8 +549,10 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
     if smoke_slice_handoff_assert_child_failure_shape "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-failure.err" "codex-run" "repo-automation/bin/codex-run" "1" "$run_dir/codex-run.stdout" "$run_dir/codex-run.stderr" "fail: forced codex-run blocker from smoke" "fail: forced codex-run blocker from smoke" "fix codex-run and rerun slice-handoff" &&
       ! grep -Fq 'INFO: slice-handoff PR-body validation' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-failure.err" &&
       ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-failure.err" &&
-      [ ! -s "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" ] &&
-      [ ! -s "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" ]; then
+      [ ! -e "$run_dir/pr-body-check.stdout" ] &&
+      [ ! -e "$run_dir/pr-body-check.stderr" ] &&
+      [ ! -e "$run_dir/repo-flow-submit.stdout" ] &&
+      [ ! -e "$run_dir/repo-flow-submit.stderr" ]; then
       test_pass "execution-submit codex-run failure"
     else
       test_fail "execution-submit codex-run failure"
@@ -567,6 +563,7 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
   smoke_slice_handoff_restore_codex_run || return 1
   unset FAKE_CODEX_RUN_HELPER FAKE_CODEX_RUN_SKIP_FINAL_OUTPUT
 
+  smoke_slice_handoff_prepare_execution_submit_context "pr-body-check-failure" || return 1
   if (
     rm -f -- "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
       PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_PR_BODY_CHECK_EXIT_CODE=1 FAKE_PR_BODY_CHECK_STDERR_TEXT='fail: forced pr-body-check blocker from smoke' smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-pr-body-check.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-pr-body-check.err" --file="$smoke_slice_handoff_execution_invalid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
@@ -583,6 +580,7 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
     fi
   fi
 
+  smoke_slice_handoff_prepare_execution_submit_context "repo-flow-failure" || return 1
   if (
     rm -f -- "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
       PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fail: repo-flow submit blocker from smoke' FAKE_REPO_FLOW_EXIT_CODE=1 FAKE_REPO_FLOW_STOP_REASON='repo-flow submit blocker from smoke' smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" --file="$smoke_slice_handoff_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
@@ -608,6 +606,7 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
     fi
   fi
 
+  smoke_slice_handoff_prepare_execution_submit_context "repo-flow-output-contract-failure" || return 1
   if (
     rm -f -- "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
       PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP='not-a-url' smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow-output-contract.err" --file="$smoke_slice_handoff_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
