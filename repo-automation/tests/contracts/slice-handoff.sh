@@ -35,6 +35,7 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-true-blocker" smoke_check_slice_handoff_contract_execution_submit_true_codex_blocker_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-failures" smoke_check_slice_handoff_contract_execution_failure_cases || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:repo-root-artifacts" smoke_check_slice_handoff_contract_no_repo_root_artifacts || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:codex-final-blocker-detector" smoke_check_slice_handoff_contract_codex_final_output_blocker_detector || status=1
 
   return "$status"
 }
@@ -637,6 +638,32 @@ smoke_check_slice_handoff_contract_no_repo_root_artifacts() {
     test_pass "slice-handoff repo-root out-dir remains absent"
   else
     test_fail "slice-handoff repo-root out-dir remains absent"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_slice_handoff_contract_codex_final_output_blocker_detector() {
+  local status=0
+  local blocker_file="$smoke_test_base/slice-handoff-blocker.txt"
+  local later_blocker_file="$smoke_test_base/slice-handoff-later-blocker.txt"
+  local empty_file="$smoke_test_base/slice-handoff-empty.txt"
+  local whitespace_file="$smoke_test_base/slice-handoff-whitespace.txt"
+
+  printf 'blocker\n' > "$blocker_file" || return 1
+  printf 'Implementation complete.\n\nblocker\n' > "$later_blocker_file" || return 1
+  : > "$empty_file" || return 1
+  printf ' \t \n' > "$whitespace_file" || return 1
+
+  if smoke_slice_handoff_assert_codex_final_output_is_blocker "$blocker_file" &&
+    ! smoke_slice_handoff_assert_codex_final_output_is_blocker "$later_blocker_file" &&
+    ! smoke_slice_handoff_assert_codex_final_output_is_blocker "$empty_file" &&
+    ! smoke_slice_handoff_assert_codex_final_output_is_blocker "$whitespace_file" &&
+    ! smoke_slice_handoff_assert_codex_final_output_is_blocker "$smoke_test_base/does-not-exist.txt"; then
+    test_pass "codex final output blocker detector"
+  else
+    test_fail "codex final output blocker detector"
     status=1
   fi
 

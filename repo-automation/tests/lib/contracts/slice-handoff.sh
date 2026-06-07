@@ -1499,6 +1499,32 @@ smoke_slice_handoff_assert_no_repo_root_out_dir() {
   fi
 }
 
+smoke_slice_handoff_assert_codex_final_output_is_blocker() {
+  local path="$1"
+
+  python3 - "$path" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+try:
+    text = path.read_text(encoding='utf-8')
+except OSError:
+    raise SystemExit(1)
+
+if not text.strip():
+    raise SystemExit(1)
+
+for line in text.splitlines():
+    candidate = line.strip(' \t\r')
+    if not candidate:
+        continue
+    raise SystemExit(0 if candidate == 'blocker' else 1)
+
+raise SystemExit(1)
+PY
+}
+
 smoke_slice_handoff_assert_stderr_effectively_empty() {
   local stderr_file="$1"
   local filtered_stderr_file=""
