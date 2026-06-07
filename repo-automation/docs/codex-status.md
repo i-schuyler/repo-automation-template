@@ -9,7 +9,7 @@ Report Codex session, token, context, resume, re-entry, rate-limit, and recent-s
 ## Phase 1 CLI
 
 ```sh
-repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>|--recent[=<n>]] [--repo-root=<path>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]
+repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>|--recent[=<n>]] [--repo-root=<path>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--verbose] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]
 ```
 
 Defaults:

@@ -588,6 +588,8 @@ def render_pretty_single(payload):
     ctx = payload.get('context', {})
     limits = payload.get('limits', {})
     tokens = payload.get('tokens', {})
+    s.append("codex-status")
+    s.append("")
     s.append(f"selected: {skind}")
     s.append(f"session_id: {sess.get('session_id')}")
     if payload.get('mtime_local'):
