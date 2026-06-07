@@ -213,6 +213,32 @@ assert data["sessions"][0]["resume"]["command"] == "codex resume --include-non-i
 PY
   then :; else test_fail "recent one json"; status=1; fi
 
+  local bounded_codex_home="$contract_root/bounded-home"
+  local bounded_sess_dir="$bounded_codex_home/sessions"
+  mkdir -p "$bounded_sess_dir" || return 1
+  cat > "$bounded_sess_dir/older-malformed.jsonl" <<'EOF'
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count"
+EOF
+  sleep 1
+  codex_status_make_fixture "$bounded_sess_dir/sess-200.jsonl" "sess-200" "feature/200" "c200" "gpt-test" "high" 160 910 1000 80 300 1716500100 90 10080 1717100100
+  sleep 1
+  codex_status_make_fixture "$bounded_sess_dir/sess-201.jsonl" "sess-201" "feature/201" "c201" "gpt-test" "high" 161 911 1000 79 300 1716500200 89 10080 1717100200
+  sleep 1
+  cat > "$bounded_sess_dir/newest-malformed.jsonl" <<'EOF'
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count"
+EOF
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$bounded_codex_home" repo-automation/bin/codex-status --recent=1 >"$out" 2>"$err" &&
+     python3 - "$out" <<'PY'
+import json, sys
+data=json.load(open(sys.argv[1]))
+assert len(data["sessions"]) == 1
+assert data["sessions"][0]["session_id"] == "sess-201"
+assert any("newest-malformed.jsonl" in warning for warning in data["warnings"])
+assert not any("older-malformed.jsonl" in warning for warning in data["warnings"])
+PY
+  then :; else test_fail "bounded recent one"; status=1; fi
+
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$recent_codex_home" repo-automation/bin/codex-status --recent --pretty >"$out" 2>"$err" &&
      grep -Fq 'codex-status' "$out" &&
      grep -Fq '5h:' "$out" &&

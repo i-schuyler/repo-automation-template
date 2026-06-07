@@ -1259,6 +1259,27 @@ smoke_slice_handoff_prepare_execution_context() {
   smoke_slice_handoff_execution_isolated_tmpdir="$smoke_slice_handoff_execution_isolation_root/tmpdir"
   smoke_slice_handoff_execution_isolated_home="$smoke_slice_handoff_execution_isolation_root/home"
   mkdir -p "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" || return 1
+  smoke_slice_handoff_execution_healthy_disk_stub_dir="$smoke_slice_handoff_execution_artifact_root/fake-df"
+  mkdir -p "$smoke_slice_handoff_execution_healthy_disk_stub_dir" || return 1
+  cat > "$smoke_slice_handoff_execution_healthy_disk_stub_dir/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${PREFLIGHT_DF_BLOCKS:-1953125}" \
+  "${PREFLIGHT_DF_USED:-50}" \
+  "${PREFLIGHT_DF_AVAILABLE:-1953125}" \
+  "${PREFLIGHT_DF_USE_PERCENT:-50}" \
+  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$smoke_slice_handoff_execution_healthy_disk_stub_dir/df" || return 1
+  export REPO_AUTOMATION_DF_BIN="$smoke_slice_handoff_execution_healthy_disk_stub_dir/df"
   smoke_slice_handoff_expected_execution_repo_root="$smoke_test_dir"
   smoke_slice_handoff_expected_execution_planned_run_dir_root="$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs"
   smoke_slice_handoff_expected_execution_none_preview="${smoke_slice_handoff_expected_none_preview//$smoke_slice_handoff_valid_none_out_dir/$smoke_slice_handoff_execution_none_out_dir}"

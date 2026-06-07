@@ -67,6 +67,7 @@ Top-level fields:
 Field notes:
 
 - `session.session_id` should resolve from session metadata or filename when possible
+- `mtime` and `mtime_local` should describe the selected session file timestamp when available
 - `session.source` and `session.originator` should be populated when present
 - `git.branch`, `git.commit`, and `git.repository_url` should be parsed from nested `session_meta.payload.git` first, with flat fallbacks preserved for compatibility
 - `model.name` should come from turn context when available; `model.reasoning` should prefer `turn_context.payload.collaboration_mode.settings.reasoning_effort`, then `turn_context.payload.effort`, then `turn_context.payload.reasoning`

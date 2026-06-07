@@ -164,6 +164,17 @@ Recommended improvements:
 - Add a small reusable smoke helper for repo-relative child-helper assertions and fake installation.
 - When copying validator manifests into public artifacts, rewrite artifact paths to the final published locations.
 
+### PR #235 slice-handoff smoke preflight stability
+
+Challenges:
+- Execution-mode slice-handoff smoke could trip the preflight disk guard in low-space developer environments before the contract path under test ran.
+
+What would have helped:
+- A small healthy-disk stub in the execution-mode smoke fixture so the contract could focus on slice-handoff behavior instead of host disk pressure.
+
+Recommended improvements:
+- Keep execution-mode smoke using an explicit healthy `df` stub when the contract is meant to exercise preflight and downstream artifact behavior.
+
 ### PR #233 slice-handoff modularization and preset resolution
 
 Challenges:

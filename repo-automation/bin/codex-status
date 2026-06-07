@@ -575,6 +575,8 @@ def discover_recent_sessions(root, want_count):
         warnings.extend(session_warnings)
         if rate_limits is None and isinstance(token_event, dict) and token_rate_limits:
             rate_limits = token_rate_limits
+        if len(sessions) >= want_count:
+            break
     if len(sessions) < want_count:
         warnings.append(f'only {len(sessions)} valid Codex sessions found; requested {want_count}')
     return sessions, warnings, rate_limits
