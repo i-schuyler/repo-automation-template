@@ -52,6 +52,8 @@ Top-level fields:
 - `generated_at`
 - `codex`
 - `selector`
+- `mtime`
+- `mtime_local`
 - `session`
 - `git`
 - `model`
