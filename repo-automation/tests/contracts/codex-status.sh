@@ -99,15 +99,33 @@ assert data["resume"]["resume_commands"][1] == 'codex exec resume sess-123 "<PRO
 PY
   then :; else test_fail "latest/json"; status=1; fi
 
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$sess_dir/sess-123.jsonl" --pretty >"$out" 2>"$err" &&
-     grep -Fq 'session: sess-123' "$out" &&
-     grep -Fq 'model: gpt-5.4-mini/medium' "$out" &&
-     grep -Fq 'tokens: current_total=150 cumulative_total=900' "$out" &&
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --latest --pretty >"$out" 2>"$err" &&
+     grep -Fq 'codex-status' "$out" &&
+     grep -Fq 'selected: latest' "$out" &&
+     grep -Fq 'session_id: sess-123' "$out" &&
+     grep -Fq 'updated:' "$out" &&
+     grep -Fq 'source: cli / operator' "$out" &&
+     grep -Fq 'model: gpt-5.4-mini / medium' "$out" &&
      grep -Fq 'context: 85% remaining' "$out" &&
-     grep -Fq 'five_hour_remaining=15%' "$out" &&
-     grep -Fq 'weekly_remaining=7%' "$out" &&
-     grep -Fq '5h: warn weekly: block' "$out"
+     grep -Fq '5h: 15% left, resets ' "$out" &&
+     grep -Fq 'week: 7% left, resets ' "$out" &&
+     grep -Fq 'resume:' "$out" &&
+     grep -Fq 'codex resume --include-non-interactive sess-123' "$out" &&
+     ! grep -Fq 'session:' "$out" &&
+     ! grep -Fq 'current_total=' "$out" &&
+     ! grep -Fq 'cumulative_total=' "$out" &&
+     ! grep -Fq '5h: ok weekly: ok' "$out"
   then :; else test_fail "pretty"; status=1; fi
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --latest --pretty --verbose >"$out" 2>"$err" &&
+     grep -Fq 'tokens:' "$out" &&
+     grep -Fq 'input: 12' "$out" &&
+     grep -Fq 'cached_input: 2' "$out" &&
+     grep -Fq 'output: 6' "$out" &&
+     grep -Fq 'reasoning_output: 3' "$out" &&
+     grep -Fq 'current_total: 150' "$out" &&
+     grep -Fq 'cumulative_total: 900' "$out"
+  then :; else test_fail "pretty verbose"; status=1; fi
 
   local uuid_file="$sess_dir/123e4567-e89b-12d3-a456-426614174000.jsonl"
   cat > "$uuid_file" <<'EOF'
@@ -138,7 +156,7 @@ PY
   then :; else test_fail "overflow"; status=1; fi
 
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$sess_dir/overflow.jsonl" --pretty >"$out" 2>"$err" &&
-     grep -Fq 'model: gpt-test/unknown' "$out" &&
+     grep -Fq 'model: gpt-test / unknown' "$out" &&
      grep -Fq 'context: unknown' "$out" &&
      ! grep -Eiq 'context: -[0-9]' "$out" &&
      ! grep -Fq 'None' "$out"
@@ -211,6 +229,8 @@ PY
      grep -Fq 'Session selection:' "$out" &&
      grep -Fq -- '--recent' "$out" &&
      grep -Fq -- '--recent=<n>' "$out" &&
+     grep -Fq -- '--verbose' "$out" &&
+     grep -Fq 'Add token breakdown details to pretty single-session output.' "$out" &&
      grep -Fq 'Valid range: 1..50.' "$out" &&
      grep -Fq 'Unsupported:' "$out" &&
      grep -Fq -- '--quiet' "$out" &&
@@ -218,6 +238,12 @@ PY
      grep -Fq -- '--all-sessions' "$out" &&
      ! grep -Fq -- '--session-id <id>' "$out"
   then :; else test_fail "help pretty"; status=1; fi
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --verbose >/dev/null 2>"$err"; then
+    test_fail "verbose without pretty"; status=1
+  else
+    grep -Fq 'invalid flag combination' "$err" || { test_fail "verbose without pretty"; status=1; }
+  fi
 
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent=0 >/dev/null 2>"$err"; then
     test_fail "recent zero"; status=1

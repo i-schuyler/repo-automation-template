@@ -23,9 +23,10 @@ codex_status_block_remaining_at="7"
 codex_status_help_requested=0
 codex_status_recent_enabled=0
 codex_status_recent_count=""
+codex_status_verbose=0
 
 codex_status_usage_compact() {
-  printf 'Usage: repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>|--recent[=<n>]] [--repo-root=<path>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>|--recent[=<n>]] [--repo-root=<path>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--verbose] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]\n'
 }
 
 codex_status_usage_pretty() {
@@ -80,6 +81,9 @@ View:
 Output:
   --pretty
     Print phone-friendly human output.
+
+  --verbose
+    Add token breakdown details to pretty single-session output.
 
   --help
     Print compact usage.
@@ -138,6 +142,7 @@ codex_status_main() {
     case "$arg" in
       --help) codex_status_help_requested=1 ;;
       --pretty) codex_status_pretty=1 ;;
+      --verbose) codex_status_verbose=1 ;;
       --check-limits) codex_status_check_limits=1 ;;
       --latest) codex_status_selector_kind="latest" ;;
       --session) codex_status_mode="session" ;;
@@ -186,13 +191,19 @@ codex_status_main() {
     fi
   fi
 
-  python3 - "$codex_status_mode" "$codex_status_selector_kind" "$codex_status_session_id" "$codex_status_session_file" "$codex_status_repo_root" "$codex_status_pretty" "$codex_status_check_limits" "$codex_status_warn_remaining_at" "$codex_status_block_remaining_at" "$codex_status_recent_enabled" "$codex_status_recent_count" <<'PY'
+  if [ "$codex_status_verbose" -eq 1 ] && [ "$codex_status_pretty" -ne 1 ]; then
+    codex_status_fail_flag "invalid flag combination" "--verbose" "run repo-automation/bin/codex-status --pretty --verbose"
+    return 1
+  fi
+
+  python3 - "$codex_status_mode" "$codex_status_selector_kind" "$codex_status_session_id" "$codex_status_session_file" "$codex_status_repo_root" "$codex_status_pretty" "$codex_status_verbose" "$codex_status_check_limits" "$codex_status_warn_remaining_at" "$codex_status_block_remaining_at" "$codex_status_recent_enabled" "$codex_status_recent_count" <<'PY'
 import json, os, re, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-mode, skind, sid, sfile, repo_root, pretty, check_limits, warn_at, block_at, recent_enabled, recent_count = sys.argv[1:]
+mode, skind, sid, sfile, repo_root, pretty, verbose, check_limits, warn_at, block_at, recent_enabled, recent_count = sys.argv[1:]
 pretty = pretty == '1'
+verbose = verbose == '1'
 check_limits = check_limits == '1'
 recent_enabled = recent_enabled == '1'
 warn_at = float(warn_at)
@@ -420,6 +431,8 @@ def collect_session(path, ordinal, recent_mode=False):
         'ok': True,
         'status': 'ok',
         'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        'mtime': file_mtime(path),
+        'mtime_local': fmt_mtime(file_mtime(path)),
         'codex': {
             'helper': 'repo-automation/bin/codex-status',
             'mode': mode,
@@ -557,12 +570,11 @@ def discover_recent_sessions(root, want_count):
         except Exception as exc:
             warnings.append(f'skipped malformed session file {path.name}: {exc}')
             continue
-        sessions.append(session)
+        if len(sessions) < want_count:
+            sessions.append(session)
         warnings.extend(session_warnings)
         if rate_limits is None and isinstance(token_event, dict) and token_rate_limits:
             rate_limits = token_rate_limits
-        if len(sessions) >= want_count:
-            break
     if len(sessions) < want_count:
         warnings.append(f'only {len(sessions)} valid Codex sessions found; requested {want_count}')
     return sessions, warnings, rate_limits
@@ -576,32 +588,46 @@ def render_pretty_single(payload):
     ctx = payload.get('context', {})
     limits = payload.get('limits', {})
     tokens = payload.get('tokens', {})
-    s.append(f"session: {sess.get('session_id')}")
+    s.append(f"selected: {skind}")
+    s.append(f"session_id: {sess.get('session_id')}")
+    if payload.get('mtime_local'):
+        s.append(f"updated: {payload.get('mtime_local')}")
     source_bits = [v for v in (sess.get('source'), sess.get('originator')) if v not in (None, '')]
     if source_bits:
-        s.append(f"source/originator: {'/'.join(source_bits)}")
-    s.append(f"model: {model.get('name')}/{model.get('reasoning') or 'unknown'}")
+        s.append(f"source: {' / '.join(source_bits)}")
+    s.append(f"model: {model.get('name') or 'unknown'} / {model.get('reasoning') or 'unknown'}")
     git_bits = [v for v in (git.get('branch'), git.get('commit')) if v not in (None, '')]
     if git_bits:
         s.append(f"git: {' '.join(git_bits)}")
-    if tokens.get('current_total') is not None or tokens.get('cumulative_total') is not None:
-        bits = []
-        if tokens.get('current_total') is not None:
-            bits.append(f"current_total={tokens.get('current_total')}")
-        if tokens.get('cumulative_total') is not None:
-            bits.append(f"cumulative_total={tokens.get('cumulative_total')}")
-        s.append('tokens: ' + ' '.join(bits))
     if ctx.get('remaining_summary'):
         s.append(f"context: {ctx.get('remaining_summary')}")
     else:
         s.append('context: unknown')
     five = limits.get('five_hour', {})
     weekly = limits.get('weekly', {})
-    if five.get('remaining_percent') is not None:
-        s.append(f"five_hour_remaining={five.get('remaining_percent')}%")
-    if weekly.get('remaining_percent') is not None:
-        s.append(f"weekly_remaining={weekly.get('remaining_percent')}%")
-    s.append(f"5h: {five.get('state')} weekly: {weekly.get('state')}")
+    def fmt_limit(label, block):
+        remaining = block.get('remaining_percent')
+        resets = block.get('resets_at_local') or block.get('resets_at_iso') or 'unknown'
+        if remaining is None:
+            s.append(f"{label}: unknown, resets {resets}")
+        else:
+            s.append(f"{label}: {int(round(float(remaining)))}% left, resets {resets}")
+    fmt_limit('5h', five)
+    fmt_limit('week', weekly)
+    if verbose:
+        current = tokens.get('current') or {}
+        cumulative = tokens.get('cumulative') or {}
+        s.append('tokens:')
+        s.append(f"  input: {current.get('input')}")
+        s.append(f"  cached_input: {current.get('cached_input')}")
+        s.append(f"  output: {current.get('output')}")
+        s.append(f"  reasoning_output: {current.get('reasoning_output')}")
+        s.append(f"  current_total: {current.get('total')}")
+        s.append(f"  cumulative_total: {cumulative.get('total')}")
+    s.append('resume:')
+    resume_command = payload.get('resume', {}).get('resume_commands', [None])[0]
+    if resume_command:
+        s.append(f"  {resume_command}")
     return '\n'.join(s)
 
 

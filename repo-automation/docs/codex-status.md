@@ -24,6 +24,7 @@ Implemented behavior:
 
 - read-only; no Codex writes
 - `--pretty` emits compact operator-readable text
+- `--verbose` adds token breakdown details to `--pretty` single-session output
 - `--session`, `--usage`, `--limits`, `--resume`, `--reentry`, and `--all` are supported
 - single-session selection supports `--latest`, `--session-id=<id>`, `--session-file=<path>`, and `--repo-root=<dir>`
 - `--recent` discovers the most recent Codex sessions without the interactive `codex resume` picker
@@ -41,7 +42,7 @@ Unsupported in Phase 1:
 - `--block-at=<percent>`
 - `--strong-warn-at=<percent>`
 
-## JSON contract
+## Single-session JSON contract
 
 Top-level fields:
 
@@ -89,6 +90,66 @@ Field notes:
 - `compact_then_resume` is unsupported or unproven in Phase 1 unless supported behavior is later documented
 - `warnings` and `errors` are arrays
 - `ok` is `false` only for actual errors, not for unknown optional metadata
+
+## Recent JSON contract
+
+`--recent` and `--recent=<n>` return a bounded recent-session list.
+Recent `rate_limits` stay top-level and separate from each session's token and context data.
+
+Top-level fields:
+
+- `schema` = `repo-automation-codex-status-recent/v1`
+- `ok`
+- `result`
+- `status`
+- `generated_at`
+- `codex`
+- `selector`
+- `rate_limits`
+- `sessions`
+- `warnings`
+- `errors`
+- `next`
+
+Top-level `rate_limits` fields:
+
+- `limit_id`
+- `plan_type`
+- `rate_limit_reached_type`
+- `five_hour.used_percent`
+- `five_hour.remaining_percent`
+- `five_hour.window_minutes`
+- `five_hour.resets_at`
+- `five_hour.resets_at_iso`
+- `five_hour.resets_at_local`
+- `weekly.used_percent`
+- `weekly.remaining_percent`
+- `weekly.window_minutes`
+- `weekly.resets_at`
+- `weekly.resets_at_iso`
+- `weekly.resets_at_local`
+
+Each `sessions[]` item includes:
+
+- `ordinal`
+- `session_id`
+- `session_file`
+- `mtime`
+- `mtime_local`
+- `source`
+- `originator`
+- `git.branch`
+- `git.commit`
+- `git.repository_url`
+- `model.name`
+- `model.reasoning`
+- `tokens.current_total`
+- `tokens.cumulative_total`
+- `context.remaining`
+- `context.remaining_percent`
+- `context.remaining_summary`
+- `resume.command`
+- `resume.commands`
 
 ## Exit codes
 
