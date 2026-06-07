@@ -34,6 +34,7 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-false-positive" smoke_check_slice_handoff_contract_execution_submit_false_positive_blocker_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-true-blocker" smoke_check_slice_handoff_contract_execution_submit_true_codex_blocker_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-failures" smoke_check_slice_handoff_contract_execution_failure_cases || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:repo-root-artifacts" smoke_check_slice_handoff_contract_no_repo_root_artifacts || status=1
 
   return "$status"
 }
@@ -624,6 +625,19 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       test_fail "execution-submit repo-flow output-contract failure"
       status=1
     fi
+  fi
+
+  return "$status"
+}
+
+smoke_check_slice_handoff_contract_no_repo_root_artifacts() {
+  local status=0
+
+  if smoke_slice_handoff_assert_no_repo_root_out_dir; then
+    test_pass "slice-handoff repo-root out-dir remains absent"
+  else
+    test_fail "slice-handoff repo-root out-dir remains absent"
+    status=1
   fi
 
   return "$status"

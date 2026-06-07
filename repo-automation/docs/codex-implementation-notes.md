@@ -136,7 +136,7 @@ Recommended improvements:
 - Add a small reusable smoke helper for repo-relative child-helper assertions and fake installation.
 - When copying validator manifests into public artifacts, rewrite artifact paths to the final published locations.
 
-### 2026-06-07 slice-handoff modularization and preset resolution
+### PR #233 slice-handoff modularization and preset resolution
 
 Challenges:
 - One large slice-handoff smoke body made execution-submit failures hard to classify, so the wrapper needed named scenario checks and reusable helper builders.

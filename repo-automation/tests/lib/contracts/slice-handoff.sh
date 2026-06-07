@@ -1489,6 +1489,16 @@ smoke_slice_handoff_assert_execution_submit_blocker_boundary() {
   [ ! -e "$expected_run_dir/repo-flow-submit.stderr" ] || return 1
 }
 
+smoke_slice_handoff_assert_no_repo_root_out_dir() {
+  local out_dir="$smoke_repo_root/slice-handoff-out-inside-repo"
+
+  if [ -e "$out_dir" ]; then
+    printf 'fail: unexpected slice-handoff out-dir leaked into repo root: %s\n' "$out_dir" >&2
+    printf 'fix: keep slice-handoff out-dir fixtures under smoke temp paths\n' >&2
+    return 1
+  fi
+}
+
 smoke_slice_handoff_assert_stderr_effectively_empty() {
   local stderr_file="$1"
   local filtered_stderr_file=""
