@@ -205,6 +205,9 @@ try:
 except OSError:
     raise SystemExit(1)
 
+if not text.strip():
+    raise SystemExit(1)
+
 for line in text.splitlines():
     candidate = line.strip(' \t\r')
     if not candidate:

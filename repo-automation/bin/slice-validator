@@ -281,7 +281,7 @@ def reject_self_modifying_helper_instruction(line: str) -> None:
     )
 
 
-def parse_handoff(text: str, handoff_path: Path) -> dict[str, object]:
+def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, object]:
     lines = text.splitlines()
     try:
         slice_index = lines.index("# Slice Handoff")
@@ -386,7 +386,7 @@ def parse_handoff(text: str, handoff_path: Path) -> dict[str, object]:
             raise fail("missing-review-request", "review-request-source", "missing PR Review Request payload", "add text under ## PR Review Request")
         review_request_source = "inline"
     elif pr_review_prompt_id:
-        review_request_source_path = handoff_path.parent / ".prompts" / f"{pr_review_prompt_id}.md"
+        review_request_source_path = repo_root / ".prompts" / f"{pr_review_prompt_id}.md"
         if not review_request_source_path.exists():
             raise fail("missing-review-preset", "review-request-source", f"missing PR review prompt preset: {review_request_source_path}", "add the preset file or remove pr_review_prompt_id")
         if not review_request_source_path.is_file():
@@ -574,7 +574,7 @@ def main(argv: list[str]) -> int:
     body_path = artifact_dir / "pr-body.md"
 
     raw = handoff_path.read_text(encoding="utf-8")
-    parsed = parse_handoff(raw, handoff_path)
+    parsed = parse_handoff(raw, handoff_path, repo_root)
 
     state = ValidationState(
         repo_root=repo_root,
