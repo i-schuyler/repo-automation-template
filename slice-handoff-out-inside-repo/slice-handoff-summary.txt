@@ -1,0 +1,10 @@
+schema=repo-automation-slice-handoff/v1
+branch=feature/slice-handoff-smoke
+title=Slice handoff smoke
+codex_profile=default
+submit_mode=none
+commit_message=
+codex_prompt_path=/home/schuyler/projects/repo-automation-template/slice-handoff-out-inside-repo/codex-prompt.md
+pr_body_path=
+review_request_path=/home/schuyler/projects/repo-automation-template/slice-handoff-out-inside-repo/review-request.txt
+validation_manifest_path=/home/schuyler/projects/repo-automation-template/slice-handoff-out-inside-repo/validation-manifest.json

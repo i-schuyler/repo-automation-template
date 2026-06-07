@@ -135,3 +135,23 @@ Recommended improvements:
 - Preserve the validate-only path for submit-capable handoffs until bare `--submit` crosses the trust boundary.
 - Add a small reusable smoke helper for repo-relative child-helper assertions and fake installation.
 - When copying validator manifests into public artifacts, rewrite artifact paths to the final published locations.
+
+### 2026-06-07 slice-handoff modularization and preset resolution
+
+Challenges:
+- One large slice-handoff smoke body made execution-submit failures hard to classify, so the wrapper needed named scenario checks and reusable helper builders.
+- `pr_review_prompt_id` had to resolve from repo-root `.prompts/<id>.md` so handoff files outside the repo root could still use the shared preset library.
+- Execution fixture setup was sensitive to when fake Codex behavior was configured, so blocker-path tests needed the override to be present before the helper installation ran.
+- Submit-success coverage also needs per-scenario artifact isolation; a shared execution fixture can make the wrapper fail even when the success run-dir artifacts themselves are correct.
+- The current blocker came from submit subcases reusing fake Codex/repo-flow artifacts across scenarios, so each execution-submit scenario should own its own isolated artifact bundle.
+
+What would have helped:
+- Separate named checks for metadata/help, dry-run, validation, lifecycle, and execution scenarios from the start.
+- A repo-root-relative preset lookup rule documented beside the validator contract.
+
+Recommended improvements:
+- Keep smoke wrappers as a short list of named scenarios, not one monolithic body.
+- Treat shared prompt presets as repo-root assets so out-of-tree handoff files can reuse them.
+- When execution-mode smoke depends on fake child behavior, set the override before the fake helper is installed or invoked.
+- Keep submit-success and blocker subcases from sharing mutable fake Codex/repo-flow artifacts unless the fixture is explicitly reseeded between them.
+- Prefer one scenario-owned fake artifact bundle per execution-submit case so assertions never accidentally read reused state from a later subcase.

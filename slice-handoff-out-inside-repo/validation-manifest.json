@@ -1,0 +1,38 @@
+{
+  "branch": "feature/slice-handoff-smoke",
+  "codex_profile": "default",
+  "commit_message": "",
+  "created_at": "2026-06-07T01:30:59Z",
+  "forbidden_steps": [
+    "pr-body-check",
+    "repo-flow submit"
+  ],
+  "handoff_hash": "sha256:19aee11bb458d9901184be70f4f66eb0fb897d219fdf44bd3d848c2b8ea2b378",
+  "handoff_path": "/home/schuyler/.cache/tmp/repo-automation-template-tests/smoke.uuQ6vQ/slice-handoff/valid-none.md",
+  "next": "codex-slice-preflight",
+  "pr_body_path": "",
+  "prompt_hash": "sha256:4e950ea536650f2dfd0a2292d150e2fe773c01423487d5013e0c0d0f41805ae8",
+  "prompt_path": "/home/schuyler/projects/repo-automation-template/slice-handoff-out-inside-repo/codex-prompt.md",
+  "repo_root": "/home/schuyler/.cache/tmp/repo-automation-template-tests/smoke.uuQ6vQ/slice-handoff/execution.RcWCSg",
+  "requested_capabilities": {
+    "submit_mode": "none",
+    "submit_requested": false
+  },
+  "requested_mode": "validate-only",
+  "result": "pass",
+  "review_request_hash": "sha256:4d5d6a435f93845208c5a37312861e3ae3c6134f19f342f8cbff0d2540d0a9e6",
+  "review_request_path": "/home/schuyler/projects/repo-automation-template/slice-handoff-out-inside-repo/review-request.txt",
+  "review_request_source": "inline",
+  "schema": "repo-automation-slice-validator/v1",
+  "submit_mode": "none",
+  "title": "Slice handoff smoke",
+  "validated_capabilities": {
+    "codex_run": true,
+    "codex_status": true,
+    "pr_body_check": false,
+    "preflight": true,
+    "repo_flow_submit": false,
+    "review_request_render": true
+  },
+  "validation_id": "val_38b67afb3540"
+}

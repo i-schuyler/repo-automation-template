@@ -90,6 +90,7 @@ smoke_check_slice_validator_contract() {
   local root="$smoke_test_base/slice-validator"
   local valid_none_file="$root/valid-none.md"
   local valid_submit_file="$root/valid-submit.md"
+  local outside_repo_root_file="$smoke_test_base/slice-validator-outside-root/slice-validator-outside-root.md"
   local invalid_schema_file="$root/invalid-schema.md"
   local missing_schema_file="$root/missing-schema.md"
   local missing_branch_file="$root/missing-branch.md"
@@ -117,6 +118,9 @@ smoke_check_slice_validator_contract() {
   local manifest_path=""
 
   mkdir -p "$root" || return 1
+  mkdir -p "$(dirname "$outside_repo_root_file")" || return 1
+  mkdir -p "$smoke_test_dir/.prompts" || return 1
+  cp -- "$smoke_repo_root/.prompts/repo-automation-template-pr-review.md" "$smoke_test_dir/.prompts/" || return 1
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -207,6 +211,7 @@ EOF
 
   smoke_slice_validator_write_handoff "$valid_none_file" "feature/slice-validator-smoke" "Slice validator smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge."
   smoke_slice_validator_write_handoff "$valid_submit_file" "feature/slice-validator-submit" "Slice validator submit smoke" "review" "repo-flow-submit-all" "chore: slice-validator smoke" "Implement the slice and prepare the PR body." "$(cat "$valid_body_file")" "Please review this PR before merge."
+  smoke_slice_validator_write_handoff "$outside_repo_root_file" "feature/slice-validator-outside-root" "Slice validator outside repo root" "default" "none" "" "Implement the slice exactly as specified." "" "" "repo-automation-template-pr-review"
 
   cp "$valid_submit_file" "$invalid_schema_file" || return 1
   python3 - "$invalid_schema_file" <<'PY'
@@ -314,6 +319,32 @@ PY
     fi
   else
     test_fail "slice-validator validates a non-submit handoff"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$outside_repo_root_file" --json >"$json_stdout" 2>"$json_stderr"
+  ) && python3 -m json.tool "$json_stdout" >/dev/null && [ ! -s "$json_stderr" ]; then
+    if python3 - "$json_stdout" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+manifest = Path(data["manifest_path"])
+manifest_text = manifest.read_text(encoding='utf-8')
+if '"review_request_source": "preset:repo-automation-template-pr-review"' not in manifest_text:
+    raise SystemExit(1)
+PY
+    then
+      test_pass "slice-validator resolves PR review presets from the repo root"
+    else
+      test_fail "slice-validator resolves PR review presets from the repo root"
+      status=1
+    fi
+  else
+    test_fail "slice-validator resolves PR review presets from the repo root"
     status=1
   fi
 
