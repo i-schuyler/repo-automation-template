@@ -217,7 +217,7 @@ smoke_check_run_tests_contract() {
     cd "$smoke_repo_root" || return 1
     RUN_TESTS_SKIP_SMOKE=1 repo-automation/bin/run-tests --docs --json --json-level=warn > "$run_tests_json" 2> "$run_tests_json_err"
   ) && [ ! -s "$run_tests_json_err" ] && python3 -m json.tool "$run_tests_json" >/dev/null && \
-    smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("overall_status") in ("pass", "warn", "fail")'; then
+    smoke_json_assert "$run_tests_json" 'data.get("script") == "run-tests" and data.get("json_level") == "warn" and data.get("result") in ("pass", "warn", "fail") and data.get("status") == data.get("result") and "overall_status" not in data'; then
     test_pass "run-tests json warn is parseable"
   else
     test_fail "run-tests json warn is parseable"
@@ -246,7 +246,7 @@ EOF
     test_fail "run-tests quiet failure references the log file"
     status=1
   elif grep -Fq "log: $run_tests_failure_log" "$run_tests_failure_out" &&
-    grep -Fq 'fail: repo-automation/tests/docs-check.sh' "$run_tests_failure_out" &&
+    grep -Fq 'fail: repo-automation/tests/docs-check.sh - docs-check: docs index coverage:' "$run_tests_failure_out" &&
     grep -Fq 'first failure: docs-check: docs index coverage' "$run_tests_failure_out" &&
     grep -Fq 'fix: inspect log and run focused check: repo-automation/tests/docs-check.sh --quiet' "$run_tests_failure_out" &&
     grep -Fq 'COMMAND: repo-automation/tests/docs-check.sh' "$run_tests_failure_log" &&
@@ -263,7 +263,7 @@ EOF
   ); then
     test_fail "run-tests default failure with log file reports first failure"
     status=1
-  elif grep -Fq 'fail: repo-automation/tests/docs-check.sh' "$run_tests_default_out" &&
+  elif grep -Fq 'fail: repo-automation/tests/docs-check.sh - docs-check: docs index coverage:' "$run_tests_default_out" &&
     grep -Fq 'first failure: docs-check: docs index coverage' "$run_tests_default_out" &&
     grep -Fq 'log: '"$run_tests_failure_log" "$run_tests_default_out" &&
     grep -Fq 'fix: inspect log and run focused check: repo-automation/tests/docs-check.sh --quiet' "$run_tests_default_out" &&
@@ -280,7 +280,8 @@ EOF
   ); then
     test_fail "run-tests explain failure recommends a better next step"
     status=1
-  elif grep -Fxq 'log: cleaned' "$run_tests_explain_out" &&
+  elif grep -Fq 'fail: repo-automation/tests/docs-check.sh - docs-check: docs index coverage:' "$run_tests_explain_out" &&
+    grep -Fxq 'log: cleaned' "$run_tests_explain_out" &&
     grep -Fxq 'fix: use --log-file=<path> or --no-clean-temp for durable logs' "$run_tests_explain_out" &&
     grep -Fq 'excerpt:' "$run_tests_explain_out" &&
     ! grep -Fq 'fix: Next: repo-automation/bin/run-tests --explain' "$run_tests_explain_out"; then
@@ -476,7 +477,7 @@ EOF
     test_fail "run-tests JSON clean-temp failure reports cleaned log policy"
     status=1
   elif [ ! -s "$run_tests_clean_temp_json_err" ] && python3 -m json.tool "$run_tests_clean_temp_json" >/dev/null &&
-    smoke_json_assert "$run_tests_clean_temp_json" 'data.get("log_status") == "cleaned" and data.get("log_policy") == "run-temp-cleaned-by-default" and data.get("log_file") in ("", None) and data.get("log_fix") == "use --log-file=<path> or --no-clean-temp for durable logs"'; then
+    smoke_json_assert "$run_tests_clean_temp_json" 'data.get("result") == "fail" and data.get("status") == "fail" and data.get("log_status") == "cleaned" and data.get("log_policy") == "run-temp-cleaned-by-default" and data.get("log_file") in ("", None) and data.get("log_fix") == "use --log-file=<path> or --no-clean-temp for durable logs" and "overall_status" not in data'; then
     test_pass "run-tests JSON clean-temp failure reports cleaned log policy"
   else
     test_fail "run-tests JSON clean-temp failure reports cleaned log policy"
@@ -497,7 +498,7 @@ EOF
   ); then
     test_fail "run-tests no-clean-temp preserves run-owned temp output on failure"
     status=1
-  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh' "$run_tests_no_clean_out" &&
+  elif grep -Eq '^fail: repo-automation/tests/docs-check.sh - docs-check fail' "$run_tests_no_clean_out" &&
     grep -Fq "log: " "$run_tests_no_clean_out"; then
     no_clean_log_file="$(awk '/^log: / {print $2; exit}' "$run_tests_no_clean_out")"
     if [ -n "$no_clean_log_file" ] && [ -e "$no_clean_log_file" ] && [ -d "$(dirname "$no_clean_log_file")" ] && grep -Fq "log: $no_clean_log_file" "$run_tests_no_clean_out"; then
@@ -526,7 +527,7 @@ EOF
     test_fail "run-tests JSON no-clean-temp preserves run-owned temp output"
     status=1
   elif [ ! -s "$run_tests_no_clean_json_err" ] && python3 -m json.tool "$run_tests_no_clean_json" >/dev/null &&
-    smoke_json_assert "$run_tests_no_clean_json" 'data.get("log_status") == "path" and data.get("log_policy") == "run-temp-kept-by-request" and data.get("log_file", "").startswith("'"$run_tests_no_clean_tmpdir"'")'; then
+    smoke_json_assert "$run_tests_no_clean_json" 'data.get("result") == "fail" and data.get("status") == "fail" and data.get("log_status") == "path" and data.get("log_policy") == "run-temp-kept-by-request" and data.get("log_file", "").startswith("'"$run_tests_no_clean_tmpdir"'") and "overall_status" not in data'; then
     test_pass "run-tests JSON no-clean-temp preserves run-owned temp output"
   else
     test_fail "run-tests JSON no-clean-temp preserves run-owned temp output"
@@ -595,7 +596,7 @@ EOF
     test_fail "run-tests JSON preserves an explicit --log-file path"
     status=1
   elif [ ! -s "$run_tests_explicit_json_err" ] && python3 -m json.tool "$run_tests_explicit_json" >/dev/null &&
-    smoke_json_assert "$run_tests_explicit_json" 'data.get("log_status") == "path" and data.get("log_policy") == "explicit-log-file" and data.get("log_file") == "'"$run_tests_explicit_log"'"'; then
+    smoke_json_assert "$run_tests_explicit_json" 'data.get("result") == "fail" and data.get("status") == "fail" and data.get("log_status") == "path" and data.get("log_policy") == "explicit-log-file" and data.get("log_file") == "'"$run_tests_explicit_log"'" and "overall_status" not in data'; then
     test_pass "run-tests JSON preserves an explicit --log-file path"
   else
     test_fail "run-tests JSON preserves an explicit --log-file path"
@@ -751,7 +752,7 @@ EOF
   elif [ ! -e "$run_tests_secret_config_marker" ] &&
     [ ! -s "$run_tests_secret_config_json_err" ] &&
     python3 -m json.tool "$run_tests_secret_config_json" >/dev/null &&
-    smoke_json_assert "$run_tests_secret_config_json" 'data.get("overall_status") == "fail" and any(check.get("name") == "local config secret scan" and check.get("status") == "fail" and "possible secret markers found in .repo-automation.local.conf" in check.get("message", "") for check in data.get("checks", []))'; then
+    smoke_json_assert "$run_tests_secret_config_json" 'data.get("result") == "fail" and data.get("status") == "fail" and "overall_status" not in data and any(check.get("name") == "local config secret scan" and check.get("status") == "fail" and "possible secret markers found in .repo-automation.local.conf" in check.get("message", "") for check in data.get("checks", []))'; then
     test_pass "run-tests secret-scans local config before sourcing"
   else
     test_fail "run-tests secret-scans local config before sourcing"

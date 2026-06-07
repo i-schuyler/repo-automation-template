@@ -15,7 +15,7 @@ run_tests_json_escape() {
 }
 
 run_tests_print_json() {
-  local overall_status="$1"
+  local result="$1"
   local pass_count="$2"
   local warn_count="$3"
   local fail_count="$4"
@@ -81,7 +81,8 @@ run_tests_print_json() {
   printf '{'
   printf '"script":"run-tests",'
   printf '"mode":"%s",' "$(run_tests_json_escape "$run_tests_mode")"
-  printf '"overall_status":"%s",' "$(run_tests_json_escape "$overall_status")"
+  printf '"result":"%s",' "$(run_tests_json_escape "$result")"
+  printf '"status":"%s",' "$(run_tests_json_escape "$result")"
   printf '"pass_count":%s,' "$pass_count"
   printf '"warn_count":%s,' "$warn_count"
   printf '"fail_count":%s,' "$fail_count"
