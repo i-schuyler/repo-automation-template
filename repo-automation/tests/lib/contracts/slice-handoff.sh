@@ -910,6 +910,87 @@ smoke_slice_handoff_assert_text_file() {
   [ "$(cat "$path" 2>/dev/null || true)" = "$expected" ]
 }
 
+smoke_slice_handoff_expected_review_request_default() {
+  cat <<'EOF'
+Please review this PR before merge:
+
+<PR_URL>
+
+Slice handoff smoke
+Branch: feature/slice-handoff-smoke
+
+Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.
+
+Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describe one same-branch repair direction.
+EOF
+}
+
+smoke_slice_handoff_expected_review_request_submit() {
+  cat <<'EOF'
+Please review this PR before merge:
+
+<PR_URL>
+
+Slice handoff submit smoke
+Branch: feature/slice-handoff-submit
+
+Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.
+
+Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describe one same-branch repair direction.
+EOF
+}
+
+smoke_slice_handoff_expected_execution_stdout() {
+  local out_dir="$1"
+  local review_request_path="$2"
+  local include_pr_body="${3:-0}"
+
+  if [ "$include_pr_body" -eq 1 ]; then
+    printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\npr_body_path=%s/pr-body.md\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' \
+      "$out_dir" "$out_dir" "$out_dir" "$out_dir" "$review_request_path" "$out_dir" "$out_dir"
+  else
+    printf 'pass\nout_dir=%s\ncodex_prompt_path=%s/codex-prompt.md\npreview_path=%s/dry-run-preview.txt\nreview_request_path=%s/review-request.txt\nsummary_path=%s/slice-handoff-summary.txt\nvalidation_manifest_path=%s/validation-manifest.json' \
+      "$out_dir" "$out_dir" "$out_dir" "$review_request_path" "$out_dir" "$out_dir"
+  fi
+}
+
+smoke_slice_handoff_expected_execution_summary() {
+  local out_dir="$1"
+  local branch="$2"
+  local title="$3"
+  local codex_profile="$4"
+  local submit_mode="$5"
+  local commit_message="$6"
+  local pr_body_path="$7"
+
+  printf 'schema=repo-automation-slice-handoff/v1\nbranch=%s\ntitle=%s\ncodex_profile=%s\nsubmit_mode=%s\ncommit_message=%s\ncodex_prompt_path=%s/codex-prompt.md\npr_body_path=%s\nreview_request_path=%s/review-request.txt\nvalidation_manifest_path=%s/validation-manifest.json' \
+    "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$out_dir" "$pr_body_path" "$out_dir" "$out_dir"
+}
+
+smoke_slice_handoff_expected_dry_run_preview() {
+  local out_dir="$1"
+  local branch="$2"
+  local title="$3"
+  local codex_profile="$4"
+  local submit_mode="$5"
+  local commit_message="$6"
+  local pr_body_path="$7"
+
+  cat <<EOF
+dry_run_mode=enabled
+branch=$branch
+title=$title
+codex_profile=$codex_profile
+submit_mode=$submit_mode
+commit_message=$commit_message
+codex_prompt_path=$out_dir/codex-prompt.md
+pr_body_path=$pr_body_path
+review_request_path=$out_dir/review-request.txt
+summary_path=$out_dir/slice-handoff-summary.txt
+validation_manifest_path=$out_dir/validation-manifest.json
+EOF
+}
+
 smoke_slice_handoff_extract_field() {
   local path="$1"
   local field="$2"
