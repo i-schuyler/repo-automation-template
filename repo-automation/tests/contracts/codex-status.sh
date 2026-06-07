@@ -12,10 +12,26 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 
 codex_status_make_fixture() {
   local path="$1"
-  cat > "$path" <<'EOF'
-{"type":"session_meta","timestamp":"2026-06-02T00:00:00Z","payload":{"id":"sess-123","source":"cli","originator":"operator","git":{"branch":"feature/test","commit_hash":"abc123","repository_url":"git@example/repo.git"}}}
-{"type":"turn_context","timestamp":"2026-06-02T00:00:01Z","payload":{"model":"gpt-test","collaboration_mode":{"settings":{"reasoning_effort":"high"}}}}
-{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","info":{"model_context_window":1000,"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":900},"last_token_usage":{"input_tokens":12,"cached_input_tokens":2,"output_tokens":6,"reasoning_output_tokens":3,"total_tokens":150}},"rate_limits":{"primary":{"used_percent":85,"window_minutes":300},"secondary":{"used_percent":93,"window_minutes":10080}}}}
+  local session_id="$2"
+  local branch="$3"
+  local commit="$4"
+  local model_name="$5"
+  local reasoning="$6"
+  local current_total="$7"
+  local cumulative_total="$8"
+  local context_window="$9"
+  local primary_used="${10}"
+  local primary_window="${11}"
+  local primary_resets="${12}"
+  local secondary_used="${13}"
+  local secondary_window="${14}"
+  local secondary_resets="${15}"
+  : "$primary_window" "$secondary_window"
+
+  cat > "$path" <<EOF
+{"type":"session_meta","timestamp":"2026-06-02T00:00:00Z","payload":{"session_id":"$session_id","source":"cli","originator":"operator","git":{"branch":"$branch","commit_hash":"$commit","repository_url":"git@example/repo.git"}}}
+{"type":"turn_context","timestamp":"2026-06-02T00:00:01Z","payload":{"model":"$model_name","collaboration_mode":{"settings":{"reasoning_effort":"$reasoning"}}}}
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","info":{"model_context_window":$context_window,"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":$cumulative_total},"last_token_usage":{"input_tokens":12,"cached_input_tokens":2,"output_tokens":6,"reasoning_output_tokens":3,"total_tokens":$current_total}},"rate_limits":{"limit_id":"paid","plan_type":"plus","rate_limit_reached_type":"none","primary":{"used_percent":$primary_used,"window_minutes":$primary_window,"resets_at":$primary_resets},"secondary":{"used_percent":$secondary_used,"window_minutes":$secondary_window,"resets_at":$secondary_resets}}}}
 EOF
 }
 
@@ -36,15 +52,20 @@ codex_status_main() {
   local contract_root="$smoke_test_base/codex-status-contract"
   local codex_home="$contract_root/home"
   local sess_dir="$codex_home/sessions"
-  local latest_file="$sess_dir/latest.jsonl"
-  local older_file="$sess_dir/older.jsonl"
-  local overflow_file="$sess_dir/overflow.jsonl"
   local out="$contract_root/out"
   local err="$contract_root/err"
   mkdir -p "$sess_dir" "$contract_root" || return 1
-  codex_status_make_fixture "$older_file"
+
+  codex_status_make_fixture "$sess_dir/sess-119.jsonl" "sess-119" "feature/119" "c119" "gpt-test" "high" 151 901 1000 81 300 1716500000 92 10080 1717100000
   sleep 1
-  codex_status_make_fixture "$latest_file"
+  codex_status_make_fixture "$sess_dir/sess-120.jsonl" "sess-120" "feature/120" "c120" "gpt-test" "high" 152 902 1000 82 300 1716500001 91 10080 1717100001
+  sleep 1
+  codex_status_make_fixture "$sess_dir/sess-121.jsonl" "sess-121" "feature/121" "c121" "gpt-test" "high" 153 903 1000 83 300 1716500002 90 10080 1717100002
+  sleep 1
+  codex_status_make_fixture "$sess_dir/sess-122.jsonl" "sess-122" "feature/122" "c122" "gpt-test" "high" 154 904 1000 84 300 1716500003 89 10080 1717100003
+  sleep 1
+  codex_status_make_fixture "$sess_dir/sess-123.jsonl" "sess-123" "feature/codex-status-recent" "abc123" "gpt-5.4-mini" "medium" 150 900 1000 85 300 1716521460 93 10080 1717121460
+  sleep 1
 
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --latest >"$out" 2>"$err" &&
      python3 - "$out" <<'PY'
@@ -52,10 +73,10 @@ import json, sys
 data=json.load(open(sys.argv[1]))
 assert data["ok"] is True
 assert data["session"]["session_id"] == "sess-123"
-assert data["git"]["branch"] == "feature/test"
+assert data["git"]["branch"] == "feature/codex-status-recent"
 assert data["git"]["commit"] == "abc123"
 assert data["git"]["repository_url"] == "git@example/repo.git"
-assert data["model"]["reasoning"] == "high"
+assert data["model"]["reasoning"] == "medium"
 assert data["tokens"]["total"] == 150
 assert data["tokens"]["current_total"] == 150
 assert data["tokens"]["cumulative_total"] == 900
@@ -78,9 +99,9 @@ assert data["resume"]["resume_commands"][1] == 'codex exec resume sess-123 "<PRO
 PY
   then :; else test_fail "latest/json"; status=1; fi
 
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$latest_file" --pretty >"$out" 2>"$err" &&
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$sess_dir/sess-123.jsonl" --pretty >"$out" 2>"$err" &&
      grep -Fq 'session: sess-123' "$out" &&
-     grep -Fq 'model: gpt-test/high' "$out" &&
+     grep -Fq 'model: gpt-5.4-mini/medium' "$out" &&
      grep -Fq 'tokens: current_total=150 cumulative_total=900' "$out" &&
      grep -Fq 'context: 85% remaining' "$out" &&
      grep -Fq 'five_hour_remaining=15%' "$out" &&
@@ -101,8 +122,8 @@ assert data["session"]["session_id"] == "123e4567-e89b-12d3-a456-426614174000"
 PY
   then :; else test_fail "filename uuid"; status=1; fi
 
-  codex_status_make_overflow_fixture "$overflow_file"
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$overflow_file" >"$out" 2>"$err" &&
+  codex_status_make_overflow_fixture "$sess_dir/overflow.jsonl"
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$sess_dir/overflow.jsonl" >"$out" 2>"$err" &&
      python3 - "$out" <<'PY'
 import json, sys
 data=json.load(open(sys.argv[1]))
@@ -116,24 +137,128 @@ assert data["tokens"]["cumulative_total"] == 1500
 PY
   then :; else test_fail "overflow"; status=1; fi
 
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$overflow_file" --pretty >"$out" 2>"$err" &&
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$sess_dir/overflow.jsonl" --pretty >"$out" 2>"$err" &&
      grep -Fq 'model: gpt-test/unknown' "$out" &&
      grep -Fq 'context: unknown' "$out" &&
      ! grep -Eiq 'context: -[0-9]' "$out" &&
      ! grep -Fq 'None' "$out"
   then :; else test_fail "overflow pretty"; status=1; fi
 
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$latest_file" --check-limits >/dev/null 2>"$err"; then
-    test_fail "check-limits exit"; status=1
-  elif [ "$?" -eq 2 ]; then :; else test_fail "check-limits exit"; status=1; fi
+  local recent_codex_home="$contract_root/recent-home"
+  local recent_sess_dir="$recent_codex_home/sessions"
+  mkdir -p "$recent_sess_dir" || return 1
+  codex_status_make_fixture "$recent_sess_dir/sess-119.jsonl" "sess-119" "feature/119" "c119" "gpt-test" "high" 151 901 1000 81 300 1716500000 92 10080 1717100000
+  sleep 1
+  codex_status_make_fixture "$recent_sess_dir/sess-120.jsonl" "sess-120" "feature/120" "c120" "gpt-test" "high" 152 902 1000 82 300 1716500001 91 10080 1717100001
+  sleep 1
+  codex_status_make_fixture "$recent_sess_dir/sess-121.jsonl" "sess-121" "feature/121" "c121" "gpt-test" "high" 153 903 1000 83 300 1716500002 90 10080 1717100002
+  sleep 1
+  codex_status_make_fixture "$recent_sess_dir/sess-122.jsonl" "sess-122" "feature/122" "c122" "gpt-test" "high" 154 904 1000 84 300 1716500003 89 10080 1717100003
+  sleep 1
+  codex_status_make_fixture "$recent_sess_dir/sess-123.jsonl" "sess-123" "feature/codex-status-recent" "abc123" "gpt-5.4-mini" "medium" 150 900 1000 85 300 1716521460 93 10080 1717121460
+  sleep 1
+  cat > "$recent_sess_dir/malformed.jsonl" <<'EOF'
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count"
+EOF
 
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --human >/dev/null 2>"$err" && false; then :; else grep -Fq 'unsupported flag' "$err" || { test_fail "human unsupported"; status=1; }; fi
-  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --quiet >/dev/null 2>"$err" && false; then :; else grep -Fq 'unsupported flag' "$err" || { test_fail "quiet unsupported"; status=1; }; fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$recent_codex_home" repo-automation/bin/codex-status --recent >"$out" 2>"$err" &&
+     python3 - "$out" <<'PY'
+import json, sys
+from pathlib import Path
+data=json.load(open(sys.argv[1]))
+assert data["schema"] == "repo-automation-codex-status-recent/v1"
+assert data["ok"] is True
+assert data["result"] == "pass"
+assert data["status"] == "pass"
+assert len(data["sessions"]) == 5
+assert [session["session_id"] for session in data["sessions"][:3]] == ["sess-123", "sess-122", "sess-121"]
+assert data["rate_limits"]["five_hour"]["resets_at"] is not None
+assert data["rate_limits"]["five_hour"]["resets_at_iso"] is not None
+assert data["rate_limits"]["five_hour"]["resets_at_local"] is not None
+assert data["rate_limits"]["weekly"]["resets_at"] is not None
+assert data["rate_limits"]["weekly"]["resets_at_iso"] is not None
+assert data["rate_limits"]["weekly"]["resets_at_local"] is not None
+assert "rate_limits" not in data["sessions"][0]
+assert data["sessions"][0]["resume"]["command"] == "codex resume --include-non-interactive sess-123"
+assert any("skipped malformed session file" in warning for warning in data["warnings"])
+PY
+  then :; else test_fail "recent default json"; status=1; fi
 
-  if ! PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --session-file="$contract_root/missing.jsonl" >/dev/null 2>"$err"; then
-    grep -Fq 'missing or unreadable session file' "$err" || { test_fail "missing session"; status=1; }
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$recent_codex_home" repo-automation/bin/codex-status --recent=1 >"$out" 2>"$err" &&
+     python3 - "$out" <<'PY'
+import json, sys
+data=json.load(open(sys.argv[1]))
+assert data["schema"] == "repo-automation-codex-status-recent/v1"
+assert len(data["sessions"]) == 1
+assert data["sessions"][0]["session_id"] == "sess-123"
+assert data["sessions"][0]["resume"]["command"] == "codex resume --include-non-interactive sess-123"
+PY
+  then :; else test_fail "recent one json"; status=1; fi
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$recent_codex_home" repo-automation/bin/codex-status --recent --pretty >"$out" 2>"$err" &&
+     grep -Fq 'codex-status' "$out" &&
+     grep -Fq '5h:' "$out" &&
+     grep -Fq 'week:' "$out" &&
+     grep -Fq 'recent sessions' "$out" &&
+     grep -Fq 'resume:' "$out" &&
+     grep -Fq 'codex resume --include-non-interactive sess-123' "$out" &&
+     ! grep -Fqi 'rate limits' "$out" &&
+     ! grep -Fqi 'plan: plus' "$out"
+  then :; else test_fail "recent pretty"; status=1; fi
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --help --pretty >"$out" 2>"$err" &&
+     grep -Fq 'codex-status' "$out" &&
+     grep -Fq 'Session selection:' "$out" &&
+     grep -Fq -- '--recent' "$out" &&
+     grep -Fq -- '--recent=<n>' "$out" &&
+     grep -Fq 'Valid range: 1..50.' "$out" &&
+     grep -Fq 'Unsupported:' "$out" &&
+     grep -Fq -- '--quiet' "$out" &&
+     grep -Fq -- '--json' "$out" &&
+     grep -Fq -- '--all-sessions' "$out" &&
+     ! grep -Fq -- '--session-id <id>' "$out"
+  then :; else test_fail "help pretty"; status=1; fi
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent=0 >/dev/null 2>"$err"; then
+    test_fail "recent zero"; status=1
   else
+    grep -Fq 'invalid recent count' "$err" || { test_fail "recent zero"; status=1; }
+  fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent=-1 >/dev/null 2>"$err"; then
+    test_fail "recent negative"; status=1
+  else
+    grep -Fq 'invalid recent count' "$err" || { test_fail "recent negative"; status=1; }
+  fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent=abc >/dev/null 2>"$err"; then
+    test_fail "recent text"; status=1
+  else
+    grep -Fq 'invalid recent count' "$err" || { test_fail "recent text"; status=1; }
+  fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent=51 >/dev/null 2>"$err"; then
+    test_fail "recent cap"; status=1
+  else
+    grep -Fq 'invalid recent count' "$err" || { test_fail "recent cap"; status=1; }
+  fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent 1 >/dev/null 2>"$err"; then
+    test_fail "recent space form"; status=1
+  else
+    grep -Fq 'unsupported flag' "$err" || { test_fail "recent space form"; status=1; }
+  fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --recent=1 --session >/dev/null 2>"$err"; then
+    test_fail "recent session conflict"; status=1
+  else
+    grep -Fq 'unsupported flag' "$err" || { test_fail "recent session conflict"; status=1; }
+  fi
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" repo-automation/bin/codex-status --all-sessions >/dev/null 2>"$err"; then
+    test_fail "all-sessions unsupported"; status=1
+  else
+    grep -Fq 'unsupported flag' "$err" || { test_fail "all-sessions unsupported"; status=1; }
+  fi
+
+  if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$contract_root/missing.jsonl" >/dev/null 2>"$err"; then
     test_fail "missing session"; status=1
+  else
+    grep -Fq 'missing or unreadable session file' "$err" || { test_fail "missing session"; status=1; }
   fi
 
   rm -f "$out" "$err" >/dev/null 2>&1 || true

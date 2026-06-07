@@ -51,6 +51,20 @@ Recommended improvements:
 - Keep umbrella failure renderers able to mine child excerpts when the first recorded failure line is generic.
 - Keep helper JSON contracts on `result`/`status` and assert those fields in focused tests before removing legacy aliases.
 
+### 2026-06-07 codex-status recent-session list mode
+
+Challenges:
+- Recent-session discovery needed its own isolated fixture tree so newer malformed files would not disturb single-session `--latest` checks.
+- The bounded list mode also needed explicit ShellCheck-visible helper-arg usage when the fixture builder accepted timing fields that otherwise only appeared inside generated JSON.
+
+What would have helped:
+- Separate temp repos for single-session and recent-list contract coverage from the start.
+- A small shared fixture builder that makes every JSON field reference visible to ShellCheck.
+
+Recommended improvements:
+- Keep recent-list smoke fixtures isolated from single-session fixtures.
+- Make helper-arg wiring explicit in fixture helpers so static checks see the intended parameter use.
+
 ### 2026-06-04 smoke output-contract follow-up
 
 Challenges:

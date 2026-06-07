@@ -20,9 +20,96 @@ codex_status_pretty=0
 codex_status_check_limits=0
 codex_status_warn_remaining_at="15"
 codex_status_block_remaining_at="7"
+codex_status_help_requested=0
+codex_status_recent_enabled=0
+codex_status_recent_count=""
 
-codex_status_usage() {
-  printf 'Usage: repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>] [--repo-root=<dir>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]\n'
+codex_status_usage_compact() {
+  printf 'Usage: repo-automation/bin/codex-status [--latest|--session-id=<id>|--session-file=<path>|--recent[=<n>]] [--repo-root=<path>] [--session] [--usage] [--limits] [--resume] [--reentry] [--all] [--pretty] [--check-limits] [--warn-remaining-at=<percent>] [--block-remaining-at=<percent>] [--help]\n'
+}
+
+codex_status_usage_pretty() {
+  cat <<'EOF'
+codex-status
+
+Usage:
+  repo-automation/bin/codex-status [options]
+
+Default:
+  Show latest Codex session as JSON.
+
+Session selection:
+  --latest
+    Show the newest Codex session. Default.
+
+  --session-id=<id>
+    Show one session by Codex session id.
+
+  --session-file=<path>
+    Show one local Codex JSONL session file.
+
+  --recent
+    Show the 5 most recent Codex sessions.
+
+  --recent=<n>
+    Show exactly n recent sessions.
+    Valid range: 1..50.
+
+  --repo-root=<path>
+    Prefer sessions for this repo when metadata allows.
+
+View:
+  --all
+    Show full single-session status. Default.
+
+  --session
+    Show session identity fields only.
+
+  --usage
+    Show token and context usage only.
+
+  --limits
+    Show Codex rate-limit status only.
+
+  --resume
+    Show exact resume commands only.
+
+  --reentry
+    Show re-entry decision inputs only.
+
+Output:
+  --pretty
+    Print phone-friendly human output.
+
+  --help
+    Print compact usage.
+
+  --help --pretty
+    Print this grouped help menu.
+
+Limits:
+  --check-limits
+    Exit 2 when block threshold is reached.
+
+  --warn-remaining-at=<percent>
+    Warn when rate-limit remaining is at or below percent.
+    Default: 15.
+
+  --block-remaining-at=<percent>
+    Block when rate-limit remaining is at or below percent.
+    Default: 7.
+
+Examples:
+  repo-automation/bin/codex-status --pretty
+  repo-automation/bin/codex-status --recent --pretty
+  repo-automation/bin/codex-status --recent=1 --pretty
+  repo-automation/bin/codex-status --session-id=<id> --resume
+
+Unsupported:
+  --quiet
+  --json
+  --all-sessions
+EOF
 }
 
 codex_status_fail_flag() { repo_auto_flag_error "$1" "$2" "$3" || true; }
@@ -31,13 +118,25 @@ codex_status_invalid_flag() {
   codex_status_fail_flag "unsupported flag" "$1" "run repo-automation/bin/codex-status --help"
 }
 
+codex_status_invalid_recent_value() {
+  codex_status_fail_flag "invalid recent count" "$1" "use --recent or --recent=<n> with n in 1..50"
+}
+
+codex_status_validate_recent_count() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$1" -ge 1 ] && [ "$1" -le 50 ]
+}
+
 codex_status_main() {
   local arg=""
+  local recent_value=""
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
     case "$arg" in
-      --help) codex_status_usage; return 0 ;;
+      --help) codex_status_help_requested=1 ;;
       --pretty) codex_status_pretty=1 ;;
       --check-limits) codex_status_check_limits=1 ;;
       --latest) codex_status_selector_kind="latest" ;;
@@ -52,7 +151,18 @@ codex_status_main() {
       --repo-root=*) codex_status_repo_root="${arg#*=}" ;;
       --warn-remaining-at=*) codex_status_warn_remaining_at="${arg#*=}" ;;
       --block-remaining-at=*) codex_status_block_remaining_at="${arg#*=}" ;;
-      --human|--quiet|--all-sessions|--recent=*|--blocker-summary|--warn-at=*|--block-at=*|--strong-warn-at=*)
+      --recent) codex_status_recent_enabled=1; codex_status_recent_count="5" ;;
+      --recent=*)
+        recent_value="${arg#*=}"
+        if codex_status_validate_recent_count "$recent_value"; then
+          codex_status_recent_enabled=1
+          codex_status_recent_count="$recent_value"
+        else
+          codex_status_invalid_recent_value "$arg"
+          return 1
+        fi
+        ;;
+      --human|--quiet|--all-sessions|--blocker-summary|--warn-at=*|--block-at=*|--strong-warn-at=*)
         codex_status_invalid_flag "$arg"; return 1 ;;
       --*) codex_status_invalid_flag "$arg"; return 1 ;;
       *) codex_status_invalid_flag "$arg"; return 1 ;;
@@ -60,106 +170,45 @@ codex_status_main() {
     shift
   done
 
-  python3 - "$codex_status_mode" "$codex_status_selector_kind" "$codex_status_session_id" "$codex_status_session_file" "$codex_status_repo_root" "$codex_status_pretty" "$codex_status_check_limits" "$codex_status_warn_remaining_at" "$codex_status_block_remaining_at" <<'PY'
-import json, os, sys
-import re
-from pathlib import Path
-from datetime import datetime, timezone
+  if [ "$codex_status_help_requested" -eq 1 ]; then
+    if [ "$codex_status_pretty" -eq 1 ]; then
+      codex_status_usage_pretty
+    else
+      codex_status_usage_compact
+    fi
+    return 0
+  fi
 
-mode, skind, sid, sfile, repo_root, pretty, check_limits, warn_at, block_at = sys.argv[1:]
+  if [ "$codex_status_recent_enabled" -eq 1 ]; then
+    if [ "$codex_status_mode" != "all" ] || [ "$codex_status_check_limits" -eq 1 ] || [ "$codex_status_selector_kind" = "session-id" ] || [ "$codex_status_selector_kind" = "session-file" ]; then
+      codex_status_invalid_flag "--recent cannot be combined with single-session view flags" "--recent" "run repo-automation/bin/codex-status --help"
+      return 1
+    fi
+  fi
+
+  python3 - "$codex_status_mode" "$codex_status_selector_kind" "$codex_status_session_id" "$codex_status_session_file" "$codex_status_repo_root" "$codex_status_pretty" "$codex_status_check_limits" "$codex_status_warn_remaining_at" "$codex_status_block_remaining_at" "$codex_status_recent_enabled" "$codex_status_recent_count" <<'PY'
+import json, os, re, sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+mode, skind, sid, sfile, repo_root, pretty, check_limits, warn_at, block_at, recent_enabled, recent_count = sys.argv[1:]
 pretty = pretty == '1'
 check_limits = check_limits == '1'
+recent_enabled = recent_enabled == '1'
 warn_at = float(warn_at)
 block_at = float(block_at)
-codex_home = Path(os.environ.get('CODEX_HOME', str(Path.home()/'.codex'))).expanduser()
+recent_count = int(recent_count) if recent_count else None
+codex_home = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))).expanduser()
 
-def emit(payload, rc=0):
-    if pretty:
-        s = []
-        sess = payload.get('session', {})
-        model = payload.get('model', {})
-        git = payload.get('git', {})
-        ctx = payload.get('context', {})
-        limits = payload.get('limits', {})
-        tokens = payload.get('tokens', {})
-        s.append(f"session: {sess.get('session_id')}")
-        source_bits = [v for v in (sess.get('source'), sess.get('originator')) if v not in (None, '')]
-        if source_bits:
-            s.append(f"source/originator: {'/'.join(source_bits)}")
-        s.append(f"model: {model.get('name')}/{model.get('reasoning') or 'unknown'}")
-        git_bits = [v for v in (git.get('branch'), git.get('commit')) if v not in (None, '')]
-        if git_bits:
-            s.append(f"git: {' '.join(git_bits)}")
-        if tokens.get('current_total') is not None or tokens.get('cumulative_total') is not None:
-            bits = []
-            if tokens.get('current_total') is not None:
-                bits.append(f"current_total={tokens.get('current_total')}")
-            if tokens.get('cumulative_total') is not None:
-                bits.append(f"cumulative_total={tokens.get('cumulative_total')}")
-            s.append("tokens: " + " ".join(bits))
-        if ctx.get('remaining_summary'):
-            s.append(f"context: {ctx.get('remaining_summary')}")
-        else:
-            s.append("context: unknown")
-        five = limits.get('five_hour', {})
-        weekly = limits.get('weekly', {})
-        if five.get('remaining_percent') is not None:
-            s.append(f"five_hour_remaining={five.get('remaining_percent')}%")
-        if weekly.get('remaining_percent') is not None:
-            s.append(f"weekly_remaining={weekly.get('remaining_percent')}%")
-        s.append(f"5h: {five.get('state')} weekly: {weekly.get('state')}")
-        for line in s: print(line)
-    else:
-        print(json.dumps(payload, separators=(',', ':')))
-    return rc
+UUID_STEM_RE = re.compile(r'^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')
 
-def session_files(root):
-    for p in root.rglob('*.jsonl'):
-        yield p
 
-def filename_session_id(path):
-    m = re.search(r'[0-9a-fA-F-]{8,}', path.name)
-    if m:
-        return m.group(0)
-    return path.stem
-
-def select_latest(root):
-    files = [p for p in session_files(root) if p.is_file()]
-    if not files:
-        raise FileNotFoundError('no Codex session files found')
-    return max(files, key=lambda p: p.stat().st_mtime)
-
-def select_by_id(root, session_id):
-    for p in session_files(root):
-        if session_id in p.name:
-            return p
-        try:
-            with p.open() as f:
-                for line in f:
-                    if '"session_meta"' in line and session_id in line:
-                        return p
-        except Exception:
-            pass
-    raise FileNotFoundError(f'session id not found: {session_id}')
-
-def parse(path):
-    events=[]
-    with path.open() as f:
-        for ln in f:
-            ln=ln.strip()
-            if ln: events.append(json.loads(ln))
-    return events
-
-def payload_of(event):
-    if isinstance(event, dict) and isinstance(event.get('payload'), dict):
-        return event['payload']
-    return event if isinstance(event, dict) else {}
-
-def first(d,*keys):
-    for k in keys:
-        if isinstance(d, dict) and d.get(k) not in (None, ''):
-            return d[k]
+def first(d, *keys):
+    for key in keys:
+        if isinstance(d, dict) and d.get(key) not in (None, ''):
+            return d[key]
     return None
+
 
 def nested(d, *keys):
     cur = d
@@ -171,160 +220,525 @@ def nested(d, *keys):
             return None
     return cur
 
+
 def as_number(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
-def token_fields(src):
+
+def parse_epoch(v):
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, str) and re.fullmatch(r'-?\d+(?:\.\d+)?', v):
+        try:
+            return int(float(v))
+        except Exception:
+            return None
+    return None
+
+
+def utc_iso(ts):
+    if ts is None:
+        return None
+    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def local_string(ts):
+    if ts is None:
+        return None
+    return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M %Z')
+
+
+def payload_of(event):
+    if isinstance(event, dict) and isinstance(event.get('payload'), dict):
+        return event['payload']
+    return event if isinstance(event, dict) else {}
+
+
+def event_type(event):
+    if isinstance(event, dict):
+        return event.get('type')
+    return None
+
+
+def parse_jsonl(path):
+    events = []
+    with path.open('r', encoding='utf-8') as fh:
+        for lineno, line in enumerate(fh, 1):
+            text = line.strip()
+            if not text:
+                continue
+            try:
+                events.append(json.loads(text))
+            except Exception as exc:
+                raise ValueError(f'line {lineno}: {exc}') from exc
+    return events
+
+
+def session_id_from_meta(meta, path):
+    sid = first(meta, 'session_id', 'id')
+    if sid not in (None, ''):
+        return sid, None
+    stem = path.stem
+    if UUID_STEM_RE.fullmatch(stem):
+        return stem, None
+    return stem, 'session id fell back to filename stem'
+
+
+def file_mtime(path):
+    return path.stat().st_mtime
+
+
+def fmt_mtime(ts):
+    return datetime.fromtimestamp(ts, tz=timezone.utc).astimezone().strftime('%Y-%m-%d %H:%M %Z')
+
+
+def rate_limit_block(src):
     if not isinstance(src, dict):
         src = {}
+    used = first(src, 'used_percent')
+    remaining = first(src, 'remaining_percent')
+    if used is None and isinstance(remaining, (int, float)):
+        used = 100 - remaining
+    if remaining is None and isinstance(used, (int, float)):
+        remaining = 100 - used
+    resets = parse_epoch(first(src, 'resets_at'))
     return {
-        'input': first(src, 'input_tokens'),
-        'cached_input': first(src, 'cached_input_tokens'),
-        'output': first(src, 'output_tokens'),
-        'reasoning_output': first(src, 'reasoning_output_tokens'),
-        'total': first(src, 'total_tokens', 'token_count', 'total'),
+        'used_percent': used,
+        'remaining_percent': remaining,
+        'window_minutes': first(src, 'window_minutes'),
+        'resets_at': resets,
+        'resets_at_iso': utc_iso(resets),
+        'resets_at_local': local_string(resets),
     }
 
-def rate_limit_fields(src):
+
+def collect_session(path, ordinal, recent_mode=False):
+    events = parse_jsonl(path)
+    meta = next((payload_of(e) for e in events if event_type(e) == 'session_meta'), {})
+    turn = next((payload_of(e) for e in reversed(events) if event_type(e) == 'turn_context'), {})
+    token_event = next((payload_of(e) for e in reversed(events)
+                        if (event_type(e) == 'token_count') or (event_type(e) == 'event_msg' and payload_of(e).get('type') == 'token_count')), {})
+    token_info = token_event.get('info', token_event) if isinstance(token_event, dict) else {}
+    token_usage_total = first(token_info, 'total_token_usage') or token_event.get('usage', token_event)
+    token_usage_last = first(token_info, 'last_token_usage')
+    rate_limits = first(token_event, 'rate_limits') or first(token_info, 'rate_limits') or {}
+
+    session_id, session_warning = session_id_from_meta(meta, path)
+    model_name = first(turn, 'model_name', 'model')
+    reasoning = first(turn, 'effort') or nested(turn, 'collaboration_mode', 'settings', 'reasoning_effort') or first(turn, 'reasoning')
+    branch = nested(meta, 'git', 'branch') or first(meta, 'branch')
+    commit = nested(meta, 'git', 'commit_hash') or nested(meta, 'git', 'commit') or first(meta, 'commit')
+    repository_url = nested(meta, 'git', 'repository_url') or first(meta, 'repository_url')
+    current_total = first(token_usage_last, 'total_tokens')
+    if current_total is None:
+        current_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
+    cumulative_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
+    ctx_window = first(token_info, 'model_context_window')
+    if ctx_window is None:
+        ctx_window = first(turn, 'model_context_window', 'context_window')
+
+    ctx_window_n = as_number(ctx_window)
+    current_total_n = as_number(current_total)
+    cumulative_total_n = as_number(cumulative_total)
+    remaining = None
+    remaining_percent = None
+    used_percent = None
+    remaining_summary = 'unknown'
+    context_warning = None
+    if ctx_window_n is not None and current_total_n is not None and current_total_n <= ctx_window_n:
+        remaining = ctx_window_n - current_total_n
+        remaining_percent = remaining / ctx_window_n * 100
+        used_percent = current_total_n / ctx_window_n * 100
+        remaining_summary = f'{int(round(remaining_percent))}% left' if recent_mode else f'{int(round(remaining_percent))}% remaining'
+    elif ctx_window_n is not None:
+        if current_total_n is not None and current_total_n > ctx_window_n:
+            context_warning = 'current token total exceeds model context window; current context usage unavailable'
+        elif cumulative_total_n is not None and cumulative_total_n > ctx_window_n:
+            context_warning = 'cumulative token total exceeds model context window; current context usage unavailable'
+
+    if recent_mode:
+        resume_command = f'codex resume --include-non-interactive {session_id}'
+        resume_commands = [resume_command, f'codex exec resume {session_id} "<PROMPT>"']
+        session = {
+            'ordinal': ordinal,
+            'session_id': session_id,
+            'session_file': str(path),
+            'mtime': file_mtime(path),
+            'mtime_local': fmt_mtime(file_mtime(path)),
+            'source': first(meta, 'source'),
+            'originator': first(meta, 'originator'),
+            'git': {
+                'branch': branch,
+                'commit': commit,
+                'repository_url': repository_url,
+            },
+            'model': {
+                'name': model_name,
+                'reasoning': reasoning or 'unknown',
+            },
+            'tokens': {
+                'current_total': current_total_n,
+                'cumulative_total': cumulative_total_n,
+            },
+            'context': {
+                'remaining': remaining,
+                'remaining_percent': remaining_percent,
+                'remaining_summary': remaining_summary,
+            },
+            'resume': {
+                'command': resume_command,
+                'commands': resume_commands,
+            },
+        }
+        warnings = []
+        if session_warning:
+            warnings.append(session_warning)
+        if context_warning:
+            warnings.append(context_warning)
+        return session, rate_limits, token_event, warnings
+
+    limits = {
+        'five_hour': rate_limit_block(first(rate_limits, 'primary')),
+        'weekly': rate_limit_block(first(rate_limits, 'secondary')),
+    }
+    five_remaining = limits['five_hour']['remaining_percent']
+    weekly_remaining = limits['weekly']['remaining_percent']
+
+    def limit_state(rem):
+        if rem is None:
+            return 'unknown'
+        if rem <= block_at:
+            return 'block'
+        if rem <= warn_at:
+            return 'warn'
+        return 'ok'
+
+    payload = {
+        'schema': 'repo-automation-codex-status/v1',
+        'ok': True,
+        'status': 'ok',
+        'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        'codex': {
+            'helper': 'repo-automation/bin/codex-status',
+            'mode': mode,
+            'version': None,
+        },
+        'selector': {
+            'kind': skind,
+            'session_id': sid or None,
+            'session_file': str(Path(sfile).expanduser()) if sfile else None,
+            'repo_root': str(Path(repo_root).resolve()) if repo_root else None,
+        },
+        'session': {
+            'session_id': session_id,
+            'source': first(meta, 'source'),
+            'originator': first(meta, 'originator'),
+            'resumeable': True,
+        },
+        'git': {
+            'repo_root': str(Path(repo_root).resolve()) if repo_root else None,
+            'branch': branch,
+            'commit': commit,
+            'repository_url': repository_url,
+        },
+        'model': {
+            'name': model_name,
+            'reasoning': reasoning or 'unknown',
+            'context_window': ctx_window,
+        },
+        'tokens': {
+            'total': current_total_n,
+            'current_total': current_total_n,
+            'last_total': current_total_n,
+            'cumulative_total': cumulative_total_n,
+            'input': first(token_usage_last, 'input_tokens'),
+            'cached_input': first(token_usage_last, 'cached_input_tokens'),
+            'output': first(token_usage_last, 'output_tokens'),
+            'reasoning_output': first(token_usage_last, 'reasoning_output_tokens'),
+            'current': {
+                'input': first(token_usage_last, 'input_tokens'),
+                'cached_input': first(token_usage_last, 'cached_input_tokens'),
+                'output': first(token_usage_last, 'output_tokens'),
+                'reasoning_output': first(token_usage_last, 'reasoning_output_tokens'),
+                'total': current_total_n,
+            },
+            'cumulative': {
+                'input': first(token_usage_total, 'input_tokens'),
+                'cached_input': first(token_usage_total, 'cached_input_tokens'),
+                'output': first(token_usage_total, 'output_tokens'),
+                'reasoning_output': first(token_usage_total, 'reasoning_output_tokens'),
+                'total': cumulative_total_n,
+            },
+        },
+        'context': {
+            'remaining': remaining,
+            'used_percent': used_percent,
+            'remaining_percent': remaining_percent,
+            'remaining_summary': remaining_summary,
+        },
+        'limits': {
+            'five_hour': {
+                **limits['five_hour'],
+                'state': limit_state(five_remaining),
+                'warn_at': warn_at,
+                'block_at': block_at,
+            },
+            'weekly': {
+                **limits['weekly'],
+                'state': limit_state(weekly_remaining),
+                'warn_at': warn_at,
+                'block_at': block_at,
+            },
+        },
+        'resume': {
+            'resume_commands': [],
+            'decision_inputs': {
+                'resume_without_compact': 'operator_judgment_required',
+                'compact_then_resume': 'unsupported_or_unproven',
+                'resume_and_allow_natural_compact': 'operator_judgment_required',
+                'start_fresh': 'available',
+            },
+        },
+        'reentry': {
+            'decision_inputs': {
+                'resume_without_compact': 'operator_judgment_required',
+                'compact_then_resume': 'unsupported_or_unproven',
+                'resume_and_allow_natural_compact': 'operator_judgment_required',
+                'start_fresh': 'available',
+            },
+        },
+        'warnings': [],
+        'errors': [],
+        'next': [],
+    }
+
+    if session_id:
+        payload['resume']['resume_commands'] = [
+            f'codex resume --include-non-interactive {session_id}',
+            f'codex exec resume {session_id} "<PROMPT>"',
+        ]
+    if session_warning:
+        payload['warnings'].append(session_warning)
+    if context_warning:
+        payload['warnings'].append(context_warning)
+    if payload['limits']['five_hour']['state'] == 'warn':
+        payload['warnings'].append('five-hour remaining at or below warning threshold')
+    if payload['limits']['weekly']['state'] == 'warn':
+        payload['warnings'].append('weekly remaining at or below warning threshold')
+    if check_limits and ('block' in (payload['limits']['five_hour']['state'], payload['limits']['weekly']['state'])):
+        payload['ok'] = False
+        payload['status'] = 'block'
+        return payload, 2, None
+    return payload, 0, None
+
+
+def rate_limit_meta(src):
     if not isinstance(src, dict):
         src = {}
-    used_percent = first(src, 'used_percent')
-    remaining_percent = first(src, 'remaining_percent')
-    if used_percent is None and isinstance(remaining_percent, (int, float)):
-        used_percent = 100 - remaining_percent
-    if remaining_percent is None and isinstance(used_percent, (int, float)):
-        remaining_percent = 100 - used_percent
     return {
-        'percent': used_percent,
-        'used_percent': used_percent,
-        'remaining_percent': remaining_percent,
-        'window_minutes': first(src, 'window_minutes'),
+        'limit_id': first(src, 'limit_id'),
+        'plan_type': first(src, 'plan_type'),
+        'rate_limit_reached_type': first(src, 'rate_limit_reached_type'),
+        'five_hour': rate_limit_block(first(src, 'primary')),
+        'weekly': rate_limit_block(first(src, 'secondary')),
     }
+
+
+def discover_recent_sessions(root, want_count):
+    candidates = sorted((p for p in root.rglob('*.jsonl') if p.is_file()), key=lambda p: (-p.stat().st_mtime, str(p)))
+    sessions = []
+    warnings = []
+    rate_limits = None
+    for path in candidates:
+        try:
+            session, token_rate_limits, token_event, session_warnings = collect_session(path, len(sessions) + 1, recent_mode=True)
+        except Exception as exc:
+            warnings.append(f'skipped malformed session file {path.name}: {exc}')
+            continue
+        sessions.append(session)
+        warnings.extend(session_warnings)
+        if rate_limits is None and isinstance(token_event, dict) and token_rate_limits:
+            rate_limits = token_rate_limits
+        if len(sessions) >= want_count:
+            break
+    if len(sessions) < want_count:
+        warnings.append(f'only {len(sessions)} valid Codex sessions found; requested {want_count}')
+    return sessions, warnings, rate_limits
+
+
+def render_pretty_single(payload):
+    s = []
+    sess = payload.get('session', {})
+    model = payload.get('model', {})
+    git = payload.get('git', {})
+    ctx = payload.get('context', {})
+    limits = payload.get('limits', {})
+    tokens = payload.get('tokens', {})
+    s.append(f"session: {sess.get('session_id')}")
+    source_bits = [v for v in (sess.get('source'), sess.get('originator')) if v not in (None, '')]
+    if source_bits:
+        s.append(f"source/originator: {'/'.join(source_bits)}")
+    s.append(f"model: {model.get('name')}/{model.get('reasoning') or 'unknown'}")
+    git_bits = [v for v in (git.get('branch'), git.get('commit')) if v not in (None, '')]
+    if git_bits:
+        s.append(f"git: {' '.join(git_bits)}")
+    if tokens.get('current_total') is not None or tokens.get('cumulative_total') is not None:
+        bits = []
+        if tokens.get('current_total') is not None:
+            bits.append(f"current_total={tokens.get('current_total')}")
+        if tokens.get('cumulative_total') is not None:
+            bits.append(f"cumulative_total={tokens.get('cumulative_total')}")
+        s.append('tokens: ' + ' '.join(bits))
+    if ctx.get('remaining_summary'):
+        s.append(f"context: {ctx.get('remaining_summary')}")
+    else:
+        s.append('context: unknown')
+    five = limits.get('five_hour', {})
+    weekly = limits.get('weekly', {})
+    if five.get('remaining_percent') is not None:
+        s.append(f"five_hour_remaining={five.get('remaining_percent')}%")
+    if weekly.get('remaining_percent') is not None:
+        s.append(f"weekly_remaining={weekly.get('remaining_percent')}%")
+    s.append(f"5h: {five.get('state')} weekly: {weekly.get('state')}")
+    return '\n'.join(s)
+
+
+def render_pretty_recent(payload):
+    lines = ['codex-status']
+    rate_limits = payload.get('rate_limits', {})
+    five = rate_limits.get('five_hour', {})
+    weekly = rate_limits.get('weekly', {})
+
+    def fmt_pct(v):
+        if v is None:
+            return 'unknown'
+        try:
+            return f'{int(round(float(v)))}% left'
+        except Exception:
+            return 'unknown'
+
+    def fmt_reset(block):
+        if block.get('resets_at_local'):
+            return f"resets {block.get('resets_at_local')}"
+        if block.get('resets_at_iso'):
+            return f"resets {block.get('resets_at_iso')}"
+        return 'resets unknown'
+
+    lines.append('')
+    lines.append(f"5h: {fmt_pct(five.get('remaining_percent'))}, {fmt_reset(five)}")
+    lines.append(f"week: {fmt_pct(weekly.get('remaining_percent'))}, {fmt_reset(weekly)}")
+    lines.append('')
+    lines.append('recent sessions')
+    for session in payload.get('sessions', []):
+        lines.append(f"{session.get('ordinal')}. {session.get('session_id')}")
+        lines.append(f"   updated: {session.get('mtime_local')}")
+        if session.get('git', {}).get('branch'):
+            lines.append(f"   branch: {session.get('git', {}).get('branch')}")
+        if session.get('git', {}).get('commit'):
+            lines.append(f"   commit: {session.get('git', {}).get('commit')}")
+        if session.get('model', {}).get('name') or session.get('model', {}).get('reasoning'):
+            lines.append(f"   model: {session.get('model', {}).get('name') or 'unknown'} / {session.get('model', {}).get('reasoning') or 'unknown'}")
+        if session.get('context', {}).get('remaining_summary'):
+            lines.append(f"   context: {session.get('context', {}).get('remaining_summary')}")
+        lines.append('   resume:')
+        lines.append(f"     {session.get('resume', {}).get('command')}")
+    return '\n'.join(lines)
+
+
+def emit(payload, rc=0):
+    if pretty:
+        if payload.get('schema') == 'repo-automation-codex-status-recent/v1':
+            print(render_pretty_recent(payload))
+        else:
+            print(render_pretty_single(payload))
+    else:
+        print(json.dumps(payload, separators=(',', ':')))
+    return rc
+
+
+def build_recent_payload():
+    sessions, warnings, rate_limits_src = discover_recent_sessions(codex_home / 'sessions', recent_count)
+    rate_limits_src = rate_limits_src or {}
+    payload = {
+        'schema': 'repo-automation-codex-status-recent/v1',
+        'ok': True,
+        'result': 'pass' if sessions else 'none',
+        'status': 'pass' if sessions else 'none',
+        'generated_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+        'codex': {
+            'helper': 'repo-automation/bin/codex-status',
+            'mode': 'recent',
+            'version': None,
+            'recent_count': recent_count,
+        },
+        'selector': {
+            'kind': 'recent',
+            'recent_count': recent_count,
+            'repo_root': str(Path(repo_root).resolve()) if repo_root else None,
+        },
+        'rate_limits': {
+            'limit_id': first(rate_limits_src, 'limit_id'),
+            'plan_type': first(rate_limits_src, 'plan_type'),
+            'rate_limit_reached_type': first(rate_limits_src, 'rate_limit_reached_type'),
+            'five_hour': rate_limit_block(first(rate_limits_src, 'primary')),
+            'weekly': rate_limit_block(first(rate_limits_src, 'secondary')),
+        },
+        'sessions': sessions,
+        'warnings': warnings,
+        'errors': [],
+        'next': [],
+    }
+    if not sessions:
+        payload['next'] = ['Run a Codex session, then rerun repo-automation/bin/codex-status --recent.']
+    return payload
+
+if recent_enabled:
+    payload = build_recent_payload()
+    emit(payload, 0)
+    sys.exit(0)
 
 if sfile:
-    path=Path(sfile).expanduser()
+    path = Path(sfile).expanduser()
     if not path.is_file():
-        print('fail: missing or unreadable session file', file=sys.stderr); sys.exit(1)
+        print('fail: missing or unreadable session file', file=sys.stderr)
+        sys.exit(1)
 elif skind == 'session-id':
-    path=select_by_id(codex_home, sid)
+    path = None
+    for candidate in codex_home.rglob('*.jsonl'):
+        if sid and sid in candidate.name:
+            path = candidate
+            break
+        try:
+            with candidate.open('r', encoding='utf-8') as fh:
+                for line in fh:
+                    if '"session_meta"' in line and sid in line:
+                        path = candidate
+                        break
+        except Exception:
+            pass
+        if path is not None:
+            break
+    if path is None:
+        print(f'fail: session id not found: {sid}', file=sys.stderr)
+        sys.exit(1)
 else:
-    path=select_latest(codex_home)
+    files = [p for p in codex_home.rglob('*.jsonl') if p.is_file()]
+    if not files:
+        print('fail: no Codex session files found', file=sys.stderr)
+        sys.exit(1)
+    path = max(files, key=lambda p: p.stat().st_mtime)
 
 try:
-    events=parse(path)
-except Exception as e:
-    print(f'fail: unable to parse session file: {e}', file=sys.stderr); sys.exit(1)
+    payload, rc, _ = collect_session(path, 1, recent_mode=False)
+except Exception as exc:
+    print(f'fail: unable to parse session file: {exc}', file=sys.stderr)
+    sys.exit(1)
 
-meta = next((payload_of(e) for e in events if e.get('type') == 'session_meta'), {})
-turn = next((payload_of(e) for e in reversed(events) if e.get('type') == 'turn_context'), {})
-token_event = next((payload_of(e) for e in reversed(events) if (e.get('type') == 'event_msg' and payload_of(e).get('type') == 'token_count') or e.get('type') == 'token_count'), {})
-token_info = token_event.get('info', token_event)
-token_usage_total = first(token_info, 'total_token_usage') or token_event.get('usage', token_event)
-token_usage_last = first(token_info, 'last_token_usage')
-rate_limits = first(token_event, 'rate_limits') or first(token_info, 'rate_limits') or {}
-
-sidv = first(meta, 'session_id', 'id') or filename_session_id(path)
-if sidv == path.stem:
-    session_warning = 'session id fell back to filename stem'
-else:
-    session_warning = None
-model_name = first(turn, 'model_name', 'model')
-reasoning = first(turn, 'effort') or nested(turn, 'collaboration_mode', 'settings', 'reasoning_effort') or first(turn, 'reasoning')
-repo = Path(repo_root).resolve() if repo_root else None
-current_total = first(token_usage_last, 'total_tokens')
-if current_total is None:
-    current_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
-cumulative_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
-ctx_window = first(token_info, 'model_context_window')
-if ctx_window is None:
-    ctx_window = first(turn, 'model_context_window', 'context_window')
-ctx_window_n = as_number(ctx_window)
-current_total_n = as_number(current_total)
-cumulative_total_n = as_number(cumulative_total)
-context_available = ctx_window_n is not None and current_total_n is not None and current_total_n <= ctx_window_n
-if context_available:
-    remaining = ctx_window_n - current_total_n
-    used_percent = current_total_n / ctx_window_n * 100
-    remaining_percent = remaining / ctx_window_n * 100
-    remaining_summary = f'{int(round(remaining_percent))}% remaining'
-else:
-    remaining = None
-    used_percent = None
-    remaining_percent = None
-    remaining_summary = 'unknown'
-primary_limit = rate_limits.get('primary', {}) if isinstance(rate_limits, dict) else {}
-secondary_limit = rate_limits.get('secondary', {}) if isinstance(rate_limits, dict) else {}
-five_hour = rate_limit_fields(primary_limit)
-weekly = rate_limit_fields(secondary_limit)
-if not context_available and ctx_window_n is not None:
-    if current_total_n is not None and current_total_n > ctx_window_n:
-        context_warning = 'current token total exceeds model context window; current context usage unavailable'
-    elif cumulative_total_n is not None and cumulative_total_n > ctx_window_n:
-        context_warning = 'cumulative token total exceeds model context window; current context usage unavailable'
-    else:
-        context_warning = None
-else:
-    context_warning = None
-
-def limit_state(rem):
-    if rem is None: return 'unknown'
-    if rem <= block_at: return 'block'
-    if rem <= warn_at: return 'warn'
-    return 'ok'
-
-five_hour_state = limit_state(five_hour['remaining_percent'])
-weekly_state = limit_state(weekly['remaining_percent'])
-
-payload = {
-    'schema':'repo-automation-codex-status/v1','ok':True,'status':'ok','generated_at':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),
-    'codex':{'helper':'repo-automation/bin/codex-status','mode':mode,'version':None},
-    'selector':{'kind':skind,'session_id':sid or None,'session_file':str(Path(sfile).expanduser()) if sfile else None,'repo_root':str(repo) if repo else None},
-    'session':{'session_id':sidv,'source':first(meta,'source'),'originator':first(meta,'originator'),'resumeable':True},
-    'git':{
-      'repo_root':str(repo) if repo else None,
-      'branch':nested(meta, 'git', 'branch') or first(meta,'branch'),
-      'commit':nested(meta, 'git', 'commit_hash') or nested(meta, 'git', 'commit') or first(meta,'commit'),
-      'repository_url':nested(meta, 'git', 'repository_url') or first(meta,'repository_url'),
-    },
-    'model':{'name':model_name,'reasoning':reasoning,'context_window':ctx_window},
-    'tokens':{
-      'total':current_total_n,
-      'current_total':current_total_n,
-      'last_total':current_total_n,
-      'cumulative_total':cumulative_total_n,
-      'input':first(token_usage_last,'input_tokens'),
-      'cached_input':first(token_usage_last,'cached_input_tokens'),
-      'output':first(token_usage_last,'output_tokens'),
-      'reasoning_output':first(token_usage_last,'reasoning_output_tokens'),
-      'current':token_fields(token_usage_last),
-      'cumulative':token_fields(token_usage_total),
-    },
-    'context':{'remaining':remaining,'used_percent':used_percent,'remaining_percent':remaining_percent,'remaining_summary':remaining_summary},
-    'limits':{'five_hour':{**five_hour,'state':five_hour_state,'warn_at':warn_at,'block_at':block_at},'weekly':{**weekly,'state':weekly_state,'warn_at':warn_at,'block_at':block_at}},
-    'resume':{'resume_commands':[],'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','resume_and_allow_natural_compact':'operator_judgment_required','start_fresh':'available'}},
-    'reentry':{'decision_inputs':{'resume_without_compact':'operator_judgment_required','compact_then_resume':'unsupported_or_unproven','resume_and_allow_natural_compact':'operator_judgment_required','start_fresh':'available'}},
-    'warnings':[],'errors':[],'next':[]
-}
-if sidv:
-    payload['resume']['resume_commands']=[f"codex resume --include-non-interactive {sidv}", f'codex exec resume {sidv} "<PROMPT>"']
-if payload['model']['reasoning'] in (None, ''):
-    payload['model']['reasoning'] = 'unknown'
-if session_warning:
-    payload['warnings'].append(session_warning)
-if context_warning:
-    payload['warnings'].append(context_warning)
-if current_total_n is not None and cumulative_total_n is not None:
-    payload['tokens']['last_total'] = current_total_n
-
-if check_limits and ('block' in (payload['limits']['five_hour']['state'], payload['limits']['weekly']['state'])):
-    payload['ok']=False
-    payload['status']='block'
+if rc == 2:
     emit(payload, 2)
     sys.exit(2)
-if payload['limits']['five_hour']['state']=='warn':
-    payload['warnings'].append('five-hour remaining at or below warning threshold')
-if payload['limits']['weekly']['state']=='warn':
-    payload['warnings'].append('weekly remaining at or below warning threshold')
 emit(payload, 0)
 PY
 }
