@@ -44,7 +44,9 @@ path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding='utf-8'))
 assert data["script"] == "run-tests"
 assert data["mode"] == "summary"
-assert data["overall_status"] == "warn"
+assert "overall_status" not in data
+assert data["result"] == "warn"
+assert data["status"] == "warn"
 assert data["pass_count"] == 1
 assert data["warn_count"] == 1
 assert data["fail_count"] == 1
@@ -79,6 +81,9 @@ import json, sys
 from pathlib import Path
 path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding='utf-8'))
+assert "overall_status" not in data
+assert data["result"] == "fail"
+assert data["status"] == "fail"
 assert [check["status"] for check in data["checks"]] == ["fail"]
 assert data["log_status"] == "none"
 assert data["log_policy"] == "run-temp-cleaned-by-default"
@@ -108,6 +113,9 @@ import json, sys
 from pathlib import Path
 path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding='utf-8'))
+assert "overall_status" not in data
+assert data["result"] == "warn"
+assert data["status"] == "warn"
 assert [check["status"] for check in data["checks"]] == ["warn", "fail"]
 assert data["log_status"] == "path"
 assert data["log_policy"] == "kept"
@@ -137,6 +145,9 @@ import json, sys
 from pathlib import Path
 path = Path(sys.argv[1])
 data = json.loads(path.read_text(encoding='utf-8'))
+assert "overall_status" not in data
+assert data["result"] == "warn"
+assert data["status"] == "warn"
 assert [check["status"] for check in data["checks"]] == ["pass", "warn", "fail", "skipped"]
 assert data["selected_subsets"] == ["docs", "version", "smoke"]
 assert data["log_status"] == "path"

@@ -365,7 +365,7 @@ run_tests_print_human() {
   local warn_count="$3"
   local fail_count="$4"
   local skipped_count="$5"
-  local entry name status message timed_out rest first_entry
+  local entry name status message timed_out rest first_entry failure_text=""
 
   if [ "$run_tests_mode" = "explain" ]; then
     printf 'TEST_TEMP_ROOT=%s\n' "$TEST_TEMP_ROOT"
@@ -403,11 +403,8 @@ run_tests_print_human() {
     rest="${rest#*|}"
     timed_out="${rest%%|*}"
     message="${rest#*|}"
-    if [ -n "$message" ] && [ "$message" != "failed" ]; then
-      repo_auto_print_failure_footer fail "$name - $message"
-    else
-      repo_auto_print_failure_footer fail "$name"
-    fi
+    failure_text="$(run_tests_failure_summary_text "$name" "$message" "$run_tests_log_file")"
+    repo_auto_print_failure_footer fail "$failure_text"
     if [ -n "$run_tests_log_file" ]; then
       if run_tests_log_will_be_cleaned; then
         run_tests_print_failure_fix_from_log "$run_tests_log_file" 1

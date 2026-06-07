@@ -37,6 +37,20 @@ Recommended improvements:
 - Add a helper to generate/update managed-file registrations consistently.
 - Standardize quiet/default/JSON envelopes in shared test helpers, with a tiny per-helper contract spec next to each script.
 
+### 2026-06-07 run-tests output-contract baseline
+
+Challenges:
+- Umbrella `run-tests` failures needed a reason fallback that could read child stderr/excerpt details when the first recorded failure line was just `failed`.
+- JSON contract updates had to switch to `result`/`status` without regressing quiet success silence or explain-mode readability.
+
+What would have helped:
+- A shared umbrella-failure helper that treats "generic fail line but useful child reason in the log" as a first-class case.
+- A tiny focused JSON fixture that checks `result`, `status`, counts, and JSON purity together.
+
+Recommended improvements:
+- Keep umbrella failure renderers able to mine child excerpts when the first recorded failure line is generic.
+- Keep helper JSON contracts on `result`/`status` and assert those fields in focused tests before removing legacy aliases.
+
 ### 2026-06-04 smoke output-contract follow-up
 
 Challenges:

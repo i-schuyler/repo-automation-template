@@ -152,6 +152,47 @@ run_tests_print_log_reference() {
     printf 'log: %s\n' "$log_file"
   fi
 }
+run_tests_failure_summary_text() {
+  local name="$1"
+  local message="${2:-failed}"
+  local log_file="${3:-}"
+  local reason="$message"
+  local first_failure=""
+  local excerpt_reason=""
+
+  if [ -n "$log_file" ] && [ "$reason" = "failed" ] && [ -f "$log_file" ]; then
+    first_failure="$(run_tests_extract_log_first_failure "$log_file" 2>/dev/null || true)"
+    if [ -n "$first_failure" ]; then
+      if [ "${first_failure#"$name" - }" != "$first_failure" ]; then
+        reason="${first_failure#"$name" - }"
+      elif [ "${first_failure#"$name": }" != "$first_failure" ]; then
+        reason="${first_failure#"$name": }"
+      else
+        reason="$first_failure"
+      fi
+      if [ "$reason" = "failed" ]; then
+        excerpt_reason="$(
+          run_tests_extract_log_excerpt "$log_file" 2>/dev/null | awk '
+            /^FAIL: / || /^fail: / { exit }
+            /^CHECK START: / { next }
+            /^COMMAND: / { next }
+            NF { last=$0 }
+            END { if (last != "") print last }
+          '
+        )"
+        if [ -n "$excerpt_reason" ]; then
+          reason="$excerpt_reason"
+        fi
+      fi
+    fi
+  fi
+
+  if [ -n "$reason" ]; then
+    printf '%s - %s\n' "$name" "$reason"
+  else
+    printf '%s\n' "$name"
+  fi
+}
 run_tests_print_failure_fix_from_log() {
   local log_file="$1"
   local log_cleaned="${2:-0}"
