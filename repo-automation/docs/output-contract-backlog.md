@@ -72,7 +72,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | slice-handoff | high-risk umbrella; PR-submit trust boundary | quiet=yes json=no | blocker/child-failure boundary hardened in PR #223, validator gate now runs before preflight, and validation-manifest paths are surfaced in summaries | finish remaining output-contract gaps | done-foundation |
 | pr-body-check | submit gate | quiet=yes json=yes | boundary diagnostics still matter on failures | preserve concise actionable failure output | next |
 | repo-flow | submit/merge workflow | quiet=no json=yes | submit-output boundary clarity still needs explicit coverage | keep submit and output-contract failures step-specific | next |
-| codex-status | status helper | quiet=no json=yes | still needs consistent actionable failure fields | align failure envelopes with output-modes.md | later |
+| codex-status | status helper | quiet=no json=yes | recent list mode added; single-session failure envelopes still need audit | keep declared JSON fields and pretty help aligned | near-term |
 | check-portability | broad audit | quiet=yes json=yes | audit failures should stay concise and path-focused | keep portability failures artifact-aware | later |
 | check-tooling | readiness helper | quiet=yes json=yes | failure clarity can still be improved | keep default/quiet failures actionable | later |
 | branch-cleanup | preflight/worktree helper | quiet=no json=yes | boundary failures should name the branch/worktree step | keep child and cleanup failures explicit | later |
@@ -128,7 +128,7 @@ Future helper slices should update the tracking matrix when helper behavior, tes
 | slice-handoff | partial | partial | partial | PR #223 + PR #229 | finish broader output-mode migration and record coverage evidence |
 | pr-body-check | partial | partial | needs-audit | docs/output-modes.md | verify submit-gate failure wording and JSON failure shape |
 | repo-flow | partial | partial | needs-audit | docs/output-modes.md | baseline submit/merge contract and child-boundary coverage |
-| codex-status | partial | partial | needs-audit | docs/output-modes.md | verify declared JSON contract and failure fields |
+| codex-status | partial | partial | partial | repo-automation/tests/contracts/codex-status.sh + repo-automation/docs/codex-status.md | verify single-session failure envelopes stay aligned with the declared JSON contract |
 | check-portability | partial | partial | needs-audit | docs/output-modes.md | confirm concise audit failures and JSON support |
 | check-tooling | partial | partial | needs-audit | docs/output-modes.md | verify quiet/JSON failure coverage |
 | branch-cleanup | partial | partial | needs-audit | docs/output-modes.md | verify worktree-step failure boundaries |

@@ -782,12 +782,34 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
   mkdir -p "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" || return 1
   smoke_slice_handoff_prepare_execution_repo || return 1
   fake_codex_bin_dir="$execution_artifact_root/fake-codex-bin"
+  fake_df_bin_dir="$execution_artifact_root/fake-df-bin"
+  fake_df_invocation_log="$execution_artifact_root/fake-df.invocation.log"
   smoke_slice_handoff_write_fake_codex "$fake_codex_bin_dir" || return 1
+  mkdir -p "$fake_df_bin_dir" || return 1
+  cat > "$fake_df_bin_dir/df" <<EOF
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "\$*" >> "$fake_df_invocation_log"
+case "\${1:-}" in
+  -P*) shift ;;
+esac
+if [ "\${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "\${PREFLIGHT_DF_BLOCKS:-1953125}" \
+  "\${PREFLIGHT_DF_USED:-50}" \
+  "\${PREFLIGHT_DF_AVAILABLE:-1953125}" \
+  "\${PREFLIGHT_DF_USE_PERCENT:-50}" \
+  "\${1:-\${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$fake_df_bin_dir/df" || return 1
   printf 'dirty execution repo\n' > "$smoke_test_dir/dirty-before-preflight.txt" || return 1
   rm -rf -- "$execution_dirty_out_dir" || return 1
-  rm -f -- "$stdout_file" "$stderr_file" "$args_file" || return 1
+  rm -f -- "$stdout_file" "$stderr_file" "$args_file" "$fake_df_invocation_log" || return 1
   if ! (
-    PATH="$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run_with_isolated_temp_env "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"
+    PATH="$fake_df_bin_dir:$fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$args_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run_with_isolated_temp_env "$dirty_execution_isolated_tmpdir" "$dirty_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$valid_none_file" --out-dir="$execution_dirty_out_dir"
   ); then
     if [ ! -d "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" ]; then
       printf 'fail: slice-handoff dirty-preflight run dir root missing: %s\n' "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" >&2
@@ -799,6 +821,8 @@ smoke_slice_handoff_run_dirty_preflight_regression() {
       if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "$run_dir" "stop_reason=working tree must be clean before preflight"; then
         status=1
       elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
+        status=1
+      elif [ ! -s "$fake_df_invocation_log" ]; then
         status=1
       elif [ ! -e "$dirty_execution_sentinel" ]; then
         status=1
@@ -1259,6 +1283,27 @@ smoke_slice_handoff_prepare_execution_context() {
   smoke_slice_handoff_execution_isolated_tmpdir="$smoke_slice_handoff_execution_isolation_root/tmpdir"
   smoke_slice_handoff_execution_isolated_home="$smoke_slice_handoff_execution_isolation_root/home"
   mkdir -p "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" || return 1
+  smoke_slice_handoff_execution_healthy_disk_stub_dir="$smoke_slice_handoff_execution_artifact_root/fake-df"
+  mkdir -p "$smoke_slice_handoff_execution_healthy_disk_stub_dir" || return 1
+  cat > "$smoke_slice_handoff_execution_healthy_disk_stub_dir/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${PREFLIGHT_DF_BLOCKS:-1953125}" \
+  "${PREFLIGHT_DF_USED:-50}" \
+  "${PREFLIGHT_DF_AVAILABLE:-1953125}" \
+  "${PREFLIGHT_DF_USE_PERCENT:-50}" \
+  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$smoke_slice_handoff_execution_healthy_disk_stub_dir/df" || return 1
+  export REPO_AUTOMATION_DF_BIN="$smoke_slice_handoff_execution_healthy_disk_stub_dir/df"
   smoke_slice_handoff_expected_execution_repo_root="$smoke_test_dir"
   smoke_slice_handoff_expected_execution_planned_run_dir_root="$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs"
   smoke_slice_handoff_expected_execution_none_preview="${smoke_slice_handoff_expected_none_preview//$smoke_slice_handoff_valid_none_out_dir/$smoke_slice_handoff_execution_none_out_dir}"
@@ -1280,7 +1325,29 @@ smoke_slice_handoff_prepare_execution_context() {
   smoke_slice_handoff_write_file "$smoke_slice_handoff_execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$smoke_slice_handoff_submit_prompt" "$smoke_slice_handoff_submit_body" "" "repo-automation-template-pr-review" || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_execution_invalid_submit_file" "feature/slice-handoff-submit" "Slice handoff submit smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$smoke_slice_handoff_submit_prompt" "$smoke_slice_handoff_submit_body" || return 1
   smoke_slice_handoff_execution_fake_codex_bin_dir="$smoke_slice_handoff_execution_artifact_root/fake-codex"
+  smoke_slice_handoff_execution_fake_df_bin_dir="$smoke_slice_handoff_execution_artifact_root/fake-df"
+  smoke_slice_handoff_execution_fake_df_invocation_log="$smoke_slice_handoff_execution_artifact_root/fake-df.invocation.log"
   smoke_slice_handoff_write_fake_codex "$smoke_slice_handoff_execution_fake_codex_bin_dir" || return 1
+  mkdir -p "$smoke_slice_handoff_execution_fake_df_bin_dir" || return 1
+  cat > "$smoke_slice_handoff_execution_fake_df_bin_dir/df" <<EOF
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "\$*" >> "$smoke_slice_handoff_execution_fake_df_invocation_log"
+case "\${1:-}" in
+  -P*) shift ;;
+esac
+if [ "\${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "\${PREFLIGHT_DF_BLOCKS:-1953125}" \
+  "\${PREFLIGHT_DF_USED:-50}" \
+  "\${PREFLIGHT_DF_AVAILABLE:-1953125}" \
+  "\${PREFLIGHT_DF_USE_PERCENT:-50}" \
+  "\${1:-\${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$smoke_slice_handoff_execution_fake_df_bin_dir/df" || return 1
   smoke_slice_handoff_set_execution_codex_run_final_text 'fake final output' || return 1
   smoke_slice_handoff_execution_fake_codex_args_none_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-none.args"
   smoke_slice_handoff_execution_fake_codex_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit.args"
@@ -1353,6 +1420,8 @@ smoke_slice_handoff_prepare_execution_context() {
     "$smoke_slice_handoff_expected_execution_explain_preview" \
     "$smoke_slice_handoff_expected_execution_explain_summary" \
     "$smoke_slice_handoff_execution_fake_codex_bin_dir" \
+    "$smoke_slice_handoff_execution_fake_df_bin_dir" \
+    "$smoke_slice_handoff_execution_fake_df_invocation_log" \
     "$smoke_slice_handoff_execution_fake_codex_run_final_text_file" \
     "$FAKE_CODEX_RUN_FINAL_TEXT_FILE" \
     "$smoke_slice_handoff_execution_fake_codex_args_none_file" \

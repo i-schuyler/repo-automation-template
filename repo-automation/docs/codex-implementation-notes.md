@@ -51,6 +51,20 @@ Recommended improvements:
 - Keep umbrella failure renderers able to mine child excerpts when the first recorded failure line is generic.
 - Keep helper JSON contracts on `result`/`status` and assert those fields in focused tests before removing legacy aliases.
 
+### 2026-06-07 codex-status recent-session list mode
+
+Challenges:
+- Recent-session discovery needed its own isolated fixture tree so newer malformed files would not disturb single-session `--latest` checks.
+- The bounded list mode also needed explicit ShellCheck-visible helper-arg usage when the fixture builder accepted timing fields that otherwise only appeared inside generated JSON.
+
+What would have helped:
+- Separate temp repos for single-session and recent-list contract coverage from the start.
+- A small shared fixture builder that makes every JSON field reference visible to ShellCheck.
+
+Recommended improvements:
+- Keep recent-list smoke fixtures isolated from single-session fixtures.
+- Make helper-arg wiring explicit in fixture helpers so static checks see the intended parameter use.
+
 ### 2026-06-04 smoke output-contract follow-up
 
 Challenges:
@@ -149,6 +163,17 @@ Recommended improvements:
 - Preserve the validate-only path for submit-capable handoffs until bare `--submit` crosses the trust boundary.
 - Add a small reusable smoke helper for repo-relative child-helper assertions and fake installation.
 - When copying validator manifests into public artifacts, rewrite artifact paths to the final published locations.
+
+### PR #235 slice-handoff smoke preflight stability
+
+Challenges:
+- Execution-mode slice-handoff smoke could trip the preflight disk guard in low-space developer environments before the contract path under test ran.
+
+What would have helped:
+- A small healthy-disk stub in the execution-mode smoke fixture so the contract could focus on slice-handoff behavior instead of host disk pressure.
+
+Recommended improvements:
+- Keep execution-mode smoke using an explicit healthy `df` stub when the contract is meant to exercise preflight and downstream artifact behavior.
 
 ### PR #233 slice-handoff modularization and preset resolution
 
