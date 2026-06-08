@@ -20,6 +20,8 @@ smoke_check_managed_file_tools_contract() {
   local managed_file_new_path="repo-automation/docs/managed-file-tools-smoke.md"
   local managed_file_missing_doc_path="repo-automation/docs/managed-file-tools-missing.md"
   local managed_file_public_helper_path="repo-automation/bin/managed-file-tools-smoke-helper"
+  local managed_file_combined_qde_prefix="result=fail"
+  local managed_file_combined_qde_suffix=" code="
   local managed_file_manifest_path="$smoke_test_dir/repo-automation/manifest.json"
   local managed_file_installer_path="$smoke_test_dir/repo-automation/bin/repo-automation-install"
   local managed_file_manifest_backup="$smoke_test_base/managed-file-manifest-backup-$$.json"
@@ -126,8 +128,13 @@ smoke_check_managed_file_tools_contract() {
   ); then
     test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
     status=1
-  elif [ ! -s "$managed_file_clean_out" ] && grep -Fq 'result=fail' "$managed_file_quiet_fail_stderr" && grep -Fq 'code=missing-managed-file-coverage' "$managed_file_quiet_fail_stderr" && grep -Fq 'step=managed-file-check' "$managed_file_quiet_fail_stderr" && grep -Fq 'reason=missing managed file coverage' "$managed_file_quiet_fail_stderr" && grep -Fq "path=$managed_file_missing_doc_path" "$managed_file_quiet_fail_stderr" && grep -Fq 'fix=add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install' "$managed_file_quiet_fail_stderr"; then
+  elif [ ! -s "$managed_file_clean_out" ] && grep -Fxq 'result=fail' "$managed_file_quiet_fail_stderr" && grep -Fxq 'code=missing-managed-file-coverage' "$managed_file_quiet_fail_stderr" && grep -Fxq 'step=managed-file-check' "$managed_file_quiet_fail_stderr" && grep -Fxq 'reason=missing managed file coverage' "$managed_file_quiet_fail_stderr" && grep -Fxq "path=$managed_file_missing_doc_path" "$managed_file_quiet_fail_stderr" && grep -Fxq 'fix=add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install' "$managed_file_quiet_fail_stderr"; then
+    if grep -Fq "${managed_file_combined_qde_prefix}${managed_file_combined_qde_suffix}" "$managed_file_quiet_fail_stderr"; then
+      test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
+      status=1
+    else
     test_pass "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
+    fi
   else
     test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
     status=1
@@ -157,8 +164,13 @@ smoke_check_managed_file_tools_contract() {
   ); then
     test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
     status=1
-  elif [ ! -s "$managed_file_clean_out" ] && grep -Fq 'result=fail' "$managed_file_quiet_fail_stderr" && grep -Fq 'code=missing-public-helper-inventory' "$managed_file_quiet_fail_stderr" && grep -Fq 'step=managed-file-check' "$managed_file_quiet_fail_stderr" && grep -Fq 'reason=missing public helper inventory' "$managed_file_quiet_fail_stderr" && grep -Fq "path=$managed_file_public_helper_path" "$managed_file_quiet_fail_stderr" && grep -Fq 'fix=add the helper to repo-automation/helper-metadata.json and update helper docs' "$managed_file_quiet_fail_stderr"; then
+  elif [ ! -s "$managed_file_clean_out" ] && grep -Fxq 'result=fail' "$managed_file_quiet_fail_stderr" && grep -Fxq 'code=missing-public-helper-inventory' "$managed_file_quiet_fail_stderr" && grep -Fxq 'step=managed-file-check' "$managed_file_quiet_fail_stderr" && grep -Fxq 'reason=missing public helper inventory' "$managed_file_quiet_fail_stderr" && grep -Fxq "path=$managed_file_public_helper_path" "$managed_file_quiet_fail_stderr" && grep -Fxq 'fix=add the helper to repo-automation/helper-metadata.json and update helper docs' "$managed_file_quiet_fail_stderr"; then
+    if grep -Fq "${managed_file_combined_qde_prefix}${managed_file_combined_qde_suffix}" "$managed_file_quiet_fail_stderr"; then
+      test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
+      status=1
+    else
     test_pass "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
+    fi
   else
     test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
     status=1
