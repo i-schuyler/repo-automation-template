@@ -1534,7 +1534,6 @@ slice_handoff_run_execution_phase() {
   local repo_flow_submit_url_or_stop=""
   local repo_flow_submit_review_request_source_path=""
   local repo_flow_submit_review_request_path=""
-  local repo_flow_submit_review_request_block_path=""
 
   cd "$slice_handoff_repo_root" || return 1
   slice_handoff_info "run-dir creation"
@@ -1773,7 +1772,6 @@ slice_handoff_run_execution_phase() {
     fi
 
     repo_flow_submit_review_request_path="$(slice_handoff_extract_repo_flow_summary_value review_request_path "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
-    repo_flow_submit_review_request_block_path="$(slice_handoff_extract_repo_flow_summary_value review_request_block_path "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
 
     if [ -n "$repo_flow_submit_review_request_path" ] && [ -f "$repo_flow_submit_review_request_path" ]; then
       if ! slice_handoff_copy_atomic_file "$repo_flow_submit_review_request_path" "$active_run_dir/review-request.txt"; then
