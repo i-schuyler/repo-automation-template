@@ -55,7 +55,7 @@ These helpers keep the manifest and installer coverage aligned:
 
 | Helper | Shape | Source of truth |
 | --- | --- | --- |
-| `repo-automation/bin/managed-file-check` | `--changed [--quiet]` | reviews changed `repo-automation/` paths against the manifest and helper inventory; `--quiet` suppresses the success `pass` line |
+| `repo-automation/bin/managed-file-check` | `--changed [--quiet]` | default and `--changed` both review changed `repo-automation/` paths against the manifest and helper inventory; clean success prints `pass`, `--quiet` makes clean success silent, and quiet failures use the QDE v1 line envelope |
 | `repo-automation/bin/managed-file-add` | `--path=<path> --kind=<kind>` | updates `repo-automation/manifest.json` and `repo-automation/bin/repo-automation-install` coverage together |
 
 If a new `repo-automation/` path also changes the public helper surface, update `repo-automation/helper-metadata.json` in the same slice.

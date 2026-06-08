@@ -15,8 +15,11 @@ smoke_check_managed_file_tools_contract() {
   local managed_file_clean_out="$smoke_test_base/managed-file-check-clean.out"
   local managed_file_clean_err="$smoke_test_base/managed-file-check-clean.err"
   local managed_file_fail_stderr="$smoke_test_base/managed-file-check-fail.stderr"
+  local managed_file_quiet_fail_stderr="$smoke_test_base/managed-file-check-quiet-fail.stderr"
   local managed_file_add_stderr="$smoke_test_base/managed-file-add.stderr"
   local managed_file_new_path="repo-automation/docs/managed-file-tools-smoke.md"
+  local managed_file_missing_doc_path="repo-automation/docs/managed-file-tools-missing.md"
+  local managed_file_public_helper_path="repo-automation/bin/managed-file-tools-smoke-helper"
   local managed_file_manifest_path="$smoke_test_dir/repo-automation/manifest.json"
   local managed_file_installer_path="$smoke_test_dir/repo-automation/bin/repo-automation-install"
   local managed_file_manifest_backup="$smoke_test_base/managed-file-manifest-backup-$$.json"
@@ -25,7 +28,7 @@ smoke_check_managed_file_tools_contract() {
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/managed-file-check --help > "$managed_file_help"
-  ) && grep -Fq -- '--changed' "$managed_file_help" && grep -Fq -- '--quiet' "$managed_file_help" && ! grep -Fq -- '--changed CHANGED' "$managed_file_help"; then
+  ) && grep -Fq -- '--changed' "$managed_file_help" && grep -Fq -- '--quiet' "$managed_file_help" && grep -Fq -- '--help' "$managed_file_help" && ! grep -Fq -- '--changed CHANGED' "$managed_file_help"; then
     test_pass "managed-file-check help shows strict flag syntax"
   else
     test_fail "managed-file-check help shows strict flag syntax"
@@ -77,20 +80,7 @@ smoke_check_managed_file_tools_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
-    printf '# helper smoke\n' > "$managed_file_new_path" || return 1
-    repo-automation/bin/managed-file-check --changed >/dev/null 2> "$managed_file_fail_stderr"
-  ); then
-    test_fail "managed-file-check flags new repo-automation paths for review"
-    status=1
-  elif grep -Fq 'coverage review required' "$managed_file_fail_stderr"; then
-    test_pass "managed-file-check flags new repo-automation paths for review"
-  else
-    test_fail "managed-file-check flags new repo-automation paths for review"
-    status=1
-  fi
-
-  if (
-    cd "$smoke_test_dir" || return 1
+    printf '# managed file smoke\n' > "$managed_file_new_path" || return 1
     cp "$managed_file_manifest_path" "$managed_file_manifest_backup" || return 1
     cp "$managed_file_installer_path" "$managed_file_installer_backup" || return 1
     repo-automation/bin/managed-file-add --path="$managed_file_new_path" --kind=doc >/dev/null
@@ -116,7 +106,66 @@ smoke_check_managed_file_tools_contract() {
   cp "$managed_file_manifest_backup" "$managed_file_manifest_path" >/dev/null 2>&1 || true
   cp "$managed_file_installer_backup" "$managed_file_installer_path" >/dev/null 2>&1 || true
 
-  rm -f "$managed_file_help" "$managed_file_add_help" "$managed_file_clean_out" "$managed_file_clean_err" "$managed_file_fail_stderr" "$managed_file_add_stderr" >/dev/null 2>&1 || true
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '# helper smoke\n' > "$managed_file_missing_doc_path" || return 1
+    repo-automation/bin/managed-file-check --changed >/dev/null 2> "$managed_file_fail_stderr"
+  ); then
+    test_fail "managed-file-check flags new repo-automation paths for review"
+    status=1
+  elif grep -Fq 'fail: missing managed file coverage' "$managed_file_fail_stderr" && grep -Fq "path: $managed_file_missing_doc_path" "$managed_file_fail_stderr" && grep -Fq 'fix: add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install' "$managed_file_fail_stderr"; then
+    test_pass "managed-file-check flags new repo-automation paths for review"
+  else
+    test_fail "managed-file-check flags new repo-automation paths for review"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --changed --quiet > "$managed_file_clean_out" 2> "$managed_file_quiet_fail_stderr"
+  ); then
+    test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
+    status=1
+  elif [ ! -s "$managed_file_clean_out" ] && grep -Fq 'result=fail' "$managed_file_quiet_fail_stderr" && grep -Fq 'code=missing-managed-file-coverage' "$managed_file_quiet_fail_stderr" && grep -Fq 'step=managed-file-check' "$managed_file_quiet_fail_stderr" && grep -Fq 'reason=missing managed file coverage' "$managed_file_quiet_fail_stderr" && grep -Fq "path=$managed_file_missing_doc_path" "$managed_file_quiet_fail_stderr" && grep -Fq 'fix=add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install' "$managed_file_quiet_fail_stderr"; then
+    test_pass "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
+  else
+    test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
+    status=1
+  fi
+
+  rm -f "$managed_file_missing_doc_path" >/dev/null 2>&1 || true
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    printf '#!/usr/bin/env bash\n' > "$managed_file_public_helper_path" || return 1
+    chmod +x "$managed_file_public_helper_path" || return 1
+    repo-automation/bin/managed-file-add --path="$managed_file_public_helper_path" --kind=script >/dev/null
+    repo-automation/bin/managed-file-check --changed >/dev/null 2> "$managed_file_fail_stderr"
+  ); then
+    test_fail "managed-file-check flags public helper inventory gaps for review"
+    status=1
+  elif grep -Fq 'fail: missing public helper inventory' "$managed_file_fail_stderr" && grep -Fq "path: $managed_file_public_helper_path" "$managed_file_fail_stderr" && grep -Fq 'fix: add the helper to repo-automation/helper-metadata.json and update helper docs' "$managed_file_fail_stderr"; then
+    test_pass "managed-file-check flags public helper inventory gaps for review"
+  else
+    test_fail "managed-file-check flags public helper inventory gaps for review"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --changed --quiet > "$managed_file_clean_out" 2> "$managed_file_quiet_fail_stderr"
+  ); then
+    test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
+    status=1
+  elif [ ! -s "$managed_file_clean_out" ] && grep -Fq 'result=fail' "$managed_file_quiet_fail_stderr" && grep -Fq 'code=missing-public-helper-inventory' "$managed_file_quiet_fail_stderr" && grep -Fq 'step=managed-file-check' "$managed_file_quiet_fail_stderr" && grep -Fq 'reason=missing public helper inventory' "$managed_file_quiet_fail_stderr" && grep -Fq "path=$managed_file_public_helper_path" "$managed_file_quiet_fail_stderr" && grep -Fq 'fix=add the helper to repo-automation/helper-metadata.json and update helper docs' "$managed_file_quiet_fail_stderr"; then
+    test_pass "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
+  else
+    test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
+    status=1
+  fi
+
+  rm -f "$managed_file_help" "$managed_file_add_help" "$managed_file_clean_out" "$managed_file_clean_err" "$managed_file_fail_stderr" "$managed_file_quiet_fail_stderr" "$managed_file_add_stderr" >/dev/null 2>&1 || true
+  rm -f "$managed_file_missing_doc_path" "$managed_file_public_helper_path" >/dev/null 2>&1 || true
   rm -f "$managed_file_manifest_backup" "$managed_file_installer_backup" >/dev/null 2>&1 || true
   return "$status"
 }
