@@ -72,11 +72,31 @@ smoke_check_managed_file_tools_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check > "$managed_file_clean_out" 2> "$managed_file_clean_err"
+  ) && [ "$(cat "$managed_file_clean_out")" = "pass" ] && [ ! -s "$managed_file_clean_err" ]; then
+    test_pass "managed-file-check prints pass on implicit clean success"
+  else
+    test_fail "managed-file-check prints pass on implicit clean success"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/managed-file-check --changed --quiet > "$managed_file_clean_out" 2> "$managed_file_clean_err"
   ) && [ ! -s "$managed_file_clean_out" ] && [ ! -s "$managed_file_clean_err" ]; then
     test_pass "managed-file-check quiet output is silent on clean success"
   else
     test_fail "managed-file-check quiet output is silent on clean success"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/managed-file-check --quiet > "$managed_file_clean_out" 2> "$managed_file_clean_err"
+  ) && [ ! -s "$managed_file_clean_out" ] && [ ! -s "$managed_file_clean_err" ]; then
+    test_pass "managed-file-check quiet output is silent on implicit clean success"
+  else
+    test_fail "managed-file-check quiet output is silent on implicit clean success"
     status=1
   fi
 
@@ -133,7 +153,7 @@ smoke_check_managed_file_tools_contract() {
       test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
       status=1
     else
-    test_pass "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
+      test_pass "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
     fi
   else
     test_fail "managed-file-check quiet output includes QDE failure details for missing manifest coverage"
@@ -169,7 +189,7 @@ smoke_check_managed_file_tools_contract() {
       test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
       status=1
     else
-    test_pass "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
+      test_pass "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
     fi
   else
     test_fail "managed-file-check quiet output includes QDE failure details for public helper inventory gaps"
