@@ -104,7 +104,7 @@ Execution flow writes child logs and artifacts under the active run dir:
 
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 
-Failure returns a compact blocker with the failing step, command class, command, exit code, artifact paths, reason/excerpt, `fix=paste this blocker into ChatGPT`, and a step-specific next action.
+Failure returns a step-specific blocker with `fail: <step-specific heading>`, `reason: <reason>`, `fix: <fix>`, `next: <next action>`, and a `details:` block that preserves `step`, `command_class`, `exit_code`, `stdout`, `stderr`, and the indented `command`. For self-targeting `slice-handoff` repair attempts, the fix text directs the operator to the direct fallback lane.
 
 For blocker-semantics coverage, keep the trust-boundary tests close to the execution gate and prefer tiny fixture helpers for shaping Codex final output. Quiet-mode artifact clarity matters most for `slice-handoff-execution-summary.txt`, `slice-handoff-summary.txt`, `codex-run.stdout`, `codex-run.stderr`, `codex-run/codex-run-summary.txt`, `codex-run/codex-final.txt`, `preflight.json`, `preflight.stdout`, `preflight.stderr`, `pr-body-check.stdout`, `pr-body-check.stderr`, `repo-flow-submit.stdout`, `repo-flow-submit.stderr`, `review-request.txt`, and `codex-prompt.md`.
 
