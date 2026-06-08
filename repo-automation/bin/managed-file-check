@@ -65,6 +65,23 @@ def stop(message: str) -> int:
     return 1
 
 
+def qde_fail(code: str, reason: str, path: str, fix: str) -> int:
+    print("result=fail", file=sys.stderr)
+    print(f"code={code}", file=sys.stderr)
+    print("step=managed-file-check", file=sys.stderr)
+    print(f"reason={reason}", file=sys.stderr)
+    print(f"path={path}", file=sys.stderr)
+    print(f"fix={fix}", file=sys.stderr)
+    return 1
+
+
+def human_fail(reason: str, path: str, fix: str) -> int:
+    print(f"fail: {reason}", file=sys.stderr)
+    print(f"path: {path}", file=sys.stderr)
+    print(f"fix: {fix}", file=sys.stderr)
+    return 1
+
+
 def run(argv: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, cwd=str(cwd) if cwd else None, text=True, capture_output=True, check=False)
 
@@ -132,15 +149,17 @@ def main() -> int:
 
     for path in changed_paths:
         if path not in manifest_paths:
-            print("fail: coverage review required", file=sys.stderr)
-            print(f"path: {path}", file=sys.stderr)
-            print("fix: add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install", file=sys.stderr)
-            return 1
+            reason = "missing managed file coverage"
+            fix = "add the path to repo-automation/manifest.json and repo-automation/bin/repo-automation-install"
+            if quiet:
+                return qde_fail("missing-managed-file-coverage", reason, path, fix)
+            return human_fail(reason, path, fix)
         if path.startswith("repo-automation/bin/") and path not in helper_paths:
-            print("fail: public helper inventory review required", file=sys.stderr)
-            print(f"path: {path}", file=sys.stderr)
-            print("fix: add the helper to repo-automation/helper-metadata.json and update helper docs", file=sys.stderr)
-            return 1
+            reason = "missing public helper inventory"
+            fix = "add the helper to repo-automation/helper-metadata.json and update helper docs"
+            if quiet:
+                return qde_fail("missing-public-helper-inventory", reason, path, fix)
+            return human_fail(reason, path, fix)
 
     if not quiet:
         print("pass")
