@@ -20,6 +20,20 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-08 slice-handoff operator-output and run-context repair
+
+Challenges:
+- The slice-handoff boundary output needed to stop surfacing nested `reason=...` fragments and instead show a readable failure heading with explicit details.
+- Submit-mode handoffs also needed a stable `CODEX RUN CONTEXT` block sourced from `codex-status --recent=1`, which meant a repo-local recent-status fake and a small parser for required session/rate-limit fields.
+
+What would have helped:
+- A shared labeled failure envelope for child-helper boundaries, including a consistent `details:` section and explicit context artifacts.
+- A small recent-status fixture builder that can omit one required field on demand without changing the runtime helper wiring.
+
+Recommended improvements:
+- Keep child-boundary failures human-readable first, then preserve repair metadata under `details:`.
+- Keep submit-context capture repo-local and JSON-driven so the wrapper can validate required Codex re-entry fields before it hands off.
+
 ### PR #221
 
 Challenges:

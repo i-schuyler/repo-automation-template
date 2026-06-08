@@ -33,6 +33,8 @@ Supported placeholders in review-request content are:
 
 Dry-run artifacts may keep placeholders unresolved because no real PR has been submitted and no active execution run has completed. In execution submit mode, the active run-dir `review-request.txt` is rewritten after submit succeeds so supported placeholders resolve.
 
+After Codex completes, `slice-handoff --submit` also captures `repo-automation/bin/codex-status --recent=1` JSON into run-dir artifacts (`codex-status-recent.json`, `codex-status-recent.stderr`) and renders a `CODEX RUN CONTEXT` block in explain mode. In submit success output, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`. If Codex final output is a blocker, explain mode prints `CODEX RUN CONTEXT` before `CODEX FINAL OUTPUT`.
+
 ## Submit authorization matrix
 
 | Mode | submit_mode | `--submit` | Behavior |
@@ -90,6 +92,9 @@ Execution flow writes child logs and artifacts under the active run dir:
 - `preflight.json`
 - `preflight.stdout`
 - `preflight.stderr`
+- `codex-status-recent.json`
+- `codex-status-recent.stderr`
+- `codex-run-context.txt`
 - `pr-body-check.stdout` and `pr-body-check.stderr` when submit is authorized
 - `repo-flow-submit.stdout` and `repo-flow-submit.stderr` when submit is authorized
 - `slice-handoff-execution-summary.txt`
@@ -99,7 +104,7 @@ Execution flow writes child logs and artifacts under the active run dir:
 
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 
-Failure returns a compact blocker with the failing step, command class, command, exit code, artifact paths, reason/excerpt, `fix=paste this blocker into ChatGPT`, and a step-specific next action.
+Failure returns a step-specific blocker with `fail: <step-specific heading>`, `reason: <reason>`, `fix: <fix>`, `next: <next action>`, and a `details:` block that preserves `step`, `command_class`, `exit_code`, `stdout`, `stderr`, and the indented `command`. For self-targeting `slice-handoff` repair attempts, the fix text directs the operator to the direct fallback lane.
 
 For blocker-semantics coverage, keep the trust-boundary tests close to the execution gate and prefer tiny fixture helpers for shaping Codex final output. Quiet-mode artifact clarity matters most for `slice-handoff-execution-summary.txt`, `slice-handoff-summary.txt`, `codex-run.stdout`, `codex-run.stderr`, `codex-run/codex-run-summary.txt`, `codex-run/codex-final.txt`, `preflight.json`, `preflight.stdout`, `preflight.stderr`, `pr-body-check.stdout`, `pr-body-check.stderr`, `repo-flow-submit.stdout`, `repo-flow-submit.stderr`, `review-request.txt`, and `codex-prompt.md`.
 
