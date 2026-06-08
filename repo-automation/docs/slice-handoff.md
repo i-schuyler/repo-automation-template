@@ -10,7 +10,7 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
-`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. When a review request file is available, `--explain` also prints the rendered review-request text after FINAL SUMMARY in a clearly delimited block for copy/paste back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
+`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. In successful submit mode, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`, and explain mode does not append an unlabeled trailing machine block. The rendered PR REVIEW REQUEST starts with compact Review metadata so an operator can paste it directly back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
 `slice-handoff` refuses prompts that would edit the running helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Use the direct Codex lane or the same-branch repair lane when changing `slice-handoff`.
 
@@ -33,7 +33,7 @@ Supported placeholders in review-request content are:
 
 Dry-run artifacts may keep placeholders unresolved because no real PR has been submitted and no active execution run has completed. In execution submit mode, the active run-dir `review-request.txt` is rewritten after submit succeeds so supported placeholders resolve.
 
-After Codex completes, `slice-handoff --submit` also captures `repo-automation/bin/codex-status --recent=1` JSON into run-dir artifacts (`codex-status-recent.json`, `codex-status-recent.stderr`) and renders a `CODEX RUN CONTEXT` block in explain mode. In submit success output, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`. If Codex final output is a blocker, explain mode prints `CODEX RUN CONTEXT` before `CODEX FINAL OUTPUT`.
+After Codex completes, `slice-handoff --submit` also captures `repo-automation/bin/codex-status --recent=1` JSON into run-dir artifacts (`codex-status-recent.json`, `codex-status-recent.stderr`) and renders a `CODEX RUN CONTEXT` block in explain mode. In submit success output, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`; no unlabeled trailing machine block follows the review request, and the review block includes compact Review metadata. If Codex final output is a blocker, explain mode prints `CODEX RUN CONTEXT` before `CODEX FINAL OUTPUT`.
 
 ## Submit authorization matrix
 

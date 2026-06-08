@@ -1765,9 +1765,11 @@ smoke_slice_handoff_assert_execution_submit_blocker_boundary() {
   local expected_branch="$2"
   local expected_run_dir="$3"
   local expected_codex_final_output_path="$4"
+  local pr_body_validation_info_prefix='INFO: slice-handoff '
+  local pr_body_validation_info_suffix='PR-body validation'
 
   smoke_slice_handoff_assert_execution_blocker_summary "$stderr_file" "execution-submit" "$expected_branch" "$expected_run_dir" "$expected_codex_final_output_path" || return 1
-  ! grep -Fq 'INFO: slice-handoff PR-body validation' "$stderr_file" || return 1
+  ! grep -Fq "${pr_body_validation_info_prefix}${pr_body_validation_info_suffix}" "$stderr_file" || return 1
   ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$stderr_file" || return 1
   [ ! -e "$expected_run_dir/pr-body-check.stdout" ] || return 1
   [ ! -e "$expected_run_dir/pr-body-check.stderr" ] || return 1
@@ -1874,6 +1876,69 @@ smoke_slice_handoff_assert_execution_success_summary() {
   grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
   grep -Fxq "next=$expected_next" "$stderr_file" || return 1
   grep -Fxq '===== END =====' "$stderr_file" || return 1
+}
+
+smoke_slice_handoff_assert_execution_submit_explain_review_request() {
+  local stderr_file="$1"
+  local expected_pr="$2"
+  local expected_branch="$3"
+  local expected_run_dir="$4"
+  local expected_commit="$5"
+  local expected_ci="$6"
+  local expected_review_request_valid="$7"
+
+  python3 - "$stderr_file" "$expected_pr" "$expected_branch" "$expected_run_dir" "$expected_commit" "$expected_ci" "$expected_review_request_valid" <<'PY'
+from pathlib import Path
+import sys
+
+stderr_path = Path(sys.argv[1])
+expected_pr = sys.argv[2]
+expected_branch = sys.argv[3]
+expected_run_dir = sys.argv[4]
+expected_commit = sys.argv[5]
+expected_ci = sys.argv[6]
+expected_review_request_valid = sys.argv[7]
+lines = stderr_path.read_text(encoding='utf-8').splitlines()
+
+def find(label):
+    try:
+        return lines.index(label)
+    except ValueError:
+        raise SystemExit(1)
+
+final_summary_line = find('===== FINAL SUMMARY =====')
+codex_context_line = find('===== CODEX RUN CONTEXT =====')
+review_request_line = find('===== PR REVIEW REQUEST =====')
+review_request_end_line = find('===== END PR REVIEW REQUEST =====')
+
+if not (final_summary_line < codex_context_line < review_request_line < review_request_end_line):
+    raise SystemExit(1)
+if review_request_end_line != len(lines) - 1:
+    raise SystemExit(1)
+
+if 'INFO: slice-handoff repo-flow submit' not in lines:
+    raise SystemExit(1)
+if 'INFO: slice-handoff ' 'PR-body validation' in lines:
+    raise SystemExit(1)
+if 'INFO: slice-handoff   PR-body validation' not in lines:
+    raise SystemExit(1)
+
+expected_prefix = [
+    'Review metadata:',
+    f'PR: {expected_pr}',
+    f'Branch: {expected_branch}',
+    f'Run dir: {expected_run_dir}',
+    f'Commit: {expected_commit}',
+    f'CI: {expected_ci}',
+    f'Review request valid: {expected_review_request_valid}',
+    '',
+]
+
+if lines[review_request_line + 1:review_request_line + 1 + len(expected_prefix)] != expected_prefix:
+    raise SystemExit(1)
+
+# no unlabeled trailing machine block in explain mode
+PY
 }
 
 smoke_slice_handoff_assert_review_request_block() {
