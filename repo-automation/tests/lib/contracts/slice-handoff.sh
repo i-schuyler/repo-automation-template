@@ -509,6 +509,111 @@ EOF
   git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/codex-run >/dev/null 2>&1 || return 1
 }
 
+smoke_slice_handoff_install_fake_codex_status() {
+  local codex_status_path="$smoke_test_dir/repo-automation/bin/codex-status"
+
+  cat > "$codex_status_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="${FAKE_CODEX_STATUS_ARGS_FILE:-}"
+stderr_text="${FAKE_CODEX_STATUS_STDERR_TEXT:-}"
+exit_code="${FAKE_CODEX_STATUS_EXIT_CODE:-0}"
+missing_field="${FAKE_CODEX_STATUS_MISSING_FIELD:-}"
+mode=""
+recent=""
+
+if [ -n "$args_file" ]; then
+  printf '%s\n' "$@" > "$args_file"
+fi
+
+for arg in "$@"; do
+  case "$arg" in
+    --recent|--recent=*)
+      recent=1
+      ;;
+  esac
+done
+
+if [ "$recent" = "1" ]; then
+  python3 - "$missing_field" <<'PY'
+from pathlib import Path
+import json
+import re
+import sys
+
+missing_field = sys.argv[1]
+
+data = {
+    "schema": "repo-automation-codex-status/v1",
+    "result": "pass",
+    "sessions": [
+        {
+            "session_id": "sess-123",
+            "resume": {"command": "codex resume --include-non-interactive sess-123"},
+            "model": {"name": "gpt-5.4-mini", "reasoning": "medium"},
+            "context": {"remaining_summary": "85% left"},
+        }
+    ],
+    "rate_limits": {
+        "five_hour": {
+            "remaining_percent": 99.0,
+            "resets_at_local": "2026-05-24 04:31 PDT",
+        },
+        "weekly": {
+            "remaining_percent": 93.0,
+            "resets_at_local": "2026-05-31 04:31 PDT",
+        },
+    },
+}
+
+def drop_path(root, path):
+    cur = root
+    parts = re.findall(r'[^.\[\]]+|\[\d+\]', path)
+    for index, part in enumerate(parts):
+        last = index == len(parts) - 1
+        if part.startswith('[') and part.endswith(']'):
+            if not isinstance(cur, list):
+                return
+            try:
+                item_index = int(part[1:-1])
+            except ValueError:
+                return
+            if item_index >= len(cur):
+                return
+            if last:
+                del cur[item_index]
+                return
+            cur = cur[item_index]
+        else:
+            if not isinstance(cur, dict) or part not in cur:
+                return
+            if last:
+                cur.pop(part, None)
+                return
+            cur = cur[part]
+
+if missing_field:
+    drop_path(data, missing_field)
+
+json.dump(data, sys.stdout, ensure_ascii=False)
+sys.stdout.write("\n")
+PY
+else
+  printf '{"schema":"repo-automation-codex-status/v1","result":"pass","sessions":[{"session_id":"sess-123","resume":{"command":"codex resume --include-non-interactive sess-123"},"model":{"name":"gpt-5.4-mini","reasoning":"medium"},"context":{"remaining_summary":"85%% left"}}],"rate_limits":{"five_hour":{"remaining_percent":99.0,"resets_at_local":"2026-05-24 04:31 PDT"},"weekly":{"remaining_percent":93.0,"resets_at_local":"2026-05-31 04:31 PDT"}}}\n'
+fi
+
+if [ -n "$stderr_text" ]; then
+  printf '%s\n' "$stderr_text" >&2
+fi
+
+exit "$exit_code"
+EOF
+  chmod +x "$codex_status_path" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/codex-status >/dev/null 2>&1 || return 1
+}
+
 smoke_slice_handoff_restore_codex_run() {
   local codex_run_path="$smoke_test_dir/repo-automation/bin/codex-run"
 
@@ -820,7 +925,7 @@ EOF
       run_dir="$(smoke_slice_handoff_latest_run_dir "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "dirty-preflight")" || return 1
       if ! smoke_slice_handoff_assert_dirty_preflight_failure "$stderr_file" "$args_file" "$run_dir" "stop_reason=working tree must be clean before preflight"; then
         status=1
-      elif ! grep -Fxq 'fix=paste this blocker into ChatGPT' "$stderr_file"; then
+      elif ! grep -Eq '^fix: .+' "$stderr_file"; then
         status=1
       elif [ ! -s "$fake_df_invocation_log" ]; then
         status=1
@@ -898,19 +1003,59 @@ smoke_slice_handoff_assert_child_failure_shape() {
   local expected_excerpt="${8:-$7}"
   local expected_next="$9"
   local filtered_stderr_file=""
+  local expected_heading=""
+  : "$expected_excerpt"
+
+  case "$expected_step" in
+    slice-validator)
+      expected_heading='slice-validator rejected handoff'
+      ;;
+    preflight)
+      expected_heading='preflight failed'
+      ;;
+    codex-run)
+      expected_heading='codex-run failed'
+      ;;
+    codex-run-output-contract)
+      expected_heading='codex-run output contract failed'
+      ;;
+    codex-final-contract)
+      expected_heading='codex final output contract failed'
+      ;;
+    pr-body-check)
+      expected_heading='PR body check failed'
+      ;;
+    repo-flow-submit)
+      expected_heading='repo-flow submit failed'
+      ;;
+    repo-flow-submit-output-contract)
+      expected_heading='repo-flow submit output contract failed'
+      ;;
+    review-request-source|review-request-artifact|review-request-compatibility-copy)
+      expected_heading='review-request handoff failed'
+      ;;
+    *)
+      expected_heading='child helper failed'
+      ;;
+  esac
 
   filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-execution-error.XXXXXX")" || return 1
   grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
-  if grep -Fxq 'fail: slice-handoff child boundary failed' "$filtered_stderr_file" &&
-    grep -Fxq "step=$expected_step" "$filtered_stderr_file" &&
-    grep -Fxq "command_class=$expected_command_class" "$filtered_stderr_file" &&
-    grep -Fxq "exit_code=$expected_exit_code" "$filtered_stderr_file" &&
-    grep -Fxq "stdout_path=$expected_stdout_path" "$filtered_stderr_file" &&
-    grep -Fxq "stderr_path=$expected_stderr_path" "$filtered_stderr_file" &&
-    grep -Fxq "reason=$expected_reason" "$filtered_stderr_file" &&
-    grep -Fxq "excerpt=$expected_excerpt" "$filtered_stderr_file" &&
-    grep -Fxq 'fix=paste this blocker into ChatGPT' "$filtered_stderr_file" &&
-    grep -Fxq "next=$expected_next" "$filtered_stderr_file"; then
+  if grep -Fxq "fail: $expected_heading" "$filtered_stderr_file" &&
+    grep -Fxq "reason: $expected_reason" "$filtered_stderr_file" &&
+    grep -Eq '^fix: .+' "$filtered_stderr_file" &&
+    grep -Fxq "next: $expected_next" "$filtered_stderr_file" &&
+    grep -Fxq 'details:' "$filtered_stderr_file" &&
+    grep -Fxq "  step: $expected_step" "$filtered_stderr_file" &&
+    grep -Fxq "  command_class: $expected_command_class" "$filtered_stderr_file" &&
+    grep -Fxq "  exit_code: $expected_exit_code" "$filtered_stderr_file" &&
+    grep -Fxq "  stdout: $expected_stdout_path" "$filtered_stderr_file" &&
+    grep -Fxq "  stderr: $expected_stderr_path" "$filtered_stderr_file" &&
+    grep -Fxq '  command:' "$filtered_stderr_file" &&
+    ! grep -Fq 'reason=reason=' "$filtered_stderr_file" &&
+    ! grep -Fq 'excerpt=reason=' "$filtered_stderr_file" &&
+    ! grep -Fq 'fail: slice-handoff child boundary failed' "$filtered_stderr_file" &&
+    ! grep -Fq 'command_class=' "$filtered_stderr_file"; then
     rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
     return 0
   fi
@@ -924,18 +1069,33 @@ smoke_slice_handoff_assert_validator_failure_shape() {
   local _expected_fix="${3:-}"
   local expected_next="${4:-fix the reported validator failure and rerun slice-handoff}"
   local filtered_stderr_file=""
+  : "${_expected_fix:-}"
 
   filtered_stderr_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-validator-error.XXXXXX")" || return 1
   grep -v '^[+]' "$stderr_file" > "$filtered_stderr_file" 2>/dev/null || true
-  if grep -Fxq 'fail: slice-handoff child boundary failed' "$filtered_stderr_file" &&
-    grep -Fxq 'step=slice-validator' "$filtered_stderr_file" &&
-    grep -Fq 'command_class=repo-automation/bin/slice-validator' "$filtered_stderr_file" &&
-    grep -Fq 'command=repo-automation/bin/slice-validator' "$filtered_stderr_file" &&
-    grep -Fxq 'exit_code=1' "$filtered_stderr_file" &&
-    grep -Fq "reason=$expected_reason" "$filtered_stderr_file" &&
-    grep -Fq "excerpt=reason=$expected_reason" "$filtered_stderr_file" &&
-    grep -Fxq 'fix=paste this blocker into ChatGPT' "$filtered_stderr_file" &&
-    grep -Fxq "next=$expected_next" "$filtered_stderr_file"; then
+  local expected_fix="paste this blocker into ChatGPT"
+  if [ "$expected_reason" = 'Codex Prompt targets the running helper: repo-automation/bin/slice-handoff' ]; then
+    expected_fix='use the direct fallback lane because this slice targets slice-handoff itself'
+  elif [ -n "$_expected_fix" ]; then
+    expected_fix="$_expected_fix"
+  fi
+
+  if grep -Fxq 'fail: slice-validator rejected handoff' "$filtered_stderr_file" &&
+    grep -Fxq "reason: $expected_reason" "$filtered_stderr_file" &&
+    grep -Fxq "fix: $expected_fix" "$filtered_stderr_file" &&
+    grep -Fxq "next: $expected_next" "$filtered_stderr_file" &&
+    grep -Fxq 'details:' "$filtered_stderr_file" &&
+    grep -Fxq '  step: slice-validator' "$filtered_stderr_file" &&
+    grep -Fq '  command_class: repo-automation/bin/slice-validator' "$filtered_stderr_file" &&
+    grep -Fxq '  exit_code: 1' "$filtered_stderr_file" &&
+    grep -Fq '  stdout:' "$filtered_stderr_file" &&
+    grep -Fq '  stderr:' "$filtered_stderr_file" &&
+    grep -Fxq '  command:' "$filtered_stderr_file" &&
+    grep -Fq '    repo-automation/bin/slice-validator' "$filtered_stderr_file" &&
+    ! grep -Fq 'reason=reason=' "$filtered_stderr_file" &&
+    ! grep -Fq 'excerpt=reason=' "$filtered_stderr_file" &&
+    ! grep -Fq 'fail: slice-handoff child boundary failed' "$filtered_stderr_file" &&
+    ! grep -Fq 'command_class=' "$filtered_stderr_file"; then
     rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
     return 0
   fi
@@ -1328,6 +1488,7 @@ EOF
   smoke_slice_handoff_execution_fake_df_bin_dir="$smoke_slice_handoff_execution_artifact_root/fake-df"
   smoke_slice_handoff_execution_fake_df_invocation_log="$smoke_slice_handoff_execution_artifact_root/fake-df.invocation.log"
   smoke_slice_handoff_write_fake_codex "$smoke_slice_handoff_execution_fake_codex_bin_dir" || return 1
+  smoke_slice_handoff_install_fake_codex_status || return 1
   mkdir -p "$smoke_slice_handoff_execution_fake_df_bin_dir" || return 1
   cat > "$smoke_slice_handoff_execution_fake_df_bin_dir/df" <<EOF
 #!/usr/bin/env bash
@@ -1507,6 +1668,32 @@ smoke_slice_handoff_assert_execution_stdout() {
   printf '%s\n' "$run_dir"
 }
 
+smoke_slice_handoff_assert_execution_submit_stdout() {
+  local stdout_file="$1"
+  local expected_branch="$2"
+  local expected_repo_flow_url_or_stop="${3:-}"
+  local run_dir=""
+
+  grep -Fxq 'pass' "$stdout_file" || return 1
+  grep -Fxq 'mode=execution-submit' "$stdout_file" || return 1
+  grep -Fxq "branch=$expected_branch" "$stdout_file" || return 1
+  grep -Eq '^run_dir=.+' "$stdout_file" || return 1
+  grep -Fxq 'preflight_status=pass' "$stdout_file" || return 1
+  grep -Fxq 'codex_status=pass' "$stdout_file" || return 1
+  grep -Fxq 'submit_status=pass' "$stdout_file" || return 1
+  grep -Eq '^codex_final_output_path=.+' "$stdout_file" || return 1
+  if [ -n "$expected_repo_flow_url_or_stop" ]; then
+    grep -Fxq "repo_flow_url_or_stop=$expected_repo_flow_url_or_stop" "$stdout_file" || return 1
+  fi
+  grep -Eq '^validation_manifest_path=.+' "$stdout_file" || return 1
+  grep -Fxq 'next=review PR before merge' "$stdout_file" || return 1
+
+  run_dir="$(smoke_slice_handoff_extract_field "$stdout_file" run_dir)"
+  [ -n "$run_dir" ] || return 1
+  grep -Fxq "review_request_path=$run_dir/review-request.txt" "$stdout_file" || return 1
+  printf '%s\n' "$run_dir"
+}
+
 smoke_slice_handoff_assert_execution_submit_success_boundary() {
   local stdout_file="$1"
   local stderr_file="$2"
@@ -1514,7 +1701,8 @@ smoke_slice_handoff_assert_execution_submit_success_boundary() {
   local expected_repo_flow_url_or_stop="${4:-}"
   local run_dir=""
 
-  run_dir="$(smoke_slice_handoff_assert_execution_stdout "$stdout_file" "$stderr_file" "$expected_branch" "execution-submit" "review PR before merge" "$expected_repo_flow_url_or_stop")" || return 1
+  : "$stderr_file"
+  run_dir="$(smoke_slice_handoff_assert_execution_submit_stdout "$stdout_file" "$expected_branch" "$expected_repo_flow_url_or_stop")" || return 1
   printf '%s\n' "$run_dir"
 }
 
@@ -1524,23 +1712,52 @@ smoke_slice_handoff_assert_execution_blocker_summary() {
   local expected_branch="$3"
   local expected_run_dir="$4"
   local expected_codex_final_output_path="$5"
+  local expected_context_file=""
+  expected_context_file="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-context-expected.XXXXXX")" || return 1
+  : "$expected_mode" "$expected_branch" "$expected_codex_final_output_path"
 
-  grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" || return 1
-  grep -Fxq 'script=slice-handoff' "$stderr_file" || return 1
-  grep -Fxq "mode=$expected_mode" "$stderr_file" || return 1
-  grep -Fxq 'rc=1' "$stderr_file" || return 1
-  grep -Fxq 'step=codex-final-contract' "$stderr_file" || return 1
-  grep -Fxq "branch=$expected_branch" "$stderr_file" || return 1
-  grep -Fxq "run_dir=$expected_run_dir" "$stderr_file" || return 1
-  grep -Fxq "codex_final_output_path=$expected_codex_final_output_path" "$stderr_file" || return 1
-  grep -Fxq '===== CODEX FINAL OUTPUT =====' "$stderr_file" || return 1
-  grep -Fxq '===== END CODEX FINAL OUTPUT =====' "$stderr_file" || return 1
-  grep -Fxq 'pr_body_check=not_run' "$stderr_file" || return 1
-  grep -Fxq 'repo_flow_submit=not_run' "$stderr_file" || return 1
-  grep -Fxq 'review_request_printed=false' "$stderr_file" || return 1
-  grep -Fxq 'next=paste blocker into ChatGPT' "$stderr_file" || return 1
-  grep -Fxq '===== END =====' "$stderr_file" || return 1
-  ! grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file" || return 1
+  smoke_slice_handoff_expected_codex_run_context "$expected_run_dir" "blocker" > "$expected_context_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  grep -Fxq '===== CODEX RUN CONTEXT =====' "$stderr_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  grep -Fxq '===== END CODEX RUN CONTEXT =====' "$stderr_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  grep -Fxq '===== CODEX FINAL OUTPUT =====' "$stderr_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  grep -Fxq '===== END CODEX FINAL OUTPUT =====' "$stderr_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  ! grep -Fq '===== FINAL SUMMARY =====' "$stderr_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  ! grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  smoke_slice_handoff_assert_markers_in_order "$stderr_file" '===== CODEX RUN CONTEXT =====' '===== CODEX FINAL OUTPUT =====' || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  smoke_slice_handoff_assert_text_file "$expected_run_dir/codex-run-context.txt" "$(cat "$expected_context_file")" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  smoke_slice_handoff_assert_codex_final_output_is_blocker "$expected_codex_final_output_path" || {
+    rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
+    return 1
+  }
+  rm -f -- "$expected_context_file" >/dev/null 2>&1 || true
 }
 
 smoke_slice_handoff_assert_execution_submit_blocker_boundary() {
@@ -1606,6 +1823,25 @@ smoke_slice_handoff_assert_stderr_effectively_empty() {
   fi
   rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
   return 1
+}
+
+smoke_slice_handoff_expected_codex_run_context() {
+  local run_dir="$1"
+  local codex_final_result="$2"
+
+  cat <<EOF
+===== CODEX RUN CONTEXT =====
+slice_run_id=$(basename "$run_dir")
+run_dir=$run_dir
+codex_session_id=sess-123
+codex_resume=codex resume --include-non-interactive sess-123
+model=gpt-5.4-mini / medium
+context=85% left
+rate_limits=5h 99.0% left resets 2026-05-24 04:31 PDT; week 93.0% left resets 2026-05-31 04:31 PDT
+codex_final_result=$codex_final_result
+codex_final_output=$run_dir/codex-run/codex-final.txt
+===== END CODEX RUN CONTEXT =====
+EOF
 }
 
 smoke_slice_handoff_assert_execution_success_summary() {
@@ -1675,6 +1911,29 @@ PY
   rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
 }
 
+smoke_slice_handoff_assert_markers_in_order() {
+  local file="$1"
+  shift
+
+  python3 - "$file" "$@" <<'PY'
+from pathlib import Path
+import sys
+
+lines = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+markers = sys.argv[2:]
+positions = []
+for marker in markers:
+    for index, line in enumerate(lines):
+        if line == marker:
+            positions.append(index)
+            break
+    else:
+        raise SystemExit(1)
+if positions != sorted(positions):
+    raise SystemExit(1)
+PY
+}
+
 smoke_slice_handoff_assert_execution_run_dir() {
   local run_dir="$1"
   local submit_mode="$2"
@@ -1706,6 +1965,9 @@ smoke_slice_handoff_assert_execution_run_dir() {
     validation-manifest.json \
     codex-prompt.md \
     review-request.txt \
+    codex-run-context.txt \
+    codex-status-recent.json \
+    codex-status-recent.stderr \
     codex-run/codex-final.txt \
     codex-run/codex-run-summary.txt
   do

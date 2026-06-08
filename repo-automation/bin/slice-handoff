@@ -45,6 +45,20 @@ slice_handoff_pr_body_file=""
 slice_handoff_review_request_file=""
 slice_handoff_validator_artifact_dir=""
 slice_handoff_validation_manifest_file=""
+slice_handoff_codex_run_context_file=""
+slice_handoff_codex_run_context_result=""
+slice_handoff_codex_run_context_run_id=""
+slice_handoff_codex_run_context_run_dir=""
+slice_handoff_codex_run_context_final_output=""
+slice_handoff_codex_session_id=""
+slice_handoff_codex_resume_command=""
+slice_handoff_codex_model_name=""
+slice_handoff_codex_model_reasoning=""
+slice_handoff_codex_context_remaining_summary=""
+slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
+slice_handoff_codex_rate_limit_five_hour_resets_at_local=""
+slice_handoff_codex_rate_limit_weekly_remaining_percent=""
+slice_handoff_codex_rate_limit_weekly_resets_at_local=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
@@ -98,6 +112,379 @@ slice_handoff_print_review_request_block() {
   repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$review_request_path" 0 >&2
 }
 
+slice_handoff_execution_failure_heading() {
+  local step="$1"
+
+  case "$step" in
+    slice-validator)
+      printf '%s' 'slice-validator rejected handoff'
+      ;;
+    preflight)
+      printf '%s' 'preflight failed'
+      ;;
+    codex-run)
+      printf '%s' 'codex-run failed'
+      ;;
+    codex-run-output-contract)
+      printf '%s' 'codex-run output contract failed'
+      ;;
+    codex-final-contract)
+      printf '%s' 'codex final output contract failed'
+      ;;
+    pr-body-check)
+      printf '%s' 'PR body check failed'
+      ;;
+    repo-flow-submit)
+      printf '%s' 'repo-flow submit failed'
+      ;;
+    repo-flow-submit-output-contract)
+      printf '%s' 'repo-flow submit output contract failed'
+      ;;
+    review-request-source|review-request-artifact|review-request-compatibility-copy)
+      printf '%s' 'review-request handoff failed'
+      ;;
+    codex-status-recent)
+      printf '%s' 'codex-status recent output contract failed'
+      ;;
+    *)
+      printf '%s' 'child helper failed'
+      ;;
+  esac
+}
+
+slice_handoff_execution_failure_fix() {
+  local step="$1"
+  local reason="${2:-}"
+
+  case "$step" in
+    slice-validator)
+      if [ "$reason" = 'Codex Prompt targets the running helper: repo-automation/bin/slice-handoff' ]; then
+        printf '%s' 'use the direct fallback lane because this slice targets slice-handoff itself'
+      else
+        printf '%s' 'paste this blocker into ChatGPT'
+      fi
+      ;;
+    preflight)
+      printf '%s' 'fix preflight and rerun slice-handoff'
+      ;;
+    codex-run)
+      printf '%s' 'fix codex-run and rerun slice-handoff'
+      ;;
+    codex-run-output-contract)
+      printf '%s' 'repair codex-run output contract and rerun slice-handoff'
+      ;;
+    codex-final-contract)
+      printf '%s' 'paste this blocker into ChatGPT'
+      ;;
+    pr-body-check)
+      printf '%s' 'fix the PR body and rerun slice-handoff'
+      ;;
+    repo-flow-submit)
+      printf '%s' 'fix repo-flow submit and rerun slice-handoff'
+      ;;
+    repo-flow-submit-output-contract)
+      printf '%s' 'repair repo-flow submit output contract and rerun slice-handoff'
+      ;;
+    review-request-source|review-request-artifact|review-request-compatibility-copy)
+      printf '%s' 'fix the review-request handoff and rerun slice-handoff'
+      ;;
+    codex-status-recent)
+      printf '%s' 'repair codex-status recent output contract and rerun slice-handoff'
+      ;;
+    *)
+      printf '%s' 'paste this blocker into ChatGPT'
+      ;;
+  esac
+}
+
+slice_handoff_codex_final_output_result() {
+  local codex_final_output_path="$1"
+
+  python3 - "$codex_final_output_path" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+try:
+    lines = path.read_text(encoding='utf-8').splitlines()
+except OSError:
+    raise SystemExit(1)
+
+first_nonempty = None
+implementation_index = None
+blocker_index = None
+
+for index, line in enumerate(lines):
+    candidate = line.strip(' \t\r')
+    if not candidate:
+      continue
+    if first_nonempty is None:
+      first_nonempty = candidate
+    if candidate == 'Implementation complete.' and implementation_index is None:
+      implementation_index = index
+    if candidate == 'blocker' and blocker_index is None:
+      blocker_index = index
+
+if first_nonempty is None:
+    print('unknown')
+    raise SystemExit(0)
+if first_nonempty == 'blocker':
+    print('blocker')
+    raise SystemExit(0)
+if implementation_index is not None and (blocker_index is None or implementation_index < blocker_index):
+    print('implementation-complete')
+    raise SystemExit(0)
+print('unknown')
+PY
+}
+
+slice_handoff_write_codex_run_context_file() {
+  local context_path="$1"
+
+  slice_handoff_write_atomic_text_file "$context_path" <<EOF
+===== CODEX RUN CONTEXT =====
+slice_run_id=$slice_handoff_codex_run_context_run_id
+run_dir=$slice_handoff_codex_run_context_run_dir
+codex_session_id=$slice_handoff_codex_session_id
+codex_resume=$slice_handoff_codex_resume_command
+model=$slice_handoff_codex_model_name / $slice_handoff_codex_model_reasoning
+context=$slice_handoff_codex_context_remaining_summary
+rate_limits=5h $slice_handoff_codex_rate_limit_five_hour_remaining_percent% left resets $slice_handoff_codex_rate_limit_five_hour_resets_at_local; week $slice_handoff_codex_rate_limit_weekly_remaining_percent% left resets $slice_handoff_codex_rate_limit_weekly_resets_at_local
+codex_final_result=$slice_handoff_codex_run_context_result
+codex_final_output=$slice_handoff_codex_run_context_final_output
+===== END CODEX RUN CONTEXT =====
+EOF
+}
+
+slice_handoff_print_codex_run_context_block() {
+  local context_path="$1"
+
+  [ -n "$context_path" ] || return 0
+  [ -f "$context_path" ] || return 0
+  [ -r "$context_path" ] || return 0
+
+  printf '\n' >&2
+  cat "$context_path" >&2
+}
+
+slice_handoff_collect_codex_run_context() {
+  local run_dir="$1"
+  local codex_final_output_path="$2"
+  local context_path="$3"
+  local json_path="$4"
+  local stderr_path="$5"
+  local command_summary="$6"
+  local json_tmp=""
+  local stderr_tmp=""
+  local context_values_tmp=""
+  local parser_error_tmp=""
+  local child_status=0
+  local context_values=""
+  local context_result=""
+  local context_run_id=""
+  local context_run_dir=""
+  local context_final_output=""
+
+  json_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-status.XXXXXX.json")" || return 1
+  stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-status.XXXXXX.stderr")" || {
+    rm -f -- "$json_tmp" >/dev/null 2>&1 || true
+    return 1
+  }
+  context_values_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-context.XXXXXX")" || {
+    rm -f -- "$json_tmp" "$stderr_tmp" >/dev/null 2>&1 || true
+    return 1
+  }
+  parser_error_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-context.XXXXXX.stderr")" || {
+    rm -f -- "$json_tmp" "$stderr_tmp" "$context_values_tmp" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  if (
+    cd "$slice_handoff_repo_root" || return 1
+    repo-automation/bin/codex-status --recent=1 >"$json_tmp" 2>"$stderr_tmp"
+  ); then
+    child_status=0
+  else
+    child_status=$?
+  fi
+
+  if ! mv -f -- "$json_tmp" "$json_path" || ! mv -f -- "$stderr_tmp" "$stderr_path"; then
+    rm -f -- "$json_tmp" "$stderr_tmp" "$context_values_tmp" "$parser_error_tmp" >/dev/null 2>&1 || true
+    slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" "$child_status" "$json_path" "$stderr_path" "unable to finalize codex-status recent artifacts" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
+    return 1
+  fi
+
+  if [ "$child_status" -ne 0 ]; then
+    slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" "$child_status" "$json_path" "$stderr_path" "codex-status --recent=1 exited nonzero" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
+    rm -f -- "$context_values_tmp" "$parser_error_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  if ! python3 - "$json_path" "$codex_final_output_path" <<'PY' >"$context_values_tmp" 2>"$parser_error_tmp"; then
+from pathlib import Path
+import json
+import sys
+
+json_path = Path(sys.argv[1])
+codex_final_output_path = Path(sys.argv[2])
+data = json.loads(json_path.read_text(encoding='utf-8'))
+
+sessions = data.get('sessions')
+if not isinstance(sessions, list) or not sessions:
+    raise SystemExit('missing required codex-status field: sessions[0]')
+session = sessions[0]
+if not isinstance(session, dict):
+    raise SystemExit('missing required codex-status field: sessions[0]')
+
+def nested_required(root, path):
+    cur = root
+    import re
+    parts = re.findall(r'[^.\[\]]+|\[\d+\]', path)
+    for part in parts:
+        if part.startswith('[') and part.endswith(']'):
+            if not isinstance(cur, list):
+                raise SystemExit(f'missing required codex-status field: {path}')
+            try:
+                index = int(part[1:-1])
+            except ValueError:
+                raise SystemExit(f'missing required codex-status field: {path}')
+            if index >= len(cur):
+                raise SystemExit(f'missing required codex-status field: {path}')
+            cur = cur[index]
+        elif isinstance(cur, dict):
+            if part not in cur:
+                raise SystemExit(f'missing required codex-status field: {path}')
+            cur = cur[part]
+        else:
+            raise SystemExit(f'missing required codex-status field: {path}')
+        if cur is None or (isinstance(cur, str) and not cur.strip()):
+            raise SystemExit(f'missing required codex-status field: {path}')
+    return cur
+
+session_id = nested_required(data, 'sessions[0].session_id')
+resume_command = nested_required(data, 'sessions[0].resume.command')
+model_name = nested_required(data, 'sessions[0].model.name')
+model_reasoning = nested_required(data, 'sessions[0].model.reasoning')
+context_summary = nested_required(data, 'sessions[0].context.remaining_summary')
+five_hour_remaining_percent = nested_required(data, 'rate_limits.five_hour.remaining_percent')
+five_hour_resets_at_local = nested_required(data, 'rate_limits.five_hour.resets_at_local')
+weekly_remaining_percent = nested_required(data, 'rate_limits.weekly.remaining_percent')
+weekly_resets_at_local = nested_required(data, 'rate_limits.weekly.resets_at_local')
+
+context_lines = codex_final_output_path.read_text(encoding='utf-8').splitlines()
+first_nonempty = None
+implementation_index = None
+blocker_index = None
+for index, line in enumerate(context_lines):
+    candidate = line.strip(' \t\r')
+    if not candidate:
+        continue
+    if first_nonempty is None:
+        first_nonempty = candidate
+    if candidate == 'Implementation complete.' and implementation_index is None:
+        implementation_index = index
+    if candidate == 'blocker' and blocker_index is None:
+        blocker_index = index
+if first_nonempty is None:
+    final_result = 'unknown'
+elif first_nonempty == 'blocker':
+    final_result = 'blocker'
+elif implementation_index is not None and (blocker_index is None or implementation_index < blocker_index):
+    final_result = 'implementation-complete'
+else:
+    final_result = 'unknown'
+
+print(f'slice_run_id={json_path.parent.name}')
+print(f'run_dir={json_path.parent}')
+print(f'codex_session_id={session_id}')
+print(f'codex_resume={resume_command}')
+print(f'model={model_name} / {model_reasoning}')
+print(f'context={context_summary}')
+print(f'codex_rate_limit_five_hour_remaining_percent={five_hour_remaining_percent}')
+print(f'codex_rate_limit_five_hour_resets_at_local={five_hour_resets_at_local}')
+print(f'codex_rate_limit_weekly_remaining_percent={weekly_remaining_percent}')
+print(f'codex_rate_limit_weekly_resets_at_local={weekly_resets_at_local}')
+print(f'codex_final_result={final_result}')
+print(f'codex_final_output={codex_final_output_path}')
+PY
+    if [ -s "$parser_error_tmp" ]; then
+      local parser_error_reason=""
+      parser_error_reason="$(cat "$parser_error_tmp")"
+      slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "$parser_error_reason" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
+      rm -f -- "$context_values_tmp" >/dev/null 2>&1 || true
+      return 1
+    fi
+    slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "stdout was not valid JSON" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
+    rm -f -- "$context_values_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  context_values="$(cat "$context_values_tmp")"
+  while IFS= read -r context_value; do
+    case "$context_value" in
+      slice_run_id=*)
+        context_run_id="${context_value#slice_run_id=}"
+        ;;
+      run_dir=*)
+        context_run_dir="${context_value#run_dir=}"
+        ;;
+      codex_session_id=*)
+        slice_handoff_codex_session_id="${context_value#codex_session_id=}"
+        ;;
+      codex_resume=*)
+        slice_handoff_codex_resume_command="${context_value#codex_resume=}"
+        ;;
+      model=*)
+        context_value="${context_value#model=}"
+        slice_handoff_codex_model_name="${context_value%% / *}"
+        slice_handoff_codex_model_reasoning="${context_value#* / }"
+        ;;
+      context=*)
+        slice_handoff_codex_context_remaining_summary="${context_value#context=}"
+        ;;
+      codex_rate_limit_five_hour_remaining_percent=*)
+        slice_handoff_codex_rate_limit_five_hour_remaining_percent="${context_value#codex_rate_limit_five_hour_remaining_percent=}"
+        ;;
+      codex_rate_limit_five_hour_resets_at_local=*)
+        slice_handoff_codex_rate_limit_five_hour_resets_at_local="${context_value#codex_rate_limit_five_hour_resets_at_local=}"
+        ;;
+      codex_rate_limit_weekly_remaining_percent=*)
+        slice_handoff_codex_rate_limit_weekly_remaining_percent="${context_value#codex_rate_limit_weekly_remaining_percent=}"
+        ;;
+      codex_rate_limit_weekly_resets_at_local=*)
+        slice_handoff_codex_rate_limit_weekly_resets_at_local="${context_value#codex_rate_limit_weekly_resets_at_local=}"
+        ;;
+      codex_final_result=*)
+        context_result="${context_value#codex_final_result=}"
+        ;;
+      codex_final_output=*)
+        context_final_output="${context_value#codex_final_output=}"
+        ;;
+    esac
+  done <<EOF
+$context_values
+EOF
+
+  slice_handoff_codex_run_context_run_id="$context_run_id"
+  slice_handoff_codex_run_context_run_dir="$context_run_dir"
+  slice_handoff_codex_run_context_final_output="$context_final_output"
+  slice_handoff_codex_run_context_result="$context_result"
+  slice_handoff_codex_run_context_file="$context_path"
+  if [ "$slice_handoff_codex_run_context_run_dir" != "$run_dir" ]; then
+    slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "codex-status recent run_dir did not match active run dir" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
+    rm -f -- "$context_values_tmp" "$parser_error_tmp" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if ! slice_handoff_write_codex_run_context_file "$context_path"; then
+    rm -f -- "$context_values_tmp" "$parser_error_tmp" >/dev/null 2>&1 || true
+    slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "unable to write CODEX RUN CONTEXT artifact" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
+    return 1
+  fi
+
+  rm -f -- "$context_values_tmp" "$parser_error_tmp" >/dev/null 2>&1 || true
+  return 0
+}
+
 slice_handoff_execution_command_class() {
   local step="$1"
 
@@ -113,6 +500,9 @@ slice_handoff_execution_command_class() {
       ;;
     codex-run)
       printf '%s' 'repo-automation/bin/codex-run'
+      ;;
+    codex-status-recent)
+      printf '%s' 'repo-automation/bin/codex-status'
       ;;
     codex-run-output-contract)
       printf '%s' 'codex-run output contract'
@@ -174,6 +564,9 @@ slice_handoff_execution_next_action() {
       ;;
     review-request-source|review-request-artifact|review-request-compatibility-copy)
       printf '%s' 'fix the review-request handoff and rerun slice-handoff'
+      ;;
+    codex-status-recent)
+      printf '%s' 'repair codex-status recent output contract and rerun slice-handoff'
       ;;
     *)
       printf '%s' 'fix the reported child failure and rerun slice-handoff'
@@ -448,24 +841,32 @@ slice_handoff_print_execution_blocker() {
   local stdout_path="$4"
   local stderr_path="$5"
   local reason="$6"
-  local excerpt="${7:-$6}"
+  local fix="${8:-}"
+  local next_action="${9:-}"
   local command_class=""
-  local next_action=""
+  local heading=""
 
   command_class="$(slice_handoff_execution_command_class "$step")"
-  next_action="$(slice_handoff_execution_next_action "$step")"
+  heading="$(slice_handoff_execution_failure_heading "$step")"
+  if [ -z "$fix" ]; then
+    fix="$(slice_handoff_execution_failure_fix "$step" "$reason")"
+  fi
+  if [ -z "$next_action" ]; then
+    next_action="$(slice_handoff_execution_next_action "$step")"
+  fi
 
-  printf 'fail: slice-handoff child boundary failed\n' >&2
-  printf 'step=%s\n' "$step" >&2
-  printf 'command_class=%s\n' "$command_class" >&2
-  printf 'command=%s\n' "$command_summary" >&2
-  printf 'exit_code=%s\n' "$exit_code" >&2
-  printf 'stdout_path=%s\n' "$stdout_path" >&2
-  printf 'stderr_path=%s\n' "$stderr_path" >&2
-  printf 'reason=%s\n' "$reason" >&2
-  printf 'excerpt=%s\n' "$excerpt" >&2
-  printf 'fix=paste this blocker into ChatGPT\n' >&2
-  printf 'next=%s\n' "$next_action" >&2
+  printf 'fail: %s\n' "$heading" >&2
+  printf 'reason: %s\n' "$reason" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  printf 'next: %s\n' "$next_action" >&2
+  printf 'details:\n' >&2
+  printf '  step: %s\n' "$step" >&2
+  printf '  command_class: %s\n' "$command_class" >&2
+  printf '  exit_code: %s\n' "$exit_code" >&2
+  printf '  stdout: %s\n' "$stdout_path" >&2
+  printf '  stderr: %s\n' "$stderr_path" >&2
+  printf '  command:\n' >&2
+  printf '    %s\n' "$command_summary" >&2
 }
 
 slice_handoff_print_execution_blocker_summary() {
@@ -951,8 +1352,16 @@ slice_handoff_run_json_child() {
   fi
 
   if [ "$child_status" -ne 0 ]; then
+    local reason=""
     local excerpt=""
-    excerpt="$(slice_handoff_json_excerpt "$stdout_path" 2>/dev/null || true)"
+    if reason="$(slice_handoff_json_value "$stdout_path" reason 2>/dev/null || true)"; then
+      :
+    fi
+    if [ -n "$reason" ]; then
+      excerpt="$reason"
+    else
+      excerpt="$(slice_handoff_json_excerpt "$stdout_path" 2>/dev/null || true)"
+    fi
     if [ -z "$excerpt" ] && [ -s "$stderr_path" ]; then
       excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
     fi
@@ -1067,6 +1476,9 @@ slice_handoff_run_execution_phase() {
   local codex_run_summary_path=""
   local codex_run_out_dir=""
   local codex_final_output_path=""
+  local codex_run_context_path=""
+  local codex_status_recent_json_path=""
+  local codex_status_recent_stderr_path=""
   local active_run_dir=""
   local run_root=""
   local cleanup_command_summary=""
@@ -1194,6 +1606,9 @@ slice_handoff_run_execution_phase() {
   codex_run_stderr_path="$active_run_dir/codex-run.stderr"
   codex_run_summary_path="$codex_run_out_dir/codex-run-summary.txt"
   codex_final_output_path="$codex_run_out_dir/codex-final.txt"
+  codex_run_context_path="$active_run_dir/codex-run-context.txt"
+  codex_status_recent_json_path="$active_run_dir/codex-status-recent.json"
+  codex_status_recent_stderr_path="$active_run_dir/codex-status-recent.stderr"
   codex_run_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-run.XXXXXX.stdout")" || return 1
   codex_run_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-run.XXXXXX.stderr")" || {
     rm -f -- "$codex_run_stdout_tmp" >/dev/null 2>&1 || true
@@ -1225,19 +1640,15 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
-  local slice_handoff_execution_mode="execution-codex-run"
-  if [ "$slice_handoff_submit_requested" -eq 1 ]; then
-    slice_handoff_execution_mode="execution-submit"
-  fi
-
-  if slice_handoff_codex_final_output_is_blocker "$codex_final_output_path"; then
-    slice_handoff_print_codex_final_output_block "$codex_final_output_path"
-    slice_handoff_print_execution_blocker_summary "$slice_handoff_execution_mode" "$active_run_dir" "$codex_final_output_path"
+  if ! slice_handoff_collect_codex_run_context "$active_run_dir" "$codex_final_output_path" "$codex_run_context_path" "$codex_status_recent_json_path" "$codex_status_recent_stderr_path" "repo-automation/bin/codex-status --recent=1"; then
+    slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-codex-run" "repo-flow submit not implemented in this slice" || true
     return 1
   fi
 
-  if [ "$slice_handoff_explain" -eq 1 ]; then
+  if slice_handoff_codex_final_output_is_blocker "$codex_final_output_path"; then
+    slice_handoff_print_codex_run_context_block "$slice_handoff_codex_run_context_file"
     slice_handoff_print_codex_final_output_block "$codex_final_output_path"
+    return 1
   fi
 
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
@@ -1350,16 +1761,31 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
-  if [ "$slice_handoff_explain" -eq 1 ]; then
-    slice_handoff_info "final next=review PR before merge"
-    slice_handoff_print_execution_success_summary "execution-submit" "$active_run_dir" "$active_run_dir/review-request.txt" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "true" "review PR before merge"
-    if [ -n "$repo_flow_submit_review_request_block_path" ] && [ -f "$repo_flow_submit_review_request_block_path" ] && [ -r "$repo_flow_submit_review_request_block_path" ]; then
-      printf '\n' >&2
-      cat "$repo_flow_submit_review_request_block_path" >&2
-    else
-      slice_handoff_print_review_request_block "$active_run_dir/review-request.txt"
-    fi
-  elif [ "$slice_handoff_quiet" -eq 0 ]; then
+    if [ "$slice_handoff_explain" -eq 1 ]; then
+      slice_handoff_info "final next=review PR before merge"
+      slice_handoff_print_execution_success_summary "execution-submit" "$active_run_dir" "$active_run_dir/review-request.txt" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "true" "review PR before merge"
+      slice_handoff_print_codex_run_context_block "$slice_handoff_codex_run_context_file"
+      if [ -n "$repo_flow_submit_review_request_block_path" ] && [ -f "$repo_flow_submit_review_request_block_path" ] && [ -r "$repo_flow_submit_review_request_block_path" ]; then
+        printf '\n' >&2
+        cat "$repo_flow_submit_review_request_block_path" >&2
+      else
+        slice_handoff_print_review_request_block "$active_run_dir/review-request.txt"
+      fi
+      printf 'pass\n'
+      printf 'mode=execution-submit\n'
+      printf 'run_dir=%s\n' "$active_run_dir"
+      printf 'branch=%s\n' "$slice_handoff_branch"
+      printf 'preflight_status=pass\n'
+      printf 'codex_status=pass\n'
+      printf 'submit_status=pass\n'
+      printf 'codex_final_output_path=%s\n' "$codex_final_output_path"
+      if [ -n "$repo_flow_submit_url_or_stop" ]; then
+        printf 'repo_flow_url_or_stop=%s\n' "$repo_flow_submit_url_or_stop"
+      fi
+      printf 'review_request_path=%s\n' "$active_run_dir/review-request.txt"
+      printf 'validation_manifest_path=%s\n' "$slice_handoff_validation_manifest_file"
+      printf 'next=review PR before merge\n'
+    elif [ "$slice_handoff_quiet" -eq 0 ]; then
       printf 'pass\n'
       printf 'mode=execution-submit\n'
       printf 'run_dir=%s\n' "$active_run_dir"

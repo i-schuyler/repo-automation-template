@@ -331,14 +331,17 @@ smoke_check_slice_handoff_contract_execution_submit_success_behavior() {
   local review_request_path=""
   local review_request_block_path=""
   local expected_submit_review_request_rendered=""
+  local expected_codex_run_context=""
+  local stderr_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.err"
 
   smoke_slice_handoff_prepare_execution_submit_context "success" || return 1
   if (
     rm -rf -- "$smoke_slice_handoff_execution_submit_out_dir" &&
       smoke_slice_handoff_write_file "$smoke_slice_handoff_execution_valid_preset_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "review" "repo-flow-submit-all" "chore: slice-handoff smoke" "$smoke_slice_handoff_submit_prompt" "$smoke_slice_handoff_submit_body" "" "repo-automation-template-pr-review" &&
       smoke_slice_handoff_assert_clean_worktree &&
-      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_COMMIT_SHA="$smoke_slice_handoff_expected_submit_commit_sha" FAKE_REPO_FLOW_CI_STATE="$smoke_slice_handoff_expected_submit_ci_state" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP="$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" FAKE_REPO_FLOW_WATCHED="$smoke_slice_handoff_expected_submit_watched" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.err" --file="$smoke_slice_handoff_execution_valid_preset_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir" &&
+      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_RUN_FINAL_TEXT='Implementation complete.' FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_COMMIT_SHA="$smoke_slice_handoff_expected_submit_commit_sha" FAKE_REPO_FLOW_CI_STATE="$smoke_slice_handoff_expected_submit_ci_state" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fake repo-flow stderr' FAKE_REPO_FLOW_URL_OR_STOP="$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" FAKE_REPO_FLOW_WATCHED="$smoke_slice_handoff_expected_submit_watched" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.err" --file="$smoke_slice_handoff_execution_valid_preset_file" --submit --explain --out-dir="$smoke_slice_handoff_execution_submit_out_dir" &&
       run_dir="$(smoke_slice_handoff_assert_execution_submit_success_boundary "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.err" "feature/slice-handoff-pr-review" "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop")" &&
+      expected_codex_run_context="$(smoke_slice_handoff_expected_codex_run_context "$run_dir" "implementation-complete")" &&
       expected_submit_review_request_rendered="$(cat <<EOF
 Please review this PR before merge:
 
@@ -370,6 +373,32 @@ Merge remains explicit and outside slice-handoff.
 EOF
 )" &&
       grep -Fxq "codex_final_output_path=$run_dir/codex-run/codex-final.txt" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-success.out" &&
+      smoke_slice_handoff_assert_text_file "$run_dir/codex-run-context.txt" "$expected_codex_run_context" &&
+      python3 - "$run_dir/codex-status-recent.json" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+session = data['sessions'][0]
+assert session['session_id'] == 'sess-123'
+assert session['resume']['command'] == 'codex resume --include-non-interactive sess-123'
+assert session['model']['name'] == 'gpt-5.4-mini'
+assert session['model']['reasoning'] == 'medium'
+assert session['context']['remaining_summary'] == '85% left'
+assert data['rate_limits']['five_hour']['remaining_percent'] == 99.0
+assert data['rate_limits']['five_hour']['resets_at_local'] == '2026-05-24 04:31 PDT'
+assert data['rate_limits']['weekly']['remaining_percent'] == 93.0
+assert data['rate_limits']['weekly']['resets_at_local'] == '2026-05-31 04:31 PDT'
+PY
+      final_summary_line="$(grep -nF '===== FINAL SUMMARY =====' "$stderr_file" | tail -n1 | cut -d: -f1)" &&
+      codex_context_line="$(grep -nF '===== CODEX RUN CONTEXT =====' "$stderr_file" | tail -n1 | cut -d: -f1)" &&
+      review_request_line="$(grep -nF '===== PR REVIEW REQUEST =====' "$stderr_file" | tail -n1 | cut -d: -f1)" &&
+      [ -n "$final_summary_line" ] &&
+      [ -n "$codex_context_line" ] &&
+      [ -n "$review_request_line" ] &&
+      [ "$final_summary_line" -lt "$codex_context_line" ] &&
+      [ "$codex_context_line" -lt "$review_request_line" ] &&
       smoke_slice_handoff_assert_execution_run_dir "$run_dir" "repo-flow-submit-all" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "$smoke_slice_handoff_submit_prompt" "$expected_submit_review_request_rendered" "$smoke_slice_handoff_submit_body" "$smoke_test_dir" "execution-submit" "review PR before merge" "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" &&
       smoke_slice_handoff_assert_execution_preflight_isolated "$run_dir" "$smoke_slice_handoff_execution_fixture_sentinel" "$smoke_slice_handoff_execution_smoke_test_dir" "$smoke_test_base" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" "$(cat <<EOF
@@ -407,7 +436,7 @@ EOF
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/dry-run-preview.txt" "$smoke_slice_handoff_expected_execution_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/pr-body.md" "$smoke_slice_handoff_submit_body" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/review-request.txt" "$smoke_slice_handoff_expected_preset_review_request" &&
-      smoke_slice_handoff_assert_text_file "$run_dir/codex-run/codex-final.txt" 'fake final output' &&
+      smoke_slice_handoff_assert_text_file "$run_dir/codex-run/codex-final.txt" 'Implementation complete.' &&
       grep -Fxq 'mode=execution-submit' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'result=pass' "$run_dir/slice-handoff-execution-summary.txt" &&
       grep -Fxq 'next=review PR before merge' "$run_dir/slice-handoff-execution-summary.txt" &&
@@ -465,6 +494,7 @@ Return the full project review shape, including:
 Merge remains explicit and outside slice-handoff.
 EOF
 )" "$smoke_slice_handoff_submit_body" "$smoke_test_dir" "execution-submit" "review PR before merge" "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" &&
+      smoke_slice_handoff_assert_execution_submit_success_boundary "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-false-positive.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-false-positive.err" "feature/slice-handoff-pr-review" "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" &&
       smoke_slice_handoff_assert_text_file "$run_dir/codex-run/codex-final.txt" $'Implementation complete.\n\nblocker' &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/codex-prompt.md" "$smoke_slice_handoff_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/dry-run-preview.txt" "$smoke_slice_handoff_expected_execution_submit_preview" &&
@@ -558,6 +588,32 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       test_pass "execution-submit codex-run failure"
     else
       test_fail "execution-submit codex-run failure"
+      status=1
+    fi
+  fi
+
+  smoke_slice_handoff_prepare_execution_submit_context "missing-codex-status-field" || return 1
+  if (
+    rm -f -- "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
+      smoke_slice_handoff_set_execution_codex_run_final_text 'Implementation complete.' &&
+      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_RUN_HELPER=1 FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_CODEX_STATUS_MISSING_FIELD='sessions[0].model.reasoning' FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" --file="$smoke_slice_handoff_execution_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
+  ); then
+    test_fail "execution-submit codex-status missing field"
+    status=1
+  else
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit codex-status missing field")" || return 1
+    if grep -Fxq 'fail: codex-status recent output contract failed' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      grep -Fq 'reason: missing required codex-status field: sessions[0].model.reasoning' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      grep -Fq 'fix: repair codex-status recent output contract and rerun slice-handoff' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      grep -Fq 'details:' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      grep -Fq "stdout: $run_dir/codex-status-recent.json" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      grep -Fq "stderr: $run_dir/codex-status-recent.stderr" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      ! grep -Fq '===== CODEX RUN CONTEXT =====' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      ! grep -Fq '===== PR REVIEW REQUEST =====' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err" &&
+      ! grep -Fq '===== FINAL SUMMARY =====' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-status-missing-field.err"; then
+      test_pass "execution-submit codex-status missing field"
+    else
+      test_fail "execution-submit codex-status missing field"
       status=1
     fi
   fi
