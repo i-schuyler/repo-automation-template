@@ -566,9 +566,20 @@ codex_run_main() {
 
   if [ -n "$codex_run_resume_session_id" ]; then
     resume_prompt_text="$(cat "$codex_run_prompt_file")"
-    codex_cmd=("$codex_run_codex_path" resume "--include-non-interactive" "$codex_run_resume_session_id" "$resume_prompt_text")
+    codex_cmd=("$codex_run_codex_path" exec resume)
+    if [ "$codex_run_profile" != "default" ]; then
+      codex_cmd+=("--profile" "$codex_run_profile")
+    fi
+    codex_cmd+=(
+      "--cd" "$codex_run_cd_abs"
+      "--sandbox" "$codex_run_sandbox"
+      "--output-last-message" "$codex_run_final_output_path"
+      "$codex_run_resume_session_id"
+      "$resume_prompt_text"
+    )
     if [ "$codex_run_explain" -eq 1 ]; then
-      printf 'INFO: codex-run executing codex resume\n' >&2
+      printf 'INFO: codex-run executing codex exec resume
+' >&2
     fi
     "${codex_cmd[@]}" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
   else
@@ -584,7 +595,8 @@ codex_run_main() {
     )
 
     if [ "$codex_run_explain" -eq 1 ]; then
-      printf 'INFO: codex-run executing codex exec\n' >&2
+      printf 'INFO: codex-run executing codex exec
+' >&2
     fi
 
     "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
@@ -616,10 +628,6 @@ codex_run_main() {
     return 1
   fi
 
-  if [ -n "$codex_run_resume_session_id" ] && [ ! -s "$codex_run_final_output_path" ] && [ -s "$codex_run_stdout_path" ]; then
-    cp "$codex_run_stdout_path" "$codex_run_final_output_path" || return 1
-  fi
-
   if [ -f "$codex_run_final_output_path" ] && [ ! -s "$codex_run_final_output_path" ]; then
     codex_run_final_output_status="empty"
   elif [ -s "$codex_run_final_output_path" ]; then
@@ -648,32 +656,32 @@ codex_run_main() {
     fi
     codex_run_write_summary || return 1
     if [ "$codex_run_quiet" -eq 0 ] && [ "$codex_run_explain" -eq 0 ]; then
-      printf 'pass\n'
-      printf 'final_output_path=%s\n' "$codex_run_final_output_path"
-      printf 'summary_path=%s\n' "$codex_run_summary_path"
+      printf 'pass
+'
+      printf 'final_output_path=%s
+' "$codex_run_final_output_path"
+      printf 'summary_path=%s
+' "$codex_run_summary_path"
     fi
     if [ "$codex_run_explain" -eq 1 ]; then
-      printf 'INFO: codex-run final output=%s\n' "$codex_run_final_output_path" >&2
+      printf 'INFO: codex-run final output=%s
+' "$codex_run_final_output_path" >&2
       codex_run_print_final_summary 0 "$codex_run_final_output_path" "$codex_run_summary_path" pass >&2
-      printf '\n' >&2
+      printf '
+' >&2
       repo_operator_output_emit_file_block "CODEX FINAL OUTPUT" "$codex_run_final_output_path" 0 >&2
     fi
     return 0
   fi
 
-  if [ -z "$codex_run_resume_session_id" ]; then
-    codex_run_failure_code="final-output-contract-failed"
-    codex_run_failure_step="final-output-contract"
-    if [ "$codex_run_final_output_status" = "empty" ]; then
-      codex_run_failure_reason="final output file is empty"
-    else
-      codex_run_final_output_status="missing"
-      codex_run_failure_reason="final output file is missing"
-    fi
-    codex_run_failure_fix="ensure codex exec writes a non-empty final output file"
+  if [ -n "$codex_run_resume_session_id" ]; then
+    codex_run_failure_code="resume-final-output-contract-failed"
+    codex_run_failure_step="resume-final-output-contract"
+    codex_run_failure_reason="resume mode cannot produce a reliable final-output artifact"
+    codex_run_failure_fix="use codex exec for non-resume execution or implement a verified resume final-output capture path"
     codex_run_failure_log=""
     codex_run_failure_artifact="$codex_run_final_output_path"
-    codex_run_failure_excerpt="codex exec exited 0 but $codex_run_failure_reason"
+    codex_run_failure_excerpt="codex exec resume exited 0 but $codex_run_failure_reason"
     codex_run_result="fail"
     codex_run_write_summary || return 1
     if [ "$codex_run_quiet" -eq 1 ]; then
@@ -686,6 +694,30 @@ codex_run_main() {
     fi
     return 1
   fi
+
+  codex_run_failure_code="final-output-contract-failed"
+  codex_run_failure_step="final-output-contract"
+  if [ "$codex_run_final_output_status" = "empty" ]; then
+    codex_run_failure_reason="final output file is empty"
+  else
+    codex_run_final_output_status="missing"
+    codex_run_failure_reason="final output file is missing"
+  fi
+  codex_run_failure_fix="ensure codex exec writes a non-empty final output file"
+  codex_run_failure_log=""
+  codex_run_failure_artifact="$codex_run_final_output_path"
+  codex_run_failure_excerpt="codex exec exited 0 but $codex_run_failure_reason"
+  codex_run_result="fail"
+  codex_run_write_summary || return 1
+  if [ "$codex_run_quiet" -eq 1 ]; then
+    codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" >&2
+  else
+    codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" >&2
+  fi
+  if [ "$codex_run_explain" -eq 1 ]; then
+    codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
+  fi
+  return 1
 }
 
 codex_run_main "$@"
