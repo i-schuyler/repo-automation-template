@@ -1117,10 +1117,13 @@ EOF
   ); then
     test_fail "repo-flow submit stops before PR edit when an existing PR body fails validation"
     status=1
-  elif grep -Fxq 'fail: heading appears more than once: ## Scope' "$stderr_file" &&
-    grep -Fxq 'fix: keep each required heading exactly once' "$stderr_file" &&
+  elif grep -Fxq 'result=fail' "$stderr_file" &&
+    grep -Fxq 'code=pr-body-check-failed' "$stderr_file" &&
+    grep -Fxq 'step=pr-body-check' "$stderr_file" &&
+    grep -Fxq 'reason=heading appears more than once: ## Scope' "$stderr_file" &&
+    grep -Fxq 'fix=keep each required heading exactly once' "$stderr_file" &&
     grep -Fxq 'fix: rerun with --replace-body only if intentional full PR body replacement is desired' "$stderr_file" &&
-    grep -Fxq 'STOP: failed to refresh existing PR #815 body: fail: heading appears more than once: ## Scope' "$stderr_file" &&
+    grep -Fxq 'STOP: failed to refresh existing PR #815 body: result=fail' "$stderr_file" &&
     [ ! -s "$edit_log_file" ]; then
     head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
     if [ "$head_before" != "$head_after" ]; then
@@ -2815,6 +2818,8 @@ EOF
       all_failure_reason="final summary missing submit_mode=all"
     elif ! smoke_assert_final_summary_field "$all_stderr" staged_count 3; then
       all_failure_reason="final summary missing staged_count=3"
+    elif ! smoke_assert_final_summary_block_lacks_regex "$all_stderr" 'unrequested_paths='; then
+      all_failure_reason="final summary includes unrequested path dump"
     elif [ -z "$all_url_or_stop_line" ] || [ -z "$all_submit_mode_line" ] || [ -z "$all_staged_count_line" ]; then
       all_failure_reason="final summary missing submit mode ordering"
     elif [ "$all_url_or_stop_line" -ge "$all_submit_mode_line" ] || [ "$all_submit_mode_line" -ge "$all_staged_count_line" ]; then
@@ -3061,9 +3066,12 @@ EOF
   ); then
     test_fail "repo-flow submit rejects invalid body files before PR create/edit"
     status=1
-  elif grep -Fxq 'fail: body is placeholder-only' "$body_file_invalid_stderr" &&
-    grep -Fxq 'fix: replace branch/base/ahead/behind scaffolding with real PR body content' "$body_file_invalid_stderr" &&
-    grep -Fxq 'STOP: fail: body is placeholder-only' "$body_file_invalid_stderr" &&
+  elif grep -Fxq 'result=fail' "$body_file_invalid_stderr" &&
+    grep -Fxq 'code=pr-body-check-failed' "$body_file_invalid_stderr" &&
+    grep -Fxq 'step=pr-body-check' "$body_file_invalid_stderr" &&
+    grep -Fxq 'reason=body is placeholder-only' "$body_file_invalid_stderr" &&
+    grep -Fxq 'fix=replace branch/base/ahead/behind scaffolding with real PR body content' "$body_file_invalid_stderr" &&
+    grep -Fxq 'STOP: result=fail' "$body_file_invalid_stderr" &&
     ! grep -Fq 'gh pr create title=' "$body_file_invalid_stderr" &&
     ! grep -Fq 'gh pr edit number=' "$body_file_invalid_stderr"; then
     test_pass "repo-flow submit rejects invalid body files before PR create/edit"
@@ -3454,8 +3462,10 @@ smoke_check_repo_flow_submit_unrequested_paths_contract() {
     status=1
   elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$explain_stderr" &&
     grep -Fxq 'unrequested_paths=README.md,unrequested-new.md' "$explain_stderr" &&
+    grep -Fxq 'fix: use --all only when every working-tree change is intended; otherwise expand --paths=<...> or clean/stash unrelated changes' "$explain_stderr" &&
     grep -Fxq 'status_count=4' "$explain_stderr" &&
-    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$explain_stderr"; then
+    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$explain_stderr" &&
+    smoke_assert_final_summary_block_lacks_regex "$explain_stderr" 'unrequested_paths=|README\.md|unrequested-new\.md'; then
     status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
     cached_after="$(git -C "$isolated_repo_dir" diff --cached --name-only)" || return 1
     head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
@@ -3492,7 +3502,9 @@ smoke_check_repo_flow_submit_unrequested_paths_contract() {
     status=1
   elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$paths_stderr" &&
     grep -Fxq 'unrequested_paths=README.md,unrequested-new.md' "$paths_stderr" &&
-    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$paths_stderr"; then
+    grep -Fxq 'fix: use --all only when every working-tree change is intended; otherwise expand --paths=<...> or clean/stash unrelated changes' "$paths_stderr" &&
+    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$paths_stderr" &&
+    smoke_assert_final_summary_block_lacks_regex "$paths_stderr" 'unrequested_paths=|README\.md|unrequested-new\.md'; then
     status_after="$(git -C "$isolated_repo_dir" status --porcelain --untracked-files=all)" || return 1
     cached_after="$(git -C "$isolated_repo_dir" diff --cached --name-only)" || return 1
     head_after="$(git -C "$isolated_repo_dir" rev-parse HEAD)" || return 1
@@ -3532,8 +3544,10 @@ smoke_check_repo_flow_submit_unrequested_paths_contract() {
     status=1
   elif grep -Fxq 'STOP: unrequested working tree changes remain; commit a clean explicit submit' "$cap_stderr" &&
     grep -Eq '^unrequested_paths=unrequested-a\.md,unrequested-b\.md,unrequested-c\.md \(\+1 more\)$' "$cap_stderr" &&
+    grep -Fxq 'fix: use --all only when every working-tree change is intended; otherwise expand --paths=<...> or clean/stash unrelated changes' "$cap_stderr" &&
     grep -Fxq 'status_count=5' "$cap_stderr" &&
-    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$cap_stderr"; then
+    grep -Fxq 'url_or_stop=unrequested working tree changes remain; commit a clean explicit submit' "$cap_stderr" &&
+    smoke_assert_final_summary_block_lacks_regex "$cap_stderr" 'unrequested_paths=|unrequested-a\.md|unrequested-b\.md|unrequested-c\.md|unrequested-d\.md'; then
     test_pass "repo-flow submit --staged --explain caps unrequested paths"
   else
     test_fail "repo-flow submit --staged --explain caps unrequested paths"
@@ -3589,7 +3603,11 @@ EOF
   if "$local_bash_path" "$focused_wrapper_script" --quiet > /dev/null 2> "$focused_quiet_stderr"; then
     test_fail "focused wrapper diagnostics emits a failure in quiet mode"
     status=1
-  elif grep -Fxq 'fail: smoke:focused-wrapper-inner-check: focused inner failure' "$focused_quiet_stderr"; then
+  elif grep -Fxq 'result=fail' "$focused_quiet_stderr" &&
+    grep -Fxq 'code=named-check-failed' "$focused_quiet_stderr" &&
+    grep -Fxq 'step=smoke:focused-wrapper-inner-check' "$focused_quiet_stderr" &&
+    grep -Fxq 'reason=focused inner failure' "$focused_quiet_stderr" &&
+    grep -Fxq 'fix=inspect the failing check' "$focused_quiet_stderr"; then
     test_pass "focused wrapper diagnostics emits a failure in quiet mode"
   else
     test_fail "focused wrapper diagnostics emits a failure in quiet mode"

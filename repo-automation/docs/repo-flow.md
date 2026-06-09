@@ -9,7 +9,7 @@ Use `--all` when all Codex-edited files in the current repo should be included, 
 Prefer `--all` for Codex/operator submits when you want every non-ignored working-tree change included.
 Prefer `--modified` instead of shell-building a `--paths` CSV for tracked edits.
 It refuses absolute paths, `..`, default-branch submits, and any unrequested dirty or untracked worktree changes before staging when `--paths` is used.
-When submit stops for unrequested worktree changes, human failure output prints a compact `unrequested_paths=...` excerpt before the final summary.
+When submit stops for unrequested worktree changes, human failure output prints a compact `unrequested_paths=...` excerpt and a short fix hint before the final summary.
 `--modified` blocks new files, including pre-staged additions and untracked paths; use `--paths=<path>` or `--staged` explicitly for new files.
 `--all` stages all non-ignored working-tree changes with `git add -A -- .` and is mutually exclusive with `--modified`, `--paths`, and `--staged`.
 For most PRs, use the generated body from `repo-flow`; it is the default and easiest path. Use `--body-file=<path>` only for a human-authored custom PR body that passes `repo-automation/bin/pr-body-check`.

@@ -201,6 +201,7 @@ EOF
 
   if [ "${#unrequested_paths[@]}" -gt 0 ]; then
     printf 'unrequested_paths=%s\n' "$(repo_flow_submit_format_unrequested_paths 3 "${unrequested_paths[@]}")" >&2
+    printf 'fix: use --all only when every working-tree change is intended; otherwise expand --paths=<...> or clean/stash unrelated changes\n' >&2
     repo_flow_submit_stop "unrequested working tree changes remain; commit a clean explicit submit"
     return 1
   fi
