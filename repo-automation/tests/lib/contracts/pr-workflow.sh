@@ -618,7 +618,11 @@ smoke_check_pr_body_check_contract() {
   local helper_stderr="$smoke_test_base/pr-body-check.err"
   local helper_json="$smoke_test_base/pr-body-check-json.out"
   local helper_json_stderr="$smoke_test_base/pr-body-check-json.err"
+  local helper_fail_stdout="$smoke_test_base/pr-body-check-fail.out"
+  local helper_fail_stderr="$smoke_test_base/pr-body-check-fail.err"
   local invalid_json_body="$smoke_test_base/pr-body-check-invalid-json.md"
+  local unknown_flag_stderr="$smoke_test_base/pr-body-check-unknown.err"
+  local print_template_conflict_stderr="$smoke_test_base/pr-body-check-print-template-conflict.err"
   local wrapper_help="$smoke_test_base/pr-body-check-wrapper-help.txt"
   local wrapper_json="$smoke_test_base/pr-body-check-wrapper.json"
   local wrapper_stdout="$smoke_test_base/pr-body-check-wrapper.out"
@@ -984,6 +988,19 @@ EOF
 
   if (
     cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$missing_scope_body" > "$helper_fail_stdout" 2> "$helper_fail_stderr"
+  ); then
+    test_fail "pr-body-check default failure prints actionable stderr"
+    status=1
+  elif [ ! -s "$helper_fail_stdout" ] && grep -Fxq 'fail: missing required heading: ## Scope' "$helper_fail_stderr" && grep -Fxq 'fix: use .github/pull_request_template.md or run repo-automation/bin/pr-body-check --print-template' "$helper_fail_stderr"; then
+    test_pass "pr-body-check default failure prints actionable stderr"
+  else
+    test_fail "pr-body-check default failure prints actionable stderr"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
     repo-automation/bin/pr-body-check --quiet --body-file="$valid_body" > "$helper_stdout" 2> "$helper_stderr"
   ) && smoke_assert_quiet_success_empty "$helper_stdout" "$helper_stderr"; then
     test_pass "pr-body-check quiet success is silent"
@@ -1038,6 +1055,58 @@ EOF
     test_pass "pr-body-check rejects quiet json conflict"
   else
     test_fail "pr-body-check rejects quiet json conflict"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file= > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects empty body-file values"
+    status=1
+  elif grep -Fxq 'fail: empty flag value: --body-file' "$helper_stderr" && grep -Fxq 'fix: use --body-file=<path>' "$helper_stderr" && [ ! -s "$helper_stdout" ]; then
+    test_pass "pr-body-check rejects empty body-file values"
+  else
+    test_fail "pr-body-check rejects empty body-file values"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file "$valid_body" > "$helper_stdout" 2> "$helper_stderr"
+  ); then
+    test_fail "pr-body-check rejects space-separated body-file syntax"
+    status=1
+  elif grep -Fxq 'fail: flag format not accepted: --body-file' "$helper_stderr" && grep -Fxq 'fix: use --body-file=<path>' "$helper_stderr" && [ ! -s "$helper_stdout" ]; then
+    test_pass "pr-body-check rejects space-separated body-file syntax"
+  else
+    test_fail "pr-body-check rejects space-separated body-file syntax"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --print-template --json > "$helper_stdout" 2> "$print_template_conflict_stderr"
+  ); then
+    test_fail "pr-body-check rejects print-template json conflict"
+    status=1
+  elif grep -Fxq 'fail: incompatible flag combination: --print-template and output mode flags' "$print_template_conflict_stderr" && grep -Fxq 'fix: use --print-template by itself' "$print_template_conflict_stderr" && [ ! -s "$helper_stdout" ]; then
+    test_pass "pr-body-check rejects print-template json conflict"
+  else
+    test_fail "pr-body-check rejects print-template json conflict"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/pr-body-check --body-file="$valid_body" --whatever > "$helper_stdout" 2> "$unknown_flag_stderr"
+  ); then
+    test_fail "pr-body-check rejects unknown flags"
+    status=1
+  elif grep -Fxq 'fail: unknown flag: --whatever' "$unknown_flag_stderr" && grep -Fxq 'fix: run repo-automation/bin/pr-body-check --help' "$unknown_flag_stderr" && [ ! -s "$helper_stdout" ]; then
+    test_pass "pr-body-check rejects unknown flags"
+  else
+    test_fail "pr-body-check rejects unknown flags"
     status=1
   fi
 
@@ -1213,7 +1282,7 @@ EOF
     status=1
   fi
 
-  rm -f "$valid_body" "$template_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_scope_body" "$missing_heading_body" "$invalid_json_body" "$helper_help" "$helper_template" "$helper_stdout" "$helper_stderr" "$helper_json" "$helper_json_stderr" >/dev/null 2>&1 || true
+  rm -f "$valid_body" "$template_body" "$scaffold_body" "$duplicate_body" "$order_body" "$passive_body" "$missing_scope_body" "$missing_heading_body" "$invalid_json_body" "$helper_help" "$helper_template" "$helper_stdout" "$helper_stderr" "$helper_json" "$helper_json_stderr" "$helper_fail_stdout" "$helper_fail_stderr" "$unknown_flag_stderr" "$print_template_conflict_stderr" >/dev/null 2>&1 || true
   return "$status"
 }
 
