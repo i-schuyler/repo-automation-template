@@ -4,6 +4,8 @@
 
 The script requires `--branch=<name>`. It validates branch safety and rejects the default branch.
 
+`--repair-of-pr=<number>` selects the conservative repair lane. It requires `gh`, verifies that the PR exists and is open, verifies that its head equals `--branch`, checks out that already-existing local branch, and requires a clean worktree. It fails rather than creating a missing branch and does not reset, overwrite, or trash repair work.
+
 Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
 
 Before branch setup, preflight checks disk space with the same 1.5G guard used by `run-tests`. If the guard fails, the stop report includes the available bytes, the threshold, and a compact cleanup hint. Rerun with `--clean-test-cache --explain`, then rerun normal preflight.
@@ -37,6 +39,7 @@ Usage examples:
     repo-automation/bin/codex-slice-preflight --branch=feature/my-slice
     repo-automation/bin/codex-slice-preflight --check-only --branch=feature/my-slice
     repo-automation/bin/codex-slice-preflight --branch=feature/my-slice --delete-safe-stale
+    repo-automation/bin/codex-slice-preflight --branch=feature/my-slice --repair-of-pr=242
     repo-automation/bin/codex-slice-preflight --clean-test-cache --explain
     repo-automation/bin/codex-slice-preflight --clean-test-cache --preserve-path=/path/to/active-run --explain
 

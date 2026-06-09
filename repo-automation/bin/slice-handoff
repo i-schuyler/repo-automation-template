@@ -28,6 +28,7 @@ slice_handoff_explain=0
 slice_handoff_file=""
 slice_handoff_dry_run=0
 slice_handoff_submit_requested=0
+slice_handoff_repair_requested=0
 slice_handoff_out_dir=""
 slice_handoff_out_dir_abs=""
 slice_handoff_out_dir_prompt=""
@@ -40,6 +41,10 @@ slice_handoff_title=""
 slice_handoff_codex_profile=""
 slice_handoff_commit_message=""
 slice_handoff_submit_mode=""
+slice_handoff_handoff_mode="implementation"
+slice_handoff_repair_of_pr=""
+slice_handoff_repair_session=""
+slice_handoff_repair_session_id=""
 slice_handoff_prompt_file=""
 slice_handoff_pr_body_file=""
 slice_handoff_review_request_file=""
@@ -62,7 +67,8 @@ slice_handoff_codex_rate_limit_weekly_resets_at_local=""
 slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
 
 slice_handoff_usage() {
-  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--repair] [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--explain] [--help]\n'
+  printf '  --repair  Require repair metadata, preflight the existing open PR branch, and resume codex_session_id.\n'
 }
 
 slice_handoff_info() {
@@ -95,6 +101,12 @@ slice_handoff_print_final_summary() {
   fi
   if [ -n "$slice_handoff_validation_manifest_file" ]; then
     summary_lines+=("validation_manifest_path=$slice_handoff_validation_manifest_file")
+  fi
+  if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+    summary_lines+=(
+      "repair_of_pr=$slice_handoff_repair_of_pr"
+      "codex_session_id=$slice_handoff_repair_session_id"
+    )
   fi
   summary_lines+=("next=$next")
 
@@ -929,6 +941,7 @@ slice_handoff_print_execution_success_summary() {
   local next="$7"
   local repo_flow_submit_pr="none"
   local repo_flow_submit_commit="none"
+  local repo_flow_submit_pushed="false"
   local repo_flow_submit_watched="false"
   local repo_flow_submit_ci="unknown"
   local repo_flow_submit_url_or_stop="none"
@@ -936,6 +949,7 @@ slice_handoff_print_execution_success_summary() {
 
   repo_flow_submit_pr="$(slice_handoff_extract_repo_flow_summary_value pr "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
   repo_flow_submit_commit="$(slice_handoff_extract_repo_flow_summary_value commit "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_pushed="$(slice_handoff_extract_repo_flow_summary_value pushed "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
   repo_flow_submit_watched="$(slice_handoff_extract_repo_flow_summary_value watched "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
   repo_flow_submit_ci="$(slice_handoff_extract_repo_flow_summary_value ci "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
   repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
@@ -950,6 +964,7 @@ slice_handoff_print_execution_success_summary() {
   else
     repo_flow_submit_commit="none"
   fi
+  [ -n "$repo_flow_submit_pushed" ] || repo_flow_submit_pushed="false"
   if [ -n "$repo_flow_submit_watched" ]; then
     :
   else
@@ -970,21 +985,32 @@ slice_handoff_print_execution_success_summary() {
     repo_flow_submit_review_request_valid="true"
   fi
 
-  repo_auto_print_final_summary \
-    "script=slice-handoff" \
-    "mode=$mode" \
-    "rc=0" \
-    "branch=$slice_handoff_branch" \
-    "run_dir=$run_dir" \
-    "review_request_path=$review_request_path" \
-    "pr=$repo_flow_submit_pr" \
-    "commit=$repo_flow_submit_commit" \
-    "watched=$repo_flow_submit_watched" \
-    "ci=$repo_flow_submit_ci" \
-    "url_or_stop=$repo_flow_submit_url_or_stop" \
-    "review_request_valid=$repo_flow_submit_review_request_valid" \
-    "review_request_printed=$review_request_printed" \
-    "next=$next" >&2
+  local -a summary_lines=(
+    "script=slice-handoff"
+    "mode=$mode"
+    "rc=0"
+    "branch=$slice_handoff_branch"
+  )
+  if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+    summary_lines+=(
+      "repair_of_pr=$slice_handoff_repair_of_pr"
+      "codex_session_id=$slice_handoff_repair_session_id"
+    )
+  fi
+  summary_lines+=(
+    "run_dir=$run_dir"
+    "review_request_path=$review_request_path"
+    "pr=$repo_flow_submit_pr"
+    "commit=$repo_flow_submit_commit"
+    "pushed=$repo_flow_submit_pushed"
+    "watched=$repo_flow_submit_watched"
+    "ci=$repo_flow_submit_ci"
+    "url_or_stop=$repo_flow_submit_url_or_stop"
+    "review_request_valid=$repo_flow_submit_review_request_valid"
+    "review_request_printed=$review_request_printed"
+    "next=$next"
+  )
+  repo_auto_print_final_summary "${summary_lines[@]}" >&2
 }
 
 slice_handoff_write_execution_summary() {
@@ -1014,6 +1040,12 @@ slice_handoff_write_execution_summary() {
     printf 'title=%s\n' "$slice_handoff_title"
     printf 'codex_profile=%s\n' "$slice_handoff_codex_profile"
     printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+      printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
+      printf 'repair_session=%s\n' "$slice_handoff_repair_session"
+      printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
+    fi
     printf 'preflight_repo_root=%s\n' "$slice_handoff_repo_root"
     printf 'run_dir=%s\n' "$run_dir"
     printf 'cleanup_json_path=%s\n' "$cleanup_json_path"
@@ -1029,7 +1061,7 @@ slice_handoff_write_execution_summary() {
     if [ -n "$slice_handoff_validation_manifest_file" ]; then
       printf 'validation_manifest_path=%s\n' "$slice_handoff_validation_manifest_file"
     fi
-    if [ -n "$pr_body_check_stdout_path$pr_body_check_stderr_path$repo_flow_submit_stdout_path$repo_flow_submit_stderr_path" ] || [ "$mode" = "execution-submit" ]; then
+    if [ -n "$pr_body_check_stdout_path$pr_body_check_stderr_path$repo_flow_submit_stdout_path$repo_flow_submit_stderr_path" ] || [ "$mode" = "execution-submit" ] || [ "$mode" = "repair-submit" ]; then
       printf 'pr_body_check_stdout_path=%s\n' "$pr_body_check_stdout_path"
       printf 'pr_body_check_stderr_path=%s\n' "$pr_body_check_stderr_path"
       printf 'repo_flow_submit_stdout_path=%s\n' "$repo_flow_submit_stdout_path"
@@ -1064,6 +1096,12 @@ slice_handoff_write_dry_run_preview() {
     printf 'title=%s\n' "$slice_handoff_title"
     printf 'codex_profile=%s\n' "$slice_handoff_codex_profile"
     printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+      printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
+      printf 'repair_session=%s\n' "$slice_handoff_repair_session"
+      printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
+    fi
     printf 'commit_message=%s\n' "$slice_handoff_commit_message"
     printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
     if [ "$submit_requested" -eq 1 ] && [ "$submit_mode" = "repo-flow-submit-all" ]; then
@@ -1087,37 +1125,53 @@ slice_handoff_write_dry_run_preview() {
       --keep=10 \
       "--preserve-path=<active-run-dir>" \
       --json
-    slice_handoff_write_argv_block \
-      planned_preflight_argv \
-      repo-automation/bin/codex-slice-preflight \
-      "--branch=$slice_handoff_branch" \
-      --clean-test-cache \
-      "--preserve-path=<active-run-dir>" \
-      --json
-    slice_handoff_write_argv_block \
-      planned_codex_run_argv \
-      repo-automation/bin/codex-run \
-      "--prompt-file=<active-run-dir>/codex-prompt.md" \
-      "--out-dir=<active-run-dir>/codex-run" \
-      "--profile=$slice_handoff_codex_profile" \
-      "--cd=$slice_handoff_repo_root"
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      slice_handoff_write_argv_block \
+        planned_preflight_argv \
+        repo-automation/bin/codex-slice-preflight \
+        "--branch=$slice_handoff_branch" \
+        "--repair-of-pr=$slice_handoff_repair_of_pr" \
+        --clean-test-cache \
+        "--preserve-path=<active-run-dir>" \
+        --json
+      slice_handoff_write_argv_block \
+        planned_codex_run_argv \
+        repo-automation/bin/codex-run \
+        "--prompt-file=<active-run-dir>/codex-prompt.md" \
+        "--out-dir=<active-run-dir>/codex-run" \
+        "--profile=$slice_handoff_codex_profile" \
+        "--cd=$slice_handoff_repo_root" \
+        "--resume-session-id=$slice_handoff_repair_session_id"
+    else
+      slice_handoff_write_argv_block \
+        planned_preflight_argv \
+        repo-automation/bin/codex-slice-preflight \
+        "--branch=$slice_handoff_branch" \
+        --clean-test-cache \
+        "--preserve-path=<active-run-dir>" \
+        --json
+      slice_handoff_write_argv_block \
+        planned_codex_run_argv \
+        repo-automation/bin/codex-run \
+        "--prompt-file=<active-run-dir>/codex-prompt.md" \
+        "--out-dir=<active-run-dir>/codex-run" \
+        "--profile=$slice_handoff_codex_profile" \
+        "--cd=$slice_handoff_repo_root"
+    fi
     if [ "$submit_requested" -eq 1 ] && [ "$submit_mode" = "repo-flow-submit-all" ]; then
       slice_handoff_write_argv_block \
         planned_pr_body_validation_argv \
         repo-automation/bin/pr-body-check \
         "--body-file=$pr_body_path"
-      slice_handoff_write_argv_block \
-        planned_repo_flow_submit_argv \
-        repo-automation/bin/repo-flow \
-        submit \
-        --all \
-        "--message=$slice_handoff_commit_message" \
-        "--body-file=$pr_body_path" \
-        "--review-request-file=<active-run-dir>/review-request-source.txt" \
-        --watch \
-        --timeout=900 \
-        --diagnose-on-fail \
-        --explain
+      if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+        slice_handoff_write_argv_block planned_repo_flow_submit_argv repo-automation/bin/repo-flow submit --all \
+          "--message=$slice_handoff_commit_message" "--body-file=$pr_body_path" --replace-body \
+          "--review-request-file=<active-run-dir>/review-request-source.txt" --watch --timeout=900 --diagnose-on-fail --explain
+      else
+        slice_handoff_write_argv_block planned_repo_flow_submit_argv repo-automation/bin/repo-flow submit --all \
+          "--message=$slice_handoff_commit_message" "--body-file=$pr_body_path" \
+          "--review-request-file=<active-run-dir>/review-request-source.txt" --watch --timeout=900 --diagnose-on-fail --explain
+      fi
     else
       printf 'planned_pr_body_validation_argv=not_applicable\n'
       printf 'planned_repo_flow_submit_argv=not_applicable\n'
@@ -1186,6 +1240,7 @@ slice_handoff_validate_handoff() {
   local validator_manifest_value=""
   local validator_submit_arg=""
   local validator_manifest_values=""
+  local -a validator_repair_args=()
 
   validator_artifact_dir="$(mktemp -d "${TMPDIR:-$HOME/.cache}/slice-handoff-validator.XXXXXX")" || return 1
   slice_handoff_validator_artifact_dir="$validator_artifact_dir"
@@ -1195,24 +1250,29 @@ slice_handoff_validate_handoff() {
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
     validator_submit_arg="--submit"
   fi
+  if [ "$slice_handoff_repair_requested" -eq 1 ]; then
+    validator_repair_args=(--repair)
+  fi
   if [ -n "$validator_submit_arg" ]; then
-    validator_command_summary="$(slice_handoff_command_summary repo-automation/bin/slice-validator --file="$slice_handoff_file" "--artifact-dir=$validator_artifact_dir" "--manifest-out=$validator_manifest_path" --submit --json)"
+    validator_command_summary="$(slice_handoff_command_summary repo-automation/bin/slice-validator --file="$slice_handoff_file" "--artifact-dir=$validator_artifact_dir" "--manifest-out=$validator_manifest_path" --submit "${validator_repair_args[@]}" --json)"
     if ! slice_handoff_run_json_child "slice-validator" "$validator_command_summary" result pass "$validator_stdout_path" "$validator_stderr_path" \
       "$slice_handoff_repo_root/repo-automation/bin/slice-validator" \
       --file="$slice_handoff_file" \
       "--artifact-dir=$validator_artifact_dir" \
       "--manifest-out=$validator_manifest_path" \
       --submit \
+      "${validator_repair_args[@]}" \
       --json; then
       return 1
     fi
   else
-    validator_command_summary="$(slice_handoff_command_summary repo-automation/bin/slice-validator --file="$slice_handoff_file" "--artifact-dir=$validator_artifact_dir" "--manifest-out=$validator_manifest_path" --json)"
+    validator_command_summary="$(slice_handoff_command_summary repo-automation/bin/slice-validator --file="$slice_handoff_file" "--artifact-dir=$validator_artifact_dir" "--manifest-out=$validator_manifest_path" "${validator_repair_args[@]}" --json)"
     if ! slice_handoff_run_json_child "slice-validator" "$validator_command_summary" result pass "$validator_stdout_path" "$validator_stderr_path" \
       "$slice_handoff_repo_root/repo-automation/bin/slice-validator" \
       --file="$slice_handoff_file" \
       "--artifact-dir=$validator_artifact_dir" \
       "--manifest-out=$validator_manifest_path" \
+      "${validator_repair_args[@]}" \
       --json; then
       return 1
     fi
@@ -1230,7 +1290,7 @@ import json
 import sys
 
 manifest = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-for key in ('branch', 'title', 'codex_profile', 'submit_mode', 'commit_message', 'prompt_path', 'review_request_path', 'pr_body_path'):
+for key in ('branch', 'title', 'codex_profile', 'submit_mode', 'commit_message', 'handoff_mode', 'repair_of_pr', 'repair_session', 'codex_session_id', 'prompt_path', 'review_request_path', 'pr_body_path'):
     if key in manifest:
         value = manifest.get(key)
         if value is None:
@@ -1255,6 +1315,18 @@ PY
         ;;
       commit_message=*)
         slice_handoff_commit_message="${validator_manifest_value#commit_message=}"
+        ;;
+      handoff_mode=*)
+        slice_handoff_handoff_mode="${validator_manifest_value#handoff_mode=}"
+        ;;
+      repair_of_pr=*)
+        slice_handoff_repair_of_pr="${validator_manifest_value#repair_of_pr=}"
+        ;;
+      repair_session=*)
+        slice_handoff_repair_session="${validator_manifest_value#repair_session=}"
+        ;;
+      codex_session_id=*)
+        slice_handoff_repair_session_id="${validator_manifest_value#codex_session_id=}"
         ;;
       prompt_path=*)
         slice_handoff_prompt_file="${validator_manifest_value#prompt_path=}"
@@ -1452,7 +1524,8 @@ slice_handoff_prepare_public_artifacts() {
   fi
   slice_handoff_validation_manifest_file="$validation_manifest_target"
 
-  if ! slice_handoff_write_atomic_text_file "$summary_target" <<EOF
+  if ! {
+    cat <<EOF
 schema=repo-automation-slice-handoff/v1
 branch=$slice_handoff_branch
 title=$slice_handoff_title
@@ -1464,7 +1537,11 @@ pr_body_path=$pr_body_target
 review_request_path=$review_request_target
 validation_manifest_path=$validation_manifest_target
 EOF
-  then
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      printf 'handoff_mode=repair\nrepair_of_pr=%s\nrepair_session=%s\ncodex_session_id=%s\n' \
+        "$slice_handoff_repair_of_pr" "$slice_handoff_repair_session" "$slice_handoff_repair_session_id"
+    fi
+  } | slice_handoff_write_atomic_text_file "$summary_target"; then
     slice_handoff_fail "unable to write summary artifact" "fix filesystem permissions and rerun slice-handoff"
     return 1
   fi
@@ -1534,6 +1611,9 @@ slice_handoff_run_execution_phase() {
   local repo_flow_submit_url_or_stop=""
   local repo_flow_submit_review_request_source_path=""
   local repo_flow_submit_review_request_path=""
+  local -a preflight_repair_args=()
+  local -a codex_resume_args=()
+  local -a repo_flow_repair_args=()
 
   cd "$slice_handoff_repo_root" || return 1
   slice_handoff_info "run-dir creation"
@@ -1608,15 +1688,20 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
   slice_handoff_info "preflight"
+  if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+    preflight_repair_args=("--repair-of-pr=$slice_handoff_repair_of_pr")
+    codex_resume_args=("--resume-session-id=$slice_handoff_repair_session_id")
+    repo_flow_repair_args=(--replace-body)
+  fi
   preflight_stdout_path="$active_run_dir/preflight.stdout"
   preflight_stderr_path="$active_run_dir/preflight.stderr"
   preflight_json_path="$active_run_dir/preflight.json"
-  preflight_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" --clean-test-cache "--preserve-path=$active_run_dir" --json)"
+  preflight_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" "${preflight_repair_args[@]}" --clean-test-cache "--preserve-path=$active_run_dir" --json)"
 
   if ! (
     cd "$slice_handoff_repo_root" || return 1
     slice_handoff_run_json_child "preflight" "$preflight_command_summary" rc 0 "$preflight_stdout_path" "$preflight_stderr_path" \
-      repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" --clean-test-cache "--preserve-path=$active_run_dir" --json
+      repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" "${preflight_repair_args[@]}" --clean-test-cache "--preserve-path=$active_run_dir" --json
   ); then
     preflight_phase_failed=1
   fi
@@ -1644,11 +1729,11 @@ slice_handoff_run_execution_phase() {
     rm -f -- "$codex_run_stdout_tmp" >/dev/null 2>&1 || true
     return 1
   }
-  codex_run_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-run "--prompt-file=$active_run_dir/codex-prompt.md" "--out-dir=$codex_run_out_dir" "--profile=$slice_handoff_codex_profile" "--cd=$slice_handoff_repo_root")"
+  codex_run_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-run "--prompt-file=$active_run_dir/codex-prompt.md" "--out-dir=$codex_run_out_dir" "--profile=$slice_handoff_codex_profile" "--cd=$slice_handoff_repo_root" "${codex_resume_args[@]}")"
 
   if ! (
     cd "$slice_handoff_repo_root" || return 1
-    repo-automation/bin/codex-run "--prompt-file=$active_run_dir/codex-prompt.md" "--out-dir=$codex_run_out_dir" "--profile=$slice_handoff_codex_profile" "--cd=$slice_handoff_repo_root" >"$codex_run_stdout_tmp" 2>"$codex_run_stderr_tmp"
+    repo-automation/bin/codex-run "--prompt-file=$active_run_dir/codex-prompt.md" "--out-dir=$codex_run_out_dir" "--profile=$slice_handoff_codex_profile" "--cd=$slice_handoff_repo_root" "${codex_resume_args[@]}" >"$codex_run_stdout_tmp" 2>"$codex_run_stderr_tmp"
   ); then
     codex_run_phase_failed=1
   fi
@@ -1740,11 +1825,11 @@ slice_handoff_run_execution_phase() {
       slice_handoff_print_execution_blocker "review-request-source" "prepare review request source for repo-flow submit" 1 "$repo_flow_submit_review_request_source_path" "$repo_flow_submit_stderr_path" "review request source file is not a regular readable non-empty file"
       return 1
     fi
-    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain)"
+    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "${repo_flow_repair_args[@]}" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain)"
 
     if ! (
       cd "$slice_handoff_repo_root" || return 1
-      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
+      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "${repo_flow_repair_args[@]}" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
     ); then
       repo_flow_submit_phase_failed=1
     fi
@@ -1787,14 +1872,18 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
-    if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "review PR before merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path"; then
+    local submit_execution_mode="execution-submit"
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      submit_execution_mode="repair-submit"
+    fi
+    if ! slice_handoff_write_execution_summary "$active_run_dir" "pass" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "$submit_execution_mode" "review PR before merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path"; then
       slice_handoff_fail "unable to write execution summary" "fix filesystem permissions and rerun slice-handoff"
       return 1
     fi
 
     if [ "$slice_handoff_explain" -eq 1 ]; then
       slice_handoff_info "final next=review PR before merge"
-      slice_handoff_print_execution_success_summary "execution-submit" "$active_run_dir" "$active_run_dir/review-request.txt" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "true" "review PR before merge"
+      slice_handoff_print_execution_success_summary "$submit_execution_mode" "$active_run_dir" "$active_run_dir/review-request.txt" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "true" "review PR before merge"
       slice_handoff_print_codex_run_context_block "$slice_handoff_codex_run_context_file"
       repo_flow_submit_review_request_valid="false"
       if [ -r "$active_run_dir/review-request.txt" ]; then
@@ -1822,7 +1911,7 @@ slice_handoff_run_execution_phase() {
         "$repo_flow_submit_review_request_valid"
     elif [ "$slice_handoff_quiet" -eq 0 ]; then
       printf 'pass\n'
-      printf 'mode=execution-submit\n'
+      printf 'mode=%s\n' "$submit_execution_mode"
       printf 'run_dir=%s\n' "$active_run_dir"
       printf 'branch=%s\n' "$slice_handoff_branch"
       printf 'preflight_status=pass\n'
@@ -1916,6 +2005,13 @@ slice_handoff_main() {
       --submit)
         slice_handoff_submit_requested=1
         ;;
+      --repair)
+        slice_handoff_repair_requested=1
+        ;;
+      --repair=*)
+        slice_handoff_fail "unsupported flag: --repair" "use bare --repair with handoff_mode: repair in the handoff envelope"
+        return 1
+        ;;
       --submit=*)
         slice_handoff_fail "unsupported flag: --submit" "use bare --submit with submit_mode: repo-flow-submit-all in the handoff envelope"
         return 1
@@ -1938,6 +2034,11 @@ slice_handoff_main() {
 
   slice_handoff_validate_handoff || return 1
   slice_handoff_info "validation complete"
+
+  if [ "$slice_handoff_repair_requested" -eq 1 ] && [ "$slice_handoff_handoff_mode" != "repair" ]; then
+    slice_handoff_fail "--repair requires handoff_mode: repair in the handoff envelope" "set handoff_mode: repair and required repair metadata"
+    return 1
+  fi
 
   if [ "$slice_handoff_submit_requested" -eq 1 ] && [ "$slice_handoff_submit_mode" != "repo-flow-submit-all" ]; then
     slice_handoff_fail "--submit requires submit_mode: repo-flow-submit-all in the handoff envelope" "set submit_mode: repo-flow-submit-all or remove --submit"
@@ -2092,6 +2193,12 @@ PY
       printf 'title=%s\n' "$slice_handoff_title"
       printf 'codex_profile=%s\n' "$slice_handoff_codex_profile"
       printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
+      if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+        printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+        printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
+        printf 'repair_session=%s\n' "$slice_handoff_repair_session"
+        printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
+      fi
       printf 'commit_message=%s\n' "$slice_handoff_commit_message"
       printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
       if [ -n "$slice_handoff_out_dir_pr_body" ]; then
@@ -2199,7 +2306,11 @@ PY
 
   if [ "$slice_handoff_explain" -eq 1 ]; then
     slice_handoff_info "final next=review request"
-    slice_handoff_print_final_summary "dry-run" 0 "review request" "$slice_handoff_out_dir_abs" ""
+    local dry_run_mode="dry-run"
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      dry_run_mode="repair-dry-run"
+    fi
+    slice_handoff_print_final_summary "$dry_run_mode" 0 "review request" "$slice_handoff_out_dir_abs" ""
     slice_handoff_print_review_request_block "$slice_handoff_out_dir_review_request"
   elif [ "$slice_handoff_quiet" -eq 0 ]; then
     printf 'pass\n'

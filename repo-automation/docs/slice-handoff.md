@@ -10,6 +10,8 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
+`--repair` is an explicit existing-PR lane. It requires `handoff_mode: repair`, a positive `repair_of_pr`, `repair_session: resume`, and a safe `codex_session_id`. Repair preflight verifies that the PR is open, its head matches the handoff branch, the local branch already exists, and the worktree is clean. It never creates the repair branch. Codex runs through `codex-run --resume-session-id=<id>`.
+
 `--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. In successful submit mode, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`, and explain mode does not append an unlabeled trailing machine block. The rendered PR REVIEW REQUEST starts with compact Review metadata (`PR`, `Branch`, `Run dir`, `Commit`, `CI`, `Review request valid`) so an operator can paste it directly back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
 `slice-handoff` refuses prompts that would edit the running helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Use the direct Codex lane or the same-branch repair lane when changing `slice-handoff`.
@@ -44,6 +46,7 @@ After Codex completes, `slice-handoff --submit` also captures `repo-automation/b
 | dry-run | `repo-flow-submit-all` | yes | validate PR body and preview submit plan; no execution |
 | execution | `repo-flow-submit-all` | no | preflight -> codex-run -> stop before submit |
 | execution | `repo-flow-submit-all` | yes | preflight -> codex-run -> pr-body-check -> repo-flow submit -> stop before merge |
+| repair execution | `repo-flow-submit-all` | yes | validate repair metadata -> verify existing open PR branch -> resume Codex -> pr-body-check -> replace existing PR body and resubmit/watch -> stop before merge |
 
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
@@ -60,6 +63,7 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 ## Envelope and payloads
 
 - envelope: branch, title, `codex_profile`, `commit_message`, submit mode, watch/timeout fields, and prompt preset identifiers
+- repair envelope additions: `handoff_mode: repair`, `repair_of_pr: <number>`, `repair_session: resume`, and `codex_session_id: <session-id>`
 - payloads: Codex prompt, PR body, and PR-review request
 - `pr_review_prompt_id` selects `.prompts/<id>.md` when no explicit review request is present
 - `slice-handoff` validates payload shape and configured policy, but it does not reinterpret strategy
@@ -116,7 +120,7 @@ It is designed primarily for `slice-handoff`, but it can be called directly for 
 
 It does not validate repo/worktree/execution-environment readiness; that remains `codex-slice-preflight`.
 
-It may grant some capabilities and deny others. Missing optional inputs deny dependent capabilities rather than failing unrelated capabilities. For example, no PR body or submit authorization means `repo_flow_submit=false`, while a valid handoff and Codex prompt can still allow `codex_run=true`. Blocker repair or resume paths may validate a subset such as `codex_run`, `codex_status`, and `repo_flow_submit` without rerunning preflight when the selected mode explicitly supports that flow.
+It may grant some capabilities and deny others. Missing optional inputs deny dependent capabilities rather than failing unrelated capabilities. For example, no PR body or submit authorization means `repo_flow_submit=false`, while a valid handoff and Codex prompt can still allow `codex_run=true`. Repair handoffs validate their required metadata before the conservative repair preflight runs.
 
 The capability manifest is run-scoped, not a single safety byte. A compact example:
 

@@ -90,6 +90,10 @@ smoke_check_slice_validator_contract() {
   local root="$smoke_test_base/slice-validator"
   local valid_none_file="$root/valid-none.md"
   local valid_submit_file="$root/valid-submit.md"
+  local valid_repair_file="$root/valid-repair.md"
+  local missing_repair_pr_file="$root/missing-repair-pr.md"
+  local missing_session_id_file="$root/missing-session-id.md"
+  local unsafe_session_id_file="$root/unsafe-session-id.md"
   local outside_repo_root_file="$smoke_test_base/slice-validator-outside-root/slice-validator-outside-root.md"
   local invalid_schema_file="$root/invalid-schema.md"
   local missing_schema_file="$root/missing-schema.md"
@@ -211,6 +215,22 @@ EOF
 
   smoke_slice_validator_write_handoff "$valid_none_file" "feature/slice-validator-smoke" "Slice validator smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge."
   smoke_slice_validator_write_handoff "$valid_submit_file" "feature/slice-validator-submit" "Slice validator submit smoke" "review" "repo-flow-submit-all" "chore: slice-validator smoke" "Implement the slice and prepare the PR body." "$(cat "$valid_body_file")" "Please review this PR before merge."
+  cp "$valid_submit_file" "$valid_repair_file" || return 1
+  python3 - "$valid_repair_file" <<'PY' || return 1
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+marker = "branch: feature/slice-validator-submit\n"
+repair = marker + "handoff_mode: repair\nrepair_of_pr: 242\nrepair_session: resume\ncodex_session_id: session-242\n"
+path.write_text(text.replace(marker, repair, 1), encoding="utf-8")
+PY
+  cp "$valid_repair_file" "$missing_repair_pr_file" || return 1
+  sed -i '/^repair_of_pr:/d' "$missing_repair_pr_file" || return 1
+  cp "$valid_repair_file" "$missing_session_id_file" || return 1
+  sed -i '/^codex_session_id:/d' "$missing_session_id_file" || return 1
+  cp "$valid_repair_file" "$unsafe_session_id_file" || return 1
+  sed -i 's|^codex_session_id:.*|codex_session_id: ../unsafe id|' "$unsafe_session_id_file" || return 1
   smoke_slice_validator_write_handoff "$outside_repo_root_file" "feature/slice-validator-outside-root" "Slice validator outside repo root" "default" "none" "" "Implement the slice exactly as specified." "" "" "repo-automation-template-pr-review"
 
   cp "$valid_submit_file" "$invalid_schema_file" || return 1
@@ -279,6 +299,44 @@ PY
     test_fail "slice-validator help shows core flags"
     status=1
   fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$valid_repair_file" --repair --submit >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'handoff_mode=repair' "$stdout_file" && grep -Fxq 'repair_of_pr=242' "$stdout_file" && grep -Fxq 'codex_session_id=session-242' "$stdout_file"; then
+    test_pass "slice-validator validates repair metadata"
+  else
+    test_fail "slice-validator validates repair metadata"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$missing_repair_pr_file" --repair >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects missing repair_of_pr"
+    status=1
+  elif grep -Fq 'missing repair_of_pr' "$stderr_file"; then
+    test_pass "slice-validator rejects missing repair_of_pr"
+  else
+    test_fail "slice-validator rejects missing repair_of_pr"
+    status=1
+  fi
+
+  for repair_file in "$missing_session_id_file" "$unsafe_session_id_file"; do
+    if (
+      cd "$smoke_test_dir" || return 1
+      repo-automation/bin/slice-validator --file="$repair_file" --repair >"$stdout_file" 2>"$stderr_file"
+    ); then
+      test_fail "slice-validator rejects missing or unsafe resume session ID"
+      status=1
+    elif grep -Eq '(missing|unsafe) codex_session_id' "$stderr_file"; then
+      test_pass "slice-validator rejects missing or unsafe resume session ID"
+    else
+      test_fail "slice-validator rejects missing or unsafe resume session ID"
+      status=1
+    fi
+  done
 
   if (
     cd "$smoke_test_dir" || return 1

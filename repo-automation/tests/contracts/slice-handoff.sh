@@ -17,19 +17,24 @@ smoke_main_impl() {
 
   smoke_setup_temp_repo || return 1
   cp -- "$smoke_repo_root/repo-automation/bin/slice-handoff" "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+  cp -- "$smoke_repo_root/repo-automation/bin/slice-validator" "$smoke_test_dir/repo-automation/bin/slice-validator" || return 1
+  cp -- "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
   chmod +x "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
-  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/slice-handoff || return 1
+  chmod +x "$smoke_test_dir/repo-automation/bin/slice-validator" "$smoke_test_dir/repo-automation/bin/codex-slice-preflight" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/slice-handoff repo-automation/bin/slice-validator repo-automation/bin/codex-slice-preflight || return 1
 
   smoke_slice_handoff_prepare_contract_context || return 1
 
   smoke_run_named_check "smoke:slice-handoff-contract:failure-excerpt-truncation" smoke_slice_handoff_assert_failure_excerpt_truncation || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:metadata-help" smoke_check_slice_handoff_contract_metadata_and_help || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:dry-run-artifacts" smoke_check_slice_handoff_contract_dry_run_artifacts || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:repair-routing" smoke_check_slice_handoff_contract_repair_routing || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:validation-review" smoke_check_slice_handoff_contract_validation_and_review_request || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:lifecycle-guards" smoke_check_slice_handoff_contract_lifecycle_and_self_modifying || status=1
 
   smoke_slice_handoff_prepare_execution_context || return 1
 
+  smoke_run_named_check "smoke:slice-handoff-contract:repair-execution" smoke_check_slice_handoff_contract_repair_execution || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-none" smoke_check_slice_handoff_contract_execution_none_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-success" smoke_check_slice_handoff_contract_execution_submit_success_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-false-positive" smoke_check_slice_handoff_contract_execution_submit_false_positive_blocker_behavior || status=1
@@ -39,6 +44,96 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:codex-final-blocker-detector" smoke_check_slice_handoff_contract_codex_final_output_blocker_detector || status=1
 
   return "$status"
+}
+
+smoke_check_slice_handoff_contract_repair_execution() {
+  local repair_file="$smoke_test_base/slice-handoff-repair-execution.md"
+  local stdout_file="$smoke_test_base/slice-handoff-repair-execution.out"
+  local stderr_file="$smoke_test_base/slice-handoff-repair-execution.err"
+  local codex_args="$smoke_test_base/slice-handoff-repair-codex.args"
+  local repo_flow_args="$smoke_test_base/slice-handoff-repair-repo-flow.args"
+  local fake_bin="$smoke_test_base/slice-handoff-repair-gh"
+  local branch="feature/slice-handoff-repair"
+
+  cp -- "$smoke_slice_handoff_execution_valid_submit_file" "$repair_file" || return 1
+  python3 - "$repair_file" "$branch" <<'PY' || return 1
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+branch = sys.argv[2]
+text = path.read_text(encoding="utf-8")
+text = text.replace("branch: feature/slice-handoff-submit\n", f"branch: {branch}\nhandoff_mode: repair\nrepair_of_pr: 242\nrepair_session: resume\ncodex_session_id: session-242\n", 1)
+path.write_text(text, encoding="utf-8")
+PY
+  git -C "$smoke_test_dir" branch -D "$branch" >/dev/null 2>&1 || true
+  git -C "$smoke_test_dir" branch "$branch" main || return 1
+  git -C "$smoke_test_dir" checkout main >/dev/null 2>&1 || return 1
+  mkdir -p "$fake_bin" || return 1
+  cat >"$fake_bin/gh" <<EOF
+#!/usr/bin/env bash
+printf '{"number":242,"state":"OPEN","headRefName":"$branch"}\n'
+EOF
+  chmod +x "$fake_bin/gh" || return 1
+
+  if PATH="$fake_bin:$PATH" FAKE_CODEX_RUN_ARGS_FILE="$codex_args" FAKE_REPO_FLOW_ARGS_FILE="$repo_flow_args" \
+    smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" \
+      smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$repair_file" --repair --submit --explain &&
+    grep -Fxq -- '--resume-session-id=session-242' "$codex_args" &&
+    grep -Fxq -- '--replace-body' "$repo_flow_args" &&
+    grep -Fxq 'mode=repair-submit' "$stderr_file" &&
+    grep -Fxq 'repair_of_pr=242' "$stderr_file" &&
+    grep -Fxq 'codex_session_id=session-242' "$stderr_file" &&
+    grep -Fxq 'pushed=false' "$stderr_file" &&
+    python3 - "$stderr_file" <<'PY' &&
+from pathlib import Path
+import sys
+lines = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+summary = lines.index("===== FINAL SUMMARY =====")
+context = lines.index("===== CODEX RUN CONTEXT =====")
+review = lines.index("===== PR REVIEW REQUEST =====")
+review_end = lines.index("===== END PR REVIEW REQUEST =====")
+if not summary < context < review < review_end or review_end != len(lines) - 1:
+    raise SystemExit(1)
+PY
+    [ "$(git -C "$smoke_test_dir" branch --show-current)" = "$branch" ]; then
+    test_pass "slice-handoff repair execution resumes Codex and replaces the existing PR body"
+  else
+    test_fail "slice-handoff repair execution resumes Codex and replaces the existing PR body"
+    return 1
+  fi
+}
+
+smoke_check_slice_handoff_contract_repair_routing() {
+  local repair_file="$smoke_test_base/slice-handoff-repair.md"
+  local repair_out="$smoke_test_base/slice-handoff-repair-out"
+  local stdout_file="$smoke_test_base/slice-handoff-repair.out"
+  local stderr_file="$smoke_test_base/slice-handoff-repair.err"
+
+  cp -- "$smoke_slice_handoff_valid_submit_file" "$repair_file" || return 1
+  python3 - "$repair_file" <<'PY' || return 1
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+marker = "branch: feature/slice-handoff-submit\n"
+metadata = marker + "handoff_mode: repair\nrepair_of_pr: 242\nrepair_session: resume\ncodex_session_id: session-242\n"
+path.write_text(text.replace(marker, metadata, 1), encoding="utf-8")
+PY
+  rm -rf -- "$repair_out" || return 1
+
+  if smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$repair_file" --repair --submit --dry-run --out-dir="$repair_out" --explain &&
+    grep -Fxq -- '- --repair-of-pr=242' "$repair_out/dry-run-preview.txt" &&
+    grep -Fxq -- '- --resume-session-id=session-242' "$repair_out/dry-run-preview.txt" &&
+    grep -Fxq -- '- --replace-body' "$repair_out/dry-run-preview.txt" &&
+    grep -Fxq 'mode=repair-dry-run' "$stderr_file" &&
+    grep -Fxq 'repair_of_pr=242' "$stderr_file" &&
+    grep -Fxq 'codex_session_id=session-242' "$stderr_file" &&
+    grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file"; then
+    test_pass "slice-handoff repair route resumes Codex and replaces the existing PR body"
+  else
+    test_fail "slice-handoff repair route resumes Codex and replaces the existing PR body"
+    return 1
+  fi
 }
 
 smoke_main() {
@@ -64,7 +159,8 @@ smoke_check_slice_handoff_contract_metadata_and_help() {
 
   if (
       smoke_slice_handoff_run "$smoke_test_base/slice-handoff-help.out" "$smoke_test_base/slice-handoff-help.err" --help &&
-      grep -Fxq 'Usage: repo-automation/bin/slice-handoff --file=<path> [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--explain] [--help]' "$smoke_test_base/slice-handoff-help.out" &&
+      grep -Fxq 'Usage: repo-automation/bin/slice-handoff --file=<path> [--repair] [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--explain] [--help]' "$smoke_test_base/slice-handoff-help.out" &&
+      grep -Fq -- '--repair' "$smoke_test_base/slice-handoff-help.out" &&
       grep -Fq -- '--explain' "$smoke_test_base/slice-handoff-help.out" &&
       smoke_slice_handoff_assert_stderr_effectively_empty "$smoke_test_base/slice-handoff-help.err"
   ); then

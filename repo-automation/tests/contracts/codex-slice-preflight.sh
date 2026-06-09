@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # repo-automation/tests/contracts/codex-slice-preflight.sh
+# shellcheck disable=SC2154
 
 set -u
 set -o pipefail
@@ -11,7 +12,76 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/pr-workflow.sh"
 
 smoke_main_impl() {
   smoke_setup_temp_repo || return 1
-  smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json
+  smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || return 1
+  smoke_run_named_check "smoke:preflight-repair" smoke_check_preflight_repair
+}
+
+smoke_check_preflight_repair() {
+  local repo="$smoke_test_base/preflight-repair-repo"
+  local fake_bin="$smoke_test_base/preflight-repair-bin"
+  local output="$smoke_test_base/preflight-repair.json"
+  local missing_output="$smoke_test_base/preflight-repair-missing.json"
+  local mismatch_output="$smoke_test_base/preflight-repair-mismatch.json"
+  local branch="feature/preflight-repair"
+
+  git clone --local --no-hardlinks "$smoke_test_dir" "$repo" >/dev/null 2>&1 || return 1
+  cp -- "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$repo/repo-automation/bin/codex-slice-preflight" || return 1
+  chmod +x "$repo/repo-automation/bin/codex-slice-preflight" || return 1
+  git -C "$repo" update-index --skip-worktree repo-automation/bin/codex-slice-preflight .repo-automation.conf || return 1
+  python3 - "$repo/.repo-automation.conf" <<'PY' || return 1
+from pathlib import Path
+import re
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+path.write_text(re.sub(r'^EXPECTED_REMOTE_URL=.*$', 'EXPECTED_REMOTE_URL=""', text, flags=re.M), encoding="utf-8")
+PY
+  git -C "$repo" switch -c "$branch" >/dev/null 2>&1 || return 1
+  git -C "$repo" checkout main >/dev/null 2>&1 || return 1
+  mkdir -p "$fake_bin" || return 1
+  cat >"$fake_bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '{"number":242,"state":"%s","headRefName":"%s"}\n' "${FAKE_PR_STATE:-OPEN}" "${FAKE_PR_HEAD:-feature/preflight-repair}"
+EOF
+  chmod +x "$fake_bin/gh" || return 1
+
+  if (
+    cd "$repo" || return 1
+    PATH="$fake_bin:$PATH" repo-automation/bin/codex-slice-preflight --branch="$branch" --repair-of-pr=242 --json >"$output"
+  ) && smoke_json_assert "$output" 'data.get("result") == "pass" and data.get("mode") == "repair" and data.get("repair_of_pr") == "242" and data.get("repair_pr_head") == "feature/preflight-repair"' &&
+    [ "$(git -C "$repo" branch --show-current)" = "$branch" ]; then
+    test_pass "repair preflight checks out the existing open PR branch"
+  else
+    test_fail "repair preflight checks out the existing open PR branch"
+    return 1
+  fi
+
+  if (
+    cd "$repo" || return 1
+    git checkout main >/dev/null 2>&1 || return 1
+    PATH="$fake_bin:$PATH" FAKE_PR_HEAD=feature/missing repo-automation/bin/codex-slice-preflight --branch=feature/missing --repair-of-pr=242 --json >"$missing_output"
+  ); then
+    test_fail "repair preflight refuses to create a missing branch"
+    return 1
+  elif git -C "$repo" show-ref --verify --quiet refs/heads/feature/missing; then
+    test_fail "repair preflight refuses to create a missing branch"
+    return 1
+  else
+    test_pass "repair preflight refuses to create a missing branch"
+  fi
+
+  if (
+    cd "$repo" || return 1
+    PATH="$fake_bin:$PATH" FAKE_PR_HEAD=feature/other repo-automation/bin/codex-slice-preflight --branch="$branch" --repair-of-pr=242 --json >"$mismatch_output"
+  ); then
+    test_fail "repair preflight rejects PR branch mismatch"
+    return 1
+  elif smoke_json_assert "$mismatch_output" 'data.get("result") == "fail" and "mismatch" in data.get("stop_reason", "")'; then
+    test_pass "repair preflight rejects PR branch mismatch"
+  else
+    test_fail "repair preflight rejects PR branch mismatch"
+    return 1
+  fi
 }
 
 smoke_main() {
