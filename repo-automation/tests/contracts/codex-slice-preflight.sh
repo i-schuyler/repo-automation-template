@@ -30,6 +30,8 @@ smoke_check_preflight_repair() {
   local diverged_branch="feature/preflight-repair-diverged"
 
   git clone --local --no-hardlinks "$smoke_test_dir" "$repo" >/dev/null 2>&1 || return 1
+  git -C "$repo" config user.name "repo-automation-test" || return 1
+  git -C "$repo" config user.email "repo-automation-test@example.com" || return 1
   cp -- "$smoke_repo_root/repo-automation/bin/codex-slice-preflight" "$repo/repo-automation/bin/codex-slice-preflight" || return 1
   chmod +x "$repo/repo-automation/bin/codex-slice-preflight" || return 1
   git -C "$repo" update-index --skip-worktree repo-automation/bin/codex-slice-preflight .repo-automation.conf || return 1

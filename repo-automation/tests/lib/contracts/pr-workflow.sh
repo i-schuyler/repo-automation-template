@@ -1406,6 +1406,7 @@ smoke_check_preflight_json() {
   local preflight_json_explain_stderr="$smoke_test_dir/preflight-json-explain.err"
   local preflight_wrapper_json="$smoke_test_base/preflight-wrapper.json"
   local preflight_wrapper_stderr="$smoke_test_base/preflight-wrapper.stderr"
+  local preflight_wrapper_failure=""
   local preflight_help="$smoke_test_dir/preflight-help.txt"
   local finish_stderr="$smoke_test_dir/pr-finish-stderr.log"
   local branch_format_stderr="$smoke_test_dir/preflight-branch-format.stderr"
@@ -1607,7 +1608,25 @@ EOF
     ) && [ ! -s "$preflight_wrapper_stderr" ] && python3 -m json.tool "$preflight_wrapper_json" >/dev/null && smoke_json_assert "$preflight_wrapper_json" 'data.get("script") == "codex-slice-preflight" and data.get("mode") == "json" and data.get("status") == "pass"'; then
       test_pass "preflight wrapper json is valid and quiet"
     else
-      test_fail "preflight wrapper json is valid and quiet"
+      if [ -s "$preflight_wrapper_stderr" ]; then
+        preflight_wrapper_failure="stderr=$(head -n 3 "$preflight_wrapper_stderr" | tr '\n' ' ')"
+      elif python3 -m json.tool "$preflight_wrapper_json" >/dev/null 2>&1; then
+        preflight_wrapper_failure="$(
+          python3 - "$preflight_wrapper_json" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+print(f"status={data.get('status', 'missing')} step={data.get('step', 'missing')} reason={data.get('reason', 'missing')}")
+PY
+        )"
+      elif [ -s "$preflight_wrapper_json" ]; then
+        preflight_wrapper_failure="stdout=$(head -n 3 "$preflight_wrapper_json" | tr '\n' ' ')"
+      else
+        preflight_wrapper_failure="stdout was empty"
+      fi
+      test_fail "preflight wrapper json is valid and quiet: $preflight_wrapper_failure"
       status=1
     fi
   fi
