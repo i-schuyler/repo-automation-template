@@ -1968,7 +1968,7 @@ if 'INFO: slice-handoff repo-flow submit' not in lines:
     raise SystemExit(1)
 if 'INFO: slice-handoff ' 'PR-body validation' in lines:
     raise SystemExit(1)
-if 'INFO: slice-handoff   PR-body validation' not in lines:
+if '  PR-body validation: pass' not in lines:
     raise SystemExit(1)
 
 expected_prefix = [

@@ -10,7 +10,7 @@ The non-executing mode is `--dry-run`.
 
 `--submit` is a bare authorization flag for the submit trust boundary. It only has effect when the handoff envelope sets `submit_mode: repo-flow-submit-all`.
 
-`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. In successful submit mode, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`, and explain mode does not append an unlabeled trailing machine block. The rendered PR REVIEW REQUEST starts with compact Review metadata so an operator can paste it directly back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
+`--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. In successful submit mode, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`, and explain mode does not append an unlabeled trailing machine block. The rendered PR REVIEW REQUEST starts with compact Review metadata (`PR`, `Branch`, `Run dir`, `Commit`, `CI`, `Review request valid`) so an operator can paste it directly back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
 `slice-handoff` refuses prompts that would edit the running helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Use the direct Codex lane or the same-branch repair lane when changing `slice-handoff`.
 

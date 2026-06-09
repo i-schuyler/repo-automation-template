@@ -1682,7 +1682,6 @@ slice_handoff_run_execution_phase() {
   fi
 
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
-    slice_handoff_info "  PR-body validation"
     pr_body_check_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stdout")" || return 1
     pr_body_check_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stderr")" || {
       rm -f -- "$pr_body_check_stdout_tmp" >/dev/null 2>&1 || true
@@ -1719,6 +1718,9 @@ slice_handoff_run_execution_phase() {
       return 1
     fi
 
+    if [ "$slice_handoff_explain" -eq 1 ]; then
+      printf '  PR-body validation: pass\n' >&2
+    fi
     slice_handoff_info "repo-flow submit"
     repo_flow_submit_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-repo-flow-submit.XXXXXX.stdout")" || return 1
     repo_flow_submit_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-repo-flow-submit.XXXXXX.stderr")" || {
