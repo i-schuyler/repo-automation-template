@@ -416,8 +416,10 @@ preflight_print_json() {
   printf '"result":"%s",' "$(preflight_json_escape "$result_value")"
   printf '"branch":"%s",' "$(preflight_json_escape "$branch")"
   printf '"mode":"%s",' "$(preflight_json_escape "$preflight_mode")"
-  printf '"repair_of_pr":%s,' "$(preflight_json_string_or_null "$preflight_repair_of_pr")"
-  printf '"repair_pr_head":%s,' "$(preflight_json_string_or_null "$preflight_repair_pr_head")"
+  if [ "$preflight_mode" = "repair" ]; then
+    printf '"repair_of_pr":%s,' "$(preflight_json_string_or_null "$preflight_repair_of_pr")"
+    printf '"repair_pr_head":%s,' "$(preflight_json_string_or_null "$preflight_repair_pr_head")"
+  fi
   printf '"rc":%s,' "$exit_code"
   printf '"disk":"%s",' "$(preflight_json_escape "$disk_value")"
   printf '"default_branch":"%s",' "$(preflight_json_escape "$default_branch")"

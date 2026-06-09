@@ -24,6 +24,7 @@ smoke_check_preflight_repair() {
   local mismatch_output="$smoke_test_base/preflight-repair-mismatch.json"
   local behind_output="$smoke_test_base/preflight-repair-behind.json"
   local diverged_output="$smoke_test_base/preflight-repair-diverged.json"
+  local non_repair_output="$smoke_test_base/preflight-non-repair.json"
   local branch="feature/preflight-repair"
   local behind_branch="feature/preflight-repair-behind"
   local diverged_branch="feature/preflight-repair-diverged"
@@ -51,6 +52,17 @@ PY
 printf '{"number":242,"state":"%s","headRefName":"%s"}\n' "${FAKE_PR_STATE:-OPEN}" "${FAKE_PR_HEAD:-feature/preflight-repair}"
 EOF
   chmod +x "$fake_bin/gh" || return 1
+
+  if (
+    cd "$repo" || return 1
+    repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-non-repair --json >"$non_repair_output"
+  ) && python3 -m json.tool "$non_repair_output" >/dev/null &&
+    smoke_json_assert "$non_repair_output" 'data.get("result") == "pass" and data.get("mode") == "check-only" and "repair_of_pr" not in data and "repair_pr_head" not in data'; then
+    test_pass "non-repair preflight JSON omits repair-only fields"
+  else
+    test_fail "non-repair preflight JSON omits repair-only fields"
+    return 1
+  fi
 
   if (
     cd "$repo" || return 1

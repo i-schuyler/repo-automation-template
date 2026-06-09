@@ -14,7 +14,7 @@ The explain summary also prints human-friendly `disk_free`, `disk_threshold`, `d
 `--check-only` validates config, remote expectations, current worktree status, and branch-cleanup planning without checking out or creating the requested branch.
 If the requested local branch already exists, it checks that branch’s divergence from `<remote>/<default>` without switching to it.
 It stops when that existing requested branch is behind or diverged, matching normal preflight safety behavior.
-Use `--json` for machine-readable cleanup and branch diagnostics; it emits JSON only on stdout.
+Use `--json` for machine-readable cleanup and branch diagnostics; it emits JSON only on stdout. Repair-only fields such as `repair_of_pr` and `repair_pr_head` are emitted only when `--repair-of-pr` selects repair mode.
 Use `--explain` for the detailed operator-facing preflight report; default success is compact `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
 
