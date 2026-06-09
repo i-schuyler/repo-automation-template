@@ -68,6 +68,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-06-09 / repo-flow submit diagnostics polish / ids=none / score_delta=0 / signal=compact unrequested-change excerpts now carry a short fix hint before FINAL SUMMARY, with no submit-semantic changes
 - 2026-06-09 / PR #241 / codex-run resume-session adapter repair / ids=codex-run-resume-final-output-contract / score_delta=+3 / signal=resume mode now uses `codex exec resume` file-backed final output, preserves cd/sandbox/profile forwarding, and fails explicitly when the final artifact is absent
 - 2026-06-08 / feature/slice-handoff-operator-output-context / ids=slice-handoff-contract-opacity|codex-status-recent-fixture-isolation / score_delta=+1 / signal=child-boundary diagnostics now use labeled details and required CODEX RUN CONTEXT, and submit-mode smoke now uses a repo-local recent-status fake to keep ChatGPT re-entry data stable
 - 2026-06-06 / PR #232 / ci-log-dump output-contract baseline / ids=none / score_delta=0 / signal=focused output-mode conflict, json, quiet, and artifact-path coverage landed without material friction; canonical JSON cleanup removed the legacy compatibility path across ci-log-dump, ci-status, and ci-watch
