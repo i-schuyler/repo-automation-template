@@ -243,6 +243,10 @@ pr_body_check_main() {
       pr_body_check_fail "incompatible flag combination: --print-template and --body-file" "use --print-template by itself or validate a body file with --body-file=<path>"
       return 1
     fi
+    if [ "$pr_body_check_quiet" -eq 1 ] || [ "$pr_body_check_json" -eq 1 ]; then
+      pr_body_check_fail "incompatible flag combination: --print-template and output mode flags" "use --print-template by itself"
+      return 1
+    fi
     pr_body_check_print_template_body
     return 0
   fi

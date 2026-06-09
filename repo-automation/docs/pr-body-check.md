@@ -19,9 +19,9 @@ It also requires a regular readable file and rejects directories, missing files,
 
 Value flags use `--body-file=<path>` syntax. `--body-file <path>` is rejected.
 
-Default success output is `pass`. `--quiet` makes success silent. Quiet failures use the repo-wide Quiet Diagnostic Envelope v1. `--json` is supported and returns detailed machine output.
+Default success output is `pass` on stdout. Default failure prints `fail:` and `fix:` lines on stderr and leaves stdout empty. `--quiet` makes success silent and keeps failures on stderr in the repo-wide Quiet Diagnostic Envelope v1. `--json` writes a single JSON object on stdout, keeps stdout valid JSON only, and leaves stderr empty unless the process crashes or flag parsing fails before helper payload rendering.
 
-`--json` uses `schema=repo-automation-helper-output/v1`, `result=pass|fail`, `script=pr-body-check`, and `mode=json`. JSON failures include `code`, `step`, `reason`, `fix`, and `path` when the body file matters.
+`--json` uses `schema=repo-automation-helper-output/v1`, `result=pass|fail`, `script=pr-body-check`, and `mode=json`. JSON failures include `code`, `step`, `reason`, `fix`, and `path` when the body file matters. Output modes are mutually exclusive: `--quiet --json` and `--print-template` combined with `--quiet` or `--json` are rejected.
 
 Usage examples:
 
