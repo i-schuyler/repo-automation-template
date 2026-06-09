@@ -1,13 +1,15 @@
 # Codex Run
 
-`repo-automation/bin/codex-run` is the public adapter around `codex exec`.
+`repo-automation/bin/codex-run` is the public adapter around `codex exec` and safe `codex resume` session re-entry.
 
 ## What it does
 
 - reads a prompt file
-- runs `codex exec` with argv construction, not shell eval
+- runs `codex exec` by default, or `codex resume --include-non-interactive <session-id> <prompt>` when `--resume-session-id=<id>` is set
+- uses argv construction, not shell eval
 - writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, `codex-final-output-block.txt`, and `codex-run-summary.txt` into the requested out-dir
 - supports `--quiet` and `--explain`
+- records `resume_mode=fresh` or `resume_mode=resume` in `codex-run-summary.txt`
 - does not pass an approval-policy flag to `codex exec`; it relies on the selected sandbox mode and avoids dangerous bypass flags
 - does not implement `--json` in this slice
 
