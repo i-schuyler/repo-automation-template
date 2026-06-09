@@ -22,6 +22,7 @@ smoke_main_impl() {
 
   smoke_slice_handoff_prepare_contract_context || return 1
 
+  smoke_run_named_check "smoke:slice-handoff-contract:failure-excerpt-truncation" smoke_slice_handoff_assert_failure_excerpt_truncation || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:metadata-help" smoke_check_slice_handoff_contract_metadata_and_help || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:dry-run-artifacts" smoke_check_slice_handoff_contract_dry_run_artifacts || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:validation-review" smoke_check_slice_handoff_contract_validation_and_review_request || status=1

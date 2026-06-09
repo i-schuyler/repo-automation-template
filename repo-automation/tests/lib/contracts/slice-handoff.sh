@@ -995,13 +995,49 @@ smoke_slice_handoff_assert_error_shape() {
 smoke_slice_handoff_failure_excerpt() {
   local file="$1"
   local max_lines="${2:-6}"
+  local max_chars="${3:-240}"
+  local line=""
+  local line_count=0
+  local suffix='... [truncated]'
 
   [ -f "$file" ] || return 0
-  awk -v max_lines="$max_lines" '
-    NF == 0 { next }
-    { print; count += 1 }
-    count >= max_lines { exit }
-  ' "$file"
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    line_count=$((line_count + 1))
+    if [ "$line_count" -gt "$max_lines" ]; then
+      break
+    fi
+    if [ "${#line}" -gt "$max_chars" ]; then
+      printf '%s%s\n' "${line:0:max_chars}" "$suffix"
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$file"
+}
+
+smoke_slice_handoff_assert_failure_excerpt_truncation() {
+  local excerpt_file="$smoke_test_base/slice-handoff-excerpt-truncation.txt"
+  local output_file="$smoke_test_base/slice-handoff-excerpt-truncation.out"
+  local actual=""
+
+  cat > "$excerpt_file" <<'EOF'
+
+short line one
+this is an intentionally long line that should be truncated because it exceeds the default excerpt width and needs a visible suffix for reviewability in phone-friendly output and keeps going well past the compact excerpt limit with extra repeated text to guarantee truncation in the focused helper assertion
+short line two
+EOF
+
+  actual="$(smoke_slice_handoff_failure_excerpt "$excerpt_file")" || return 1
+  printf '%s\n' "$actual" > "$output_file" || return 1
+  if [ "$(wc -l < "$output_file" | tr -d '[:space:]')" = "3" ] &&
+    grep -Fq '... [truncated]' "$output_file" &&
+    awk 'length($0) > 255 { exit 1 }' "$output_file"; then
+    test_pass "slice-handoff failure excerpt truncates long lines"
+  else
+    test_fail "slice-handoff failure excerpt truncates long lines"
+    printf '%s\n' "$actual" >&2
+    return 1
+  fi
 }
 
 smoke_slice_handoff_assert_child_failure_shape() {
