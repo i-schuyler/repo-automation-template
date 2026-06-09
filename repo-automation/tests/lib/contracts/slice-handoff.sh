@@ -919,7 +919,7 @@ EOF
     if [ ! -d "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" ]; then
       printf 'fail: slice-handoff dirty-preflight run dir root missing: %s\n' "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" >&2
       printf 'fix: ensure slice-handoff creates the run-dir root before preflight failure handling\n' >&2
-      test_fail "dirty-preflight-run-dir"
+      test_fail "dirty-preflight-run-dir: missing $dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs"
       status=1
     else
       run_dir="$(smoke_slice_handoff_latest_run_dir "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "dirty-preflight")" || return 1
@@ -990,6 +990,54 @@ smoke_slice_handoff_assert_error_shape() {
   fi
   rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
   return 1
+}
+
+smoke_slice_handoff_failure_excerpt() {
+  local file="$1"
+  local max_lines="${2:-6}"
+  local max_chars="${3:-240}"
+  local line=""
+  local line_count=0
+  local suffix='... [truncated]'
+
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    line_count=$((line_count + 1))
+    if [ "$line_count" -gt "$max_lines" ]; then
+      break
+    fi
+    if [ "${#line}" -gt "$max_chars" ]; then
+      printf '%s%s\n' "${line:0:max_chars}" "$suffix"
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$file"
+}
+
+smoke_slice_handoff_assert_failure_excerpt_truncation() {
+  local excerpt_file="$smoke_test_base/slice-handoff-excerpt-truncation.txt"
+  local output_file="$smoke_test_base/slice-handoff-excerpt-truncation.out"
+  local actual=""
+
+  cat > "$excerpt_file" <<'EOF'
+
+short line one
+this is an intentionally long line that should be truncated because it exceeds the default excerpt width and needs a visible suffix for reviewability in phone-friendly output and keeps going well past the compact excerpt limit with extra repeated text to guarantee truncation in the focused helper assertion
+short line two
+EOF
+
+  actual="$(smoke_slice_handoff_failure_excerpt "$excerpt_file")" || return 1
+  printf '%s\n' "$actual" > "$output_file" || return 1
+  if [ "$(wc -l < "$output_file" | tr -d '[:space:]')" = "3" ] &&
+    grep -Fq '... [truncated]' "$output_file" &&
+    awk 'length($0) > 255 { exit 1 }' "$output_file"; then
+    test_pass "slice-handoff failure excerpt truncates long lines"
+  else
+    test_fail "slice-handoff failure excerpt truncates long lines"
+    printf '%s\n' "$actual" >&2
+    return 1
+  fi
 }
 
 smoke_slice_handoff_assert_child_failure_shape() {
@@ -2228,7 +2276,8 @@ smoke_slice_handoff_expect_failure() {
     return 0
   fi
 
-  test_fail "$label"
+  test_fail "$label: expected fail: $reason"
+  smoke_slice_handoff_failure_excerpt "$stderr_file" >&2
   return 1
 }
 
@@ -2250,7 +2299,8 @@ smoke_slice_handoff_expect_validator_failure() {
     return 0
   fi
 
-  test_fail "$label"
+  test_fail "$label: expected validator failure: $reason"
+  smoke_slice_handoff_failure_excerpt "$stderr_file" >&2
   return 1
 }
 
@@ -2274,7 +2324,9 @@ smoke_slice_handoff_expect_success() {
     rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
   fi
 
-  test_fail "$label"
+  test_fail "$label: unexpected success or stdout/stderr mismatch"
+  smoke_slice_handoff_failure_excerpt "$stdout_file" >&2
+  smoke_slice_handoff_failure_excerpt "$stderr_file" >&2
   return 1
 }
 
