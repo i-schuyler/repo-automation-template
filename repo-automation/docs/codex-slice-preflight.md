@@ -4,7 +4,7 @@
 
 The script requires `--branch=<name>`. It validates branch safety and rejects the default branch.
 
-`--repair-of-pr=<number>` selects the conservative repair lane. It requires `gh`, verifies that the PR exists and is open, verifies that its head equals `--branch`, checks out that already-existing local branch, and requires a clean worktree. It fails rather than creating a missing branch and does not reset, overwrite, or trash repair work.
+`--repair-of-pr=<number>` selects the conservative repair lane. It requires `gh`, verifies that the PR exists and is open, verifies that its head equals `--branch`, checks out that already-existing local branch, and requires a clean worktree. Ahead-only repair branches are allowed; behind or diverged repair branches stop until they are rebased or refreshed. It fails rather than creating a missing branch and does not reset, overwrite, or trash repair work.
 
 Preflight requires valid config. Invalid config, secret-scan failure, or config source failure stops execution.
 

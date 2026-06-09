@@ -792,7 +792,23 @@ EOF
       preflight_stop "working tree is dirty before repair begins"
       command_status=1
     fi
-    divergence="$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null || printf 'unknown')"
+    divergence="$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null)" || {
+      preflight_stop "failed to compute repair branch divergence"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    behind_count=$(printf '%s' "$divergence" | awk '{print $1}')
+    ahead_count=$(printf '%s' "$divergence" | awk '{print $2}')
+
+    if [ "${behind_count:-0}" -gt 0 ] && [ "${ahead_count:-0}" -gt 0 ]; then
+      preflight_stop "repair branch diverged from $remote_name/$default_branch: $divergence"
+      command_status=1
+    elif [ "${behind_count:-0}" -gt 0 ]; then
+      preflight_stop "repair branch is behind $remote_name/$default_branch: $divergence; rebase or refresh before repair"
+      command_status=1
+    fi
   fi
 
   if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 1 ]; then
