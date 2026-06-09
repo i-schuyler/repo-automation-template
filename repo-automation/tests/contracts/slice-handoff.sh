@@ -107,7 +107,7 @@ smoke_check_slice_handoff_contract_dry_run_artifacts() {
   ); then
     :
   else
-    test_fail "out-dir-none artifacts"
+    test_fail "out-dir-none artifacts: expected dry-run files under $smoke_slice_handoff_valid_none_out_dir"
     status=1
   fi
 
@@ -122,7 +122,7 @@ smoke_check_slice_handoff_contract_dry_run_artifacts() {
   ); then
     :
   else
-    test_fail "out-dir-submit artifacts"
+    test_fail "out-dir-submit artifacts: expected submit files under $smoke_slice_handoff_valid_submit_out_dir"
     status=1
   fi
 
@@ -136,7 +136,7 @@ smoke_check_slice_handoff_contract_dry_run_artifacts() {
   ); then
     :
   else
-    test_fail "out-dir-preset artifacts"
+    test_fail "out-dir-preset artifacts: expected preset review-request artifacts under $smoke_slice_handoff_valid_preset_out_dir"
     status=1
   fi
 
@@ -179,7 +179,7 @@ EOF
   ); then
     :
   else
-    test_fail "out-dir-submit-invalid-pr-body artifacts"
+    test_fail "out-dir-submit-invalid-pr-body artifacts: expected validation-manifest and no pr-body output under $invalid_out_dir"
     status=1
   fi
 

@@ -919,7 +919,7 @@ EOF
     if [ ! -d "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" ]; then
       printf 'fail: slice-handoff dirty-preflight run dir root missing: %s\n' "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" >&2
       printf 'fix: ensure slice-handoff creates the run-dir root before preflight failure handling\n' >&2
-      test_fail "dirty-preflight-run-dir"
+      test_fail "dirty-preflight-run-dir: missing $dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs"
       status=1
     else
       run_dir="$(smoke_slice_handoff_latest_run_dir "$dirty_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "dirty-preflight")" || return 1
@@ -990,6 +990,18 @@ smoke_slice_handoff_assert_error_shape() {
   fi
   rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
   return 1
+}
+
+smoke_slice_handoff_failure_excerpt() {
+  local file="$1"
+  local max_lines="${2:-6}"
+
+  [ -f "$file" ] || return 0
+  awk -v max_lines="$max_lines" '
+    NF == 0 { next }
+    { print; count += 1 }
+    count >= max_lines { exit }
+  ' "$file"
 }
 
 smoke_slice_handoff_assert_child_failure_shape() {
@@ -2228,7 +2240,8 @@ smoke_slice_handoff_expect_failure() {
     return 0
   fi
 
-  test_fail "$label"
+  test_fail "$label: expected fail: $reason"
+  smoke_slice_handoff_failure_excerpt "$stderr_file" >&2
   return 1
 }
 
@@ -2250,7 +2263,8 @@ smoke_slice_handoff_expect_validator_failure() {
     return 0
   fi
 
-  test_fail "$label"
+  test_fail "$label: expected validator failure: $reason"
+  smoke_slice_handoff_failure_excerpt "$stderr_file" >&2
   return 1
 }
 
@@ -2274,7 +2288,9 @@ smoke_slice_handoff_expect_success() {
     rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
   fi
 
-  test_fail "$label"
+  test_fail "$label: unexpected success or stdout/stderr mismatch"
+  smoke_slice_handoff_failure_excerpt "$stdout_file" >&2
+  smoke_slice_handoff_failure_excerpt "$stderr_file" >&2
   return 1
 }
 
