@@ -15,6 +15,8 @@ preflight_json=0
 preflight_explain=0
 preflight_stop_reason=""
 preflight_mode="run"
+preflight_repair_of_pr=""
+preflight_repair_pr_head=""
 preflight_disk_guard_low_bytes=1610612736
 preflight_disk_status="skip"
 preflight_disk_guard_used_percent=""
@@ -30,7 +32,7 @@ preflight_cleanup_free_before_bytes=""
 preflight_cleanup_free_after_bytes=""
 
 preflight_usage() {
-  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--check-only] [--delete-safe-stale] [--clean-test-cache] [--preserve-path=<path>] [--json] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--repair-of-pr=<number>] [--check-only] [--delete-safe-stale] [--clean-test-cache] [--preserve-path=<path>] [--json] [--explain] [--help]\n'
 }
 
 preflight_flag_error() {
@@ -414,6 +416,10 @@ preflight_print_json() {
   printf '"result":"%s",' "$(preflight_json_escape "$result_value")"
   printf '"branch":"%s",' "$(preflight_json_escape "$branch")"
   printf '"mode":"%s",' "$(preflight_json_escape "$preflight_mode")"
+  if [ "$preflight_mode" = "repair" ]; then
+    printf '"repair_of_pr":%s,' "$(preflight_json_string_or_null "$preflight_repair_of_pr")"
+    printf '"repair_pr_head":%s,' "$(preflight_json_string_or_null "$preflight_repair_pr_head")"
+  fi
   printf '"rc":%s,' "$exit_code"
   printf '"disk":"%s",' "$(preflight_json_escape "$disk_value")"
   printf '"default_branch":"%s",' "$(preflight_json_escape "$default_branch")"
@@ -457,6 +463,9 @@ preflight_main() {
   local branch_flag_seen=0
   local branch_value_set=0
   local check_only=0
+  local repair_mode=0
+  local repair_pr_json=""
+  local repair_pr_state=""
   local delete_safe_stale=0
   local clean_test_cache=0
   local preserve_path=""
@@ -514,6 +523,20 @@ preflight_main() {
       --check-only)
         check_only=1
         preflight_mode="check-only"
+        ;;
+      --repair-of-pr=)
+        preflight_flag_error "empty flag value" "--repair-of-pr" "use --repair-of-pr=<number>" || command_status=1
+        ;;
+      --repair-of-pr=*)
+        preflight_repair_of_pr="${arg#--repair-of-pr=}"
+        repair_mode=1
+        preflight_mode="repair"
+        if ! preflight_is_non_negative_integer "$preflight_repair_of_pr" || [ "$preflight_repair_of_pr" -eq 0 ]; then
+          preflight_flag_error "invalid flag value" "--repair-of-pr" "use a positive PR number" || command_status=1
+        fi
+        ;;
+      --repair-of-pr)
+        preflight_flag_error "missing flag value" "--repair-of-pr" "use --repair-of-pr=<number>" || command_status=1
         ;;
       --delete-safe-stale)
         delete_safe_stale=1
@@ -702,7 +725,7 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ]; then
     if [ "$active_cleanup_mode" = "apply" ]; then
       cleanup_json=$("$repo_root/repo-automation/bin/branch-cleanup" --json --apply 2>/dev/null) || {
         preflight_stop "branch-cleanup failed in apply mode"
@@ -716,7 +739,81 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 1 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    repo_auto_require_command gh || {
+      preflight_stop "gh is required for repair preflight"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    repair_pr_json="$(gh pr view "$preflight_repair_of_pr" --json number,state,headRefName 2>/dev/null)" || {
+      preflight_stop "repair PR #$preflight_repair_of_pr does not exist or is not accessible"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    read -r repair_pr_state preflight_repair_pr_head <<EOF
+$(python3 - "$repair_pr_json" <<'PY'
+import json
+import sys
+
+data = json.loads(sys.argv[1])
+print(data.get("state", ""), data.get("headRefName", ""))
+PY
+)
+EOF
+    if [ "$repair_pr_state" != "OPEN" ]; then
+      preflight_stop "repair PR #$preflight_repair_of_pr is not open"
+      command_status=1
+    elif [ "$preflight_repair_pr_head" != "$requested_branch" ]; then
+      preflight_stop "repair PR #$preflight_repair_of_pr head branch mismatch: expected $requested_branch, got $preflight_repair_pr_head"
+      command_status=1
+    elif ! preflight_branch_exists_local "$requested_branch"; then
+      preflight_stop "repair branch does not exist locally; refusing to create branch: $requested_branch"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    branch_preexists=1
+    git checkout "$requested_branch" >/dev/null 2>&1 || {
+      preflight_stop "failed to checkout existing repair branch: $requested_branch"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || {
+      preflight_stop "failed to determine current repair branch"
+      command_status=1
+    }
+    worktree_status="$(git status --porcelain)"
+    if [ -n "$worktree_status" ]; then
+      preflight_stop "working tree is dirty before repair begins"
+      command_status=1
+    fi
+    divergence="$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null)" || {
+      preflight_stop "failed to compute repair branch divergence"
+      command_status=1
+    }
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 1 ]; then
+    behind_count=$(printf '%s' "$divergence" | awk '{print $1}')
+    ahead_count=$(printf '%s' "$divergence" | awk '{print $2}')
+
+    if [ "${behind_count:-0}" -gt 0 ] && [ "${ahead_count:-0}" -gt 0 ]; then
+      preflight_stop "repair branch diverged from $remote_name/$default_branch: $divergence"
+      command_status=1
+    elif [ "${behind_count:-0}" -gt 0 ]; then
+      preflight_stop "repair branch is behind $remote_name/$default_branch: $divergence; rebase or refresh before repair"
+      command_status=1
+    fi
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 1 ]; then
     current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || current_branch=""
     divergence_target="HEAD"
     if preflight_branch_exists_local "$requested_branch"; then
@@ -741,35 +838,35 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     git checkout "$default_branch" >/dev/null 2>&1 || {
       preflight_stop "failed to checkout $default_branch"
       command_status=1
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     git pull --ff-only >/dev/null || {
       preflight_stop "git pull --ff-only failed on $default_branch"
       command_status=1
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     git remote prune "$remote_name" >/dev/null || {
       preflight_stop "git remote prune failed for $remote_name"
       command_status=1
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     git fetch "$remote_name" --prune >/dev/null || {
       preflight_stop "git fetch --prune failed for $remote_name"
       command_status=1
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     if command -v gh >/dev/null 2>&1; then
       gh pr list --state open --json number,title,headRefName,baseRefName,isDraft,mergeable,statusCheckRollup >/dev/null 2>&1 || {
         preflight_warn "gh is available but open PR listing failed"
@@ -779,7 +876,7 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     if preflight_branch_exists_local "$requested_branch"; then
       branch_preexists=1
       git checkout "$requested_branch" >/dev/null 2>&1 || {
@@ -794,19 +891,19 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || {
       preflight_stop "failed to determine current branch after checkout"
       command_status=1
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$current_branch" = "$default_branch" ]; then
     preflight_stop "current branch is still default branch after preflight"
     command_status=1
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$preflight_require_clean" = "true" ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ] && [ "$preflight_require_clean" = "true" ]; then
     worktree_status=$(git status --porcelain)
     if [ -n "$worktree_status" ]; then
       preflight_stop "working tree is dirty before edits begin"
@@ -814,14 +911,14 @@ preflight_main() {
     fi
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     divergence=$(git rev-list --left-right --count "$remote_name/$default_branch...HEAD" 2>/dev/null) || {
       preflight_stop "failed to compute branch divergence"
       command_status=1
     }
   fi
 
-  if [ "$command_status" -eq 0 ] && [ "$check_only" -eq 0 ]; then
+  if [ "$command_status" -eq 0 ] && [ "$repair_mode" -eq 0 ] && [ "$check_only" -eq 0 ]; then
     behind_count=$(printf '%s' "$divergence" | awk '{print $1}')
     ahead_count=$(printf '%s' "$divergence" | awk '{print $2}')
 
@@ -883,6 +980,9 @@ preflight_main() {
     summary_lines+=("disk_threshold_bytes=$preflight_disk_guard_low_bytes")
     if [ -n "${default_branch:-}" ]; then
       summary_lines+=("default_branch=$default_branch")
+    fi
+    if [ "$repair_mode" -eq 1 ]; then
+      summary_lines+=("repair_of_pr=$preflight_repair_of_pr" "repair_pr_head=$preflight_repair_pr_head")
     fi
     if [ "$command_status" -eq 0 ] || [ -n "${branch_before:-}" ]; then
       if [ -n "${branch_before:-}" ]; then

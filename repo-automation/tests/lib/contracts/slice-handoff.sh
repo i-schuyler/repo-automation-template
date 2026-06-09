@@ -438,9 +438,14 @@ stdout_text="${FAKE_CODEX_RUN_STDOUT_TEXT:-pass}"
 stderr_text="${FAKE_CODEX_RUN_STDERR_TEXT:-}"
 exit_code="${FAKE_CODEX_RUN_EXIT_CODE:-0}"
 skip_final_output="${FAKE_CODEX_RUN_SKIP_FINAL_OUTPUT:-0}"
+args_file="${FAKE_CODEX_RUN_ARGS_FILE:-}"
 final_text=""
 out_dir=""
 prev=""
+
+if [ -n "$args_file" ]; then
+  printf '%s\n' "$@" >"$args_file"
+fi
 
 for arg in "$@"; do
   if [ -n "$prev" ]; then
@@ -1968,7 +1973,7 @@ if 'INFO: slice-handoff repo-flow submit' not in lines:
     raise SystemExit(1)
 if 'INFO: slice-handoff ' 'PR-body validation' in lines:
     raise SystemExit(1)
-if 'INFO: slice-handoff   PR-body validation' not in lines:
+if '  PR-body validation: pass' not in lines:
     raise SystemExit(1)
 
 expected_prefix = [

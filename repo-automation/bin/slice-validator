@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-HELP = """Usage: repo-automation/bin/slice-validator --file=<path> [--artifact-dir=<path>] [--manifest-out=<path>] [--submit] [--quiet] [--json] [--help]
+HELP = """Usage: repo-automation/bin/slice-validator --file=<path> [--repair] [--artifact-dir=<path>] [--manifest-out=<path>] [--submit] [--quiet] [--json] [--help]
 
 Validate a repo-automation-slice-handoff/v1 file and emit a run-scoped capability manifest.
+Repair validation requires handoff_mode: repair, repair_of_pr, repair_session: resume, and a safe codex_session_id.
 """
 
 OUTPUT_SCHEMA = "repo-automation-helper-output/v1"
@@ -80,6 +81,10 @@ class ValidationState:
     codex_profile: str = ""
     submit_mode: str = ""
     commit_message: str = ""
+    handoff_mode: str = "implementation"
+    repair_of_pr: str = ""
+    repair_session: str = ""
+    codex_session_id: str = ""
     prompt_text: str = ""
     prompt_path: Path = Path()
     body_text: str = ""
@@ -104,6 +109,7 @@ def parse_args(argv: list[str]) -> tuple[dict[str, object], str]:
         "quiet": False,
         "json": False,
         "submit": False,
+        "repair": False,
         "help": False,
     }
     mode = "default"
@@ -122,6 +128,8 @@ def parse_args(argv: list[str]) -> tuple[dict[str, object], str]:
             mode = "json"
         elif arg == "--submit":
             opts["submit"] = True
+        elif arg == "--repair":
+            opts["repair"] = True
         elif arg.startswith("--file="):
             value = arg.split("=", 1)[1]
             if not value:
@@ -349,6 +357,28 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
     if submit_mode == "repo-flow-submit-all" and not commit_message:
         raise fail("missing-commit-message", "handoff-envelope", "missing commit_message", "set commit_message when submit_mode is repo-flow-submit-all")
 
+    handoff_mode = envelope.get("handoff_mode", "implementation")
+    if handoff_mode not in {"implementation", "repair"}:
+        raise fail("invalid-handoff-mode", "handoff-envelope", f"invalid handoff_mode: {handoff_mode}", "use handoff_mode: implementation or handoff_mode: repair")
+    repair_of_pr = envelope.get("repair_of_pr", "")
+    repair_session = envelope.get("repair_session", "")
+    codex_session_id = envelope.get("codex_session_id", "")
+    if handoff_mode == "repair":
+        if not repair_of_pr:
+            raise fail("missing-repair-of-pr", "repair-metadata", "missing repair_of_pr", "set repair_of_pr to the open PR number")
+        if not re.fullmatch(r"[1-9][0-9]*", repair_of_pr):
+            raise fail("invalid-repair-of-pr", "repair-metadata", f"invalid repair_of_pr: {repair_of_pr}", "set repair_of_pr to a positive PR number")
+        if not repair_session:
+            raise fail("missing-repair-session", "repair-metadata", "missing repair_session", "set repair_session: resume")
+        if repair_session != "resume":
+            raise fail("unsupported-repair-session", "repair-metadata", f"unsupported repair_session: {repair_session}", "use repair_session: resume")
+        if not codex_session_id:
+            raise fail("missing-codex-session-id", "repair-metadata", "missing codex_session_id for repair_session: resume", "set codex_session_id to the Codex session ID to resume")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", codex_session_id) or ".." in codex_session_id:
+            raise fail("unsafe-codex-session-id", "repair-metadata", f"unsafe codex_session_id: {codex_session_id}", "use a session ID containing only letters, digits, dot, underscore, colon, or hyphen")
+    elif any((repair_of_pr, repair_session, codex_session_id)):
+        raise fail("repair-metadata-without-mode", "repair-metadata", "repair metadata requires handoff_mode: repair", "set handoff_mode: repair and invoke slice-handoff --repair, or remove repair metadata")
+
     if "## PR Body" in lines[:prompt_index]:
         raise fail("section-order", "handoff-structure", "invalid section order", "place ## PR Body after ## Codex Prompt if submit_mode is repo-flow-submit-all")
 
@@ -416,6 +446,10 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         "codex_profile": codex_profile,
         "submit_mode": submit_mode,
         "commit_message": commit_message,
+        "handoff_mode": handoff_mode,
+        "repair_of_pr": repair_of_pr,
+        "repair_session": repair_session,
+        "codex_session_id": codex_session_id,
         "prompt_text": prompt_text,
         "body_text": body_text,
         "review_request_text": review_request_text,
@@ -486,6 +520,7 @@ def build_manifest(state: ValidationState, pr_body_valid: bool, requested_mode: 
         "requested_capabilities": {
             "submit_requested": state.submit_requested,
             "submit_mode": state.submit_mode,
+            "repair_requested": state.handoff_mode == "repair",
         },
         "validated_capabilities": validated_capabilities,
         "forbidden_steps": forbidden_steps,
@@ -494,6 +529,10 @@ def build_manifest(state: ValidationState, pr_body_valid: bool, requested_mode: 
         "codex_profile": state.codex_profile,
         "submit_mode": state.submit_mode,
         "commit_message": state.commit_message,
+        "handoff_mode": state.handoff_mode,
+        "repair_of_pr": state.repair_of_pr,
+        "repair_session": state.repair_session,
+        "codex_session_id": state.codex_session_id,
         "review_request_source": state.review_request_source,
         "review_request_path": str(state.review_request_path),
         "review_request_hash": file_hash(state.review_request_path),
@@ -524,6 +563,10 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
             "branch": state.branch,
             "title": state.title,
             "submit_mode": state.submit_mode,
+            "handoff_mode": state.handoff_mode,
+            "repair_of_pr": state.repair_of_pr,
+            "repair_session": state.repair_session,
+            "codex_session_id": state.codex_session_id,
             "codex_profile": state.codex_profile,
             "validated_capabilities": manifest["validated_capabilities"],
             "forbidden_steps": manifest["forbidden_steps"],
@@ -542,6 +585,11 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
     sys.stdout.write(f"title={state.title}\n")
     sys.stdout.write(f"codex_profile={state.codex_profile}\n")
     sys.stdout.write(f"submit_mode={state.submit_mode}\n")
+    sys.stdout.write(f"handoff_mode={state.handoff_mode}\n")
+    if state.handoff_mode == "repair":
+        sys.stdout.write(f"repair_of_pr={state.repair_of_pr}\n")
+        sys.stdout.write(f"repair_session={state.repair_session}\n")
+        sys.stdout.write(f"codex_session_id={state.codex_session_id}\n")
     sys.stdout.write(f"commit_message={state.commit_message}\n")
     sys.stdout.write("next=codex-slice-preflight\n")
 
@@ -575,6 +623,12 @@ def main(argv: list[str]) -> int:
 
     raw = handoff_path.read_text(encoding="utf-8")
     parsed = parse_handoff(raw, handoff_path, repo_root)
+    repair_requested = bool(opts["repair"])
+    parsed_mode = str(parsed["handoff_mode"])
+    if repair_requested and parsed_mode != "repair":
+        raise fail("repair-mode-mismatch", "repair-metadata", "--repair requires handoff_mode: repair", "set handoff_mode: repair and add the required repair metadata")
+    if not repair_requested and parsed_mode == "repair":
+        raise fail("repair-flag-required", "repair-metadata", "repair handoff requires explicit --repair", "rerun with --repair")
 
     state = ValidationState(
         repo_root=repo_root,
@@ -587,6 +641,10 @@ def main(argv: list[str]) -> int:
         codex_profile=str(parsed["codex_profile"]),
         submit_mode=str(parsed["submit_mode"]),
         commit_message=str(parsed["commit_message"]),
+        handoff_mode=parsed_mode,
+        repair_of_pr=str(parsed["repair_of_pr"]),
+        repair_session=str(parsed["repair_session"]),
+        codex_session_id=str(parsed["codex_session_id"]),
         prompt_text=str(parsed["prompt_text"]),
         prompt_path=prompt_path,
         body_text=str(parsed["body_text"]),

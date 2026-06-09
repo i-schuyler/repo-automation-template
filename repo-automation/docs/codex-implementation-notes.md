@@ -20,6 +20,22 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-09 codex-slice-preflight nested wrapper fixture repair
+
+Challenges:
+- A nested repair fixture relied on developer-global Git identity, so its first commit failed silently in CI and surfaced as a misleading outer JSON-wrapper failure.
+
+Recommended improvements:
+- Configure Git identity inside repos that focused contracts clone for commit-based branch-shape tests, and include nested JSON failure details in wrapper assertions.
+
+### 2026-06-09 slice-handoff repair routing
+
+Challenges:
+- Repair routing crossed validator, branch preflight, Codex resume, existing-PR submit, and operator-output boundaries while preserving implementation behavior.
+
+Recommended improvements:
+- Keep repair mode explicit in both CLI and metadata, and keep child-helper fakes at the repo-relative paths used at runtime.
+
 ### 2026-06-09 codex-run resume-session final-output contract repair
 
 Challenges:
