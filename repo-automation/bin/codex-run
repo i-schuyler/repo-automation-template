@@ -21,6 +21,7 @@ codex_run_quiet=0
 codex_run_explain=0
 codex_run_json=0
 codex_run_prompt_file=""
+codex_run_resume_session_id=""
 codex_run_out_dir=""
 codex_run_out_dir_abs=""
 codex_run_profile="default"
@@ -48,7 +49,7 @@ codex_run_failure_excerpt=""
 codex_run_failure_artifact=""
 
 codex_run_usage() {
-  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--resume-session-id=<id>] [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
 }
 
 codex_run_fail() {
@@ -72,6 +73,10 @@ codex_run_is_conservative_token() {
   esac
 
   return 0
+}
+
+codex_run_is_conservative_session_id() {
+  codex_run_is_conservative_token "$1"
 }
 
 codex_run_resolve_existing_dir() {
@@ -160,6 +165,8 @@ script=codex-run
 result=$codex_run_result
 exit_code=$codex_run_exit_code
 prompt_file=$codex_run_prompt_file
+resume_mode=$([ -n "$codex_run_resume_session_id" ] && printf 'resume' || printf 'fresh')
+resume_session_id=$codex_run_resume_session_id
 out_dir=$codex_run_out_dir_abs
 cd=$codex_run_cd_abs
 profile=$codex_run_profile
@@ -300,6 +307,7 @@ codex_run_finish_failure() {
 codex_run_main() {
   local arg=""
   local codex_cmd=()
+  local resume_prompt_text=""
   local final_output_value="none"
   local summary_value="none"
   local status_value="fail"
@@ -320,6 +328,17 @@ codex_run_main() {
         ;;
       --json)
         codex_run_json=1
+        ;;
+      --resume-session-id=*)
+        codex_run_resume_session_id="${arg#--resume-session-id=}"
+        if [ -z "$codex_run_resume_session_id" ]; then
+          codex_run_flag_value_error "empty flag value" "--resume-session-id" "use --resume-session-id=<id>"
+          return 1
+        fi
+        ;;
+      --resume-session-id)
+        codex_run_flag_value_error "missing flag value" "--resume-session-id" "use --resume-session-id=<id>"
+        return 1
         ;;
       --prompt-file=*)
         codex_run_prompt_file="${arg#--prompt-file=}"
@@ -468,6 +487,15 @@ codex_run_main() {
     return 1
   fi
 
+  if [ -n "$codex_run_resume_session_id" ] && ! codex_run_is_conservative_session_id "$codex_run_resume_session_id"; then
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "invalid-resume-session-id" "resume-session-id" "invalid resume session id" "use a conservative session id without spaces, paths, or shell metacharacters" "" "$codex_run_resume_session_id" "" >&2
+    else
+      codex_run_fail "invalid resume session id: $codex_run_resume_session_id" "use a conservative session id without spaces, paths, or shell metacharacters"
+    fi
+    return 1
+  fi
+
   if ! codex_run_is_conservative_token "$codex_run_profile"; then
     if [ "$codex_run_quiet" -eq 1 ]; then
       codex_run_print_quiet_failure "invalid-profile" "profile" "invalid profile" "use a conservative profile name without spaces, paths, or shell metacharacters" "" "$codex_run_profile" "" >&2
@@ -536,22 +564,43 @@ codex_run_main() {
     printf 'INFO: codex-run timeout_enforced=%s\n' "$codex_run_timeout_enforced" >&2
   fi
 
-  codex_cmd=("$codex_run_codex_path" exec)
-  if [ "$codex_run_profile" != "default" ]; then
-    codex_cmd+=("--profile" "$codex_run_profile")
-  fi
-  codex_cmd+=(
-    "--cd" "$codex_run_cd_abs"
-    "--sandbox" "$codex_run_sandbox"
-    "--output-last-message" "$codex_run_final_output_path"
-    -
-  )
+  if [ -n "$codex_run_resume_session_id" ]; then
+    resume_prompt_text="$(cat "$codex_run_prompt_file")"
+    codex_cmd=("$codex_run_codex_path" exec resume)
+    if [ "$codex_run_profile" != "default" ]; then
+      codex_cmd+=("--profile" "$codex_run_profile")
+    fi
+    codex_cmd+=(
+      "--cd" "$codex_run_cd_abs"
+      "--sandbox" "$codex_run_sandbox"
+      "--output-last-message" "$codex_run_final_output_path"
+      "$codex_run_resume_session_id"
+      "$resume_prompt_text"
+    )
+    if [ "$codex_run_explain" -eq 1 ]; then
+      printf 'INFO: codex-run executing codex exec resume
+' >&2
+    fi
+    "${codex_cmd[@]}" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
+  else
+    codex_cmd=("$codex_run_codex_path" exec)
+    if [ "$codex_run_profile" != "default" ]; then
+      codex_cmd+=("--profile" "$codex_run_profile")
+    fi
+    codex_cmd+=(
+      "--cd" "$codex_run_cd_abs"
+      "--sandbox" "$codex_run_sandbox"
+      "--output-last-message" "$codex_run_final_output_path"
+      -
+    )
 
-  if [ "$codex_run_explain" -eq 1 ]; then
-    printf 'INFO: codex-run executing codex exec\n' >&2
-  fi
+    if [ "$codex_run_explain" -eq 1 ]; then
+      printf 'INFO: codex-run executing codex exec
+' >&2
+    fi
 
-  "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
+    "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
+  fi
   codex_run_exit_code=$?
 
   if [ "$codex_run_exit_code" -ne 0 ]; then
@@ -607,17 +656,43 @@ codex_run_main() {
     fi
     codex_run_write_summary || return 1
     if [ "$codex_run_quiet" -eq 0 ] && [ "$codex_run_explain" -eq 0 ]; then
-      printf 'pass\n'
-      printf 'final_output_path=%s\n' "$codex_run_final_output_path"
-      printf 'summary_path=%s\n' "$codex_run_summary_path"
+      printf 'pass
+'
+      printf 'final_output_path=%s
+' "$codex_run_final_output_path"
+      printf 'summary_path=%s
+' "$codex_run_summary_path"
     fi
     if [ "$codex_run_explain" -eq 1 ]; then
-      printf 'INFO: codex-run final output=%s\n' "$codex_run_final_output_path" >&2
+      printf 'INFO: codex-run final output=%s
+' "$codex_run_final_output_path" >&2
       codex_run_print_final_summary 0 "$codex_run_final_output_path" "$codex_run_summary_path" pass >&2
-      printf '\n' >&2
+      printf '
+' >&2
       repo_operator_output_emit_file_block "CODEX FINAL OUTPUT" "$codex_run_final_output_path" 0 >&2
     fi
     return 0
+  fi
+
+  if [ -n "$codex_run_resume_session_id" ]; then
+    codex_run_failure_code="resume-final-output-contract-failed"
+    codex_run_failure_step="resume-final-output-contract"
+    codex_run_failure_reason="resume mode cannot produce a reliable final-output artifact"
+    codex_run_failure_fix="use codex exec for non-resume execution or implement a verified resume final-output capture path"
+    codex_run_failure_log=""
+    codex_run_failure_artifact="$codex_run_final_output_path"
+    codex_run_failure_excerpt="codex exec resume exited 0 but $codex_run_failure_reason"
+    codex_run_result="fail"
+    codex_run_write_summary || return 1
+    if [ "$codex_run_quiet" -eq 1 ]; then
+      codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" >&2
+    else
+      codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" >&2
+    fi
+    if [ "$codex_run_explain" -eq 1 ]; then
+      codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
+    fi
+    return 1
   fi
 
   codex_run_failure_code="final-output-contract-failed"

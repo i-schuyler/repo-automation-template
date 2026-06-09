@@ -1,13 +1,16 @@
 # Codex Run
 
-`repo-automation/bin/codex-run` is the public adapter around `codex exec`.
+`repo-automation/bin/codex-run` is the public adapter around `codex exec` and `codex exec resume` session re-entry.
 
 ## What it does
 
 - reads a prompt file
-- runs `codex exec` with argv construction, not shell eval
-- writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, `codex-final-output-block.txt`, and `codex-run-summary.txt` into the requested out-dir
+- runs `codex exec` by default, or `codex exec resume <session-id> <prompt>` when `--resume-session-id=<id>` is set
+- uses argv construction, not shell eval
+- writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, `codex-final-output-block.txt`, and `codex-run-summary.txt` into the requested out-dir when final-output capture succeeds
 - supports `--quiet` and `--explain`
+- records `resume_mode=fresh` or `resume_mode=resume` in `codex-run-summary.txt`
+- forwards supported `--cd`, `--sandbox`, and `--profile` controls into resume mode
 - does not pass an approval-policy flag to `codex exec`; it relies on the selected sandbox mode and avoids dangerous bypass flags
 - does not implement `--json` in this slice
 
@@ -27,7 +30,7 @@ In `--explain` mode, successful runs print the `FINAL SUMMARY` first and then a 
 
 The block content comes from `codex-final.txt`. Default non-explain output stays compact, and `codex-run-summary.txt` stays key=value machine-readable.
 
-Quiet failures use Quiet Diagnostic Envelope v1 on stderr: `result=fail`, `code`, `step`, `reason`, `fix`, and optional `log`/`artifact`/`excerpt` fields. Child-process failures keep the child stdout/stderr artifacts, final-output contract failures name the missing or empty `codex-final.txt`, and block-write failures name the block artifact path.
+Quiet failures use Quiet Diagnostic Envelope v1 on stderr: `result=fail`, `code`, `step`, `reason`, `fix`, and optional `log`/`artifact`/`excerpt` fields. Child-process failures keep the child stdout/stderr artifacts, final-output contract failures name the missing or empty `codex-final.txt`, resume-mode final-output failures use an explicit `resume-final-output-contract-failed` envelope instead of copying `codex.stdout` into `codex-final.txt`, and block-write failures name the block artifact path.
 
 Output modes stay mutually exclusive. `--quiet --explain` fails compactly before Codex runs, `--json` remains unsupported, and `--quiet --json` / `--json --explain` do not invoke Codex.
 
@@ -40,6 +43,8 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 ## Relationship to slice-handoff
 
 `slice-handoff` execution routes through `codex-run` after preflight. `slice-handoff` execution can now continue from `codex-run` to PR-body validation and repo-flow submit only when bare `--submit` authorizes the submit boundary, and still stops before merge.
+
+Resume mode is intentionally narrower than fresh exec: it uses `codex exec resume` so `--cd`, `--sandbox`, `--profile`, and `--output-last-message` remain argv-driven, and it fails explicitly if a reliable final-output artifact does not appear. The adapter does not synthesize `codex-final.txt` from stdout.
 
 Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.
 

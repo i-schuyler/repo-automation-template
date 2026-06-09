@@ -20,6 +20,19 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-09 codex-run resume-session final-output contract repair
+
+Challenges:
+- Resume support needed the non-interactive `codex exec resume` entrypoint so the adapter could keep a real final-output file instead of copying stdout into `codex-final.txt`.
+- The wrapper had to preserve resume controls (`--cd`, `--sandbox`, `--profile`) while also failing explicitly when the final-output artifact was missing or empty.
+
+What would have helped:
+- A short note beside the adapter contract making the `codex resume` interactive picker and `codex exec resume` non-interactive path clearly distinct.
+
+Recommended improvements:
+- Keep resume adapters file-backed for final output and fail explicitly when the artifact is absent.
+- Document entrypoint differences (`codex resume` vs `codex exec resume`) next to the adapter contract so stdout is never mistaken for the durable final artifact.
+
 ### 2026-06-08 slice-handoff operator-output and run-context repair
 
 Challenges:
