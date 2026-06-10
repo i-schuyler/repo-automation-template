@@ -126,7 +126,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-06-09 / PR #242 / slice-handoff repair routing / ids=slice-handoff-contract-opacity / score_delta=+1 / signal=first-class repair routing required aligned validator metadata, existing-PR preflight, Codex resume, replacement-body submit, and repo-relative focused fixtures
 - 2026-06-09 / PR #242 / codex-slice-preflight repeated CI repair / ids=slice-handoff-contract-opacity / score_delta=+1 / signal=fresh-home reproduction exposed missing local Git identity in the nested repair fixture; wrapper diagnostics now report nested JSON status, step, and reason
 - 2026-06-10 / PR #244 / shared review-request renderer portability repair / ids=none / score_delta=0 / signal=check-portability quiet success failed because the new slice-handoff renderer smoke used a literal temp-root run-dir example; replaced it with ${TMPDIR:-$HOME/.cache} without changing review-request block behavior
-- 2026-06-10 / PR #245 / trace validator manifest propagation / ids=none / score_delta=0 / signal=added optional validation-manifest tracing from slice-handoff into codex-slice-preflight without requiring standalone helper callers to supply it
+- 2026-06-10 / PR #246 / trace validator manifest propagation / ids=none / score_delta=0 / signal=added optional validation-manifest tracing from slice-handoff into codex-slice-preflight without requiring standalone helper callers to supply it
 
 ## Maintenance Notes
 
