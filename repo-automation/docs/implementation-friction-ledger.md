@@ -68,6 +68,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-06-10 / helper-metadata object identity assertions / ids=none / score_delta=0 / signal=targeted object-identity coverage added for slice-handoff, slice-validator, codex-slice-preflight, codex-run, pr-body-check, and repo-flow metadata rows
 - 2026-06-09 / review-request block rendering seam / ids=none / score_delta=0 / signal=shared plain and metadata PR REVIEW REQUEST rendering now uses the review-request helper while keeping output order stable
 - 2026-06-09 / repo-flow submit diagnostics polish / ids=none / score_delta=0 / signal=compact unrequested-change excerpts now carry a short fix hint before FINAL SUMMARY, with no submit-semantic changes
 - 2026-06-09 / PR #241 / codex-run resume-session adapter repair / ids=codex-run-resume-final-output-contract / score_delta=+3 / signal=resume mode now uses `codex exec resume` file-backed final output, preserves cd/sandbox/profile forwarding, and fails explicitly when the final artifact is absent

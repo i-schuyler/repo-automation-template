@@ -207,12 +207,110 @@ required_fields = {
     'workflow_role',
     'config_keys',
 }
+target_helper_specs = {
+    'slice-handoff': {
+        'name': 'slice-handoff',
+        'path': 'repo-automation/bin/slice-handoff',
+        'doc_path': 'repo-automation/docs/slice-handoff.md',
+        'contract_test_path': 'repo-automation/tests/contracts/slice-handoff.sh',
+        'workflow_role': 'workflow',
+        'writes_files': True,
+        'writes_git': False,
+        'uses_github': False,
+        'supports_quiet': True,
+        'supports_json': False,
+        'artifact_helper': True,
+        'umbrella_helper': False,
+    },
+    'slice-validator': {
+        'name': 'slice-validator',
+        'path': 'repo-automation/bin/slice-validator',
+        'doc_path': 'repo-automation/docs/slice-validator.md',
+        'contract_test_path': 'repo-automation/tests/contracts/slice-validator.sh',
+        'workflow_role': 'workflow',
+        'writes_files': True,
+        'writes_git': False,
+        'uses_github': False,
+        'supports_quiet': True,
+        'supports_json': True,
+        'artifact_helper': True,
+        'umbrella_helper': False,
+    },
+    'codex-slice-preflight': {
+        'name': 'codex-slice-preflight',
+        'path': 'repo-automation/bin/codex-slice-preflight',
+        'doc_path': 'repo-automation/docs/codex-slice-preflight.md',
+        'contract_test_path': 'repo-automation/tests/contracts/codex-slice-preflight.sh',
+        'workflow_role': 'preflight',
+        'writes_files': False,
+        'writes_git': False,
+        'uses_github': False,
+        'supports_quiet': False,
+        'supports_json': True,
+        'artifact_helper': False,
+        'umbrella_helper': False,
+    },
+    'codex-run': {
+        'name': 'codex-run',
+        'path': 'repo-automation/bin/codex-run',
+        'doc_path': 'repo-automation/docs/codex-run.md',
+        'contract_test_path': 'repo-automation/tests/contracts/codex-run.sh',
+        'workflow_role': 'artifact',
+        'writes_files': True,
+        'writes_git': False,
+        'uses_github': False,
+        'supports_quiet': True,
+        'supports_json': False,
+        'artifact_helper': True,
+        'umbrella_helper': False,
+    },
+    'pr-body-check': {
+        'name': 'pr-body-check',
+        'path': 'repo-automation/bin/pr-body-check',
+        'doc_path': 'repo-automation/docs/pr-body-check.md',
+        'contract_test_path': 'repo-automation/tests/contracts/pr-body-check.sh',
+        'workflow_role': 'audit',
+        'writes_files': False,
+        'writes_git': False,
+        'uses_github': False,
+        'supports_quiet': True,
+        'supports_json': True,
+        'artifact_helper': False,
+        'umbrella_helper': False,
+    },
+    'repo-flow': {
+        'name': 'repo-flow',
+        'path': 'repo-automation/bin/repo-flow',
+        'doc_path': 'repo-automation/docs/repo-flow.md',
+        'contract_test_path': 'repo-automation/tests/contracts/repo-flow.sh',
+        'workflow_role': 'workflow',
+        'writes_files': True,
+        'writes_git': True,
+        'uses_github': True,
+        'supports_quiet': False,
+        'supports_json': True,
+        'artifact_helper': False,
+        'umbrella_helper': True,
+    },
+}
+target_helper_counts = {name: 0 for name in target_helper_specs}
 for entry in helper_metadata.get('helpers', []):
     if not isinstance(entry, dict):
         fail('helper metadata entries must be objects')
     missing_fields = sorted(required_fields - set(entry))
     if missing_fields:
         fail(f'helper metadata entry missing fields for {entry.get("name", "<unknown>")}: {", ".join(missing_fields)}')
+    helper_name = entry.get('name')
+    if isinstance(helper_name, str) and helper_name in target_helper_specs:
+        target_helper_counts[helper_name] += 1
+        expected_fields = target_helper_specs[helper_name]
+        mismatches = [
+            f'{field}={entry.get(field)!r} expected {expected_value!r}'
+            for field, expected_value in expected_fields.items()
+            if entry.get(field) != expected_value
+        ]
+        if mismatches:
+            fail(f'helper metadata entry mismatch for {helper_name}: ' + '; '.join(mismatches))
     if entry.get('public') is True:
         helper_paths.append(entry.get('path'))
     doc_path = entry.get('doc_path')
@@ -225,6 +323,10 @@ for entry in helper_metadata.get('helpers', []):
         fail(f'helper metadata doc_path missing on disk: {doc_path}')
     if not (repo_root / contract_path).is_file():
         fail(f'helper metadata contract_test_path missing on disk: {contract_path}')
+
+for helper_name, count in target_helper_counts.items():
+    if count != 1:
+        fail(f'helper metadata target helper object must appear exactly once for {helper_name}')
 
 planned_routes = helper_metadata.get('planned_routes', [])
 if not planned_routes:
