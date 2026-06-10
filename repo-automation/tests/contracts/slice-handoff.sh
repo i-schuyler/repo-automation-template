@@ -43,6 +43,7 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:execution-failures" smoke_check_slice_handoff_contract_execution_failure_cases || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:repo-root-artifacts" smoke_check_slice_handoff_contract_no_repo_root_artifacts || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:codex-final-blocker-detector" smoke_check_slice_handoff_contract_codex_final_output_blocker_detector || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:validation-manifest-trace" smoke_check_slice_handoff_contract_execution_validation_manifest_trace || status=1
 
   return "$status"
 }
@@ -879,6 +880,82 @@ smoke_check_slice_handoff_contract_codex_final_output_blocker_detector() {
     test_pass "codex final output blocker detector"
   else
     test_fail "codex final output blocker detector"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_slice_handoff_contract_execution_validation_manifest_trace() {
+  local status=0
+  local out_dir="$smoke_slice_handoff_execution_artifact_root/validation-manifest-trace-out"
+  local stdout_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-validation-manifest-trace.out"
+  local stderr_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-validation-manifest-trace.err"
+  local preflight_args_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-slice-preflight.args"
+  local preflight_path="$smoke_test_dir/repo-automation/bin/codex-slice-preflight"
+  local run_dir=""
+  local expected_manifest_path=""
+
+  cat > "$preflight_path" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="$preflight_args_file"
+manifest_path=""
+json_requested=0
+
+if [ -n "\$args_file" ]; then
+  printf '%s\n' "\$@" > "\$args_file"
+fi
+
+for arg in "\$@"; do
+  case "\$arg" in
+    --json)
+      json_requested=1
+      ;;
+    --validation-manifest=*)
+      manifest_path="\${arg#--validation-manifest=}"
+      ;;
+  esac
+done
+
+if [ "\$json_requested" -eq 1 ]; then
+  printf '{"script":"codex-slice-preflight","result":"pass","mode":"run","rc":0'
+  if [ -n "\$manifest_path" ]; then
+    printf ',"validation_manifest_path":"%s"' "\$manifest_path"
+  fi
+  printf '}\n'
+else
+  printf 'pass\n'
+  if [ -n "\$manifest_path" ]; then
+    printf 'validation_manifest_path=%s\n' "\$manifest_path"
+  fi
+fi
+
+exit 0
+EOF
+  chmod +x "$preflight_path" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/codex-slice-preflight || return 1
+
+  if (
+    rm -rf -- "$out_dir" &&
+      smoke_slice_handoff_assert_clean_worktree &&
+      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_none_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$smoke_slice_handoff_execution_valid_none_file" --out-dir="$out_dir"
+  ); then
+    run_dir="$(smoke_slice_handoff_extract_field "$stdout_file" run_dir)" || return 1
+    expected_manifest_path="$run_dir/validation-manifest.json"
+    if smoke_json_assert "$run_dir/preflight.json" "data.get(\"validation_manifest_path\") == \"$expected_manifest_path\"" &&
+      grep -Fxq "validation_manifest_path=$expected_manifest_path" "$run_dir/slice-handoff-summary.txt" &&
+      grep -Fxq "validation_manifest_path=$expected_manifest_path" "$run_dir/slice-handoff-execution-summary.txt" &&
+      grep -Fxq -- "--validation-manifest=$expected_manifest_path" "$preflight_args_file"; then
+      test_pass "execution validation manifest trace"
+    else
+      test_fail "execution validation manifest trace"
+      status=1
+    fi
+  else
+    test_fail "execution validation manifest trace"
     status=1
   fi
 

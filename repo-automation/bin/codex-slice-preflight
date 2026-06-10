@@ -15,6 +15,7 @@ preflight_json=0
 preflight_explain=0
 preflight_stop_reason=""
 preflight_mode="run"
+preflight_validation_manifest_file=""
 preflight_repair_of_pr=""
 preflight_repair_pr_head=""
 preflight_disk_guard_low_bytes=1610612736
@@ -32,7 +33,7 @@ preflight_cleanup_free_before_bytes=""
 preflight_cleanup_free_after_bytes=""
 
 preflight_usage() {
-  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--repair-of-pr=<number>] [--check-only] [--delete-safe-stale] [--clean-test-cache] [--preserve-path=<path>] [--json] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-slice-preflight --branch=<name> [--repair-of-pr=<number>] [--check-only] [--delete-safe-stale] [--clean-test-cache] [--preserve-path=<path>] [--validation-manifest=<path>] [--json] [--explain] [--help]\n'
 }
 
 preflight_flag_error() {
@@ -156,6 +157,33 @@ PY
   )" || return 1
 
   printf '%s\n' "$resolved_path"
+}
+
+preflight_validation_manifest_problem() {
+  local source_path="$1"
+
+  if [ ! -e "$source_path" ]; then
+    printf 'validation manifest does not exist: %s\n' "$source_path"
+    return 1
+  fi
+  if [ -d "$source_path" ]; then
+    printf 'validation manifest is a directory: %s\n' "$source_path"
+    return 1
+  fi
+  if [ ! -f "$source_path" ]; then
+    printf 'validation manifest is not a regular file: %s\n' "$source_path"
+    return 1
+  fi
+  if [ ! -r "$source_path" ]; then
+    printf 'validation manifest is not readable: %s\n' "$source_path"
+    return 1
+  fi
+  if [ ! -s "$source_path" ]; then
+    printf 'validation manifest is empty: %s\n' "$source_path"
+    return 1
+  fi
+
+  return 0
 }
 
 preflight_paths_overlap() {
@@ -403,8 +431,9 @@ preflight_print_json() {
   local cleanup_mode="$6"
   local cleanup_json="$7"
   local stop_reason="$8"
-  local exit_code="$9"
-  local disk_value="${10:-skip}"
+  local validation_manifest_path="${9:-}"
+  local exit_code="${10:-0}"
+  local disk_value="${11:-skip}"
   local result_value="fail"
 
   if [ "$exit_code" -eq 0 ]; then
@@ -428,6 +457,9 @@ preflight_print_json() {
   printf '"divergence":"%s",' "$(preflight_json_escape "$divergence")"
   printf '"branch_cleanup_mode":"%s",' "$(preflight_json_escape "$cleanup_mode")"
   printf '"branch_cleanup_status":%s,' "${cleanup_json:-null}"
+  if [ -n "$validation_manifest_path" ]; then
+    printf '"validation_manifest_path":"%s",' "$(preflight_json_escape "$validation_manifest_path")"
+  fi
   printf '"cleanup_deleted_count":%s,' "${preflight_cleanup_deleted_count:-0}"
   printf '"cleanup_deleted_paths":%s,' "$(preflight_json_string_or_null "${preflight_cleanup_deleted_paths:-}")"
   printf '"cleanup_preserved_path":%s,' "$(preflight_json_string_or_null "${preflight_cleanup_preserved_path:-}")"
@@ -557,6 +589,18 @@ preflight_main() {
       --preserve-path)
         preflight_flag_error "missing flag value" "--preserve-path" "use --preserve-path=<path>" || command_status=1
         ;;
+      --validation-manifest=)
+        preflight_flag_error "empty flag value" "--validation-manifest" "use --validation-manifest=<path>" || command_status=1
+        ;;
+      --validation-manifest=*)
+        preflight_validation_manifest_file="${arg#--validation-manifest=}"
+        if [ -z "$preflight_validation_manifest_file" ]; then
+          preflight_flag_error "empty flag value" "--validation-manifest" "use --validation-manifest=<path>" || command_status=1
+        fi
+        ;;
+      --validation-manifest)
+        preflight_flag_error "missing flag value" "--validation-manifest" "use --validation-manifest=<path>" || command_status=1
+        ;;
       --json)
         preflight_json=1
         ;;
@@ -604,6 +648,7 @@ preflight_main() {
           "$preflight_mode" \
           "${cleanup_json:-null}" \
           "${preflight_stop_reason:-}" \
+          "${preflight_validation_manifest_file:-}" \
           "$command_status" \
           "${preflight_disk_status:-skip}"
       elif [ "$preflight_explain" -eq 1 ]; then
@@ -623,6 +668,13 @@ preflight_main() {
       return "$command_status"
     fi
     preflight_print_cleanup_info
+  fi
+
+  if [ "$command_status" -eq 0 ] && [ -n "$preflight_validation_manifest_file" ]; then
+    if ! preflight_validation_manifest_problem "$preflight_validation_manifest_file"; then
+      preflight_stop "validation manifest file is not usable: $preflight_validation_manifest_file"
+      command_status=1
+    fi
   fi
 
   [ "$branch_value_set" -eq 1 ] || {
@@ -951,6 +1003,7 @@ EOF
       "${active_cleanup_mode:-}" \
       "${cleanup_json:-null}" \
       "$preflight_stop_reason" \
+      "${preflight_validation_manifest_file:-}" \
       "$command_status" \
       "${preflight_disk_status:-skip}"
   elif [ "$preflight_explain" -eq 1 ]; then
@@ -980,6 +1033,9 @@ EOF
     summary_lines+=("disk_threshold_bytes=$preflight_disk_guard_low_bytes")
     if [ -n "${default_branch:-}" ]; then
       summary_lines+=("default_branch=$default_branch")
+    fi
+    if [ -n "$preflight_validation_manifest_file" ]; then
+      summary_lines+=("validation_manifest_path=$preflight_validation_manifest_file")
     fi
     if [ "$repair_mode" -eq 1 ]; then
       summary_lines+=("repair_of_pr=$preflight_repair_of_pr" "repair_pr_head=$preflight_repair_pr_head")

@@ -1616,6 +1616,7 @@ slice_handoff_run_execution_phase() {
   local -a preflight_repair_args=()
   local -a codex_resume_args=()
   local -a repo_flow_repair_args=()
+  local -a preflight_validation_manifest_args=()
 
   cd "$slice_handoff_repo_root" || return 1
   slice_handoff_info "run-dir creation"
@@ -1695,15 +1696,19 @@ slice_handoff_run_execution_phase() {
     codex_resume_args=("--resume-session-id=$slice_handoff_repair_session_id")
     repo_flow_repair_args=(--replace-body)
   fi
+  preflight_validation_manifest_args=()
+  if [ -n "$slice_handoff_validation_manifest_file" ]; then
+    preflight_validation_manifest_args=("--validation-manifest=$slice_handoff_validation_manifest_file")
+  fi
   preflight_stdout_path="$active_run_dir/preflight.stdout"
   preflight_stderr_path="$active_run_dir/preflight.stderr"
   preflight_json_path="$active_run_dir/preflight.json"
-  preflight_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" "${preflight_repair_args[@]}" --clean-test-cache "--preserve-path=$active_run_dir" --json)"
+  preflight_command_summary="$(slice_handoff_command_summary repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" "${preflight_repair_args[@]}" "${preflight_validation_manifest_args[@]}" --clean-test-cache "--preserve-path=$active_run_dir" --json)"
 
   if ! (
     cd "$slice_handoff_repo_root" || return 1
     slice_handoff_run_json_child "preflight" "$preflight_command_summary" rc 0 "$preflight_stdout_path" "$preflight_stderr_path" \
-      repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" "${preflight_repair_args[@]}" --clean-test-cache "--preserve-path=$active_run_dir" --json
+      repo-automation/bin/codex-slice-preflight --branch="$slice_handoff_branch" "${preflight_repair_args[@]}" "${preflight_validation_manifest_args[@]}" --clean-test-cache "--preserve-path=$active_run_dir" --json
   ); then
     preflight_phase_failed=1
   fi
