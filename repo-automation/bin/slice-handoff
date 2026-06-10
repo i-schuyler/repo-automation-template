@@ -825,6 +825,26 @@ print(' | '.join(parts))
 PY
 }
 
+slice_handoff_child_failure_excerpt() {
+  local preferred_excerpt="$1"
+  local stdout_path="$2"
+  local stderr_path="$3"
+  local fallback_excerpt="$4"
+  local excerpt="$preferred_excerpt"
+
+  if [ -z "$excerpt" ] && [ -s "$stderr_path" ]; then
+    excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
+  fi
+  if [ -z "$excerpt" ] && [ -s "$stdout_path" ]; then
+    excerpt="$(awk 'NF { if (count > 0) printf " | "; printf "%s", $0; count++; if (count == 4) exit } END { if (count > 0) printf "\n" }' "$stdout_path")"
+  fi
+  if [ -z "$excerpt" ]; then
+    excerpt="$fallback_excerpt"
+  fi
+
+  printf '%s\n' "$excerpt"
+}
+
 slice_handoff_extract_final_summary_field() {
   local file="$1"
   local field="$2"
@@ -1370,15 +1390,7 @@ slice_handoff_validate_codex_run_output() {
 
   if [ "$exit_code" -ne 0 ]; then
     local excerpt=""
-    if [ -s "$stderr_path" ]; then
-      excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
-    fi
-    if [ -z "$excerpt" ] && [ -s "$stdout_path" ]; then
-      excerpt="$(awk 'NF { if (count > 0) printf " | "; printf "%s", $0; count++; if (count == 4) exit } END { if (count > 0) printf "\n" }' "$stdout_path")"
-    fi
-    if [ -z "$excerpt" ]; then
-      excerpt="codex-run exited nonzero"
-    fi
+    excerpt="$(slice_handoff_child_failure_excerpt "" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
     slice_handoff_print_execution_blocker "codex-run" "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$excerpt"
     return 1
   fi
@@ -1462,17 +1474,10 @@ slice_handoff_run_json_child() {
     if reason="$(slice_handoff_json_value "$stdout_path" reason 2>/dev/null || true)"; then
       :
     fi
-    if [ -n "$reason" ]; then
-      excerpt="$reason"
-    else
-      excerpt="$(slice_handoff_json_excerpt "$stdout_path" 2>/dev/null || true)"
+    if [ -z "$reason" ]; then
+      reason="$(slice_handoff_json_excerpt "$stdout_path" 2>/dev/null || true)"
     fi
-    if [ -z "$excerpt" ] && [ -s "$stderr_path" ]; then
-      excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
-    fi
-    if [ -z "$excerpt" ]; then
-      excerpt="child exited nonzero"
-    fi
+    excerpt="$(slice_handoff_child_failure_excerpt "$reason" "$stdout_path" "$stderr_path" "child exited nonzero")"
     slice_handoff_output_contract_blocker "$step" "$command_summary" "$child_status" "$stdout_path" "$stderr_path" "$excerpt"
     return 1
   fi
@@ -1799,13 +1804,7 @@ slice_handoff_run_execution_phase() {
     if [ "$pr_body_check_phase_failed" -ne 0 ]; then
       slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "pr-body-check failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "" "" || true
       local pr_body_check_excerpt=""
-      if [ -s "$pr_body_check_stderr_path" ]; then
-        pr_body_check_excerpt="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$pr_body_check_stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
-      fi
-      if [ -z "$pr_body_check_excerpt" ] && [ -s "$pr_body_check_stdout_path" ]; then
-        pr_body_check_excerpt="$(awk 'NF { if (count > 0) printf " | "; printf "%s", $0; count++; if (count == 4) exit } END { if (count > 0) printf "\n" }' "$pr_body_check_stdout_path")"
-      fi
-      [ -n "$pr_body_check_excerpt" ] || pr_body_check_excerpt="pr-body-check exited nonzero"
+      pr_body_check_excerpt="$(slice_handoff_child_failure_excerpt "" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "pr-body-check exited nonzero")"
       slice_handoff_print_execution_blocker "pr-body-check" "$pr_body_check_command_summary" 1 "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$pr_body_check_excerpt"
       return 1
     fi
@@ -1849,10 +1848,7 @@ slice_handoff_run_execution_phase() {
 
     if [ "$repo_flow_submit_phase_failed" -ne 0 ]; then
       repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
-      if [ -z "$repo_flow_submit_url_or_stop" ] && [ -s "$repo_flow_submit_stderr_path" ]; then
-        repo_flow_submit_url_or_stop="$(grep -E '^(fail:|warn:|STOP:|WARN:|ERROR:)' "$repo_flow_submit_stderr_path" | head -n 4 | awk 'BEGIN{sep=""} {printf "%s%s", sep, $0; sep=" | "} END{print ""}')"
-      fi
-      [ -n "$repo_flow_submit_url_or_stop" ] || repo_flow_submit_url_or_stop="repo-flow submit exited nonzero"
+      repo_flow_submit_url_or_stop="$(slice_handoff_child_failure_excerpt "$repo_flow_submit_url_or_stop" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "repo-flow submit exited nonzero")"
       slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "repo-flow submit failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
       slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "$repo_flow_submit_url_or_stop"
       return 1

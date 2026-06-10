@@ -43,6 +43,7 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:execution-failures" smoke_check_slice_handoff_contract_execution_failure_cases || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:repo-root-artifacts" smoke_check_slice_handoff_contract_no_repo_root_artifacts || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:codex-final-blocker-detector" smoke_check_slice_handoff_contract_codex_final_output_blocker_detector || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:validator-json-reason" smoke_check_slice_handoff_contract_validator_json_reason_failure || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:validation-manifest-trace" smoke_check_slice_handoff_contract_execution_validation_manifest_trace || status=1
 
   return "$status"
@@ -694,6 +695,7 @@ smoke_check_slice_handoff_contract_execution_submit_true_codex_blocker_behavior(
 smoke_check_slice_handoff_contract_execution_failure_cases() {
   local status=0
   local run_dir=""
+  local expected_codex_run_stdout_fallback_reason=""
 
   smoke_slice_handoff_prepare_execution_submit_context "missing-final" || return 1
   if (
@@ -747,6 +749,30 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       test_pass "execution-submit codex-run failure"
     else
       test_fail "execution-submit codex-run failure"
+      status=1
+    fi
+  fi
+
+  smoke_slice_handoff_prepare_execution_submit_context "codex-run-stdout-fallback" || return 1
+  if (
+    rm -f -- "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
+      smoke_slice_handoff_assert_execution_submit_artifact_bundle "codex-run-stdout-fallback" "$smoke_slice_handoff_execution_submit_bundle_root" "$smoke_slice_handoff_execution_fake_codex_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_codex_run_final_text_file" &&
+      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_RUN_HELPER=1 FAKE_CODEX_RUN_EXIT_CODE=1 FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_RUN_STDOUT_TEXT=$'codex stdout fallback one\ncodex stdout fallback two' FAKE_CODEX_RUN_STDERR_TEXT='' FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-stdout-fallback.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-stdout-fallback.err" --file="$smoke_slice_handoff_execution_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
+  ); then
+    test_fail "execution-submit codex-run stdout fallback"
+    status=1
+  else
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit codex-run stdout fallback")" || return 1
+    expected_codex_run_stdout_fallback_reason="$(printf 'codex stdout fallback one | codex stdout fallback two | final_output_path=%s/codex-run/codex-final.txt | summary_path=%s/codex-run/codex-run-summary.txt' "$run_dir" "$run_dir")"
+    if smoke_slice_handoff_assert_child_failure_shape "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-stdout-fallback.err" "codex-run" "repo-automation/bin/codex-run" "1" "$run_dir/codex-run.stdout" "$run_dir/codex-run.stderr" "$expected_codex_run_stdout_fallback_reason" "$expected_codex_run_stdout_fallback_reason" "fix codex-run and rerun slice-handoff" &&
+      ! grep -Fq 'INFO: slice-handoff repo-flow submit' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-stdout-fallback.err" &&
+      [ ! -e "$run_dir/pr-body-check.stdout" ] &&
+      [ ! -e "$run_dir/pr-body-check.stderr" ] &&
+      [ ! -e "$run_dir/repo-flow-submit.stdout" ] &&
+      [ ! -e "$run_dir/repo-flow-submit.stderr" ]; then
+      test_pass "execution-submit codex-run stdout fallback"
+    else
+      test_fail "execution-submit codex-run stdout fallback"
       status=1
     fi
   fi
@@ -957,6 +983,44 @@ EOF
   else
     test_fail "execution validation manifest trace"
     status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_slice_handoff_contract_validator_json_reason_failure() {
+  local status=0
+  local stdout_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-validator-json-reason.out"
+  local stderr_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-validator-json-reason.err"
+  local validator_path="$smoke_test_dir/repo-automation/bin/slice-validator"
+
+  smoke_slice_handoff_prepare_execution_submit_context "validator-json-reason" || return 1
+
+  if (
+    trap 'cp -- "$smoke_repo_root/repo-automation/bin/slice-validator" "$smoke_test_dir/repo-automation/bin/slice-validator" >/dev/null 2>&1 || true' EXIT
+    cat > "$validator_path" <<'EOF'
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+printf '{"result":"fail","reason":"validator JSON reason"}\n'
+printf 'fail: validator stderr fallback should be ignored\n' >&2
+exit 1
+EOF
+    chmod +x "$validator_path" || return 1
+    smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$smoke_slice_handoff_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
+  ); then
+    test_fail "validator json reason failure"
+    status=1
+  else
+    if smoke_slice_handoff_assert_validator_failure_shape "$stderr_file" "validator JSON reason" &&
+      ! grep -Fq 'INFO: slice-handoff preflight' "$stderr_file" &&
+      ! grep -Fq '===== CODEX RUN CONTEXT =====' "$stderr_file"; then
+      test_pass "validator json reason failure"
+    else
+      test_fail "validator json reason failure"
+      status=1
+    fi
   fi
 
   return "$status"
