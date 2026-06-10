@@ -60,6 +60,8 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 
 `## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from the selected prompt preset or public-safe defaults. In execution submit mode, slice-handoff now passes a run-dir source file to `repo-flow submit --review-request-file=<path>` after pre-resolving `<RUN_DIR>` and the handoff title/branch context; `repo-flow submit` then renders the final `<PR_URL>`, and slice-handoff copies the lower-layer rendered `review_request_path` back to the active run dir `review-request.txt` for compatibility.
 
+`slice-handoff` also passes the run-scoped validator manifest path into `codex-slice-preflight` in orchestrated execution mode. That propagation is trace-only for now; downstream manifest enforcement is a later step and standalone preflight use does not require the flag.
+
 ## Envelope and payloads
 
 - envelope: branch, title, `codex_profile`, `commit_message`, submit mode, watch/timeout fields, and prompt preset identifiers
@@ -80,6 +82,7 @@ When `--dry-run` is omitted, `slice-handoff` runs execution flow:
 - create and preserve a marked active run directory for the lifetime of the future execution
 - clean up stale marked run dirs through `slice-run-dir` without touching unmarked directories
 - run preflight with JSON child diagnostics from the checked-out repo root
+- pass the validator manifest path to preflight in orchestrated execution mode
 - run Codex
 - if Codex final output begins with `blocker` after trimming spaces, tabs, and CR, stop before PR-body validation or submit and surface the blocker artifact instead
 - if `--submit` is not authorized, stop after Codex with `next=repo-flow submit not implemented in this slice`
@@ -105,6 +108,8 @@ Execution flow writes child logs and artifacts under the active run dir:
 - `codex-prompt.md`
 - `review-request.txt`
 - `pr-body.md` when submit is authorized and submit mode is enabled
+
+The manifest propagation only traces the validator output into preflight today; enforcing downstream manifest use remains future work.
 
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 

@@ -1404,6 +1404,10 @@ smoke_check_preflight_json() {
   local preflight_cleanup_preserve_err="$smoke_test_dir/preflight-cleanup-preserve.err"
   local preflight_json_explain_stdout="$smoke_test_dir/preflight-json-explain.out"
   local preflight_json_explain_stderr="$smoke_test_dir/preflight-json-explain.err"
+  local preflight_manifest_json="$smoke_test_base/preflight-manifest.json"
+  local preflight_manifest_explain_stdout="$smoke_test_dir/preflight-manifest-explain.out"
+  local preflight_manifest_explain_stderr="$smoke_test_dir/preflight-manifest-explain.err"
+  local preflight_validation_manifest="$smoke_test_base/preflight-validation-manifest.json"
   local preflight_wrapper_json="$smoke_test_base/preflight-wrapper.json"
   local preflight_wrapper_stderr="$smoke_test_base/preflight-wrapper.stderr"
   local preflight_wrapper_failure=""
@@ -1506,7 +1510,7 @@ EOF
     cd "$smoke_test_dir" || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --json --check-only --branch=feature/preflight-smoke > "$preflight_json"
   ) && python3 -m json.tool "$preflight_json" >/dev/null; then
-    if smoke_json_assert "$preflight_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "pass" and data.get("mode") == "check-only" and data.get("rc") == 0 and data.get("branch") == "feature/preflight-smoke" and data.get("disk") == "pass" and data.get("stop_reason") == "" and data.get("default_branch") == "main" and data.get("current_branch") == "main"'; then
+    if smoke_json_assert "$preflight_json" 'data.get("script") == "codex-slice-preflight" and data.get("result") == "pass" and data.get("mode") == "check-only" and data.get("rc") == 0 and data.get("branch") == "feature/preflight-smoke" and data.get("disk") == "pass" and data.get("stop_reason") == "" and data.get("default_branch") == "main" and data.get("current_branch") == "main" and "validation_manifest_path" not in data'; then
       test_pass "preflight json is parseable"
     else
       test_fail "preflight json is parseable"
@@ -1514,6 +1518,31 @@ EOF
     fi
   else
     test_fail "preflight json is parseable"
+    status=1
+  fi
+
+  printf '{"schema":"repo-automation-slice-validator/v1","result":"pass"}\n' > "$preflight_validation_manifest" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --validation-manifest="$preflight_validation_manifest" --json > "$preflight_manifest_json"
+  ) && python3 -m json.tool "$preflight_manifest_json" >/dev/null &&
+    smoke_json_assert "$preflight_manifest_json" "data.get(\"script\") == \"codex-slice-preflight\" and data.get(\"result\") == \"pass\" and data.get(\"mode\") == \"check-only\" and data.get(\"rc\") == 0 and data.get(\"validation_manifest_path\") == \"$preflight_validation_manifest\""; then
+    test_pass "preflight validation manifest is traced in json"
+  else
+    test_fail "preflight validation manifest is traced in json"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --validation-manifest="$preflight_validation_manifest" --explain > "$preflight_manifest_explain_stdout" 2> "$preflight_manifest_explain_stderr"
+  ) && grep -Fxq '===== FINAL SUMMARY =====' "$preflight_manifest_explain_stderr" &&
+    grep -Fxq "validation_manifest_path=$preflight_validation_manifest" "$preflight_manifest_explain_stderr" &&
+    grep -Fxq 'url_or_stop=pass' "$preflight_manifest_explain_stderr"; then
+    test_pass "preflight validation manifest is traced in explain output"
+  else
+    test_fail "preflight validation manifest is traced in explain output"
     status=1
   fi
 
