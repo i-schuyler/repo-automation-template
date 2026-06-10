@@ -1570,6 +1570,7 @@ EOF
   smoke_slice_handoff_execution_fake_codex_args_submit_missing_final_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-missing-final.args"
   smoke_slice_handoff_execution_fake_repo_flow_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-repo-flow-submit.args"
   smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-pr-body-check-submit.args"
+  smoke_slice_handoff_execution_submit_bundle_root=""
   smoke_slice_handoff_install_fake_codex_run || return 1
   : \
     "$smoke_slice_handoff_check_root" \
@@ -1586,6 +1587,7 @@ EOF
     "$smoke_slice_handoff_execution_submit_out_dir" \
     "$smoke_slice_handoff_execution_quiet_out_dir" \
     "$smoke_slice_handoff_execution_explain_out_dir" \
+    "$smoke_slice_handoff_execution_submit_bundle_root" \
     "$smoke_slice_handoff_valid_preset_file" \
     "$smoke_slice_handoff_invalid_prompt_conflict_file" \
     "$smoke_slice_handoff_invalid_prompt_id_file" \
@@ -1649,15 +1651,19 @@ EOF
 
 smoke_slice_handoff_prepare_execution_submit_context() {
   local scenario_slug="$1"
+  local submit_bundle_root="$smoke_slice_handoff_execution_artifact_root/submit-$scenario_slug"
 
-  smoke_slice_handoff_execution_submit_out_dir="$smoke_slice_handoff_execution_artifact_root/out-execution-$scenario_slug"
-  smoke_slice_handoff_execution_fake_codex_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-$scenario_slug.args"
-  smoke_slice_handoff_execution_fake_codex_args_submit_blocker_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-blocker-$scenario_slug.args"
-  smoke_slice_handoff_execution_fake_codex_args_submit_blocker_crlf_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-blocker-crlf-$scenario_slug.args"
-  smoke_slice_handoff_execution_fake_codex_args_submit_missing_final_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-submit-missing-final-$scenario_slug.args"
-  smoke_slice_handoff_execution_fake_repo_flow_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-repo-flow-submit-$scenario_slug.args"
-  smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file="$smoke_slice_handoff_execution_artifact_root/fake-pr-body-check-submit-$scenario_slug.args"
-  smoke_slice_handoff_execution_fake_codex_run_final_text_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-run-final-$scenario_slug.txt"
+  rm -rf -- "$submit_bundle_root" || return 1
+  mkdir -p "$submit_bundle_root" || return 1
+  smoke_slice_handoff_execution_submit_bundle_root="$submit_bundle_root"
+  smoke_slice_handoff_execution_submit_out_dir="$submit_bundle_root/out-execution"
+  smoke_slice_handoff_execution_fake_codex_args_submit_file="$submit_bundle_root/fake-codex-submit.args"
+  smoke_slice_handoff_execution_fake_codex_args_submit_blocker_file="$submit_bundle_root/fake-codex-submit-blocker.args"
+  smoke_slice_handoff_execution_fake_codex_args_submit_blocker_crlf_file="$submit_bundle_root/fake-codex-submit-blocker-crlf.args"
+  smoke_slice_handoff_execution_fake_codex_args_submit_missing_final_file="$submit_bundle_root/fake-codex-submit-missing-final.args"
+  smoke_slice_handoff_execution_fake_repo_flow_args_submit_file="$submit_bundle_root/fake-repo-flow-submit.args"
+  smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file="$submit_bundle_root/fake-pr-body-check-submit.args"
+  smoke_slice_handoff_execution_fake_codex_run_final_text_file="$submit_bundle_root/fake-codex-run-final.txt"
   FAKE_CODEX_RUN_FINAL_TEXT_FILE="$smoke_slice_handoff_execution_fake_codex_run_final_text_file"
 
   smoke_slice_handoff_expected_execution_submit_preview="${smoke_slice_handoff_expected_submit_preview//$smoke_slice_handoff_valid_submit_out_dir/$smoke_slice_handoff_execution_submit_out_dir}"
@@ -1828,6 +1834,40 @@ smoke_slice_handoff_assert_execution_submit_blocker_boundary() {
   [ ! -e "$expected_run_dir/pr-body-check.stderr" ] || return 1
   [ ! -e "$expected_run_dir/repo-flow-submit.stdout" ] || return 1
   [ ! -e "$expected_run_dir/repo-flow-submit.stderr" ] || return 1
+}
+
+smoke_slice_handoff_assert_execution_submit_artifact_bundle() {
+  local scenario_slug="$1"
+  local bundle_root="$2"
+  local codex_args_file="$3"
+  local repo_flow_args_file="$4"
+  local pr_body_check_args_file="$5"
+  local codex_final_text_file="$6"
+
+  case "$bundle_root" in
+    */submit-$scenario_slug) ;;
+    *)
+      printf 'fail: unexpected execution-submit bundle root: %s\n' "$bundle_root" >&2
+      printf 'fix: derive execution-submit artifact paths from the scenario slug\n' >&2
+      return 1
+      ;;
+  esac
+
+  for path in \
+    "$codex_args_file" \
+    "$repo_flow_args_file" \
+    "$pr_body_check_args_file" \
+    "$codex_final_text_file"
+  do
+    case "$path" in
+      "$bundle_root"/*) ;;
+      *)
+        printf 'fail: execution-submit artifact escaped scenario bundle: %s\n' "$path" >&2
+        printf 'fix: keep submit fake artifact paths under the scenario-owned bundle root\n' >&2
+        return 1
+        ;;
+    esac
+  done
 }
 
 smoke_slice_handoff_assert_no_repo_root_out_dir() {
