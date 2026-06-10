@@ -121,7 +121,7 @@ slice_handoff_print_review_request_block() {
   [ -r "$review_request_path" ] || return 0
 
   printf '\n' >&2
-  repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$review_request_path" 0 >&2
+  repo_review_request_emit_block "$review_request_path" >&2
 }
 
 slice_handoff_print_review_request_block_with_metadata() {
@@ -132,27 +132,29 @@ slice_handoff_print_review_request_block_with_metadata() {
   local commit="$5"
   local ci="$6"
   local review_request_valid="$7"
-  local last_byte=""
+  local block_source_path=""
 
   [ -n "$review_request_path" ] || return 0
   [ -f "$review_request_path" ] || return 0
   [ -r "$review_request_path" ] || return 0
 
+  block_source_path="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-review-request.XXXXXX")" || return 1
+  {
+    printf 'Review metadata:\n'
+    printf 'PR: %s\n' "$pr_url"
+    printf 'Branch: %s\n' "$branch"
+    printf 'Run dir: %s\n' "$run_dir"
+    printf 'Commit: %s\n' "$commit"
+    printf 'CI: %s\n' "$ci"
+    printf 'Review request valid: %s\n\n' "$review_request_valid"
+    cat "$review_request_path"
+  } > "$block_source_path" || {
+    rm -f -- "$block_source_path" >/dev/null 2>&1 || true
+    return 1
+  }
   printf '\n' >&2
-  printf '===== PR REVIEW REQUEST =====\n' >&2
-  printf 'Review metadata:\n' >&2
-  printf 'PR: %s\n' "$pr_url" >&2
-  printf 'Branch: %s\n' "$branch" >&2
-  printf 'Run dir: %s\n' "$run_dir" >&2
-  printf 'Commit: %s\n' "$commit" >&2
-  printf 'CI: %s\n' "$ci" >&2
-  printf 'Review request valid: %s\n\n' "$review_request_valid" >&2
-  cat "$review_request_path" >&2 || return 1
-  last_byte="$(tail -c 1 "$review_request_path" 2>/dev/null | od -An -t x1 | tr -d '[:space:]')"
-  if [ "$last_byte" != "0a" ]; then
-    printf '\n' >&2
-  fi
-  printf '===== END PR REVIEW REQUEST =====\n' >&2
+  repo_review_request_emit_block "$block_source_path" >&2
+  rm -f -- "$block_source_path" >/dev/null 2>&1 || true
 }
 
 slice_handoff_execution_failure_heading() {

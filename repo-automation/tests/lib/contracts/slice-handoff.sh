@@ -2029,6 +2029,94 @@ PY
   rm -f -- "$filtered_stderr_file" >/dev/null 2>&1 || true
 }
 
+smoke_slice_handoff_assert_review_request_renderer() {
+  local renderer_root=""
+  local plain_source=""
+  local plain_block=""
+  local metadata_source=""
+  local metadata_block=""
+  local shellcheck_source=""
+
+  renderer_root="$(mktemp -d "${TMPDIR:-$HOME/.cache}/slice-handoff-review-request-renderer.XXXXXX")" || return 1
+  plain_source="$renderer_root/plain-source.txt"
+  plain_block="$renderer_root/plain-block.txt"
+  metadata_source="$renderer_root/metadata-source.txt"
+  metadata_block="$renderer_root/metadata-block.txt"
+
+  shellcheck_source="$smoke_repo_root/repo-automation/lib/review-request.sh"
+  # shellcheck disable=SC1090
+  source "$shellcheck_source" || {
+    rm -rf -- "$renderer_root" >/dev/null 2>&1 || true
+    return 1
+  }
+
+  printf 'Please review this PR before merge:\n\nhttps://example.invalid/pr/7\n\nPlain block tail without newline' > "$plain_source" || {
+    rm -rf -- "$renderer_root" >/dev/null 2>&1 || true
+    return 1
+  }
+  if ! repo_review_request_write_block "$plain_source" "$plain_block"; then
+    rm -rf -- "$renderer_root" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  {
+    printf 'Review metadata:\n'
+    printf 'PR: https://example.invalid/pr/7\n'
+    printf 'Branch: feature/slice-handoff-pr-review\n'
+    printf 'Run dir: /tmp/slice-handoff-run\n'
+    printf 'Commit: abc123\n'
+    printf 'CI: pass\n'
+    printf 'Review request valid: true\n\n'
+    cat "$plain_source"
+  } > "$metadata_source" || {
+    rm -rf -- "$renderer_root" >/dev/null 2>&1 || true
+    return 1
+  }
+  if ! repo_review_request_write_block "$metadata_source" "$metadata_block"; then
+    rm -rf -- "$renderer_root" >/dev/null 2>&1 || true
+    return 1
+  fi
+
+  python3 - "$plain_source" "$plain_block" "$metadata_source" "$metadata_block" <<'PY'
+from pathlib import Path
+import sys
+
+plain_source = Path(sys.argv[1])
+plain_block = Path(sys.argv[2])
+metadata_source = Path(sys.argv[3])
+metadata_block = Path(sys.argv[4])
+
+plain_text = plain_source.read_text(encoding='utf-8')
+if plain_text.endswith('\n'):
+    raise SystemExit(1)
+if plain_block.read_text(encoding='utf-8').splitlines() != [
+    '===== PR REVIEW REQUEST =====',
+    *plain_text.splitlines(),
+    '===== END PR REVIEW REQUEST =====',
+]:
+    raise SystemExit(1)
+
+metadata_text = metadata_source.read_text(encoding='utf-8')
+if metadata_text.endswith('\n'):
+    raise SystemExit(1)
+if metadata_block.read_text(encoding='utf-8').splitlines() != [
+    '===== PR REVIEW REQUEST =====',
+    'Review metadata:',
+    'PR: https://example.invalid/pr/7',
+    'Branch: feature/slice-handoff-pr-review',
+    'Run dir: /tmp/slice-handoff-run',
+    'Commit: abc123',
+    'CI: pass',
+    'Review request valid: true',
+    '',
+    *metadata_text.splitlines(),
+    '===== END PR REVIEW REQUEST =====',
+]:
+    raise SystemExit(1)
+PY
+  rm -rf -- "$renderer_root" >/dev/null 2>&1 || true
+}
+
 smoke_slice_handoff_assert_markers_in_order() {
   local file="$1"
   shift

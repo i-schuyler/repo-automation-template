@@ -30,6 +30,7 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:dry-run-artifacts" smoke_check_slice_handoff_contract_dry_run_artifacts || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:repair-routing" smoke_check_slice_handoff_contract_repair_routing || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:validation-review" smoke_check_slice_handoff_contract_validation_and_review_request || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:review-request-renderer" smoke_slice_handoff_assert_review_request_renderer || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:lifecycle-guards" smoke_check_slice_handoff_contract_lifecycle_and_self_modifying || status=1
 
   smoke_slice_handoff_prepare_execution_context || return 1
@@ -527,7 +528,6 @@ EOF
       [ -f "$review_request_path" ] &&
       [ -f "$review_request_block_path" ] &&
       cmp -s "$run_dir/review-request.txt" "$review_request_path" &&
-      grep -Fxq '===== PR REVIEW REQUEST =====' "$review_request_block_path" &&
       grep -Fxq "Slice: Slice handoff preset review smoke" "$run_dir/review-request-source.txt" &&
       grep -Fxq "Branch: feature/slice-handoff-pr-review" "$run_dir/review-request-source.txt" &&
       grep -Fxq "Run dir: $run_dir" "$run_dir/review-request-source.txt" &&
@@ -540,6 +540,47 @@ EOF
       grep -Fxq 'pass' "$run_dir/pr-body-check.stdout" &&
       grep -Fxq '===== FINAL SUMMARY =====' "$run_dir/repo-flow-submit.stderr" &&
       grep -Fxq "url_or_stop=$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" "$run_dir/repo-flow-submit.stderr" &&
+      python3 - "$run_dir/repo-flow-submit.stderr" "$review_request_path" "$review_request_block_path" "$smoke_slice_handoff_expected_submit_repo_flow_url_or_stop" "$run_dir" "$smoke_slice_handoff_expected_submit_commit_sha" "$smoke_slice_handoff_expected_submit_ci_state" <<'PY'
+from pathlib import Path
+import sys
+
+stderr_path = Path(sys.argv[1])
+review_request_path = Path(sys.argv[2])
+review_request_block_path = Path(sys.argv[3])
+expected_pr = sys.argv[4]
+expected_run_dir = sys.argv[5]
+expected_commit = sys.argv[6]
+expected_ci = sys.argv[7]
+
+stderr_lines = stderr_path.read_text(encoding='utf-8').splitlines()
+summary_line = stderr_lines.index('===== FINAL SUMMARY =====')
+codex_context_line = stderr_lines.index('===== CODEX RUN CONTEXT =====')
+review_line = stderr_lines.index('===== PR REVIEW REQUEST =====')
+review_end_line = stderr_lines.index('===== END PR REVIEW REQUEST =====')
+summary_end_line = stderr_lines.index('===== END =====')
+if not (summary_line < summary_end_line < codex_context_line < review_line < review_end_line):
+    raise SystemExit(1)
+if stderr_lines[summary_end_line + 1] != '':
+    raise SystemExit(1)
+if stderr_lines[review_line - 1] != '':
+    raise SystemExit(1)
+expected_review = review_request_path.read_text(encoding='utf-8')
+expected_block = [
+    '===== PR REVIEW REQUEST =====',
+    'Review metadata:',
+    f'PR: {expected_pr}',
+    'Branch: feature/slice-handoff-pr-review',
+    f'Run dir: {expected_run_dir}',
+    f'Commit: {expected_commit}',
+    f'CI: {expected_ci}',
+    'Review request valid: true',
+    '',
+    *expected_review.splitlines(),
+    '===== END PR REVIEW REQUEST =====',
+]
+if review_request_block_path.read_text(encoding='utf-8').splitlines() != expected_block:
+    raise SystemExit(1)
+PY
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/codex-prompt.md" "$smoke_slice_handoff_submit_prompt" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/dry-run-preview.txt" "$smoke_slice_handoff_expected_execution_submit_preview" &&
       smoke_slice_handoff_assert_text_file "$smoke_slice_handoff_execution_submit_out_dir/pr-body.md" "$smoke_slice_handoff_submit_body" &&

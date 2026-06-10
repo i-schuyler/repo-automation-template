@@ -1528,6 +1528,93 @@ EOF
   return "$status"
 }
 
+smoke_check_repo_flow_submit_review_request_block_rendering() {
+  local status=0
+  local gh_stub_dir=""
+  local stdout_file=""
+  local stderr_file=""
+  local review_request_source_file=""
+  local review_request_path=""
+  local review_request_block_path=""
+  local head_before=""
+  local head_after=""
+  local local_bash_path=""
+
+  smoke_setup_temp_repo || return 1
+  # shellcheck disable=SC2154 # smoke_test_base is provided by the smoke harness.
+  gh_stub_dir="$smoke_test_base/gh-stub"
+  stdout_file="$smoke_test_base/repo-flow-submit-review-request-block.out"
+  stderr_file="$smoke_test_base/repo-flow-submit-review-request-block.stderr"
+  review_request_source_file="$smoke_test_base/repo-flow-submit-review-request-block-source.txt"
+  smoke_reset_gh_stub_state || return 1
+  smoke_write_repo_flow_gh_stub "$gh_stub_dir" || return 1
+  smoke_prepare_repo_flow_remote || return 1
+  smoke_prepare_repo_flow_branch "feature/repo-flow-submit-review-request-block" || return 1
+  local_bash_path="$(command -v bash)" || return 1
+
+  printf 'Please review this PR before merge:\n\n<PR_URL>\n\nReview summary without trailing newline' > "$review_request_source_file" || return 1
+  printf '\nrepo-flow submit review request block line\n' >> "$smoke_test_dir/README.md" || return 1
+  head_before="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    PATH="$gh_stub_dir:$PATH" \
+    GH_STUB_PR_CREATE_URL='https://github.com/i-schuyler/repo-automation-template/pull/907' \
+    GH_STUB_PR_VIEW_EMPTY=1 \
+    repo-automation/bin/repo-flow submit --paths=README.md --message='repo-flow submit review request block commit' --review-request-file="$review_request_source_file" --explain > "$stdout_file" 2> "$stderr_file"
+  ); then
+    head_after="$(git -C "$smoke_test_dir" rev-parse HEAD)" || return 1
+    review_request_path="$(smoke_extract_final_summary_block "$stderr_file" | awk -F= '/^review_request_path=/{print substr($0, index($0, "=") + 1); exit}')"
+    review_request_block_path="$(smoke_extract_final_summary_block "$stderr_file" | awk -F= '/^review_request_block_path=/{print substr($0, index($0, "=") + 1); exit}')"
+    if [ "$head_before" != "$head_after" ] &&
+      [ -z "$(cat "$stdout_file" 2>/dev/null || true)" ] &&
+      [ -n "$review_request_path" ] &&
+      [ -n "$review_request_block_path" ] &&
+      [ -f "$review_request_path" ] &&
+      [ -f "$review_request_block_path" ] &&
+      python3 - "$stderr_file" "$review_request_path" "$review_request_block_path" <<'PY'
+from pathlib import Path
+import sys
+
+stderr_path = Path(sys.argv[1])
+review_request_path = Path(sys.argv[2])
+review_request_block_path = Path(sys.argv[3])
+lines = stderr_path.read_text(encoding='utf-8').splitlines()
+summary_line = lines.index('===== FINAL SUMMARY =====')
+review_line = lines.index('===== PR REVIEW REQUEST =====')
+review_end_line = lines.index('===== END PR REVIEW REQUEST =====')
+summary_end_line = lines.index('===== END =====')
+if not (summary_line < summary_end_line < review_line < review_end_line):
+    raise SystemExit(1)
+if lines[summary_end_line + 1] != '':
+    raise SystemExit(1)
+if lines[review_line - 1] != '':
+    raise SystemExit(1)
+expected_text = "Please review this PR before merge:\n\nhttps://github.com/i-schuyler/repo-automation-template/pull/907\n\nReview summary without trailing newline"
+if review_request_path.read_text(encoding='utf-8') != expected_text:
+    raise SystemExit(1)
+expected_block = [
+    '===== PR REVIEW REQUEST =====',
+    *expected_text.splitlines(),
+    '===== END PR REVIEW REQUEST =====',
+]
+if review_request_block_path.read_text(encoding='utf-8').splitlines() != expected_block:
+    raise SystemExit(1)
+PY
+    then
+      test_pass "repo-flow submit renders PR review request blocks with preserved ordering"
+    else
+      test_fail "repo-flow submit renders PR review request blocks with preserved ordering"
+      status=1
+    fi
+  else
+    test_fail "repo-flow submit renders PR review request blocks with preserved ordering"
+    status=1
+  fi
+
+  return "$status"
+}
+
 smoke_check_repo_flow_submit_body_file_existing_pr_requires_replace_body() {
   local status=0
   local gh_stub_dir=""
@@ -3678,6 +3765,7 @@ smoke_main_impl() {
     smoke_run_named_check "smoke:repo-flow-create-pr" smoke_check_repo_flow_create_pr || status=1
     smoke_run_named_check "smoke:repo-flow-submit-paths" smoke_check_repo_flow_submit_paths || status=1
     smoke_run_named_check "smoke:repo-flow-submit-body-file-create-refresh" smoke_check_repo_flow_submit_body_file_create_refresh || status=1
+    smoke_run_named_check "smoke:repo-flow-submit-review-request-block-rendering" smoke_check_repo_flow_submit_review_request_block_rendering || status=1
     smoke_run_named_check "smoke:repo-flow-submit-body-file-existing-pr-requires-replace-body" smoke_check_repo_flow_submit_body_file_existing_pr_requires_replace_body || status=1
     smoke_run_named_check "smoke:repo-flow-submit-replace-body-flag-rejected" smoke_check_repo_flow_submit_replace_body_flag_rejected || status=1
     smoke_run_named_check "smoke:repo-flow-submit-staged-watch" smoke_check_repo_flow_submit_staged_watch || status=1
@@ -3741,6 +3829,9 @@ smoke_main_impl() {
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-body-file-create-refresh" smoke_check_repo_flow_submit_body_file_create_refresh || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:repo-flow-submit-review-request-block-rendering" smoke_check_repo_flow_submit_review_request_block_rendering || status=1
     fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:repo-flow-submit-body-file-existing-pr-requires-replace-body" smoke_check_repo_flow_submit_body_file_existing_pr_requires_replace_body || status=1
