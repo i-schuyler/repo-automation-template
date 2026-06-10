@@ -267,7 +267,7 @@ repo_flow_submit_render_review_request() {
     repo_flow_submit_stop "failed to render review request"
     return 1
   fi
-  if ! repo_operator_output_write_file_block "PR REVIEW REQUEST" "$review_request_text_path" "$review_request_block_path"; then
+  if ! repo_review_request_write_block "$review_request_text_path" "$review_request_block_path"; then
     repo_flow_submit_stop "failed to write PR review request block"
     return 1
   fi
@@ -369,7 +369,7 @@ repo_flow_submit_render_result() {
       "${review_request_block_path:-}"
     if [ "$command_status" -eq 0 ] && [ -n "${review_request_block_path:-}" ]; then
       printf '\n' >&2
-      repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$review_request_text_path" 0 >&2
+      repo_review_request_emit_block "$review_request_text_path" >&2
     fi
   fi
 

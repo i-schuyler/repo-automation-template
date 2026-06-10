@@ -68,6 +68,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-06-09 / review-request block rendering seam / ids=none / score_delta=0 / signal=shared plain and metadata PR REVIEW REQUEST rendering now uses the review-request helper while keeping output order stable
 - 2026-06-09 / repo-flow submit diagnostics polish / ids=none / score_delta=0 / signal=compact unrequested-change excerpts now carry a short fix hint before FINAL SUMMARY, with no submit-semantic changes
 - 2026-06-09 / PR #241 / codex-run resume-session adapter repair / ids=codex-run-resume-final-output-contract / score_delta=+3 / signal=resume mode now uses `codex exec resume` file-backed final output, preserves cd/sandbox/profile forwarding, and fails explicitly when the final artifact is absent
 - 2026-06-08 / feature/slice-handoff-operator-output-context / ids=slice-handoff-contract-opacity|codex-status-recent-fixture-isolation / score_delta=+1 / signal=child-boundary diagnostics now use labeled details and required CODEX RUN CONTEXT, and submit-mode smoke now uses a repo-local recent-status fake to keep ChatGPT re-entry data stable
@@ -123,6 +124,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 - 2026-06-07 / PR #235 / slice-handoff smoke preflight disk guard / ids=slice-handoff-preflight-disk-stub / score_delta=+1 / signal=execution-mode slice-handoff smoke needed a healthy df stub so codex-slice-preflight would not fail the disk guard in low-space developer environments
 - 2026-06-09 / PR #242 / slice-handoff repair routing / ids=slice-handoff-contract-opacity / score_delta=+1 / signal=first-class repair routing required aligned validator metadata, existing-PR preflight, Codex resume, replacement-body submit, and repo-relative focused fixtures
 - 2026-06-09 / PR #242 / codex-slice-preflight repeated CI repair / ids=slice-handoff-contract-opacity / score_delta=+1 / signal=fresh-home reproduction exposed missing local Git identity in the nested repair fixture; wrapper diagnostics now report nested JSON status, step, and reason
+- 2026-06-10 / PR #244 / shared review-request renderer portability repair / ids=none / score_delta=0 / signal=check-portability quiet success failed because the new slice-handoff renderer smoke used a literal temp-root run-dir example; replaced it with ${TMPDIR:-$HOME/.cache} without changing review-request block behavior
 
 ## Maintenance Notes
 

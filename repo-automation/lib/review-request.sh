@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # repo-automation/lib/review-request.sh
 
+# shellcheck source=/dev/null
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/operator-output.sh" || {
+  printf 'STOP: failed to source operator output library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
 repo_review_request_is_valid_id() {
   case "${1:-}" in
     ''|.*|*/*|*'..'*|*[!A-Za-z0-9_-]*)
@@ -88,6 +94,19 @@ if pr_url and pr_url not in text:
 
 output.write_text(text, encoding="utf-8")
 PY
+}
+
+repo_review_request_write_block() {
+  local source_path="$1"
+  local block_path="$2"
+
+  repo_operator_output_write_file_block "PR REVIEW REQUEST" "$source_path" "$block_path"
+}
+
+repo_review_request_emit_block() {
+  local source_path="$1"
+
+  repo_operator_output_emit_file_block "PR REVIEW REQUEST" "$source_path" 0
 }
 
 # repo-automation/lib/review-request.sh EOF
