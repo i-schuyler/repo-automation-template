@@ -2035,6 +2035,7 @@ smoke_slice_handoff_assert_review_request_renderer() {
   local plain_block=""
   local metadata_source=""
   local metadata_block=""
+  local metadata_run_dir=""
   local shellcheck_source=""
 
   renderer_root="$(mktemp -d "${TMPDIR:-$HOME/.cache}/slice-handoff-review-request-renderer.XXXXXX")" || return 1
@@ -2042,6 +2043,7 @@ smoke_slice_handoff_assert_review_request_renderer() {
   plain_block="$renderer_root/plain-block.txt"
   metadata_source="$renderer_root/metadata-source.txt"
   metadata_block="$renderer_root/metadata-block.txt"
+  metadata_run_dir="${TMPDIR:-$HOME/.cache}/slice-handoff-run"
 
   shellcheck_source="$smoke_repo_root/repo-automation/lib/review-request.sh"
   # shellcheck disable=SC1090
@@ -2063,7 +2065,7 @@ smoke_slice_handoff_assert_review_request_renderer() {
     printf 'Review metadata:\n'
     printf 'PR: https://example.invalid/pr/7\n'
     printf 'Branch: feature/slice-handoff-pr-review\n'
-    printf 'Run dir: /tmp/slice-handoff-run\n'
+    printf 'Run dir: %s\n' "$metadata_run_dir"
     printf 'Commit: abc123\n'
     printf 'CI: pass\n'
     printf 'Review request valid: true\n\n'
@@ -2077,7 +2079,7 @@ smoke_slice_handoff_assert_review_request_renderer() {
     return 1
   fi
 
-  python3 - "$plain_source" "$plain_block" "$metadata_source" "$metadata_block" <<'PY'
+  python3 - "$plain_source" "$plain_block" "$metadata_source" "$metadata_block" "$metadata_run_dir" <<'PY'
 from pathlib import Path
 import sys
 
@@ -2085,6 +2087,7 @@ plain_source = Path(sys.argv[1])
 plain_block = Path(sys.argv[2])
 metadata_source = Path(sys.argv[3])
 metadata_block = Path(sys.argv[4])
+metadata_run_dir = sys.argv[5]
 
 plain_text = plain_source.read_text(encoding='utf-8')
 if plain_text.endswith('\n'):
@@ -2104,7 +2107,7 @@ if metadata_block.read_text(encoding='utf-8').splitlines() != [
     'Review metadata:',
     'PR: https://example.invalid/pr/7',
     'Branch: feature/slice-handoff-pr-review',
-    'Run dir: /tmp/slice-handoff-run',
+    f'Run dir: {metadata_run_dir}',
     'Commit: abc123',
     'CI: pass',
     'Review request valid: true',
