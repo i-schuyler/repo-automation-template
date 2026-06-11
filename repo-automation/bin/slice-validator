@@ -82,6 +82,7 @@ class ValidationState:
     submit_mode: str = ""
     commit_message: str = ""
     handoff_mode: str = "implementation"
+    self_target: str = ""
     repair_of_pr: str = ""
     repair_session: str = ""
     codex_session_id: str = ""
@@ -267,26 +268,21 @@ def reject_lifecycle_instruction(line: str) -> None:
         raise fail("lifecycle-instruction", "codex-prompt", "Codex Prompt contains lifecycle instruction: branch:", "remove execution and workflow instructions from the prompt")
 
 
-def reject_self_modifying_helper_instruction(line: str) -> None:
+def prompt_line_targets_running_helper(line: str) -> bool:
     normalized = strip_list_marker(line).strip().lower()
     if not normalized:
-        return
+        return False
     if normalized.startswith("out of scope:"):
         normalized = normalized[len("out of scope:"):].strip()
         if not normalized:
-            return
+            return False
     if normalized.startswith(("do not ", "don't ")):
-        return
+        return False
     if "repo-automation/bin/slice-handoff" not in normalized:
-        return
+        return False
     if re.match(r"^(?:please\s+)?(?:run|invoke|execute|launch|call)\s+repo-automation/bin/slice-handoff\b", normalized):
-        return
-    raise fail(
-        "self-modifying-target",
-        "codex-prompt",
-        "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff",
-        "future copied-helper/self-target support is required before this helper can edit itself safely; use the direct Codex lane or same-branch repair lane instead",
-    )
+        return False
+    return True
 
 
 def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, object]:
@@ -360,6 +356,9 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
     handoff_mode = envelope.get("handoff_mode", "implementation")
     if handoff_mode not in {"implementation", "repair"}:
         raise fail("invalid-handoff-mode", "handoff-envelope", f"invalid handoff_mode: {handoff_mode}", "use handoff_mode: implementation or handoff_mode: repair")
+    self_target = envelope.get("self_target", "")
+    if self_target and self_target != "copied-helper":
+        raise fail("invalid-self-target", "handoff-envelope", f"unknown self_target: {self_target}", "use self_target: copied-helper or remove self_target")
     repair_of_pr = envelope.get("repair_of_pr", "")
     repair_session = envelope.get("repair_session", "")
     codex_session_id = envelope.get("codex_session_id", "")
@@ -397,9 +396,26 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         if phrase in prompt_lower:
             raise fail("unsafe-placeholder", "codex-prompt", f"unsafe placeholder text in Codex Prompt: {phrase}", "replace the placeholder prompt with concrete slice instructions")
 
+    targets_running_helper = False
     for raw_line in prompt_lines:
         reject_lifecycle_instruction(raw_line)
-        reject_self_modifying_helper_instruction(raw_line)
+        if prompt_line_targets_running_helper(raw_line):
+            targets_running_helper = True
+
+    if targets_running_helper and self_target != "copied-helper":
+        raise fail(
+            "self-modifying-target",
+            "codex-prompt",
+            "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff",
+            "future copied-helper/self-target support is required before this helper can edit itself safely; use the direct Codex lane or same-branch repair lane instead",
+        )
+    if self_target == "copied-helper" and not targets_running_helper:
+        raise fail(
+            "self-target-drift",
+            "handoff-envelope",
+            "self_target: copied-helper requires the Codex Prompt to target repo-automation/bin/slice-handoff",
+            "remove self_target: copied-helper or retarget the Codex Prompt at repo-automation/bin/slice-handoff",
+        )
 
     pr_review_prompt_id = envelope.get("pr_review_prompt_id", "")
     if pr_review_prompt_id and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", pr_review_prompt_id):
@@ -447,6 +463,7 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         "submit_mode": submit_mode,
         "commit_message": commit_message,
         "handoff_mode": handoff_mode,
+        "self_target": self_target,
         "repair_of_pr": repair_of_pr,
         "repair_session": repair_session,
         "codex_session_id": codex_session_id,
@@ -537,6 +554,8 @@ def build_manifest(state: ValidationState, pr_body_valid: bool, requested_mode: 
         "review_request_path": str(state.review_request_path),
         "review_request_hash": file_hash(state.review_request_path),
     }
+    if state.self_target:
+        manifest["self_target"] = state.self_target
     if state.body_text:
         manifest["pr_body_path"] = str(state.body_path)
         manifest["pr_body_hash"] = file_hash(state.body_path)
@@ -572,6 +591,8 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
             "forbidden_steps": manifest["forbidden_steps"],
             "next": "codex-slice-preflight",
         }
+        if state.self_target:
+            payload["self_target"] = state.self_target
         json.dump(payload, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")
         return
@@ -586,6 +607,8 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
     sys.stdout.write(f"codex_profile={state.codex_profile}\n")
     sys.stdout.write(f"submit_mode={state.submit_mode}\n")
     sys.stdout.write(f"handoff_mode={state.handoff_mode}\n")
+    if state.self_target:
+        sys.stdout.write(f"self_target={state.self_target}\n")
     if state.handoff_mode == "repair":
         sys.stdout.write(f"repair_of_pr={state.repair_of_pr}\n")
         sys.stdout.write(f"repair_session={state.repair_session}\n")
@@ -645,6 +668,7 @@ def main(argv: list[str]) -> int:
         repair_of_pr=str(parsed["repair_of_pr"]),
         repair_session=str(parsed["repair_session"]),
         codex_session_id=str(parsed["codex_session_id"]),
+        self_target=str(parsed["self_target"]),
         prompt_text=str(parsed["prompt_text"]),
         prompt_path=prompt_path,
         body_text=str(parsed["body_text"]),

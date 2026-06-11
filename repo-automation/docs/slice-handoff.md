@@ -14,13 +14,13 @@ The non-executing mode is `--dry-run`.
 
 `--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. In successful submit mode, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`, and explain mode does not append an unlabeled trailing machine block. The rendered PR REVIEW REQUEST starts with compact Review metadata (`PR`, `Branch`, `Run dir`, `Commit`, `CI`, `Review request valid`) so an operator can paste it directly back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
-`slice-handoff --repair` is for existing PR repair/resume lanes, but it still refuses prompts that would edit the active helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Changing that helper requires the direct fallback or manual same-branch repair unless future copied-helper/self-target support lands.
+`slice-handoff --repair` is for existing PR repair/resume lanes. It still refuses prompts that would edit the active helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight unless the validation envelope explicitly opts into copied-helper self-targeting with `self_target: copied-helper`.
 
-## Future copied-helper/self-target contract
+## Copied-helper/self-target contract
 
 The active `slice-handoff` helper cannot safely edit itself while it is running, because the process, sourced helpers, and run-dir wiring all depend on the current script remaining stable until orchestration completes.
 
-Future copied-helper/self-target support may replace the current refusal only after it guarantees:
+`self_target: copied-helper` is the only supported self-target lane. It is accepted only when the validation manifest proves the prompt really targets `repo-automation/bin/slice-handoff`, and it remains blocked unless it guarantees:
 
 - a run-owned immutable helper snapshot exists before Codex can edit the mutable worktree helper;
 - subsequent orchestration executes from the snapshot, not from the mutable worktree helper;
@@ -29,8 +29,6 @@ Future copied-helper/self-target support may replace the current refusal only af
 - the snapshot path and snapshot hash are recorded in run artifacts;
 - edits to `repo-automation/bin/slice-handoff` do not affect the running orchestration process;
 - direct fallback remains the stop condition whenever the copied-helper guarantees are absent.
-
-Until those guarantees exist, direct Codex or same-branch repair remains required for self-target work.
 
 Review request source precedence is:
 

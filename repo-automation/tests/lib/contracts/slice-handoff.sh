@@ -447,6 +447,13 @@ if [ -n "$args_file" ]; then
   printf '%s\n' "$@" >"$args_file"
 fi
 
+if [ -n "${FAKE_CODEX_RUN_EDIT_TARGET_FILE:-}" ] && [ -n "${FAKE_CODEX_RUN_EDIT_TARGET_PATH:-}" ]; then
+  if [ -r "$FAKE_CODEX_RUN_EDIT_TARGET_FILE" ]; then
+    mkdir -p "$(dirname "$FAKE_CODEX_RUN_EDIT_TARGET_PATH")" || exit 1
+    cp -- "$FAKE_CODEX_RUN_EDIT_TARGET_FILE" "$FAKE_CODEX_RUN_EDIT_TARGET_PATH" || exit 1
+  fi
+fi
+
 for arg in "$@"; do
   if [ -n "$prev" ]; then
     case "$prev" in
@@ -648,6 +655,7 @@ smoke_slice_handoff_write_file() {
   local pr_body_text="${8:-}"
   local review_request_text="${9:-}"
   local pr_review_prompt_id="${10:-}"
+  local self_target="${11:-}"
 
   mkdir -p "$(dirname "$path")" || return 1
   smoke_slice_handoff_install_prompt_presets "$path" || return 1
@@ -670,6 +678,9 @@ smoke_slice_handoff_write_file() {
     fi
     if [ -n "$pr_review_prompt_id" ]; then
       printf 'pr_review_prompt_id: %s\n' "$pr_review_prompt_id"
+    fi
+    if [ -n "$self_target" ]; then
+      printf 'self_target: %s\n' "$self_target"
     fi
     printf '\n# Slice Handoff\n\n## Codex Prompt\n'
     printf '%s\n' "$prompt_text"
@@ -1364,6 +1375,7 @@ smoke_slice_handoff_prepare_contract_context() {
   smoke_slice_handoff_missing_prompt_file="$smoke_slice_handoff_check_root/missing-pr-review-preset.md"
   smoke_slice_handoff_lifecycle_file="$smoke_slice_handoff_check_root/lifecycle.md"
   smoke_slice_handoff_self_modifying_helper_file="$smoke_slice_handoff_check_root/self-modifying-helper.md"
+  smoke_slice_handoff_self_target_file="$smoke_slice_handoff_check_root/self-target-copied-helper.md"
   smoke_slice_handoff_helper_command_mention_file="$smoke_slice_handoff_check_root/helper-command-mention.md"
   smoke_slice_handoff_top_level_fixture_baseline_file="$smoke_slice_handoff_check_root/top-level-fixture-baseline.txt"
   smoke_slice_handoff_top_level_fixture_after_file="$smoke_slice_handoff_check_root/top-level-fixture-after.txt"
@@ -1472,6 +1484,7 @@ EOF
   smoke_slice_handoff_write_file "$smoke_slice_handoff_missing_prompt_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$smoke_slice_handoff_valid_prompt" "" "" "missing-preset" || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_lifecycle_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Please create a PR." || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_self_modifying_helper_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Update repo-automation/bin/slice-handoff to add the new guard." || return 1
+  smoke_slice_handoff_write_file "$smoke_slice_handoff_self_target_file" "feature/slice-handoff-self-target" "Slice handoff copied-helper smoke" "default" "none" "" "Update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "" "" "" "copied-helper" || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_helper_command_mention_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Please run repo-automation/bin/slice-handoff --help as a command reference, then continue with the slice." || return 1
 }
 

@@ -36,6 +36,7 @@ smoke_main_impl() {
   smoke_slice_handoff_prepare_execution_context || return 1
 
   smoke_run_named_check "smoke:slice-handoff-contract:repair-execution" smoke_check_slice_handoff_contract_repair_execution || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:execution-copied-helper-self-target" smoke_check_slice_handoff_contract_execution_copied_helper_self_target || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-none" smoke_check_slice_handoff_contract_execution_none_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-success" smoke_check_slice_handoff_contract_execution_submit_success_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-false-positive" smoke_check_slice_handoff_contract_execution_submit_false_positive_blocker_behavior || status=1
@@ -104,6 +105,96 @@ PY
     test_fail "slice-handoff repair execution resumes Codex and replaces the existing PR body"
     return 1
   fi
+}
+
+smoke_check_slice_handoff_contract_execution_copied_helper_self_target() {
+  local status=0
+  local self_target_out_dir="$smoke_slice_handoff_execution_artifact_root/out-execution-self-target"
+  local stdout_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-self-target.out"
+  local stderr_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-self-target.err"
+  local worktree_helper_before="$smoke_slice_handoff_execution_artifact_root/slice-handoff-worktree-before.txt"
+  local codex_run_before="$smoke_slice_handoff_execution_artifact_root/codex-run-before.txt"
+  local fake_codex_edit_text="$smoke_slice_handoff_execution_artifact_root/fake-codex-edit-helper.txt"
+  local self_target_expected_review_request
+  local run_dir=""
+  local snapshot_helper_path=""
+
+  smoke_slice_handoff_install_fake_codex_run || return 1
+  if [ -e "$smoke_test_dir/repo-automation/bin/codex-run" ]; then
+    cp -- "$smoke_test_dir/repo-automation/bin/codex-run" "$codex_run_before" || return 1
+  else
+    : > "$codex_run_before" || return 1
+  fi
+  printf '# fake codex-run edited worktree helper\n' > "$fake_codex_edit_text" || return 1
+  cp -- "$smoke_test_dir/repo-automation/bin/slice-handoff" "$worktree_helper_before" || return 1
+  rm -rf -- "$self_target_out_dir" || return 1
+  self_target_expected_review_request="$(cat <<'EOF'
+Please review this PR before merge:
+
+<PR_URL>
+
+Slice handoff copied-helper smoke
+Branch: feature/slice-handoff-self-target
+
+Review the changed files and any related docs, tests, metadata, command contracts, output contracts, and examples for drift.
+
+Return CLEAN, NEEDS REPAIR, BLOCKING, or UNCERTAIN. If repair is needed, describe one same-branch repair direction.
+EOF
+)"
+
+  if (
+    FAKE_CODEX_RUN_HELPER=1 \
+    FAKE_CODEX_RUN_EDIT_TARGET_FILE="$fake_codex_edit_text" \
+    FAKE_CODEX_RUN_EDIT_TARGET_PATH="repo-automation/bin/slice-handoff" \
+    FAKE_CODEX_RUN_STDOUT_TEXT='pass' \
+    FAKE_CODEX_RUN_FINAL_TEXT='Implementation complete.' \
+    smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" \
+      smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$smoke_slice_handoff_self_target_file" --explain --out-dir="$self_target_out_dir"
+  ); then
+    run_dir="$(smoke_slice_handoff_extract_field "$stderr_file" run_dir)" || return 1
+    snapshot_helper_path="$run_dir/helper-snapshot/repo-automation/bin/slice-handoff"
+    if smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-self-target" "Slice handoff copied-helper smoke" "Update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "$self_target_expected_review_request" "" "$smoke_test_dir" && \
+      grep -Fxq 'self_target=copied-helper' "$run_dir/slice-handoff-execution-summary.txt" && \
+      grep -Fxq "helper_snapshot_path=$snapshot_helper_path" "$run_dir/slice-handoff-execution-summary.txt" && \
+      grep -Eq '^helper_snapshot_hash=sha256:[0-9a-f]{64}$' "$run_dir/slice-handoff-execution-summary.txt" && \
+      grep -Fxq 'self_target=copied-helper' "$stderr_file" && \
+      grep -Fxq "helper_snapshot_path=$snapshot_helper_path" "$stderr_file" && \
+      grep -Eq '^helper_snapshot_hash=sha256:[0-9a-f]{64}$' "$stderr_file" && \
+      grep -Fxq 'snapshot_mode=copied-helper' "$run_dir/helper-snapshot.txt" && \
+      grep -Fxq "snapshot_helper_path=$snapshot_helper_path" "$run_dir/helper-snapshot.txt" && \
+      grep -Fxq "snapshot_root=$run_dir/helper-snapshot" "$run_dir/helper-snapshot.txt" && \
+      grep -Fxq "snapshot_source_repo_root=$smoke_test_dir" "$run_dir/helper-snapshot.txt" && \
+      [ -x "$snapshot_helper_path" ] && \
+      cmp -s "$worktree_helper_before" "$snapshot_helper_path" && \
+      ! cmp -s "$worktree_helper_before" "$smoke_test_dir/repo-automation/bin/slice-handoff" && \
+      grep -Fxq '# fake codex-run edited worktree helper' "$smoke_test_dir/repo-automation/bin/slice-handoff"; then
+      if [ -s "$codex_run_before" ]; then
+        cp -- "$codex_run_before" "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+        chmod +x "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+      else
+        rm -f -- "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+      fi
+      cp -- "$worktree_helper_before" "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+      chmod +x "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+      test_pass "slice-handoff copied-helper self-target execution keeps the snapshot boundary stable"
+    else
+      if [ -s "$codex_run_before" ]; then
+        cp -- "$codex_run_before" "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+        chmod +x "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+      else
+        rm -f -- "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+      fi
+      cp -- "$worktree_helper_before" "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+      chmod +x "$smoke_test_dir/repo-automation/bin/slice-handoff" || return 1
+      test_fail "slice-handoff copied-helper self-target execution keeps the snapshot boundary stable"
+      status=1
+    fi
+  else
+    test_fail "slice-handoff copied-helper self-target execution keeps the snapshot boundary stable"
+    status=1
+  fi
+
+  return "$status"
 }
 
 smoke_check_slice_handoff_contract_repair_routing() {
@@ -178,6 +269,7 @@ smoke_check_slice_handoff_contract_metadata_and_help() {
 
 smoke_check_slice_handoff_contract_dry_run_artifacts() {
   local status=0
+  local self_target_out_dir="$smoke_test_base/out-self-target"
 
   if smoke_slice_handoff_expect_success "valid-none" "pass" "" --file="$smoke_slice_handoff_valid_none_file" --dry-run; then
     :
@@ -194,6 +286,21 @@ smoke_check_slice_handoff_contract_dry_run_artifacts() {
   if smoke_slice_handoff_expect_success "valid-submit" "pass" "" --file="$smoke_slice_handoff_valid_submit_file" --dry-run; then
     :
   else
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$self_target_out_dir" &&
+      smoke_slice_handoff_expect_success "self-target-copied-helper" "$(smoke_slice_handoff_expected_dry_run_stdout "$self_target_out_dir")" "" --file="$smoke_slice_handoff_self_target_file" --dry-run --out-dir="$self_target_out_dir" &&
+      grep -Fxq 'self_target=copied-helper' "$self_target_out_dir/dry-run-preview.txt" &&
+      grep -Fxq 'planned_helper_snapshot_root=<active-run-dir>/helper-snapshot' "$self_target_out_dir/dry-run-preview.txt" &&
+      grep -Fxq 'planned_helper_snapshot_path=<active-run-dir>/helper-snapshot/repo-automation/bin/slice-handoff' "$self_target_out_dir/dry-run-preview.txt" &&
+      grep -Fxq 'planned_helper_snapshot_hash=not_created_by_dry_run' "$self_target_out_dir/dry-run-preview.txt" &&
+      [ ! -e "$self_target_out_dir/helper-snapshot.txt" ]
+  ); then
+    :
+  else
+    test_fail "out-dir self-target artifacts: expected planned copied-helper preview without runtime snapshot under $self_target_out_dir"
     status=1
   fi
 

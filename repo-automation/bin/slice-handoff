@@ -50,6 +50,15 @@ slice_handoff_pr_body_file=""
 slice_handoff_review_request_file=""
 slice_handoff_validator_artifact_dir=""
 slice_handoff_validation_manifest_file=""
+slice_handoff_self_target_mode=""
+slice_handoff_active_run_dir=""
+slice_handoff_helper_snapshot_root=""
+slice_handoff_helper_snapshot_hash=""
+slice_handoff_helper_snapshot_path=""
+# shellcheck disable=SC2034
+slice_handoff_helper_snapshot_source_repo_root=""
+# shellcheck disable=SC2034
+slice_handoff_helper_snapshot_metadata_file=""
 slice_handoff_codex_run_context_file=""
 slice_handoff_codex_run_context_result=""
 slice_handoff_codex_run_context_run_id=""
@@ -64,7 +73,7 @@ slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
 slice_handoff_codex_rate_limit_five_hour_resets_at_local=""
 slice_handoff_codex_rate_limit_weekly_remaining_percent=""
 slice_handoff_codex_rate_limit_weekly_resets_at_local=""
-slice_handoff_repo_root="$(cd "$script_dir/../.." && pwd -P)"
+slice_handoff_repo_root="${SLICE_HANDOFF_ORIGINAL_REPO_ROOT:-$(cd "$script_dir/../.." && pwd -P)}"
 
 slice_handoff_usage() {
   printf 'Usage: repo-automation/bin/slice-handoff --file=<path> [--repair] [--dry-run] [--submit] [--out-dir=<path>] [--quiet] [--explain] [--help]\n'
@@ -101,6 +110,13 @@ slice_handoff_print_final_summary() {
   fi
   if [ -n "$slice_handoff_validation_manifest_file" ]; then
     summary_lines+=("validation_manifest_path=$slice_handoff_validation_manifest_file")
+  fi
+  if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
+    summary_lines+=(
+      "self_target=$slice_handoff_self_target_mode"
+      "helper_snapshot_path=$slice_handoff_helper_snapshot_path"
+      "helper_snapshot_hash=$slice_handoff_helper_snapshot_hash"
+    )
   fi
   if [ "$slice_handoff_handoff_mode" = "repair" ]; then
     summary_lines+=(
@@ -205,6 +221,8 @@ slice_handoff_execution_failure_fix() {
     slice-validator)
       if [ "$reason" = 'Codex Prompt targets the running helper: repo-automation/bin/slice-handoff' ]; then
         printf '%s' 'use the direct fallback lane because this slice targets slice-handoff itself'
+      elif [ "$reason" = 'self_target: copied-helper requires the Codex Prompt to target repo-automation/bin/slice-handoff' ]; then
+        printf '%s' 'remove self_target: copied-helper or retarget the Codex Prompt at repo-automation/bin/slice-handoff'
       else
         printf '%s' 'paste this blocker into ChatGPT'
       fi
@@ -772,6 +790,156 @@ PY
   return 1
 }
 
+slice_handoff_manage_helper_snapshot() {
+  local run_dir="$1"
+  local action="${2:-create}"
+  local snapshot_root="$run_dir/helper-snapshot"
+  local metadata_path="$run_dir/helper-snapshot.txt"
+  local snapshot_values=""
+
+  snapshot_values="$(
+    python3 - "$action" "$run_dir" "$slice_handoff_repo_root" "$snapshot_root" "$metadata_path" <<'PY'
+from pathlib import Path
+import hashlib
+import os
+import sys
+
+action = sys.argv[1]
+run_dir = Path(sys.argv[2])
+source_repo_root = Path(sys.argv[3]).resolve(strict=True)
+snapshot_root = Path(sys.argv[4])
+metadata_path = Path(sys.argv[5])
+relative_files = [
+    Path('repo-automation/bin/slice-handoff'),
+    Path('repo-automation/lib/common.sh'),
+    Path('repo-automation/lib/operator-output.sh'),
+    Path('repo-automation/lib/review-request.sh'),
+]
+
+def fail(message: str) -> None:
+    print(message, file=sys.stderr)
+    raise SystemExit(1)
+
+def hash_snapshot(root: Path) -> str:
+    digest = hashlib.sha256()
+    for rel_path in relative_files:
+      source_path = root / rel_path
+      if not source_path.is_file():
+          fail(f'missing helper snapshot file: {source_path}')
+      digest.update(str(rel_path).encode('utf-8'))
+      digest.update(b'\0')
+      digest.update(source_path.read_bytes())
+      digest.update(b'\0')
+    return f'sha256:{digest.hexdigest()}'
+
+def ensure_read_only_paths(root: Path) -> None:
+    for dirpath, dirnames, filenames in os.walk(root):
+        os.chmod(dirpath, 0o755)
+        for filename in filenames:
+            file_path = Path(dirpath) / filename
+            if file_path == metadata_path:
+                continue
+            if file_path.name == 'slice-handoff':
+                os.chmod(file_path, 0o555)
+            else:
+                os.chmod(file_path, 0o444)
+
+def copy_snapshot() -> None:
+    for rel_path in relative_files:
+        source_path = source_repo_root / rel_path
+        target_path = snapshot_root / rel_path
+        if not source_path.is_file():
+            fail(f'missing helper source file: {source_path}')
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_bytes(source_path.read_bytes())
+    ensure_read_only_paths(snapshot_root)
+
+if action == 'verify':
+    if not snapshot_root.is_dir():
+        fail(f'missing helper snapshot root: {snapshot_root}')
+elif action != 'create':
+    fail(f'unknown snapshot action: {action}')
+
+if not snapshot_root.exists():
+    snapshot_root.mkdir(parents=True, exist_ok=True)
+    copy_snapshot()
+elif action == 'create':
+    if not snapshot_root.is_dir():
+        fail(f'helper snapshot root is not a directory: {snapshot_root}')
+
+snapshot_hash = hash_snapshot(snapshot_root)
+snapshot_helper_path = snapshot_root / 'repo-automation/bin/slice-handoff'
+snapshot_source_repo_root = str(source_repo_root)
+metadata_lines = [
+    f'snapshot_root={snapshot_root}',
+    f'snapshot_helper_path={snapshot_helper_path}',
+    f'snapshot_hash={snapshot_hash}',
+    f'snapshot_source_repo_root={snapshot_source_repo_root}',
+    'snapshot_mode=copied-helper',
+]
+metadata_path.write_text('\n'.join(metadata_lines) + '\n', encoding='utf-8')
+if not snapshot_helper_path.is_file():
+    fail(f'missing helper snapshot executable: {snapshot_helper_path}')
+if not os.access(snapshot_helper_path, os.X_OK):
+    fail(f'helper snapshot executable is not executable: {snapshot_helper_path}')
+expected_root = os.environ.get('SLICE_HANDOFF_HELPER_SNAPSHOT_ROOT', '')
+if expected_root and expected_root != str(snapshot_root):
+    fail(f'helper snapshot root mismatch: expected {expected_root}, got {snapshot_root}')
+expected_hash = os.environ.get('SLICE_HANDOFF_HELPER_SNAPSHOT_HASH', '')
+if expected_hash and expected_hash != snapshot_hash:
+    fail(f'helper snapshot hash mismatch: expected {expected_hash}, got {snapshot_hash}')
+expected_source_root = os.environ.get('SLICE_HANDOFF_ORIGINAL_REPO_ROOT', '')
+if expected_source_root and expected_source_root != snapshot_source_repo_root:
+    fail(f'helper snapshot source repo root mismatch: expected {expected_source_root}, got {snapshot_source_repo_root}')
+
+for line in metadata_lines:
+    print(line)
+PY
+  )" || return 1
+
+  while IFS= read -r snapshot_value; do
+    case "$snapshot_value" in
+      snapshot_root=*)
+        slice_handoff_helper_snapshot_root="${snapshot_value#snapshot_root=}"
+        ;;
+      snapshot_helper_path=*)
+        slice_handoff_helper_snapshot_path="${snapshot_value#snapshot_helper_path=}"
+        ;;
+      snapshot_hash=*)
+        slice_handoff_helper_snapshot_hash="${snapshot_value#snapshot_hash=}"
+        ;;
+      snapshot_source_repo_root=*)
+        # shellcheck disable=SC2034
+        slice_handoff_helper_snapshot_source_repo_root="${snapshot_value#snapshot_source_repo_root=}"
+        ;;
+      snapshot_mode=*)
+        :
+        ;;
+    esac
+  done <<EOF
+$snapshot_values
+EOF
+
+  # shellcheck disable=SC2034
+  slice_handoff_helper_snapshot_metadata_file="$metadata_path"
+  slice_handoff_active_run_dir="$run_dir"
+  return 0
+}
+
+slice_handoff_reexec_from_helper_snapshot() {
+  local snapshot_helper_path="$1"
+  shift
+
+  exec env \
+    SLICE_HANDOFF_FROM_SNAPSHOT=1 \
+    SLICE_HANDOFF_ORIGINAL_REPO_ROOT="$slice_handoff_repo_root" \
+    SLICE_HANDOFF_ACTIVE_RUN_DIR="$slice_handoff_active_run_dir" \
+    SLICE_HANDOFF_HELPER_SNAPSHOT_ROOT="$slice_handoff_helper_snapshot_root" \
+    SLICE_HANDOFF_HELPER_SNAPSHOT_HASH="$slice_handoff_helper_snapshot_hash" \
+    SLICE_HANDOFF_HELPER_SNAPSHOT_PATH="$snapshot_helper_path" \
+    "$snapshot_helper_path" "$@"
+}
+
 slice_handoff_json_value() {
   local file="$1"
   local key="$2"
@@ -1019,6 +1187,13 @@ slice_handoff_print_execution_success_summary() {
       "codex_session_id=$slice_handoff_repair_session_id"
     )
   fi
+  if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
+    summary_lines+=(
+      "self_target=$slice_handoff_self_target_mode"
+      "helper_snapshot_path=$slice_handoff_helper_snapshot_path"
+      "helper_snapshot_hash=$slice_handoff_helper_snapshot_hash"
+    )
+  fi
   summary_lines+=(
     "run_dir=$run_dir"
     "review_request_path=$review_request_path"
@@ -1083,6 +1258,11 @@ slice_handoff_write_execution_summary() {
     if [ -n "$slice_handoff_validation_manifest_file" ]; then
       printf 'validation_manifest_path=%s\n' "$slice_handoff_validation_manifest_file"
     fi
+    if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
+      printf 'self_target=%s\n' "$slice_handoff_self_target_mode"
+      printf 'helper_snapshot_path=%s\n' "$slice_handoff_helper_snapshot_path"
+      printf 'helper_snapshot_hash=%s\n' "$slice_handoff_helper_snapshot_hash"
+    fi
     if [ -n "$pr_body_check_stdout_path$pr_body_check_stderr_path$repo_flow_submit_stdout_path$repo_flow_submit_stderr_path" ] || [ "$mode" = "execution-submit" ] || [ "$mode" = "repair-submit" ]; then
       printf 'pr_body_check_stdout_path=%s\n' "$pr_body_check_stdout_path"
       printf 'pr_body_check_stderr_path=%s\n' "$pr_body_check_stderr_path"
@@ -1137,6 +1317,12 @@ slice_handoff_write_dry_run_preview() {
     printf 'planned_run_dir_root=%s\n' "$planned_run_dir_root"
     printf 'planned_active_run_dir=<active-run-dir>\n'
     printf 'planned_marker_file_name=.repo-automation-slice-run\n'
+    if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
+      printf 'self_target=%s\n' "$slice_handoff_self_target_mode"
+      printf 'planned_helper_snapshot_root=<active-run-dir>/helper-snapshot\n'
+      printf 'planned_helper_snapshot_path=<active-run-dir>/helper-snapshot/repo-automation/bin/slice-handoff\n'
+      printf 'planned_helper_snapshot_hash=not_created_by_dry_run\n'
+    fi
     printf '\nPlanned execution shapes\n'
     slice_handoff_write_argv_block \
       planned_run_dir_cleanup_argv \
@@ -1312,7 +1498,7 @@ import json
 import sys
 
 manifest = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-for key in ('branch', 'title', 'codex_profile', 'submit_mode', 'commit_message', 'handoff_mode', 'repair_of_pr', 'repair_session', 'codex_session_id', 'prompt_path', 'review_request_path', 'pr_body_path'):
+for key in ('branch', 'title', 'codex_profile', 'submit_mode', 'commit_message', 'handoff_mode', 'self_target', 'repair_of_pr', 'repair_session', 'codex_session_id', 'prompt_path', 'review_request_path', 'pr_body_path'):
     if key in manifest:
         value = manifest.get(key)
         if value is None:
@@ -1340,6 +1526,9 @@ PY
         ;;
       handoff_mode=*)
         slice_handoff_handoff_mode="${validator_manifest_value#handoff_mode=}"
+        ;;
+      self_target=*)
+        slice_handoff_self_target_mode="${validator_manifest_value#self_target=}"
         ;;
       repair_of_pr=*)
         slice_handoff_repair_of_pr="${validator_manifest_value#repair_of_pr=}"
@@ -1624,47 +1813,92 @@ slice_handoff_run_execution_phase() {
   local -a preflight_validation_manifest_args=()
 
   cd "$slice_handoff_repo_root" || return 1
-  slice_handoff_info "run-dir creation"
 
-  create_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-create.XXXXXX.stdout")" || return 1
-  create_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-create.XXXXXX.stderr")" || {
-    rm -f -- "$create_stdout_tmp" >/dev/null 2>&1 || true
-    return 1
-  }
+  if [ "${SLICE_HANDOFF_FROM_SNAPSHOT:-0}" = 1 ]; then
+    active_run_dir="${SLICE_HANDOFF_ACTIVE_RUN_DIR:-}"
+    if [ -z "$active_run_dir" ]; then
+      slice_handoff_fail "missing SLICE_HANDOFF_ACTIVE_RUN_DIR for copied-helper snapshot execution" "rerun via the copied-helper launcher so the active run dir is preserved"
+      return 1
+    fi
+    if [ ! -d "$active_run_dir" ]; then
+      slice_handoff_fail "missing active run dir for copied-helper snapshot execution: $active_run_dir" "rerun via the copied-helper launcher so the active run dir is preserved"
+      return 1
+    fi
+    slice_handoff_validation_manifest_file="$active_run_dir/validation-manifest.json"
+    create_stdout_path="$active_run_dir/slice-run-dir-create.stdout"
+    create_stderr_path="$active_run_dir/slice-run-dir-create.stderr"
+    cleanup_stdout_path="$active_run_dir/slice-run-dir-cleanup.stdout"
+    cleanup_stderr_path="$active_run_dir/slice-run-dir-cleanup.stderr"
+    cleanup_json_path="$active_run_dir/slice-run-dir-cleanup.json"
+    preflight_stdout_path="$active_run_dir/preflight.stdout"
+    preflight_stderr_path="$active_run_dir/preflight.stderr"
+    preflight_json_path="$active_run_dir/preflight.json"
+    codex_run_out_dir="$active_run_dir/codex-run"
+    codex_run_stdout_path="$active_run_dir/codex-run.stdout"
+    codex_run_stderr_path="$active_run_dir/codex-run.stderr"
+    codex_run_summary_path="$codex_run_out_dir/codex-run-summary.txt"
+    codex_final_output_path="$codex_run_out_dir/codex-final.txt"
+    codex_run_context_path="$active_run_dir/codex-run-context.txt"
+    codex_status_recent_json_path="$active_run_dir/codex-status-recent.json"
+    codex_status_recent_stderr_path="$active_run_dir/codex-status-recent.stderr"
+    run_root="$(slice_handoff_json_value "$active_run_dir/slice-run-dir-create.json" root 2>/dev/null || true)"
+    if [ -z "$run_root" ]; then
+      run_root="${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs"
+    fi
+    if ! slice_handoff_manage_helper_snapshot "$active_run_dir" verify; then
+      return 1
+    fi
+  else
+    slice_handoff_info "run-dir creation"
 
-  create_stdout_path="$create_stdout_tmp"
-  create_stderr_path="$create_stderr_tmp"
-  create_command_summary="$(slice_handoff_command_summary repo-automation/bin/slice-run-dir --create "--branch=$slice_handoff_branch" --json)"
+    create_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-create.XXXXXX.stdout")" || return 1
+    create_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-create.XXXXXX.stderr")" || {
+      rm -f -- "$create_stdout_tmp" >/dev/null 2>&1 || true
+      return 1
+    }
 
-  if ! slice_handoff_run_json_child "run-dir-create" "$create_command_summary" run_dir "" "$create_stdout_path" "$create_stderr_path" \
-    repo-automation/bin/slice-run-dir --create "--branch=$slice_handoff_branch" --json; then
-    return 1
-  fi
+    create_stdout_path="$create_stdout_tmp"
+    create_stderr_path="$create_stderr_tmp"
+    create_command_summary="$(slice_handoff_command_summary repo-automation/bin/slice-run-dir --create "--branch=$slice_handoff_branch" --json)"
 
-  active_run_dir="$(slice_handoff_json_value "$create_stdout_path" run_dir)" || {
-    slice_handoff_output_contract_blocker "run-dir-create" "$create_command_summary" "0" "$create_stdout_path" "$create_stderr_path" "stdout JSON was missing required field: run_dir"
-    return 1
-  }
-  slice_handoff_validation_manifest_file="$active_run_dir/validation-manifest.json"
-  run_root="$(slice_handoff_json_value "$create_stdout_path" root 2>/dev/null || true)"
-  if [ -z "$run_root" ]; then
-    run_root="${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs"
-  fi
+    if ! slice_handoff_run_json_child "run-dir-create" "$create_command_summary" run_dir "" "$create_stdout_path" "$create_stderr_path" \
+      repo-automation/bin/slice-run-dir --create "--branch=$slice_handoff_branch" --json; then
+      return 1
+    fi
 
-  create_stdout_path="$active_run_dir/slice-run-dir-create.stdout"
-  create_stderr_path="$active_run_dir/slice-run-dir-create.stderr"
-  if ! mv -f -- "$create_stdout_tmp" "$create_stdout_path" || ! mv -f -- "$create_stderr_tmp" "$create_stderr_path"; then
-    slice_handoff_print_execution_blocker "run-dir-create" "$create_command_summary" 1 "$create_stdout_path" "$create_stderr_path" "unable to finalize run-dir-create artifacts"
-    return 1
-  fi
+    active_run_dir="$(slice_handoff_json_value "$create_stdout_path" run_dir)" || {
+      slice_handoff_output_contract_blocker "run-dir-create" "$create_command_summary" "0" "$create_stdout_path" "$create_stderr_path" "stdout JSON was missing required field: run_dir"
+      return 1
+    }
+    slice_handoff_validation_manifest_file="$active_run_dir/validation-manifest.json"
+    run_root="$(slice_handoff_json_value "$create_stdout_path" root 2>/dev/null || true)"
+    if [ -z "$run_root" ]; then
+      run_root="${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs"
+    fi
 
-  if ! cp -- "$create_stdout_path" "$active_run_dir/slice-run-dir-create.json"; then
-    slice_handoff_print_execution_blocker "run-dir-create" "$create_command_summary" 1 "$create_stdout_path" "$create_stderr_path" "unable to copy create JSON artifact"
-    return 1
-  fi
+    create_stdout_path="$active_run_dir/slice-run-dir-create.stdout"
+    create_stderr_path="$active_run_dir/slice-run-dir-create.stderr"
+    if ! mv -f -- "$create_stdout_tmp" "$create_stdout_path" || ! mv -f -- "$create_stderr_tmp" "$create_stderr_path"; then
+      slice_handoff_print_execution_blocker "run-dir-create" "$create_command_summary" 1 "$create_stdout_path" "$create_stderr_path" "unable to finalize run-dir-create artifacts"
+      return 1
+    fi
 
-  if ! slice_handoff_prepare_public_artifacts "$active_run_dir" 0 "$slice_handoff_submit_requested"; then
-    return 1
+    if ! cp -- "$create_stdout_path" "$active_run_dir/slice-run-dir-create.json"; then
+      slice_handoff_print_execution_blocker "run-dir-create" "$create_command_summary" 1 "$create_stdout_path" "$create_stderr_path" "unable to copy create JSON artifact"
+      return 1
+    fi
+
+    if ! slice_handoff_prepare_public_artifacts "$active_run_dir" 0 "$slice_handoff_submit_requested"; then
+      return 1
+    fi
+    if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
+      if ! slice_handoff_manage_helper_snapshot "$active_run_dir" create; then
+        slice_handoff_fail "unable to create helper snapshot" "fix filesystem permissions and rerun slice-handoff"
+        return 1
+      fi
+      slice_handoff_cleanup_temp_files
+      slice_handoff_reexec_from_helper_snapshot "$slice_handoff_helper_snapshot_path" "$@"
+    fi
   fi
 
   slice_handoff_info "cleanup"
@@ -1958,6 +2192,7 @@ slice_handoff_run_execution_phase() {
 
 slice_handoff_main() {
   local arg=""
+  local -a slice_handoff_main_args=("$@")
 
   while [ "$#" -gt 0 ]; do
     arg="$1"
@@ -2303,7 +2538,7 @@ PY
   fi
 
   if [ "$slice_handoff_dry_run" -eq 0 ]; then
-    slice_handoff_run_execution_phase || return 1
+    slice_handoff_run_execution_phase "${slice_handoff_main_args[@]}" || return 1
     return 0
   fi
 

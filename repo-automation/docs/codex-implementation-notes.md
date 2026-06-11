@@ -28,6 +28,8 @@ Challenges:
 
 Recommended improvements:
 - Keep copied-helper/self-target support behind an explicit immutable snapshot contract before allowing self-target execution.
+- Leave snapshot directories writable enough for run-dir cleanup while keeping snapshot files read-only and executable where needed.
+- Restore any fake runtime helpers that mutate the smoke repo so later contract scenarios keep a clean baseline.
 - Track the duplicate branch-presence guard as future cleanup rather than folding it into self-target contract work.
 
 ### 2026-06-09 codex-slice-preflight nested wrapper fixture repair
