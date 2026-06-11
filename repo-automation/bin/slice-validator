@@ -285,7 +285,7 @@ def reject_self_modifying_helper_instruction(line: str) -> None:
         "self-modifying-target",
         "codex-prompt",
         "Codex Prompt targets the running helper: repo-automation/bin/slice-handoff",
-        "changing the running helper through slice-handoff is unsafe; use the direct Codex lane or same-branch repair lane instead",
+        "future copied-helper/self-target support is required before this helper can edit itself safely; use the direct Codex lane or same-branch repair lane instead",
     )
 
 

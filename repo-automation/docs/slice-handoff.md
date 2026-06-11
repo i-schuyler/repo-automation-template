@@ -16,6 +16,22 @@ The non-executing mode is `--dry-run`.
 
 `slice-handoff --repair` is for existing PR repair/resume lanes, but it still refuses prompts that would edit the active helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight. Changing that helper requires the direct fallback or manual same-branch repair unless future copied-helper/self-target support lands.
 
+## Future copied-helper/self-target contract
+
+The active `slice-handoff` helper cannot safely edit itself while it is running, because the process, sourced helpers, and run-dir wiring all depend on the current script remaining stable until orchestration completes.
+
+Future copied-helper/self-target support may replace the current refusal only after it guarantees:
+
+- a run-owned immutable helper snapshot exists before Codex can edit the mutable worktree helper;
+- subsequent orchestration executes from the snapshot, not from the mutable worktree helper;
+- any sourced libraries needed by the copied helper are snapshotted too, or an equivalent safe source strategy is explicitly pinned;
+- child helper paths and repo-root behavior remain explicit and unchanged by the snapshot boundary;
+- the snapshot path and snapshot hash are recorded in run artifacts;
+- edits to `repo-automation/bin/slice-handoff` do not affect the running orchestration process;
+- direct fallback remains the stop condition whenever the copied-helper guarantees are absent.
+
+Until those guarantees exist, direct Codex or same-branch repair remains required for self-target work.
+
 Review request source precedence is:
 
 1. explicit `## PR Review Request` payload in the handoff file
