@@ -85,6 +85,25 @@ if not eval(sys.argv[2], {}, {"data": data}):  # controlled test expression
 PY
 }
 
+smoke_slice_validator_assert_prompt_case() {
+  local handoff_file="$1"
+  local stdout_file="$2"
+  local stderr_file="$3"
+  local expect_result="$4"
+  local reason_fragment="${5:-}"
+  local fix_fragment="${6:-}"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$handoff_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    [ "$expect_result" = "pass" ]
+  else
+    [ "$expect_result" = "fail" ] || return 1
+    grep -Fq "$reason_fragment" "$stderr_file" && grep -Fq "$fix_fragment" "$stderr_file"
+  fi
+}
+
 smoke_check_slice_validator_contract() {
   local status=0
   local root="$smoke_test_base/slice-validator"
@@ -109,6 +128,10 @@ smoke_check_slice_validator_contract() {
   local unsafe_prompt_file="$root/unsafe-prompt.md"
   local lifecycle_prompt_file="$root/lifecycle-prompt.md"
   local self_mod_prompt_file="$root/self-modifying-prompt.md"
+  local self_target_run_file="$root/self-target-run.md"
+  local self_target_invoke_file="$root/self-target-invoke.md"
+  local self_target_execute_file="$root/self-target-execute.md"
+  local self_target_negative_file="$root/self-target-negative.md"
   local valid_body_file="$root/valid-body.md"
   local invalid_body_file="$root/invalid-body.md"
   local help_stdout="$smoke_test_base/slice-validator-help.out"
@@ -289,6 +312,10 @@ PY
   smoke_slice_validator_write_handoff "$unsafe_prompt_file" "feature/slice-validator-unsafe" "Slice validator unsafe prompt" "default" "none" "" "use previous chat and do the rest" "" ""
   smoke_slice_validator_write_handoff "$lifecycle_prompt_file" "feature/slice-validator-lifecycle" "Slice validator lifecycle prompt" "default" "none" "" "Please create a PR." "" ""
   smoke_slice_validator_write_handoff "$self_mod_prompt_file" "feature/slice-validator-self-mod" "Slice validator self-mod prompt" "default" "none" "" "Please update repo-automation/bin/slice-handoff to use the new gate." "" ""
+  smoke_slice_validator_write_handoff "$self_target_run_file" "feature/slice-validator-self-target-run" "Slice validator self-target run" "default" "none" "" "Please run repo-automation/bin/slice-handoff for this validation step." "" ""
+  smoke_slice_validator_write_handoff "$self_target_invoke_file" "feature/slice-validator-self-target-invoke" "Slice validator self-target invoke" "default" "none" "" "Please invoke repo-automation/bin/slice-handoff after you review the prompt." "" ""
+  smoke_slice_validator_write_handoff "$self_target_execute_file" "feature/slice-validator-self-target-execute" "Slice validator self-target execute" "default" "none" "" "Please execute repo-automation/bin/slice-handoff as the orchestration step." "" ""
+  smoke_slice_validator_write_handoff "$self_target_negative_file" "feature/slice-validator-self-target-negative" "Slice validator self-target negative" "default" "none" "" "Do not edit repo-automation/bin/slice-handoff." "" ""
 
   if (
     cd "$smoke_test_dir" || return 1
@@ -659,18 +686,30 @@ PY
     status=1
   fi
 
-  if (
-    cd "$smoke_test_dir" || return 1
-    repo-automation/bin/slice-validator --file="$self_mod_prompt_file" >"$stdout_file" 2>"$stderr_file"
-  ); then
-    test_fail "slice-validator rejects self-modifying helper targets"
-    status=1
-  elif grep -Fq 'Codex Prompt targets the running helper:' "$stderr_file"; then
-    test_pass "slice-validator rejects self-modifying helper targets"
-  else
-    test_fail "slice-validator rejects self-modifying helper targets"
-    status=1
-  fi
+  local -a self_target_cases=(
+    "reject-target|$self_mod_prompt_file|fail|Codex Prompt targets the running helper: repo-automation/bin/slice-handoff|future copied-helper/self-target support is required"
+    "allow-run|$self_target_run_file|pass||"
+    "allow-invoke|$self_target_invoke_file|pass||"
+    "allow-execute|$self_target_execute_file|pass||"
+    "allow-negative|$self_target_negative_file|pass||"
+  )
+  local self_target_case=""
+  local self_target_case_name=""
+  local self_target_case_file=""
+  local self_target_case_result=""
+  local self_target_case_reason=""
+  local self_target_case_fix=""
+  for self_target_case in "${self_target_cases[@]}"; do
+    IFS='|' read -r self_target_case_name self_target_case_file self_target_case_result self_target_case_reason self_target_case_fix <<EOF
+$self_target_case
+EOF
+    if smoke_slice_validator_assert_prompt_case "$self_target_case_file" "$stdout_file" "$stderr_file" "$self_target_case_result" "$self_target_case_reason" "$self_target_case_fix"; then
+      test_pass "slice-validator self-target case: $self_target_case_name"
+    else
+      test_fail "slice-validator self-target case: $self_target_case_name"
+      status=1
+    fi
+  done
 
   if python3 - "$smoke_repo_root/repo-automation/helper-metadata.json" <<'PY'
 import json

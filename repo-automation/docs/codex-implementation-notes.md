@@ -20,6 +20,16 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-11 copied-helper self-target contract
+
+Challenges:
+- The active `slice-handoff` helper can be named as a target inside Codex prompts, but the running helper cannot safely edit itself without a copied-helper boundary.
+- PR #249 left a duplicate branch-presence guard in `codex-slice-preflight` after validation-manifest enforcement; that cleanup is separate from this slice.
+
+Recommended improvements:
+- Keep copied-helper/self-target support behind an explicit immutable snapshot contract before allowing self-target execution.
+- Track the duplicate branch-presence guard as future cleanup rather than folding it into self-target contract work.
+
 ### 2026-06-09 codex-slice-preflight nested wrapper fixture repair
 
 Challenges:
