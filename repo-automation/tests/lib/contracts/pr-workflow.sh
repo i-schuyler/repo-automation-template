@@ -1395,6 +1395,40 @@ smoke_check_branch_cleanup_json() {
   return "$status"
 }
 
+smoke_preflight_assert_validation_manifest_case() {
+  local repo_dir="$1"
+  local df_bin="$2"
+  local branch="$3"
+  local manifest_path="$4"
+  local stdout_file="$5"
+  local stderr_file="$6"
+  local expected_result="$7"
+  local expected_reason="$8"
+
+  if (
+    cd "$repo_dir" || return 1
+    REPO_AUTOMATION_DF_BIN="$df_bin" repo-automation/bin/codex-slice-preflight --check-only --branch="$branch" --validation-manifest="$manifest_path" --json >"$stdout_file" 2>"$stderr_file"
+  ); then
+    if [ "$expected_result" != "pass" ]; then
+      return 1
+    fi
+  else
+    if [ "$expected_result" != "fail" ]; then
+      return 1
+    fi
+  fi
+
+  if ! python3 -m json.tool "$stdout_file" >/dev/null 2>&1 || [ -s "$stderr_file" ]; then
+    return 1
+  fi
+
+  if [ "$expected_result" = "pass" ]; then
+    smoke_json_assert "$stdout_file" "data.get(\"result\") == \"pass\" and data.get(\"validation_manifest_path\") == \"$manifest_path\""
+  else
+    smoke_json_assert "$stdout_file" "data.get(\"result\") == \"fail\" and data.get(\"validation_manifest_path\") == \"$manifest_path\" and \"$expected_reason\" in data.get(\"stop_reason\", \"\")"
+  fi
+}
+
 smoke_check_preflight_json() {
   local status=0
   local preflight_json="$smoke_test_dir/preflight.json"
@@ -1521,18 +1555,95 @@ EOF
     status=1
   fi
 
-  printf '{"schema":"repo-automation-slice-validator/v1","result":"pass"}\n' > "$preflight_validation_manifest" || return 1
+  python3 - "$preflight_validation_manifest" "$smoke_test_base" <<'PY' || return 1
+import json
+from pathlib import Path
+import sys
+
+valid_path = Path(sys.argv[1])
+root = Path(sys.argv[2])
+
+base = {
+    "schema": "repo-automation-slice-validator/v1",
+    "result": "pass",
+    "validation_id": "val_preflight_smoke",
+    "repo_root": str(root / "preflight-repo"),
+    "branch": "feature/preflight-smoke",
+    "handoff_path": "repo-automation/.slice-handoff.md",
+    "requested_mode": "execution",
+    "validated_capabilities": {
+        "codex_run": True,
+        "codex_status": True,
+        "repo_flow_submit": False,
+    },
+    "forbidden_steps": ["merge", "publish"],
+    "next": "codex-slice-preflight",
+}
+
+valid_path.write_text(json.dumps(base, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+variants = {
+    "preflight-validation-manifest-malformed.json": "{not json\n",
+    "preflight-validation-manifest-wrong-schema.json": {**base, "schema": "repo-automation-slice-validator/v2"},
+    "preflight-validation-manifest-wrong-result.json": {**base, "result": "fail"},
+    "preflight-validation-manifest-wrong-next.json": {**base, "next": "repo-flow"},
+    "preflight-validation-manifest-branch-mismatch.json": {**base, "branch": "feature/other-branch"},
+    "preflight-validation-manifest-missing-validated-capabilities.json": {k: v for k, v in base.items() if k != "validated_capabilities"},
+    "preflight-validation-manifest-non-object-validated-capabilities.json": {**base, "validated_capabilities": ["codex_run"]},
+    "preflight-validation-manifest-missing-forbidden-steps.json": {k: v for k, v in base.items() if k != "forbidden_steps"},
+    "preflight-validation-manifest-non-array-forbidden-steps.json": {**base, "forbidden_steps": "merge"},
+}
+
+for name, data in variants.items():
+    path = root / name
+    if isinstance(data, str):
+        path.write_text(data, encoding="utf-8")
+    else:
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
 
   if (
     cd "$smoke_test_dir" || return 1
     REPO_AUTOMATION_DF_BIN="$preflight_healthy_disk_stub_dir/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-smoke --validation-manifest="$preflight_validation_manifest" --json > "$preflight_manifest_json"
   ) && python3 -m json.tool "$preflight_manifest_json" >/dev/null &&
     smoke_json_assert "$preflight_manifest_json" "data.get(\"script\") == \"codex-slice-preflight\" and data.get(\"result\") == \"pass\" and data.get(\"mode\") == \"check-only\" and data.get(\"rc\") == 0 and data.get(\"validation_manifest_path\") == \"$preflight_validation_manifest\""; then
-    test_pass "preflight validation manifest is traced in json"
+    test_pass "preflight validation manifest is enforced and traced in json"
   else
-    test_fail "preflight validation manifest is traced in json"
+    test_fail "preflight validation manifest is enforced and traced in json"
     status=1
   fi
+
+  local -a preflight_validation_manifest_cases=(
+    "malformed|$smoke_test_base/preflight-validation-manifest-malformed.json|fail|invalid JSON"
+    "wrong-schema|$smoke_test_base/preflight-validation-manifest-wrong-schema.json|fail|schema must equal repo-automation-slice-validator/v1"
+    "wrong-result|$smoke_test_base/preflight-validation-manifest-wrong-result.json|fail|result must equal pass"
+    "wrong-next|$smoke_test_base/preflight-validation-manifest-wrong-next.json|fail|next must equal codex-slice-preflight"
+    "branch-mismatch|$smoke_test_base/preflight-validation-manifest-branch-mismatch.json|fail|branch must match requested branch"
+    "missing-validated-capabilities|$smoke_test_base/preflight-validation-manifest-missing-validated-capabilities.json|fail|validated_capabilities must be an object"
+    "non-object-validated-capabilities|$smoke_test_base/preflight-validation-manifest-non-object-validated-capabilities.json|fail|validated_capabilities must be an object"
+    "missing-forbidden-steps|$smoke_test_base/preflight-validation-manifest-missing-forbidden-steps.json|fail|forbidden_steps must be an array"
+    "non-array-forbidden-steps|$smoke_test_base/preflight-validation-manifest-non-array-forbidden-steps.json|fail|forbidden_steps must be an array"
+  )
+  local preflight_validation_manifest_case=""
+  local preflight_validation_manifest_case_name=""
+  local preflight_validation_manifest_case_path=""
+  local preflight_validation_manifest_case_result=""
+  local preflight_validation_manifest_case_reason=""
+  local preflight_validation_manifest_case_stdout=""
+  local preflight_validation_manifest_case_stderr=""
+  for preflight_validation_manifest_case in "${preflight_validation_manifest_cases[@]}"; do
+    IFS='|' read -r preflight_validation_manifest_case_name preflight_validation_manifest_case_path preflight_validation_manifest_case_result preflight_validation_manifest_case_reason <<EOF
+$preflight_validation_manifest_case
+EOF
+    preflight_validation_manifest_case_stdout="$smoke_test_base/preflight-validation-${preflight_validation_manifest_case_name}.json"
+    preflight_validation_manifest_case_stderr="$smoke_test_base/preflight-validation-${preflight_validation_manifest_case_name}.json.err"
+    if smoke_preflight_assert_validation_manifest_case "$smoke_test_dir" "$preflight_healthy_disk_stub_dir/df" "feature/preflight-smoke" "$preflight_validation_manifest_case_path" "$preflight_validation_manifest_case_stdout" "$preflight_validation_manifest_case_stderr" "$preflight_validation_manifest_case_result" "$preflight_validation_manifest_case_reason"; then
+      test_pass "preflight validation manifest case: $preflight_validation_manifest_case_name"
+    else
+      test_fail "preflight validation manifest case: $preflight_validation_manifest_case_name"
+      status=1
+    fi
+  done
 
   if (
     cd "$smoke_test_dir" || return 1

@@ -60,7 +60,7 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 
 `## PR Review Request` is recognized as a boundary and is emitted as `review-request.txt` when present or generated from the selected prompt preset or public-safe defaults. In execution submit mode, slice-handoff now passes a run-dir source file to `repo-flow submit --review-request-file=<path>` after pre-resolving `<RUN_DIR>` and the handoff title/branch context; `repo-flow submit` then renders the final `<PR_URL>`, and slice-handoff copies the lower-layer rendered `review_request_path` back to the active run dir `review-request.txt` for compatibility.
 
-`slice-handoff` also passes the run-scoped validator manifest path into `codex-slice-preflight` in orchestrated execution mode. That propagation is trace-only for now; downstream manifest enforcement is a later step and standalone preflight use does not require the flag.
+`slice-handoff` also passes the run-scoped validator manifest path into `codex-slice-preflight` in orchestrated execution mode. When that path is supplied, downstream preflight validates the manifest contract; standalone preflight use still does not require the flag.
 
 ## Envelope and payloads
 
@@ -109,7 +109,7 @@ Execution flow writes child logs and artifacts under the active run dir:
 - `review-request.txt`
 - `pr-body.md` when submit is authorized and submit mode is enabled
 
-The manifest propagation only traces the validator output into preflight today; enforcing downstream manifest use remains future work.
+The manifest propagation now carries an enforced validator contract into preflight when supplied; standalone helper use still omits the flag.
 
 The preflight child runs in the active checked-out repo, while test fixtures keep isolation by using temp repos during contract checks.
 
@@ -166,7 +166,7 @@ Phased plan:
 2. Implemented: `slice-validator` emits a manifest and has focused contract tests.
 3. Implemented: `slice-handoff` calls `slice-validator` before `codex-slice-preflight`.
 4. Pass the manifest to downstream helpers in orchestrated mode.
-5. Selectively require the manifest for high-risk orchestrated downstream operations while preserving standalone repair/debug paths.
+5. Enforce the manifest contract only when supplied, while preserving standalone repair/debug paths.
 
 ## Timeout and profile contract
 

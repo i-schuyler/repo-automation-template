@@ -186,6 +186,48 @@ preflight_validation_manifest_problem() {
   return 0
 }
 
+preflight_validation_manifest_contract_problem() {
+  local source_path="$1"
+  local requested_branch="$2"
+
+  python3 - "$source_path" "$requested_branch" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+source_path = Path(sys.argv[1])
+requested_branch = sys.argv[2]
+
+try:
+    data = json.loads(source_path.read_text(encoding='utf-8'))
+except json.JSONDecodeError as exc:
+    print(f'invalid JSON: {exc}')
+    raise SystemExit(1)
+
+if not isinstance(data, dict):
+    print('validation manifest root must be a JSON object')
+    raise SystemExit(1)
+if data.get('schema') != 'repo-automation-slice-validator/v1':
+    print('schema must equal repo-automation-slice-validator/v1')
+    raise SystemExit(1)
+if data.get('result') != 'pass':
+    print('result must equal pass')
+    raise SystemExit(1)
+if data.get('next') != 'codex-slice-preflight':
+    print('next must equal codex-slice-preflight')
+    raise SystemExit(1)
+if data.get('branch') != requested_branch:
+    print(f'branch must match requested branch: expected {requested_branch!r}, got {data.get("branch")!r}')
+    raise SystemExit(1)
+if not isinstance(data.get('validated_capabilities'), dict):
+    print('validated_capabilities must be an object')
+    raise SystemExit(1)
+if not isinstance(data.get('forbidden_steps'), list):
+    print('forbidden_steps must be an array')
+    raise SystemExit(1)
+PY
+}
+
 preflight_paths_overlap() {
   local candidate_path="$1"
   local preserve_path="$2"
@@ -736,6 +778,26 @@ preflight_main() {
 
   if [ "$command_status" -eq 0 ]; then
     preflight_validate_branch_request "$requested_branch" "$default_branch" || command_status=1
+  fi
+
+  [ "$branch_value_set" -eq 1 ] || {
+    if [ "$command_status" -eq 0 ] && [ "$branch_flag_seen" -eq 0 ]; then
+      preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
+    elif [ "$command_status" -eq 0 ] && [ "$branch_flag_seen" -eq 1 ] && [ -z "$requested_branch" ]; then
+      preflight_flag_error "missing flag value" "--branch" "use --branch=<name>" || command_status=1
+    fi
+    command_status=1
+  }
+
+  if [ "$command_status" -eq 0 ] && [ -n "$preflight_validation_manifest_file" ]; then
+    local validation_manifest_contract_reason=""
+
+    validation_manifest_contract_reason="$(
+      preflight_validation_manifest_contract_problem "$preflight_validation_manifest_file" "$requested_branch"
+    )" || {
+      preflight_stop "validation manifest contract failed: ${validation_manifest_contract_reason:-unknown validation manifest error}"
+      command_status=1
+    }
   fi
 
   if [ "$command_status" -eq 0 ]; then

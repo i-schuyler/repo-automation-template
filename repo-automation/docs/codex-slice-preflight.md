@@ -17,7 +17,7 @@ It stops when that existing requested branch is behind or diverged, matching nor
 Use `--json` for machine-readable cleanup and branch diagnostics; it emits JSON only on stdout. Repair-only fields such as `repair_of_pr` and `repair_pr_head` are emitted only when `--repair-of-pr` selects repair mode.
 Use `--explain` for the detailed operator-facing preflight report; default success is compact `pass`.
 `--explain` ends with a compact `===== FINAL SUMMARY =====` handoff block.
-`--validation-manifest=<path>` is an optional trace-only handoff from `slice-handoff`; when provided, preflight records the manifest path in JSON and explain summaries, but it does not require the manifest for standalone use or reinterpret validator capabilities.
+`--validation-manifest=<path>` is optional for standalone/debug/repair use; when orchestrated execution supplies it, preflight records the manifest path in JSON and explain summaries and validates the manifest contract before continuing. Standalone callers still do not need the flag.
 
 `--clean-test-cache` removes the recurring repo-automation test/cache roots under `${TMPDIR:-$HOME/.cache}` and `$HOME/.cache`, plus approved repo-automation temp fixture prefixes such as `repo-automation-slice-handoff-fixture.*`, `repo-automation-slice-handoff-dirty.*`, and `clean-repo-automation-template.*` under `${TMPDIR:-$HOME/.cache}` and the `tmp` subdirectory under `$HOME/.cache` when present. It does not clean unrelated `tmp` cache directories, npm cache paths, or `.codex` cache paths. `--preserve-path=<path>` can be combined with `--clean-test-cache` to keep an active run directory or any containing cleanup root from being deleted; the preserve path must already exist. With no `--branch`, cleanup exits after cleanup. With `--branch=<name>`, it cleans first and then continues normal preflight branch setup. `--json` returns machine-readable cleanup state, including preserved/skipped paths and free-space fields; `--explain` keeps the same details in INFO lines and a final summary block.
 
@@ -47,4 +47,4 @@ Usage examples:
 Test coverage:
 
 - `repo-automation/tests/smoke.sh` validates check-only behavior and JSON parseability for preflight output.
-- Downstream manifest enforcement remains future work; this helper only traces an optional manifest path for orchestrated callers.
+- When a validation manifest is supplied, this helper enforces its contract while still allowing standalone preflight callers to omit the flag.
