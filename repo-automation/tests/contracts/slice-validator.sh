@@ -29,8 +29,9 @@ smoke_slice_validator_write_handoff() {
   local pr_body_text="${8:-}"
   local review_request_text="${9:-}"
   local pr_review_prompt_id="${10:-}"
+  local self_target="${11:-}"
 
-  python3 - "$path" "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$prompt_text" "$pr_body_text" "$review_request_text" "$pr_review_prompt_id" <<'PY'
+  python3 - "$path" "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$prompt_text" "$pr_body_text" "$review_request_text" "$pr_review_prompt_id" "$self_target" <<'PY'
 from pathlib import Path
 import sys
 
@@ -44,6 +45,7 @@ prompt_text = sys.argv[7]
 pr_body_text = sys.argv[8]
 review_request_text = sys.argv[9]
 pr_review_prompt_id = sys.argv[10]
+self_target = sys.argv[11]
 
 lines = [
     "schema: repo-automation-slice-handoff/v1",
@@ -55,6 +57,8 @@ lines = [
 ]
 if pr_review_prompt_id:
     lines.append(f"pr_review_prompt_id: {pr_review_prompt_id}")
+if self_target:
+    lines.append(f"self_target: {self_target}")
 lines += [
     "",
     "# Slice Handoff",
@@ -128,6 +132,10 @@ smoke_check_slice_validator_contract() {
   local unsafe_prompt_file="$root/unsafe-prompt.md"
   local lifecycle_prompt_file="$root/lifecycle-prompt.md"
   local self_mod_prompt_file="$root/self-modifying-prompt.md"
+  local self_target_missing_opt_in_file="$root/self-target-missing-opt-in.md"
+  local self_target_opt_in_file="$root/self-target-opt-in.md"
+  local self_target_unnecessary_file="$root/self-target-unnecessary.md"
+  local self_target_unknown_file="$root/self-target-unknown.md"
   local self_target_run_file="$root/self-target-run.md"
   local self_target_invoke_file="$root/self-target-invoke.md"
   local self_target_execute_file="$root/self-target-execute.md"
@@ -312,6 +320,10 @@ PY
   smoke_slice_validator_write_handoff "$unsafe_prompt_file" "feature/slice-validator-unsafe" "Slice validator unsafe prompt" "default" "none" "" "use previous chat and do the rest" "" ""
   smoke_slice_validator_write_handoff "$lifecycle_prompt_file" "feature/slice-validator-lifecycle" "Slice validator lifecycle prompt" "default" "none" "" "Please create a PR." "" ""
   smoke_slice_validator_write_handoff "$self_mod_prompt_file" "feature/slice-validator-self-mod" "Slice validator self-mod prompt" "default" "none" "" "Please update repo-automation/bin/slice-handoff to use the new gate." "" ""
+  smoke_slice_validator_write_handoff "$self_target_missing_opt_in_file" "feature/slice-validator-self-target-missing-opt-in" "Slice validator self-target missing opt-in" "default" "none" "" "Please update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "" ""
+  smoke_slice_validator_write_handoff "$self_target_opt_in_file" "feature/slice-validator-self-target-opt-in" "Slice validator self-target opt-in" "default" "none" "" "Please update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "" "" "" "copied-helper"
+  smoke_slice_validator_write_handoff "$self_target_unnecessary_file" "feature/slice-validator-self-target-unnecessary" "Slice validator self-target unnecessary" "default" "none" "" "Please update repo-automation/bin/slice-validator to add copied-helper validation support." "" "" "" "copied-helper"
+  smoke_slice_validator_write_handoff "$self_target_unknown_file" "feature/slice-validator-self-target-unknown" "Slice validator self-target unknown" "default" "none" "" "Please update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "" "" "" "experimental-snapshot"
   smoke_slice_validator_write_handoff "$self_target_run_file" "feature/slice-validator-self-target-run" "Slice validator self-target run" "default" "none" "" "Please run repo-automation/bin/slice-handoff for this validation step." "" ""
   smoke_slice_validator_write_handoff "$self_target_invoke_file" "feature/slice-validator-self-target-invoke" "Slice validator self-target invoke" "default" "none" "" "Please invoke repo-automation/bin/slice-handoff after you review the prompt." "" ""
   smoke_slice_validator_write_handoff "$self_target_execute_file" "feature/slice-validator-self-target-execute" "Slice validator self-target execute" "default" "none" "" "Please execute repo-automation/bin/slice-handoff as the orchestration step." "" ""
@@ -688,6 +700,10 @@ PY
 
   local -a self_target_cases=(
     "reject-target|$self_mod_prompt_file|fail|Codex Prompt targets the running helper: repo-automation/bin/slice-handoff|future copied-helper/self-target support is required"
+    "reject-target-missing-opt-in|$self_target_missing_opt_in_file|fail|Codex Prompt targets the running helper: repo-automation/bin/slice-handoff|future copied-helper/self-target support is required"
+    "allow-target-with-opt-in|$self_target_opt_in_file|pass||"
+    "reject-unnecessary-self-target|$self_target_unnecessary_file|fail|self_target: copied-helper requires the Codex Prompt to target repo-automation/bin/slice-handoff|remove self_target: copied-helper or retarget the Codex Prompt at repo-automation/bin/slice-handoff"
+    "reject-unknown-self-target|$self_target_unknown_file|fail|unknown self_target: experimental-snapshot|use self_target: copied-helper or remove self_target"
     "allow-run|$self_target_run_file|pass||"
     "allow-invoke|$self_target_invoke_file|pass||"
     "allow-execute|$self_target_execute_file|pass||"
@@ -710,6 +726,22 @@ EOF
       status=1
     fi
   done
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$self_target_opt_in_file" >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'self_target=copied-helper' "$stdout_file"; then
+    manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
+    if smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("self_target") == "copied-helper"'; then
+      test_pass "slice-validator emits self_target in stdout and manifest"
+    else
+      test_fail "slice-validator emits self_target in stdout and manifest"
+      status=1
+    fi
+  else
+    test_fail "slice-validator emits self_target in stdout and manifest"
+    status=1
+  fi
 
   if python3 - "$smoke_repo_root/repo-automation/helper-metadata.json" <<'PY'
 import json
