@@ -413,7 +413,10 @@ preflight_clean_test_cache() {
       continue
     fi
     if [ -e "$path" ]; then
-      rm -rf -- "$path" || return 1
+      rm -rf -- "$path" || {
+        preflight_stop "clean-test-cache failed to delete candidate path: $path"
+        return 1
+      }
       if [ -n "$preflight_cleanup_deleted_paths" ]; then
         preflight_cleanup_deleted_paths="$preflight_cleanup_deleted_paths, $path"
       else
@@ -1069,6 +1072,10 @@ EOF
 
   branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '')"
   status_count="$(git status --short --untracked-files=normal 2>/dev/null | awk 'END { print NR + 0 }')"
+
+  if [ "$command_status" -ne 0 ] && [ -z "$preflight_stop_reason" ]; then
+    preflight_stop_reason="codex-slice-preflight failed without a stop_reason"
+  fi
 
   if [ "$preflight_json" -eq 1 ]; then
     preflight_print_json \

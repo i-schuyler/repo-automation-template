@@ -13,6 +13,7 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/pr-workflow.sh"
 smoke_main_impl() {
   smoke_setup_temp_repo || return 1
   smoke_run_named_check "smoke:preflight-preserve-path-json" smoke_check_preflight_preserve_path_json || return 1
+  smoke_run_named_check "smoke:preflight-clean-test-cache-json" smoke_check_preflight_clean_test_cache_json || return 1
   smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || return 1
   smoke_run_named_check "smoke:preflight-repair" smoke_check_preflight_repair
 }
@@ -33,6 +34,42 @@ smoke_check_preflight_preserve_path_json() {
     test_pass "preflight preserve-path JSON failure includes stop_reason"
   else
     test_fail "preflight preserve-path JSON failure includes stop_reason"
+    return 1
+  fi
+}
+
+smoke_check_preflight_clean_test_cache_json() {
+  local json_out="$smoke_test_base/preflight-clean-test-cache.json"
+  local json_err="$smoke_test_base/preflight-clean-test-cache.stderr"
+  local preserve_dir="$smoke_test_base/preflight-clean-test-cache-preserve"
+  local cleanup_root="$smoke_test_base/repo-automation-template-tests"
+  local cleanup_path="$cleanup_root/preflight-clean-test-cache-lock"
+  local cleanup_child="$cleanup_path/locked-child"
+
+  rm -rf -- "$cleanup_root" "$preserve_dir"
+  mkdir -p "$preserve_dir" "$cleanup_child" || return 1
+  printf 'keep\n' >"$preserve_dir/keep.txt" || return 1
+  printf 'locked\n' >"$cleanup_child/blocked.txt" || return 1
+  chmod 555 "$cleanup_path" "$cleanup_child" || return 1
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    TMPDIR="$smoke_test_base" repo-automation/bin/codex-slice-preflight --json --clean-test-cache --branch=feature/preflight-smoke --preserve-path="$preserve_dir" >"$json_out" 2>"$json_err"
+  ); then
+    chmod 755 "$cleanup_child" "$cleanup_path" || return 1
+    rm -rf -- "$cleanup_root" "$preserve_dir"
+    test_fail "preflight cleanup JSON failure includes stop_reason"
+    return 1
+  fi
+
+  chmod 755 "$cleanup_child" "$cleanup_path" || return 1
+  rm -rf -- "$cleanup_root" "$preserve_dir"
+
+  if python3 -m json.tool "$json_out" >/dev/null &&
+    smoke_json_assert "$json_out" 'data.get("result") == "fail" and data.get("mode") == "clean-test-cache" and data.get("rc") == 1 and data.get("stop_reason") and "failed to delete candidate path" in data.get("stop_reason", "")'; then
+    test_pass "preflight cleanup JSON failure includes stop_reason"
+  else
+    test_fail "preflight cleanup JSON failure includes stop_reason"
     return 1
   fi
 }
