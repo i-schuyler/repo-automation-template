@@ -12,8 +12,29 @@ source "$(cd "$(dirname "$0")" && pwd)/../lib/contracts/pr-workflow.sh"
 
 smoke_main_impl() {
   smoke_setup_temp_repo || return 1
+  smoke_run_named_check "smoke:preflight-preserve-path-json" smoke_check_preflight_preserve_path_json || return 1
   smoke_run_named_check "smoke:preflight-json" smoke_check_preflight_json || return 1
   smoke_run_named_check "smoke:preflight-repair" smoke_check_preflight_repair
+}
+
+smoke_check_preflight_preserve_path_json() {
+  local json_out="$smoke_test_base/preflight-preserve-path.json"
+  local json_err="$smoke_test_base/preflight-preserve-path.stderr"
+  local missing_path="$smoke_test_base/missing-preserve-path"
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/codex-slice-preflight --json --clean-test-cache --branch=feature/preflight-smoke --preserve-path="$missing_path" >"$json_out" 2>"$json_err"
+  ); then
+    test_fail "preflight preserve-path JSON failure includes stop_reason"
+    return 1
+  elif python3 -m json.tool "$json_out" >/dev/null &&
+    smoke_json_assert "$json_out" 'data.get("result") == "fail" and data.get("mode") == "clean-test-cache" and data.get("rc") == 1 and data.get("stop_reason") and "preserve path does not exist" in data.get("stop_reason", "")'; then
+    test_pass "preflight preserve-path JSON failure includes stop_reason"
+  else
+    test_fail "preflight preserve-path JSON failure includes stop_reason"
+    return 1
+  fi
 }
 
 smoke_check_preflight_repair() {
