@@ -379,7 +379,7 @@ final_output_path=%s/codex-run-reasoning/codex-final.txt
 summary_path=%s/codex-run-reasoning/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")" &&
       codex_run_contract_assert_empty "$stderr_file" &&
       codex_run_contract_assert_grep '-c' "$args_log" &&
-      codex_run_contract_assert_grep 'collaboration_mode.settings.reasoning_effort=medium' "$args_log" &&
+      codex_run_contract_assert_grep 'model_reasoning_effort=medium' "$args_log" &&
       codex_run_contract_assert_grep 'requested_reasoning=medium' "$reasoning_out_dir/codex-run-summary.txt"
   ); then
     :
@@ -403,7 +403,7 @@ summary_path=%s/codex-run-reasoning/codex-run-summary.txt' "$smoke_test_base" "$
       codex_run_contract_assert_grep '--model' "$args_log" &&
       codex_run_contract_assert_grep 'gpt-5.4-mini' "$args_log" &&
       codex_run_contract_assert_grep '-c' "$args_log" &&
-      codex_run_contract_assert_grep 'collaboration_mode.settings.reasoning_effort=high' "$args_log" &&
+      codex_run_contract_assert_grep 'model_reasoning_effort=high' "$args_log" &&
       codex_run_contract_assert_grep '===== FINAL SUMMARY =====' "$stderr_file"
   ); then
     :

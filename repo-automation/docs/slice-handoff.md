@@ -85,6 +85,7 @@ The out-dir must be outside the current repo root. Success prints the artifact p
 - payloads: Codex prompt, PR body, and PR-review request
 - `pr_review_prompt_id` selects `.prompts/<id>.md` when no explicit review request is present
 - `codex_profile` remains the profile selector; `codex_model` and `codex_reasoning` are explicit optional model tuning inputs
+- `codex-run` forwards `codex_model` as `--model` and `codex_reasoning` as `-c model_reasoning_effort=<level>`
 - `slice-handoff` validates payload shape and configured policy, but it does not reinterpret strategy
 
 ## Public-safe state machine

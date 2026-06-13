@@ -20,6 +20,17 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-13 grounded codex-run reasoning passthrough
+
+Challenges:
+- The adapter needed a verified downstream Codex config key for reasoning instead of assuming an older nested path.
+
+What would have made it easier:
+- A stable public Codex exec contract for non-interactive reasoning overrides.
+
+Recommendations:
+- Keep the adapter grounded in current local Codex help and config evidence, and prefer the observed `model_reasoning_effort` override for reasoning passthrough.
+
 ### 2026-06-11 copied-helper self-target contract
 
 Challenges:

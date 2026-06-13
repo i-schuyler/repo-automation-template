@@ -635,7 +635,7 @@ codex_run_main() {
       codex_cmd+=("--model" "$codex_run_model")
     fi
     if [ -n "$codex_run_reasoning" ]; then
-      codex_cmd+=("-c" "collaboration_mode.settings.reasoning_effort=$codex_run_reasoning")
+      codex_cmd+=("-c" "model_reasoning_effort=$codex_run_reasoning")
     fi
     codex_cmd+=(
       "--cd" "$codex_run_cd_abs"
@@ -658,7 +658,7 @@ codex_run_main() {
       codex_cmd+=("--model" "$codex_run_model")
     fi
     if [ -n "$codex_run_reasoning" ]; then
-      codex_cmd+=("-c" "collaboration_mode.settings.reasoning_effort=$codex_run_reasoning")
+      codex_cmd+=("-c" "model_reasoning_effort=$codex_run_reasoning")
     fi
     codex_cmd+=(
       "--cd" "$codex_run_cd_abs"
