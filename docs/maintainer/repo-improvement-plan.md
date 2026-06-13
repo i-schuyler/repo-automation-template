@@ -59,7 +59,7 @@ Strict value-flag behavior is repeated across helpers even though the repo has a
 - `repo-automation/tests/lib/contracts/parser-args.sh`
 - `repo-automation/tests/lib/contracts/run-tests.sh` (only if validation exposes related quiet/test harness noise)
 - `docs/INDEX.md`
-- `docs/repo-improvement-plan.md`
+- `docs/maintainer/repo-improvement-plan.md`
 - `repo-automation/docs/implementation-friction-ledger.md`
 
 ### Non-Goals

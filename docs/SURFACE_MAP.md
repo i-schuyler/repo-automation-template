@@ -32,11 +32,12 @@ First-read docs:
 
 - [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 - [Codex Implementation Notes](../repo-automation/docs/codex-implementation-notes.md)
-- [Roadmap](ROADMAP.md)
-- [Repo Improvement Plan](repo-improvement-plan.md)
-- [Drift Ledger](DRIFT_LEDGER.md)
-- [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
-- [Monetization](MONETIZATION.md)
+- [Maintainer Docs](maintainer/README.md)
+- [Roadmap](maintainer/ROADMAP.md)
+- [Repo Improvement Plan](maintainer/repo-improvement-plan.md)
+- [Drift Ledger](maintainer/DRIFT_LEDGER.md)
+- [Workflow Audit Checklist](maintainer/WORKFLOW_AUDIT_CHECKLIST.md)
+- [Monetization](maintainer/MONETIZATION.md)
 
 ## Planned and deferred work
 
