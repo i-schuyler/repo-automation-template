@@ -158,8 +158,6 @@ Each `sessions[]` item includes:
 - `work_time.summary`
 - `resume.command`
 - `resume.commands`
-- `work_time.total_seconds`
-- `work_time.summary`
 - pretty recent output should include each session's `work_time:` summary
 
 ## Exit codes

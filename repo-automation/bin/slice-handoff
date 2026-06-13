@@ -2368,8 +2368,14 @@ slice_handoff_run_execution_phase() {
     fi
 
     if [ "$repo_flow_submit_phase_failed" -ne 0 ]; then
+      repo_flow_submit_ci="$(slice_handoff_extract_repo_flow_summary_value ci "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
       repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
       repo_flow_submit_url_or_stop="$(slice_handoff_child_failure_excerpt "$repo_flow_submit_url_or_stop" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "repo-flow submit exited nonzero")"
+      if [ -n "$repo_flow_submit_ci" ]; then
+        :
+      else
+        repo_flow_submit_ci="unknown"
+      fi
       slice_handoff_info "repo-flow submit ci=$repo_flow_submit_ci"
       slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "investigate CI failure before PR review/merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
       slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "$repo_flow_submit_url_or_stop" "" "investigate the CI failure on this branch" "investigate CI failure before PR review/merge"
@@ -2423,13 +2429,13 @@ slice_handoff_run_execution_phase() {
       else
         repo_flow_submit_commit="none"
       fi
-    if [ -n "$repo_flow_submit_ci" ]; then
-      :
-    else
-      repo_flow_submit_ci="unknown"
-    fi
-    slice_handoff_info "repo-flow submit ci=$repo_flow_submit_ci"
-    slice_handoff_print_review_request_block_with_metadata \
+      if [ -n "$repo_flow_submit_ci" ]; then
+        :
+      else
+        repo_flow_submit_ci="unknown"
+      fi
+      slice_handoff_info "repo-flow submit ci=$repo_flow_submit_ci"
+      slice_handoff_print_review_request_block_with_metadata \
       "$active_run_dir/review-request.txt" \
       "$repo_flow_submit_url_or_stop" \
         "$slice_handoff_branch" \

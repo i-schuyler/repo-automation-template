@@ -2046,6 +2046,7 @@ smoke_slice_handoff_assert_execution_submit_failure_summary() {
   grep -Fxq "pushed=$expected_pushed" "$stderr_file" || return 1
   grep -Fxq "watched=$expected_watched" "$stderr_file" || return 1
   grep -Fxq "ci=$expected_ci" "$stderr_file" || return 1
+  grep -Fxq "INFO: slice-handoff repo-flow submit ci=$expected_ci" "$stderr_file" || return 1
   grep -Fxq "url_or_stop=$expected_url_or_stop" "$stderr_file" || return 1
   grep -Fxq 'repo_flow_submit=fail' "$stderr_file" || return 1
   grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
