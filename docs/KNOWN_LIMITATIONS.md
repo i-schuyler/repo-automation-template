@@ -4,6 +4,8 @@
 
 The project is intended to reduce repeatable repo maintenance churn for phone-first, Codex-assisted, and GitHub PR workflows. It is useful now, but it is not yet a fully packaged release system.
 
+See [Surface Map](SURFACE_MAP.md) for the starter path and current support boundary.
+
 ## Current support boundary
 
 The supported validation path is:

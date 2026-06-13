@@ -1013,6 +1013,14 @@ slice_handoff_child_failure_excerpt() {
   printf '%s\n' "$excerpt"
 }
 
+slice_handoff_codex_run_failure_summary_value() {
+  local summary_path="$1"
+  local field="$2"
+
+  [ -s "$summary_path" ] || return 1
+  slice_handoff_field_value "$summary_path" "$field"
+}
+
 slice_handoff_extract_final_summary_field() {
   local file="$1"
   local field="$2"
@@ -1098,6 +1106,49 @@ slice_handoff_print_execution_blocker() {
   printf '  exit_code: %s\n' "$exit_code" >&2
   printf '  stdout: %s\n' "$stdout_path" >&2
   printf '  stderr: %s\n' "$stderr_path" >&2
+  printf '  command:\n' >&2
+  printf '    %s\n' "$command_summary" >&2
+}
+
+slice_handoff_print_codex_run_failure_blocker() {
+  local command_summary="$1"
+  local exit_code="$2"
+  local stdout_path="$3"
+  local stderr_path="$4"
+  local reason="$5"
+  local fix="$6"
+  local next_action="${7:-}"
+  local child_summary="${8:-}"
+  local child_failure_log="${9:-}"
+  local child_failure_artifact="${10:-}"
+  local child_failure_excerpt="${11:-}"
+
+  if [ -z "$next_action" ]; then
+    next_action="$(slice_handoff_execution_next_action "codex-run")"
+  fi
+
+  printf 'fail: codex-run failed\n' >&2
+  printf 'reason: %s\n' "$reason" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  printf 'next: %s\n' "$next_action" >&2
+  printf 'details:\n' >&2
+  printf '  step: %s\n' 'codex-run' >&2
+  printf '  command_class: %s\n' "$(slice_handoff_execution_command_class "codex-run")" >&2
+  printf '  exit_code: %s\n' "$exit_code" >&2
+  printf '  stdout: %s\n' "$stdout_path" >&2
+  printf '  stderr: %s\n' "$stderr_path" >&2
+  if [ -n "$child_summary" ]; then
+    printf '  child_summary: %s\n' "$child_summary" >&2
+  fi
+  if [ -n "$child_failure_log" ]; then
+    printf '  child_failure_log: %s\n' "$child_failure_log" >&2
+  fi
+  if [ -n "$child_failure_artifact" ]; then
+    printf '  child_failure_artifact: %s\n' "$child_failure_artifact" >&2
+  fi
+  if [ -n "$child_failure_excerpt" ]; then
+    printf '  child_failure_excerpt: %s\n' "$child_failure_excerpt" >&2
+  fi
   printf '  command:\n' >&2
   printf '    %s\n' "$command_summary" >&2
 }
@@ -1208,6 +1259,82 @@ slice_handoff_print_execution_success_summary() {
     "next=$next"
   )
   repo_auto_print_final_summary "${summary_lines[@]}" >&2
+}
+
+slice_handoff_print_execution_submit_failure_summary() {
+  local mode="$1"
+  local run_dir="$2"
+  local repo_flow_submit_stdout_path="$3"
+  local repo_flow_submit_stderr_path="$4"
+  local review_request_path=""
+  local repo_flow_submit_pr="none"
+  local repo_flow_submit_commit="none"
+  local repo_flow_submit_pushed="unknown"
+  local repo_flow_submit_watched="unknown"
+  local repo_flow_submit_ci="unknown"
+  local repo_flow_submit_url_or_stop="none"
+  local review_request_valid="false"
+  local next="investigate CI failure before PR review/merge"
+
+  review_request_path="$(slice_handoff_extract_repo_flow_summary_value review_request_path "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_pr="$(slice_handoff_extract_repo_flow_summary_value pr "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_commit="$(slice_handoff_extract_repo_flow_summary_value commit "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_pushed="$(slice_handoff_extract_repo_flow_summary_value pushed "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_watched="$(slice_handoff_extract_repo_flow_summary_value watched "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_ci="$(slice_handoff_extract_repo_flow_summary_value ci "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+  repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
+
+  if [ -n "$repo_flow_submit_pr" ]; then
+    :
+  else
+    repo_flow_submit_pr="none"
+  fi
+  if [ -n "$repo_flow_submit_commit" ]; then
+    :
+  else
+    repo_flow_submit_commit="none"
+  fi
+  if [ -n "$repo_flow_submit_pushed" ]; then
+    :
+  else
+    repo_flow_submit_pushed="unknown"
+  fi
+  if [ -n "$repo_flow_submit_watched" ]; then
+    :
+  else
+    repo_flow_submit_watched="unknown"
+  fi
+  if [ -n "$repo_flow_submit_ci" ]; then
+    :
+  else
+    repo_flow_submit_ci="unknown"
+  fi
+  if [ -n "$repo_flow_submit_url_or_stop" ]; then
+    :
+  else
+    repo_flow_submit_url_or_stop="none"
+  fi
+  if [ -n "$review_request_path" ] && [ -r "$review_request_path" ]; then
+    review_request_valid="true"
+  fi
+
+  repo_auto_print_final_summary \
+    "script=slice-handoff" \
+    "mode=$mode" \
+    "rc=1" \
+    "branch=$slice_handoff_branch" \
+    "run_dir=$run_dir" \
+    "review_request_path=${review_request_path:-none}" \
+    "pr=$repo_flow_submit_pr" \
+    "commit=$repo_flow_submit_commit" \
+    "pushed=$repo_flow_submit_pushed" \
+    "watched=$repo_flow_submit_watched" \
+    "ci=$repo_flow_submit_ci" \
+    "url_or_stop=$repo_flow_submit_url_or_stop" \
+    "repo_flow_submit=fail" \
+    "review_request_valid=$review_request_valid" \
+    "review_request_printed=false" \
+    "next=$next" >&2
 }
 
 slice_handoff_write_execution_summary() {
@@ -1578,9 +1705,40 @@ slice_handoff_validate_codex_run_output() {
   local codex_final_output_path="$8"
 
   if [ "$exit_code" -ne 0 ]; then
+    local child_summary=""
+    local child_failure_reason=""
+    local child_failure_fix=""
+    local child_failure_log=""
+    local child_failure_artifact=""
+    local child_failure_excerpt=""
+    local reason=""
+    local fix=""
     local excerpt=""
-    excerpt="$(slice_handoff_child_failure_excerpt "" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
-    slice_handoff_print_execution_blocker "codex-run" "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$excerpt"
+
+    if [ -s "$codex_run_summary_path" ]; then
+      child_summary="$codex_run_summary_path"
+      child_failure_reason="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_reason 2>/dev/null || true)"
+      child_failure_fix="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_fix 2>/dev/null || true)"
+      child_failure_log="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_log 2>/dev/null || true)"
+      child_failure_artifact="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_artifact 2>/dev/null || true)"
+      child_failure_excerpt="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_excerpt 2>/dev/null || true)"
+    fi
+    reason="$child_failure_reason"
+    if [ -z "$reason" ]; then
+      reason="$(slice_handoff_child_failure_excerpt "" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
+    fi
+    fix="$child_failure_fix"
+    if [ -z "$fix" ]; then
+      fix="$(slice_handoff_execution_failure_fix "codex-run" "$reason")"
+    fi
+    excerpt="$child_failure_excerpt"
+    if [ -z "$excerpt" ]; then
+      excerpt="$(slice_handoff_child_failure_excerpt "$reason" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
+    fi
+    if [ -z "$child_failure_log" ]; then
+      child_failure_log="$stderr_path"
+    fi
+    slice_handoff_print_codex_run_failure_blocker "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$reason" "$fix" "" "$child_summary" "$child_failure_log" "$child_failure_artifact" "$excerpt"
     return 1
   fi
 
@@ -2076,15 +2234,17 @@ slice_handoff_run_execution_phase() {
 
     if ! mv -f -- "$repo_flow_submit_stdout_tmp" "$repo_flow_submit_stdout_path" || ! mv -f -- "$repo_flow_submit_stderr_tmp" "$repo_flow_submit_stderr_path"; then
       slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "unable to finalize repo-flow-submit artifacts"
-      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "repo-flow submit failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "investigate CI failure before PR review/merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
       return 1
     fi
 
     if [ "$repo_flow_submit_phase_failed" -ne 0 ]; then
       repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
       repo_flow_submit_url_or_stop="$(slice_handoff_child_failure_excerpt "$repo_flow_submit_url_or_stop" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "repo-flow submit exited nonzero")"
-      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "repo-flow submit failed" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
-      slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "$repo_flow_submit_url_or_stop"
+      slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "investigate CI failure before PR review/merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
+      slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "$repo_flow_submit_url_or_stop" "" "investigate the CI failure on this branch" "investigate CI failure before PR review/merge"
+      slice_handoff_print_execution_submit_failure_summary "execution-submit" "$active_run_dir" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path"
+      slice_handoff_print_codex_run_context_block "$slice_handoff_codex_run_context_file"
       return 1
     fi
 

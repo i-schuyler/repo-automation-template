@@ -278,10 +278,12 @@ stderr_text="${FAKE_REPO_FLOW_STDERR_TEXT:-}"
 exit_code="${FAKE_REPO_FLOW_EXIT_CODE:-0}"
 pr_number="${FAKE_REPO_FLOW_PR_NUMBER:-123}"
 commit_sha="${FAKE_REPO_FLOW_COMMIT_SHA:-0123abcd}"
+pushed="${FAKE_REPO_FLOW_PUSHED:-false}"
 watched="${FAKE_REPO_FLOW_WATCHED:-true}"
 ci_state="${FAKE_REPO_FLOW_CI_STATE:-pass}"
 url_or_stop="${FAKE_REPO_FLOW_URL_OR_STOP:-https://github.com/i-schuyler/repo-automation-template/pull/123}"
 stop_reason="${FAKE_REPO_FLOW_STOP_REASON:-repo-flow submit failed}"
+failure_url_or_stop_mode="${FAKE_REPO_FLOW_FAILURE_URL_OR_STOP_MODE:-stop}"
 mode="${1:-}"
 review_request_file=""
 review_request_path=""
@@ -346,9 +348,10 @@ if [ "$mode" = "submit" ]; then
     printf 'rc=%s\n' "$exit_code"
     printf 'pr=%s\n' "$pr_number"
     printf 'commit=%s\n' "$commit_sha"
+    printf 'pushed=%s\n' "$pushed"
     printf 'watched=%s\n' "$watched"
     printf 'ci=%s\n' "$ci_state"
-    if [ "$exit_code" -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ] || [ "$failure_url_or_stop_mode" = "url" ]; then
       printf 'url_or_stop=%s\n' "$url_or_stop"
     else
       printf 'url_or_stop=%s\n' "$stop_reason"
@@ -439,6 +442,11 @@ stderr_text="${FAKE_CODEX_RUN_STDERR_TEXT:-}"
 exit_code="${FAKE_CODEX_RUN_EXIT_CODE:-0}"
 skip_final_output="${FAKE_CODEX_RUN_SKIP_FINAL_OUTPUT:-0}"
 args_file="${FAKE_CODEX_RUN_ARGS_FILE:-}"
+failure_reason="${FAKE_CODEX_RUN_FAILURE_REASON:-}"
+failure_fix="${FAKE_CODEX_RUN_FAILURE_FIX:-}"
+failure_log="${FAKE_CODEX_RUN_FAILURE_LOG:-}"
+failure_artifact="${FAKE_CODEX_RUN_FAILURE_ARTIFACT:-}"
+failure_excerpt="${FAKE_CODEX_RUN_FAILURE_EXCERPT:-}"
 final_text=""
 out_dir=""
 prev=""
@@ -491,19 +499,44 @@ if [ -n "$out_dir" ]; then
   if [ -n "$stdout_text" ]; then
     stdout_text="$(printf '%s\nfinal_output_path=%s\nsummary_path=%s' "$stdout_text" "$final_output_path" "$summary_path")"
   fi
-  {
-    printf 'script=codex-run\n'
-    printf 'result=pass\n'
-    printf 'exit_code=0\n'
-    printf 'final_output_path=%s\n' "$final_output_path"
-    if [ "$skip_final_output" -eq 0 ]; then
-      printf 'final_output_status=present\n'
-    else
+  if [ "$exit_code" -ne 0 ]; then
+    {
+      printf 'script=codex-run\n'
+      printf 'result=fail\n'
+      printf 'exit_code=%s\n' "$exit_code"
+      printf 'final_output_path=%s\n' "$final_output_path"
       printf 'final_output_status=missing\n'
+      if [ -n "$failure_reason" ]; then
+        printf 'failure_reason=%s\n' "$failure_reason"
+      fi
+      if [ -n "$failure_fix" ]; then
+        printf 'failure_fix=%s\n' "$failure_fix"
+      fi
+      if [ -n "$failure_log" ]; then
+        printf 'failure_log=%s\n' "$failure_log"
+      fi
+      if [ -n "$failure_artifact" ]; then
+        printf 'failure_artifact=%s\n' "$failure_artifact"
+      fi
+      if [ -n "$failure_excerpt" ]; then
+        printf 'failure_excerpt=%s\n' "$failure_excerpt"
+      fi
+    } > "$summary_path"
+  else
+    {
+      printf 'script=codex-run\n'
+      printf 'result=pass\n'
+      printf 'exit_code=0\n'
+      printf 'final_output_path=%s\n' "$final_output_path"
+      if [ "$skip_final_output" -eq 0 ]; then
+        printf 'final_output_status=present\n'
+      else
+        printf 'final_output_status=missing\n'
+      fi
+    } > "$summary_path"
+    if [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
+      printf '%s\n' "$final_text" > "$final_output_path"
     fi
-  } > "$summary_path"
-  if [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
-    printf '%s\n' "$final_text" > "$final_output_path"
   fi
 fi
 
@@ -1982,6 +2015,42 @@ smoke_slice_handoff_assert_execution_success_summary() {
   grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
   grep -Fxq "next=$expected_next" "$stderr_file" || return 1
   grep -Fxq '===== END =====' "$stderr_file" || return 1
+}
+
+smoke_slice_handoff_assert_execution_submit_failure_summary() {
+  local stderr_file="$1"
+  local expected_mode="$2"
+  local expected_branch="$3"
+  local expected_run_dir="$4"
+  local expected_review_request_path="$5"
+  local expected_pr="$6"
+  local expected_commit="$7"
+  local expected_pushed="$8"
+  local expected_watched="$9"
+  local expected_ci="${10}"
+  local expected_url_or_stop="${11}"
+  local expected_next="${12}"
+  local expected_review_request_printed="${13}"
+
+  grep -Fxq '===== FINAL SUMMARY =====' "$stderr_file" || return 1
+  grep -Fxq 'script=slice-handoff' "$stderr_file" || return 1
+  grep -Fxq "mode=$expected_mode" "$stderr_file" || return 1
+  grep -Fxq 'rc=1' "$stderr_file" || return 1
+  grep -Fxq "branch=$expected_branch" "$stderr_file" || return 1
+  grep -Fxq "run_dir=$expected_run_dir" "$stderr_file" || return 1
+  grep -Fxq "review_request_path=$expected_review_request_path" "$stderr_file" || return 1
+  grep -Fxq "pr=$expected_pr" "$stderr_file" || return 1
+  grep -Fxq "commit=$expected_commit" "$stderr_file" || return 1
+  grep -Fxq "pushed=$expected_pushed" "$stderr_file" || return 1
+  grep -Fxq "watched=$expected_watched" "$stderr_file" || return 1
+  grep -Fxq "ci=$expected_ci" "$stderr_file" || return 1
+  grep -Fxq "url_or_stop=$expected_url_or_stop" "$stderr_file" || return 1
+  grep -Fxq 'repo_flow_submit=fail' "$stderr_file" || return 1
+  grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
+  grep -Fxq "next=$expected_next" "$stderr_file" || return 1
+  grep -Fxq '===== END =====' "$stderr_file" || return 1
+  smoke_slice_handoff_assert_markers_in_order "$stderr_file" '===== FINAL SUMMARY =====' '===== CODEX RUN CONTEXT =====' || return 1
+  ! grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file" || return 1
 }
 
 smoke_slice_handoff_assert_execution_submit_explain_review_request() {

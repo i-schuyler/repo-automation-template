@@ -48,6 +48,17 @@ Challenges:
 Recommended improvements:
 - Keep repair mode explicit in both CLI and metadata, and keep child-helper fakes at the repo-relative paths used at runtime.
 
+### 2026-06-13 PR #252 preflight JSON stop_reason repair
+
+Material note:
+- The slice-handoff repair loop is easier to interpret when nonzero preflight JSON output keeps a useful `stop_reason`, which helps downstream repair routing stay compact and public-safe.
+
+### 2026-06-13 PR #253 submit/watch failure output closure
+
+Material note:
+- When Codex has already run successfully, repo-flow submit/watch failures should still print FINAL SUMMARY and CODEX RUN CONTEXT so the operator can continue the same-branch CI repair without losing session context.
+- If codex-run writes a failure summary, slice-handoff should prefer the child summary reason/fix/log/excerpt over generic stderr greps so the parent blocker stays actionable.
+
 ### 2026-06-09 codex-run resume-session final-output contract repair
 
 Challenges:
