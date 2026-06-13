@@ -26,12 +26,14 @@ codex_status_make_fixture() {
   local secondary_used="${13}"
   local secondary_window="${14}"
   local secondary_resets="${15}"
+  local work_time_total_seconds="${16:-3723}"
+  local work_time_summary="${17:-1h 2m 3s}"
   : "$primary_window" "$secondary_window"
 
   cat > "$path" <<EOF
 {"type":"session_meta","timestamp":"2026-06-02T00:00:00Z","payload":{"session_id":"$session_id","source":"cli","originator":"operator","git":{"branch":"$branch","commit_hash":"$commit","repository_url":"git@example/repo.git"}}}
 {"type":"turn_context","timestamp":"2026-06-02T00:00:01Z","payload":{"model":"$model_name","collaboration_mode":{"settings":{"reasoning_effort":"$reasoning"}}}}
-{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","info":{"model_context_window":$context_window,"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":$cumulative_total},"last_token_usage":{"input_tokens":12,"cached_input_tokens":2,"output_tokens":6,"reasoning_output_tokens":3,"total_tokens":$current_total}},"rate_limits":{"limit_id":"paid","plan_type":"plus","rate_limit_reached_type":"none","primary":{"used_percent":$primary_used,"window_minutes":$primary_window,"resets_at":$primary_resets},"secondary":{"used_percent":$secondary_used,"window_minutes":$secondary_window,"resets_at":$secondary_resets}}}}
+{"type":"event_msg","timestamp":"2026-06-02T00:00:02Z","payload":{"type":"token_count","info":{"model_context_window":$context_window,"work_time":{"total_seconds":$work_time_total_seconds,"summary":"$work_time_summary"},"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":50,"reasoning_output_tokens":30,"total_tokens":$cumulative_total},"last_token_usage":{"input_tokens":12,"cached_input_tokens":2,"output_tokens":6,"reasoning_output_tokens":3,"total_tokens":$current_total}},"rate_limits":{"limit_id":"paid","plan_type":"plus","rate_limit_reached_type":"none","primary":{"used_percent":$primary_used,"window_minutes":$primary_window,"resets_at":$primary_resets},"secondary":{"used_percent":$secondary_used,"window_minutes":$secondary_window,"resets_at":$secondary_resets}}}}
 EOF
 }
 
@@ -86,6 +88,8 @@ assert data["context"]["remaining"] == 850
 assert round(data["context"]["used_percent"], 1) == 15.0
 assert round(data["context"]["remaining_percent"], 1) == 85.0
 assert data["context"]["remaining_summary"] == "85% remaining"
+assert data["work_time"]["total_seconds"] == 3723
+assert data["work_time"]["summary"] == "1h 2m 3s"
 assert data["limits"]["five_hour"]["remaining_percent"] == 15
 assert data["limits"]["weekly"]["remaining_percent"] == 7
 assert data["limits"]["five_hour"]["used_percent"] == 85
@@ -107,6 +111,7 @@ PY
      grep -Fq 'source: cli / operator' "$out" &&
      grep -Fq 'model: gpt-5.4-mini / medium' "$out" &&
      grep -Fq 'context: 85% remaining' "$out" &&
+     grep -Fq 'work_time: 1h 2m 3s' "$out" &&
      grep -Fq '5h: 15% left, resets ' "$out" &&
      grep -Fq 'week: 7% left, resets ' "$out" &&
      grep -Fq 'resume:' "$out" &&
@@ -124,7 +129,8 @@ PY
      grep -Fq 'output: 6' "$out" &&
      grep -Fq 'reasoning_output: 3' "$out" &&
      grep -Fq 'current_total: 150' "$out" &&
-     grep -Fq 'cumulative_total: 900' "$out"
+     grep -Fq 'cumulative_total: 900' "$out" &&
+     grep -Fq 'work_time: 1h 2m 3s' "$out"
   then :; else test_fail "pretty verbose"; status=1; fi
 
   local uuid_file="$sess_dir/123e4567-e89b-12d3-a456-426614174000.jsonl"
@@ -150,6 +156,8 @@ assert data["context"]["remaining"] is None
 assert data["context"]["used_percent"] is None
 assert data["context"]["remaining_percent"] is None
 assert data["context"]["remaining_summary"] == "unknown"
+assert data["work_time"]["total_seconds"] == 2
+assert data["work_time"]["summary"] == "2s"
 assert any("current token total exceeds model context window" in warning for warning in data["warnings"])
 assert data["tokens"]["cumulative_total"] == 1500
 PY
@@ -158,6 +166,7 @@ PY
   if PATH="$smoke_test_dir/repo-automation/bin:$PATH" CODEX_HOME="$codex_home" repo-automation/bin/codex-status --session-file="$sess_dir/overflow.jsonl" --pretty >"$out" 2>"$err" &&
      grep -Fq 'model: gpt-test / unknown' "$out" &&
      grep -Fq 'context: unknown' "$out" &&
+     grep -Fq 'work_time: 2s' "$out" &&
      ! grep -Eiq 'context: -[0-9]' "$out" &&
      ! grep -Fq 'None' "$out"
   then :; else test_fail "overflow pretty"; status=1; fi
@@ -197,6 +206,8 @@ assert data["rate_limits"]["weekly"]["resets_at"] is not None
 assert data["rate_limits"]["weekly"]["resets_at_iso"] is not None
 assert data["rate_limits"]["weekly"]["resets_at_local"] is not None
 assert "rate_limits" not in data["sessions"][0]
+assert data["sessions"][0]["work_time"]["total_seconds"] == 3723
+assert data["sessions"][0]["work_time"]["summary"] == "1h 2m 3s"
 assert data["sessions"][0]["resume"]["command"] == "codex resume --include-non-interactive sess-123"
 assert any("skipped malformed session file" in warning for warning in data["warnings"])
 PY
@@ -210,6 +221,8 @@ assert data["schema"] == "repo-automation-codex-status-recent/v1"
 assert len(data["sessions"]) == 1
 assert data["sessions"][0]["session_id"] == "sess-123"
 assert data["sessions"][0]["resume"]["command"] == "codex resume --include-non-interactive sess-123"
+assert data["sessions"][0]["work_time"]["total_seconds"] == 3723
+assert data["sessions"][0]["work_time"]["summary"] == "1h 2m 3s"
 PY
   then :; else test_fail "recent one json"; status=1; fi
 
@@ -245,6 +258,7 @@ PY
      grep -Fq 'week:' "$out" &&
      grep -Fq 'recent sessions' "$out" &&
      grep -Fq 'resume:' "$out" &&
+     grep -Fq 'work_time: 1h 2m 3s' "$out" &&
      grep -Fq 'codex resume --include-non-interactive sess-123' "$out" &&
      ! grep -Fqi 'rate limits' "$out" &&
      ! grep -Fqi 'plan: plus' "$out"

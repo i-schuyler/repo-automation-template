@@ -666,6 +666,8 @@ assert session['resume']['command'] == 'codex resume --include-non-interactive s
 assert session['model']['name'] == 'gpt-5.4-mini'
 assert session['model']['reasoning'] == 'medium'
 assert session['context']['remaining_summary'] == '85% left'
+assert session['work_time']['total_seconds'] == 3723
+assert session['work_time']['summary'] == '1h 2m 3s'
 assert data['rate_limits']['five_hour']['remaining_percent'] == 99.0
 assert data['rate_limits']['five_hour']['resets_at_local'] == '2026-05-24 04:31 PDT'
 assert data['rate_limits']['weekly']['remaining_percent'] == 93.0
@@ -684,7 +686,11 @@ PY
       [ "$codex_context_line" -lt "$review_request_line" ] &&
       [ "$review_request_line" -lt "$review_request_end_line" ] &&
       [ "$review_request_end_line" -eq "$total_stderr_lines" ] &&
-      grep -Fxq 'INFO: slice-handoff repo-flow submit' "$stderr_file" &&
+      grep -Fxq 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' "$stderr_file" &&
+      grep -Fq 'INFO: slice-handoff remaining disk space=' "$stderr_file" &&
+      grep -Fq 'INFO: slice-handoff codex-run result=implementation-complete final_output=' "$stderr_file" &&
+      grep -Fq ' work_time=1h 2m 3s' "$stderr_file" &&
+      grep -Fxq 'INFO: slice-handoff repo-flow submit ci=pass' "$stderr_file" &&
       pr_body_validation_info_prefix='INFO: slice-handoff ' &&
       pr_body_validation_info_suffix='PR-body validation' &&
       ! grep -Fq "${pr_body_validation_info_prefix}${pr_body_validation_info_suffix}" "$stderr_file" &&

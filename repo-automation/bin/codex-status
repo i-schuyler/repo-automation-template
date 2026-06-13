@@ -249,6 +249,89 @@ def parse_epoch(v):
     return None
 
 
+def parse_timestamp(v):
+    if isinstance(v, bool) or v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    if isinstance(v, str):
+        text = v.strip()
+        if not text:
+            return None
+        if re.fullmatch(r'-?\d+(?:\.\d+)?', text):
+            return parse_epoch(text)
+        try:
+            return int(datetime.fromisoformat(text.replace('Z', '+00:00')).timestamp())
+        except Exception:
+            return None
+    return None
+
+
+def format_work_time_summary(total_seconds):
+    if total_seconds is None:
+        return 'unknown'
+    try:
+        total_seconds = int(total_seconds)
+    except Exception:
+        return 'unknown'
+    if total_seconds < 0:
+        return 'unknown'
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts = []
+    if hours:
+        parts.append(f'{hours}h')
+    if minutes or hours:
+        parts.append(f'{minutes}m')
+    if seconds or not parts:
+        parts.append(f'{seconds}s')
+    return ' '.join(parts)
+
+
+def work_time_block(total_seconds=None, summary=None):
+    if summary is not None and summary != '':
+        summary = str(summary)
+    if total_seconds is None:
+        return {
+            'total_seconds': None,
+            'summary': summary or 'unknown',
+        }
+    try:
+        total_seconds = int(total_seconds)
+    except Exception:
+        return {
+            'total_seconds': None,
+            'summary': summary or 'unknown',
+        }
+    return {
+        'total_seconds': total_seconds,
+        'summary': summary or format_work_time_summary(total_seconds),
+    }
+
+
+def work_time_from_source(src):
+    if not isinstance(src, dict):
+        return None, None
+    work_time = first(src, 'work_time')
+    if isinstance(work_time, dict):
+        total = first(work_time, 'total_seconds', 'seconds')
+        summary = first(work_time, 'summary')
+        if total is not None or summary is not None:
+            return parse_epoch(total), summary
+    total = first(src, 'work_time_total_seconds', 'work_time_seconds', 'duration_seconds', 'elapsed_seconds')
+    if total is not None:
+        return parse_epoch(total), None
+    duration = first(src, 'duration', 'elapsed')
+    if isinstance(duration, dict):
+        total = first(duration, 'total_seconds', 'seconds')
+        summary = first(duration, 'summary')
+        if total is not None or summary is not None:
+            return parse_epoch(total), summary
+    elif duration is not None:
+        return parse_epoch(duration), None
+    return None, None
+
+
 def utc_iso(ts):
     if ts is None:
         return None
@@ -342,6 +425,15 @@ def collect_session(path, ordinal, recent_mode=False):
     branch = nested(meta, 'git', 'branch') or first(meta, 'branch')
     commit = nested(meta, 'git', 'commit_hash') or nested(meta, 'git', 'commit') or first(meta, 'commit')
     repository_url = nested(meta, 'git', 'repository_url') or first(meta, 'repository_url')
+    work_time_total = None
+    work_time_summary = None
+    for source in (meta, turn, token_info, token_event):
+        if work_time_total is not None or work_time_summary is not None:
+            break
+        work_total_candidate, work_summary_candidate = work_time_from_source(source)
+        if work_total_candidate is not None or work_summary_candidate is not None:
+            work_time_total = work_total_candidate
+            work_time_summary = work_summary_candidate
     current_total = first(token_usage_last, 'total_tokens')
     if current_total is None:
         current_total = first(token_usage_total, 'total_tokens', 'token_count', 'total')
@@ -368,6 +460,17 @@ def collect_session(path, ordinal, recent_mode=False):
             context_warning = 'current token total exceeds model context window; current context usage unavailable'
         elif cumulative_total_n is not None and cumulative_total_n > ctx_window_n:
             context_warning = 'cumulative token total exceeds model context window; current context usage unavailable'
+
+    if work_time_total is None and work_time_summary is None:
+        event_timestamps = sorted({
+            ts for ts in (parse_timestamp(event.get('timestamp')) for event in events)
+            if ts is not None
+        })
+        if len(event_timestamps) >= 2:
+            work_time_total = event_timestamps[-1] - event_timestamps[0]
+            work_time_summary = None
+
+    work_time = work_time_block(work_time_total, work_time_summary)
 
     if recent_mode:
         resume_command = f'codex resume --include-non-interactive {session_id}'
@@ -398,6 +501,7 @@ def collect_session(path, ordinal, recent_mode=False):
                 'remaining_percent': remaining_percent,
                 'remaining_summary': remaining_summary,
             },
+            'work_time': work_time,
             'resume': {
                 'command': resume_command,
                 'commands': resume_commands,
@@ -449,6 +553,7 @@ def collect_session(path, ordinal, recent_mode=False):
             'source': first(meta, 'source'),
             'originator': first(meta, 'originator'),
             'resumeable': True,
+            'work_time': work_time,
         },
         'git': {
             'repo_root': str(Path(repo_root).resolve()) if repo_root else None,
@@ -491,6 +596,7 @@ def collect_session(path, ordinal, recent_mode=False):
             'remaining_percent': remaining_percent,
             'remaining_summary': remaining_summary,
         },
+        'work_time': work_time,
         'limits': {
             'five_hour': {
                 **limits['five_hour'],
@@ -588,6 +694,7 @@ def render_pretty_single(payload):
     model = payload.get('model', {})
     git = payload.get('git', {})
     ctx = payload.get('context', {})
+    work_time = payload.get('work_time') or sess.get('work_time') or {}
     limits = payload.get('limits', {})
     tokens = payload.get('tokens', {})
     s.append("codex-status")
@@ -607,6 +714,7 @@ def render_pretty_single(payload):
         s.append(f"context: {ctx.get('remaining_summary')}")
     else:
         s.append('context: unknown')
+    s.append(f"work_time: {work_time.get('summary') or 'unknown'}")
     five = limits.get('five_hour', {})
     weekly = limits.get('weekly', {})
     def fmt_limit(label, block):
@@ -672,6 +780,7 @@ def render_pretty_recent(payload):
             lines.append(f"   model: {session.get('model', {}).get('name') or 'unknown'} / {session.get('model', {}).get('reasoning') or 'unknown'}")
         if session.get('context', {}).get('remaining_summary'):
             lines.append(f"   context: {session.get('context', {}).get('remaining_summary')}")
+        lines.append(f"   work_time: {session.get('work_time', {}).get('summary') or 'unknown'}")
         lines.append('   resume:')
         lines.append(f"     {session.get('resume', {}).get('command')}")
     return '\n'.join(lines)

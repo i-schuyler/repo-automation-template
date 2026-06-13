@@ -71,6 +71,7 @@ slice_handoff_codex_resume_command=""
 slice_handoff_codex_model_name=""
 slice_handoff_codex_model_reasoning=""
 slice_handoff_codex_context_remaining_summary=""
+slice_handoff_codex_work_time_summary=""
 slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
 slice_handoff_codex_rate_limit_five_hour_resets_at_local=""
 slice_handoff_codex_rate_limit_weekly_remaining_percent=""
@@ -85,6 +86,26 @@ slice_handoff_usage() {
 slice_handoff_info() {
   [ "$slice_handoff_explain" -eq 1 ] || return 0
   printf 'INFO: slice-handoff %s\n' "$*" >&2
+}
+
+slice_handoff_remaining_disk_space_gb() {
+  local df_bin="${REPO_AUTOMATION_DF_BIN:-df}"
+  local available_kib=""
+
+  available_kib="$("$df_bin" -Pk "$slice_handoff_repo_root" 2>/dev/null | awk 'NR == 2 { print $4; exit }')"
+  case "$available_kib" in
+    ''|*[!0-9]*)
+      printf '%s' unknown
+      return 0
+      ;;
+  esac
+
+  python3 - "$available_kib" <<'PY'
+import sys
+
+available_kib = int(sys.argv[1])
+print(f'{available_kib / 1024 / 1024:.1f}')
+PY
 }
 
 slice_handoff_print_final_summary() {
@@ -321,6 +342,7 @@ codex_resume=$slice_handoff_codex_resume_command
 model=$slice_handoff_codex_model_name / $slice_handoff_codex_model_reasoning
 context=$slice_handoff_codex_context_remaining_summary
 rate_limits=5h $slice_handoff_codex_rate_limit_five_hour_remaining_percent% left resets $slice_handoff_codex_rate_limit_five_hour_resets_at_local; week $slice_handoff_codex_rate_limit_weekly_remaining_percent% left resets $slice_handoff_codex_rate_limit_weekly_resets_at_local
+work_time=$slice_handoff_codex_work_time_summary
 codex_final_result=$slice_handoff_codex_run_context_result
 codex_final_output=$slice_handoff_codex_run_context_final_output
 ===== END CODEX RUN CONTEXT =====
@@ -355,6 +377,7 @@ slice_handoff_collect_codex_run_context() {
   local context_run_id=""
   local context_run_dir=""
   local context_final_output=""
+  local context_work_time=""
 
   json_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-status.XXXXXX.json")" || return 1
   stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-status.XXXXXX.stderr")" || {
@@ -432,11 +455,20 @@ def nested_required(root, path):
             raise SystemExit(f'missing required codex-status field: {path}')
     return cur
 
+
+def nested_optional(root, path, default='unknown'):
+    try:
+        return nested_required(root, path)
+    except SystemExit:
+        return default
+
 session_id = nested_required(data, 'sessions[0].session_id')
 resume_command = nested_required(data, 'sessions[0].resume.command')
 model_name = nested_required(data, 'sessions[0].model.name')
 model_reasoning = nested_required(data, 'sessions[0].model.reasoning')
 context_summary = nested_required(data, 'sessions[0].context.remaining_summary')
+work_time_summary = nested_optional(data, 'sessions[0].work_time.summary', 'unknown')
+work_time_total_seconds = nested_optional(data, 'sessions[0].work_time.total_seconds', 'unknown')
 five_hour_remaining_percent = nested_required(data, 'rate_limits.five_hour.remaining_percent')
 five_hour_resets_at_local = nested_required(data, 'rate_limits.five_hour.resets_at_local')
 weekly_remaining_percent = nested_required(data, 'rate_limits.weekly.remaining_percent')
@@ -475,6 +507,8 @@ print(f'codex_rate_limit_five_hour_remaining_percent={five_hour_remaining_percen
 print(f'codex_rate_limit_five_hour_resets_at_local={five_hour_resets_at_local}')
 print(f'codex_rate_limit_weekly_remaining_percent={weekly_remaining_percent}')
 print(f'codex_rate_limit_weekly_resets_at_local={weekly_resets_at_local}')
+print(f'work_time={work_time_summary}')
+print(f'work_time_total_seconds={work_time_total_seconds}')
 print(f'codex_final_result={final_result}')
 print(f'codex_final_output={codex_final_output_path}')
 PY
@@ -531,6 +565,9 @@ PY
       codex_final_output=*)
         context_final_output="${context_value#codex_final_output=}"
         ;;
+      work_time=*)
+        context_work_time="${context_value#work_time=}"
+        ;;
     esac
   done <<EOF
 $context_values
@@ -540,6 +577,7 @@ EOF
   slice_handoff_codex_run_context_run_dir="$context_run_dir"
   slice_handoff_codex_run_context_final_output="$context_final_output"
   slice_handoff_codex_run_context_result="$context_result"
+  slice_handoff_codex_work_time_summary="${context_work_time:-unknown}"
   slice_handoff_codex_run_context_file="$context_path"
   if [ "$slice_handoff_codex_run_context_run_dir" != "$run_dir" ]; then
     slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "codex-status recent run_dir did not match active run dir" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
@@ -2031,6 +2069,7 @@ slice_handoff_run_execution_phase() {
   local repo_flow_submit_command_summary=""
   local repo_flow_submit_phase_failed=0
   local repo_flow_submit_url_or_stop=""
+  local repo_flow_submit_ci="unknown"
   local repo_flow_submit_review_request_source_path=""
   local repo_flow_submit_review_request_path=""
   local -a preflight_repair_args=()
@@ -2127,6 +2166,8 @@ slice_handoff_run_execution_phase() {
     fi
   fi
 
+  slice_handoff_info "branch=$slice_handoff_branch"
+
   slice_handoff_info "cleanup"
   cleanup_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-cleanup.XXXXXX.stdout")" || return 1
   cleanup_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-cleanup.XXXXXX.stderr")" || {
@@ -2155,6 +2196,7 @@ slice_handoff_run_execution_phase() {
     slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "" "" "" "" "" "" "" "execution-preflight" "codex-run not implemented in this slice" || true
     return 1
   fi
+  slice_handoff_info "remaining disk space=$(slice_handoff_remaining_disk_space_gb) GB"
   slice_handoff_info "preflight"
   if [ "$slice_handoff_handoff_mode" = "repair" ]; then
     preflight_repair_args=("--repair-of-pr=$slice_handoff_repair_of_pr")
@@ -2252,6 +2294,11 @@ slice_handoff_run_execution_phase() {
     return 1
   fi
 
+  if [ "$slice_handoff_explain" -eq 1 ]; then
+    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path work_time=$slice_handoff_codex_work_time_summary"
+    slice_handoff_print_codex_final_output_block "$codex_final_output_path"
+  fi
+
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
     pr_body_check_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stdout")" || return 1
     pr_body_check_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stderr")" || {
@@ -2323,6 +2370,7 @@ slice_handoff_run_execution_phase() {
     if [ "$repo_flow_submit_phase_failed" -ne 0 ]; then
       repo_flow_submit_url_or_stop="$(slice_handoff_extract_repo_flow_summary_value url_or_stop "$repo_flow_submit_stderr_path" "$repo_flow_submit_stdout_path" 2>/dev/null || true)"
       repo_flow_submit_url_or_stop="$(slice_handoff_child_failure_excerpt "$repo_flow_submit_url_or_stop" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "repo-flow submit exited nonzero")"
+      slice_handoff_info "repo-flow submit ci=$repo_flow_submit_ci"
       slice_handoff_write_execution_summary "$active_run_dir" "fail" "$cleanup_json_path" "$cleanup_stdout_path" "$cleanup_stderr_path" "$preflight_json_path" "$preflight_stdout_path" "$preflight_stderr_path" "$codex_run_stdout_path" "$codex_run_stderr_path" "$codex_run_summary_path" "$codex_final_output_path" "execution-submit" "investigate CI failure before PR review/merge" "$pr_body_check_stdout_path" "$pr_body_check_stderr_path" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" || true
       slice_handoff_print_execution_blocker "repo-flow-submit" "$repo_flow_submit_command_summary" 1 "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path" "$repo_flow_submit_url_or_stop" "" "investigate the CI failure on this branch" "investigate CI failure before PR review/merge"
       slice_handoff_print_execution_submit_failure_summary "execution-submit" "$active_run_dir" "$repo_flow_submit_stdout_path" "$repo_flow_submit_stderr_path"
@@ -2375,14 +2423,15 @@ slice_handoff_run_execution_phase() {
       else
         repo_flow_submit_commit="none"
       fi
-      if [ -n "$repo_flow_submit_ci" ]; then
-        :
-      else
-        repo_flow_submit_ci="unknown"
-      fi
-      slice_handoff_print_review_request_block_with_metadata \
-        "$active_run_dir/review-request.txt" \
-        "$repo_flow_submit_url_or_stop" \
+    if [ -n "$repo_flow_submit_ci" ]; then
+      :
+    else
+      repo_flow_submit_ci="unknown"
+    fi
+    slice_handoff_info "repo-flow submit ci=$repo_flow_submit_ci"
+    slice_handoff_print_review_request_block_with_metadata \
+      "$active_run_dir/review-request.txt" \
+      "$repo_flow_submit_url_or_stop" \
         "$slice_handoff_branch" \
         "$active_run_dir" \
         "$repo_flow_submit_commit" \
