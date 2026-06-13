@@ -31,6 +31,18 @@ What would have made it easier:
 Recommendations:
 - Keep the adapter grounded in current local Codex help and config evidence, and prefer the observed `model_reasoning_effort` override for reasoning passthrough.
 
+### 2026-06-13 codex-run resume argv narrowing
+
+Challenges:
+- The resume path accepted a narrower Codex CLI shape than fresh exec, so forwarding fresh-mode flags into `codex exec resume` caused unsupported-argument failures.
+
+What would have made it easier:
+- A single, explicit note that resume should be treated as a distinct argv contract, not a fresh-exec alias.
+
+Recommendations:
+- Keep fresh and resume command shapes separate in the adapter contract.
+- Apply the working directory in the wrapper for resume mode and record requested model/reasoning/profile/sandbox values separately from forwarded resume args.
+
 ### 2026-06-11 copied-helper self-target contract
 
 Challenges:
