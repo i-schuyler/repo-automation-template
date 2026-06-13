@@ -413,7 +413,10 @@ preflight_clean_test_cache() {
       continue
     fi
     if [ -e "$path" ]; then
-      rm -rf -- "$path" || return 1
+      rm -rf -- "$path" || {
+        preflight_stop "clean-test-cache failed to delete candidate path: $path"
+        return 1
+      }
       if [ -n "$preflight_cleanup_deleted_paths" ]; then
         preflight_cleanup_deleted_paths="$preflight_cleanup_deleted_paths, $path"
       else
@@ -666,6 +669,7 @@ preflight_main() {
 
   if [ "$command_status" -eq 0 ] && [ "$clean_test_cache" -eq 1 ] && [ -n "$preserve_path" ]; then
     preserve_path_abs="$(preflight_resolve_existing_path "$preserve_path")" || {
+      preflight_stop_reason="${preflight_stop_reason:-preserve path does not exist or is not accessible: $preserve_path}"
       command_status=1
     }
     if [ "$command_status" -eq 0 ]; then
@@ -674,6 +678,20 @@ preflight_main() {
   fi
 
   if [ "$command_status" -ne 0 ] && [ "$clean_test_cache" -eq 1 ] && [ -n "$preserve_path" ]; then
+    if [ "$preflight_json" -eq 1 ]; then
+      preflight_print_json \
+        "" \
+        "" \
+        "" \
+        "" \
+        "" \
+        "$preflight_mode" \
+        "null" \
+        "$preflight_stop_reason" \
+        "${preflight_validation_manifest_file:-}" \
+        "$command_status" \
+        "${preflight_disk_status:-skip}"
+    fi
     return 1
   fi
 
@@ -1054,6 +1072,10 @@ EOF
 
   branch_after="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '')"
   status_count="$(git status --short --untracked-files=normal 2>/dev/null | awk 'END { print NR + 0 }')"
+
+  if [ "$command_status" -ne 0 ] && [ -z "$preflight_stop_reason" ]; then
+    preflight_stop_reason="codex-slice-preflight failed without a stop_reason"
+  fi
 
   if [ "$preflight_json" -eq 1 ]; then
     preflight_print_json \
