@@ -205,30 +205,31 @@ stderr_path=$codex_run_stderr_path
 final_output_path=$codex_run_final_output_path
 final_output_status=$codex_run_final_output_status
 EOF
-  if [ -n "$codex_run_failure_step" ]; then
-    printf 'failure_step=%s\n' "$codex_run_failure_step" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_code" ]; then
-    printf 'failure_code=%s\n' "$codex_run_failure_code" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_reason" ]; then
-    printf 'failure_reason=%s\n' "$codex_run_failure_reason" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_fix" ]; then
-    printf 'failure_fix=%s\n' "$codex_run_failure_fix" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_log" ]; then
-    printf 'failure_log=%s\n' "$codex_run_failure_log" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_artifact" ]; then
-    printf 'failure_artifact=%s\n' "$codex_run_failure_artifact" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_excerpt" ]; then
-    printf 'failure_excerpt=%s\n' "$codex_run_failure_excerpt" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
-    printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path" >> "$codex_run_summary_path"
-  fi
+    if [ -n "$codex_run_failure_step" ]; then
+      printf 'failure_step=%s\n' "$codex_run_failure_step"
+    fi
+    if [ -n "$codex_run_failure_code" ]; then
+      printf 'failure_code=%s\n' "$codex_run_failure_code"
+    fi
+    if [ -n "$codex_run_failure_reason" ]; then
+      printf 'failure_reason=%s\n' "$codex_run_failure_reason"
+    fi
+    if [ -n "$codex_run_failure_fix" ]; then
+      printf 'failure_fix=%s\n' "$codex_run_failure_fix"
+    fi
+    if [ -n "$codex_run_failure_log" ]; then
+      printf 'failure_log=%s\n' "$codex_run_failure_log"
+    fi
+    if [ -n "$codex_run_failure_artifact" ]; then
+      printf 'failure_artifact=%s\n' "$codex_run_failure_artifact"
+    fi
+    if [ -n "$codex_run_failure_excerpt" ]; then
+      printf 'failure_excerpt=%s\n' "$codex_run_failure_excerpt"
+    fi
+    if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
+      printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path"
+    fi
+  } > "$codex_run_summary_path"
 }
 
 codex_run_print_final_summary() {
