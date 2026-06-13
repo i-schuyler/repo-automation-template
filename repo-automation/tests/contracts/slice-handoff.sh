@@ -666,6 +666,8 @@ assert session['resume']['command'] == 'codex resume --include-non-interactive s
 assert session['model']['name'] == 'gpt-5.4-mini'
 assert session['model']['reasoning'] == 'medium'
 assert session['context']['remaining_summary'] == '85% left'
+assert session['work_time']['total_seconds'] == 3723
+assert session['work_time']['summary'] == '1h 2m 3s'
 assert data['rate_limits']['five_hour']['remaining_percent'] == 99.0
 assert data['rate_limits']['five_hour']['resets_at_local'] == '2026-05-24 04:31 PDT'
 assert data['rate_limits']['weekly']['remaining_percent'] == 93.0
@@ -684,7 +686,11 @@ PY
       [ "$codex_context_line" -lt "$review_request_line" ] &&
       [ "$review_request_line" -lt "$review_request_end_line" ] &&
       [ "$review_request_end_line" -eq "$total_stderr_lines" ] &&
-      grep -Fxq 'INFO: slice-handoff repo-flow submit' "$stderr_file" &&
+      grep -Fxq 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' "$stderr_file" &&
+      grep -Fq 'INFO: slice-handoff remaining disk space=' "$stderr_file" &&
+      grep -Fq 'INFO: slice-handoff codex-run result=implementation-complete final_output=' "$stderr_file" &&
+      grep -Fq ' work_time=1h 2m 3s' "$stderr_file" &&
+      grep -Fxq 'INFO: slice-handoff repo-flow submit ci=pass' "$stderr_file" &&
       pr_body_validation_info_prefix='INFO: slice-handoff ' &&
       pr_body_validation_info_suffix='PR-body validation' &&
       ! grep -Fq "${pr_body_validation_info_prefix}${pr_body_validation_info_suffix}" "$stderr_file" &&
@@ -1046,7 +1052,7 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
   smoke_slice_handoff_prepare_execution_submit_context "repo-flow-failure" || return 1
   if (
     rm -f -- "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
-      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fail: repo-flow submit blocker from smoke' FAKE_REPO_FLOW_EXIT_CODE=1 FAKE_REPO_FLOW_CI_STATE=fail FAKE_REPO_FLOW_PUSHED=true FAKE_REPO_FLOW_FAILURE_URL_OR_STOP_MODE=url smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" --file="$smoke_slice_handoff_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
+      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_STDOUT_TEXT='fake codex stdout' FAKE_CODEX_STDERR_TEXT='fake codex stderr' FAKE_CODEX_FINAL_TEXT='fake final output' FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" FAKE_REPO_FLOW_STDOUT_TEXT='fake repo-flow stdout' FAKE_REPO_FLOW_STDERR_TEXT='fail: repo-flow submit blocker from smoke' FAKE_REPO_FLOW_EXIT_CODE=1 FAKE_REPO_FLOW_CI_STATE=fail FAKE_REPO_FLOW_PUSHED=true FAKE_REPO_FLOW_FAILURE_URL_OR_STOP_MODE=url smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-submit-repo-flow.err" --file="$smoke_slice_handoff_valid_submit_file" --submit --explain --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
   ); then
     test_fail "execution-submit repo-flow failure"
     status=1

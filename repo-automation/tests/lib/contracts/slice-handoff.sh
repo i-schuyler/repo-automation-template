@@ -599,6 +599,7 @@ data = {
             "resume": {"command": "codex resume --include-non-interactive sess-123"},
             "model": {"name": "gpt-5.4-mini", "reasoning": "medium"},
             "context": {"remaining_summary": "85% left"},
+            "work_time": {"total_seconds": 3723, "summary": "1h 2m 3s"},
         }
     ],
     "rate_limits": {
@@ -646,7 +647,7 @@ json.dump(data, sys.stdout, ensure_ascii=False)
 sys.stdout.write("\n")
 PY
 else
-  printf '{"schema":"repo-automation-codex-status/v1","result":"pass","sessions":[{"session_id":"sess-123","resume":{"command":"codex resume --include-non-interactive sess-123"},"model":{"name":"gpt-5.4-mini","reasoning":"medium"},"context":{"remaining_summary":"85%% left"}}],"rate_limits":{"five_hour":{"remaining_percent":99.0,"resets_at_local":"2026-05-24 04:31 PDT"},"weekly":{"remaining_percent":93.0,"resets_at_local":"2026-05-31 04:31 PDT"}}}\n'
+  printf '{"schema":"repo-automation-codex-status/v1","result":"pass","sessions":[{"session_id":"sess-123","resume":{"command":"codex resume --include-non-interactive sess-123"},"model":{"name":"gpt-5.4-mini","reasoning":"medium"},"context":{"remaining_summary":"85%% left"},"work_time":{"total_seconds":3723,"summary":"1h 2m 3s"}}],"rate_limits":{"five_hour":{"remaining_percent":99.0,"resets_at_local":"2026-05-24 04:31 PDT"},"weekly":{"remaining_percent":93.0,"resets_at_local":"2026-05-31 04:31 PDT"}}}\n'
 fi
 
 if [ -n "$stderr_text" ]; then
@@ -1979,6 +1980,7 @@ codex_resume=codex resume --include-non-interactive sess-123
 model=gpt-5.4-mini / medium
 context=85% left
 rate_limits=5h 99.0% left resets 2026-05-24 04:31 PDT; week 93.0% left resets 2026-05-31 04:31 PDT
+work_time=1h 2m 3s
 codex_final_result=$codex_final_result
 codex_final_output=$run_dir/codex-run/codex-final.txt
 ===== END CODEX RUN CONTEXT =====
@@ -2044,6 +2046,7 @@ smoke_slice_handoff_assert_execution_submit_failure_summary() {
   grep -Fxq "pushed=$expected_pushed" "$stderr_file" || return 1
   grep -Fxq "watched=$expected_watched" "$stderr_file" || return 1
   grep -Fxq "ci=$expected_ci" "$stderr_file" || return 1
+  grep -Fxq "INFO: slice-handoff repo-flow submit ci=$expected_ci" "$stderr_file" || return 1
   grep -Fxq "url_or_stop=$expected_url_or_stop" "$stderr_file" || return 1
   grep -Fxq 'repo_flow_submit=fail' "$stderr_file" || return 1
   grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
@@ -2082,15 +2085,25 @@ def find(label):
         raise SystemExit(1)
 
 final_summary_line = find('===== FINAL SUMMARY =====')
+codex_final_output_line = find('===== CODEX FINAL OUTPUT =====')
+codex_final_output_end_line = find('===== END CODEX FINAL OUTPUT =====')
 codex_context_line = find('===== CODEX RUN CONTEXT =====')
 review_request_line = find('===== PR REVIEW REQUEST =====')
 review_request_end_line = find('===== END PR REVIEW REQUEST =====')
 
-if not (final_summary_line < codex_context_line < review_request_line < review_request_end_line):
+if not (codex_final_output_line < codex_final_output_end_line < final_summary_line < codex_context_line < review_request_line < review_request_end_line):
     raise SystemExit(1)
 if review_request_end_line != len(lines) - 1:
     raise SystemExit(1)
 
+if 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' not in lines:
+    raise SystemExit(1)
+if not any(line.startswith('INFO: slice-handoff remaining disk space=') for line in lines):
+    raise SystemExit(1)
+if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' work_time=1h 2m 3s' in line for line in lines):
+    raise SystemExit(1)
+if 'INFO: slice-handoff repo-flow submit ci=pass' not in lines:
+    raise SystemExit(1)
 if 'INFO: slice-handoff repo-flow submit' not in lines:
     raise SystemExit(1)
 if 'INFO: slice-handoff ' 'PR-body validation' in lines:

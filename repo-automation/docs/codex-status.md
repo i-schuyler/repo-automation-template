@@ -59,6 +59,7 @@ Top-level fields:
 - `model`
 - `tokens`
 - `context`
+- `work_time`
 - `limits`
 - `resume`
 - `reentry`
@@ -81,6 +82,8 @@ Field notes:
 - `context.used_percent` and `context.remaining_percent` should be numeric when calculable
 - `context.remaining_summary` should be compact human-readable text when calculable, otherwise `unknown`
 - context remaining must never go negative; if the current total exceeds the window, set context fields to null and warn
+- `work_time.total_seconds` and `work_time.summary` should be present when session duration can be read from session metadata or derived from session timestamps; otherwise use `null` and `unknown`
+- pretty single-session output should include a `work_time:` line
 - rate limits are separate from token usage and context usage; keep their fields separate in JSON and pretty output
 - `limits.five_hour` and `limits.weekly` should include `used_percent`, `remaining_percent`, `window_minutes`, `state`, and thresholds
 - `limits.five_hour.percent` and `limits.weekly.percent` are compatibility aliases for `used_percent`
@@ -151,8 +154,11 @@ Each `sessions[]` item includes:
 - `context.remaining`
 - `context.remaining_percent`
 - `context.remaining_summary`
+- `work_time.total_seconds`
+- `work_time.summary`
 - `resume.command`
 - `resume.commands`
+- pretty recent output should include each session's `work_time:` summary
 
 ## Exit codes
 
