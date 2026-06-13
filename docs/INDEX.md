@@ -9,7 +9,6 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 - [Known Limitations](KNOWN_LIMITATIONS.md)
 - [Install Models](INSTALL_MODELS.md)
 - [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
-- [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
 
 ## Top-Level Project Files
 
@@ -91,6 +90,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 - [Drift Ledger](maintainer/DRIFT_LEDGER.md)
 - [Workflow Audit Checklist](maintainer/WORKFLOW_AUDIT_CHECKLIST.md)
 - [Monetization](maintainer/MONETIZATION.md)
+- [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 
 ## Downstream Examples
 
@@ -104,9 +104,3 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 - Maintainers changing versions should read [Versioning](VERSIONING.md) and [Version Modes](../repo-automation/docs/version-modes.md) before editing `VERSION`, `CHANGELOG.md`, or downstream examples.
 - Contributors should read [Contributing](../CONTRIBUTING.md) and use the issue forms.
 - For review fallbacks, prefer the PR-first helpers first and use [Review Pack](../repo-automation/docs/review-pack.md) only when you explicitly need an artifact bundle or Codex prompt.
-
-## Maintainer and reference material
-
-- Implementation, roadmap, and workflow-audit residue belong here instead of the starter path:
-  - [Maintainer Docs](maintainer/README.md)
-  - [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)

@@ -168,7 +168,7 @@ def check_public_entry_points():
         'CONTRIBUTING.md',
         'SUPPORT.md',
         'docs/KNOWN_LIMITATIONS.md',
-        'docs/WORKFLOW_AUDIT_CHECKLIST.md',
+        'docs/maintainer/WORKFLOW_AUDIT_CHECKLIST.md',
         'examples/downstream/docs/repo-automation/README.md',
         '.github/ISSUE_TEMPLATE/automation-bug.yml',
         '.github/ISSUE_TEMPLATE/automation-feature.yml',
