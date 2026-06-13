@@ -13,7 +13,7 @@ The open-source workflow should be useful first. Paid paths should fund maintena
 
 Do not add live payment links here unless a support path is actually live and clickable.
 
-The public workflow audit checklist seed is documented in [docs/WORKFLOW_AUDIT_CHECKLIST.md](WORKFLOW_AUDIT_CHECKLIST.md) and remains a coming-soon product idea, not a live checkout path.
+The public workflow audit checklist seed is documented in [docs/maintainer/WORKFLOW_AUDIT_CHECKLIST.md](WORKFLOW_AUDIT_CHECKLIST.md) and remains a coming-soon product idea, not a live checkout path.
 
 ## Fit
 

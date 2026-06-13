@@ -1,0 +1,101 @@
+# Workflow Audit Checklist
+
+This is a public, practical seed for the workflow audit checklist product. It is useful now as a quick terminal-first review, and any paid/support path remains coming soon.
+
+## Who This Is For
+
+- maintainers who install `repo-automation-template` into downstream repos
+- teams that want a fast health check before asking for help
+- agents or humans who want a short readiness pass before shipping automation changes
+
+## 15-Minute Quick Audit
+
+1. Run the read-only repo doctor.
+
+       repo-automation/bin/repo-doctor --quick
+
+2. Run the local validation entrypoint.
+
+       repo-automation/bin/run-tests
+
+3. Check whether the repo-local install and downstream context are current.
+
+       repo-automation/bin/repo-automation-install --target=/path/to/downstream --json
+
+4. Review version placement and changelog alignment.
+
+       repo-automation/bin/repo-doctor --check=version
+
+5. Check branch, PR, and CI helper safety contracts.
+
+       repo-automation/bin/repo-doctor --check=scripts
+
+## Repo Automation Install Health
+
+- `.repo-automation.conf` exists and loads cleanly
+- `REPO_AUTOMATION_VERSION` matches the source version line
+- installed docs show the upstream repo, installed version/ref, installed date, and local overrides doc
+- unsupported downstream origins normalize `EXPECTED_REMOTE_URL` to `""`
+- `repo-automation/bin/repo-doctor --quick --no-run-tests` stays read-only and avoids GitHub auth
+
+## Agent Safety Rails
+
+- use `repo-automation/bin/codex-slice-preflight` before branch work
+- keep `repo-automation/bin/branch-cleanup` on plan-only unless `--apply` is explicit
+- use `repo-automation/bin/pr-finish` only for explicit status, watch, and merge flows
+- keep `repo-automation/bin/add-doc-pr` on docs-only boundaries
+- use `repo-automation/bin/pr-create` for mixed code/docs/test PRs
+- prefer timeout-guarded diagnostics such as `repo-automation/bin/run-tests --audit --timeout=120` and `repo-automation/bin/repo-doctor --full --timeout=120` for final audits
+- keep smoke failures bounded with named subchecks, scenario functions, and registered temp-dir cleanup
+- preview upstream issues before submission with `repo-automation/bin/repo-automation-report-upstream`
+
+## Branch / PR / CI Safety
+
+- confirm the current branch is not `main`
+- confirm the worktree is clean before apply/merge actions
+- require green checks before `repo-automation/bin/pr-finish --merge`
+- never force-delete local branches or delete remote branches from terminal helpers
+- keep CI permissions minimal and read-only by default
+
+## Versioning / Changelog Consistency
+
+- `VERSION` and `REPO_AUTOMATION_VERSION` should agree
+- `CHANGELOG.md` should carry the matching unreleased heading
+- README-visible version text should match the tracked version
+- `docs/DECISIONS.md` and `docs/VERSIONING.md` should stay in sync with the version-placement contract
+- downstream examples and installed docs should show the same installed version/ref shape
+
+## Downstream Support / Readiness
+
+- make sure downstream installs preserve local overrides
+- keep the installed context block copyable for upstream bug reports
+- use the terminal helper instead of browser issue forms when possible
+- record whether the downstream remote is supported, missing, or unsupported rather than leaking raw origin details
+
+## Monetization / Support Readiness
+
+- GitHub Sponsors tiers coming soon
+- paid setup guide coming soon
+- low-cost done-for-you repo setup coming soon
+- workflow audit checklist product coming soon
+- sponsors-only early recipes/templates coming soon
+- paid support for adapting to non-GitHub providers coming soon
+
+## When To Ask For Help
+
+- the quick audit returns `FAIL`
+- `repo-automation/bin/run-tests` fails locally
+- a downstream install cannot validate its config
+- a branch helper wants to delete something unsafe
+- a PR helper blocks on checks you do not understand
+
+The checklist is intentionally public and lightweight. It is meant to reduce churn before support, not to hide support behind a paywall.
+
+
+## Low-noise diagnostic output
+
+A healthy repo automation setup should make diagnostics easy to share without dumping pages of passing checks. Prefer compact summaries, warning/failure JSON, and temp log files for full detail.
+
+## Known limitations
+
+Before treating a repo as release-ready, read `docs/KNOWN_LIMITATIONS.md`. A healthy public-alpha install should pass the supported validation path, but arbitrary external container interruption is still best-effort.

@@ -61,7 +61,7 @@ This file records public repo decisions for `repo-automation-template`.
 | Installer remote fallback contract | unsupported downstream origins must normalize `EXPECTED_REMOTE_URL` to `""` rather than copying local/file/HTTPS URLs |
 | Installer contract audit | installer smoke tests must audit downstream config loading, executable scripts, preserved local overrides, and repo-doctor quick/no-run-tests behavior in temporary repos |
 | Add-doc-pr baseline fixture | add-doc-pr smoke fixtures must commit the full automation baseline before docs-only boundary tests |
-| Workflow audit checklist seed | `docs/WORKFLOW_AUDIT_CHECKLIST.md` is a public coming-soon product seed, not a paid or private artifact |
+| Workflow audit checklist seed | `docs/maintainer/WORKFLOW_AUDIT_CHECKLIST.md` is a public coming-soon product seed, not a paid or private artifact |
 
 ## TENTATIVE
 

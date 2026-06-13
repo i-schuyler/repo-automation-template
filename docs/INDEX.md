@@ -8,6 +8,8 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 - [README](../README.md)
 - [Known Limitations](KNOWN_LIMITATIONS.md)
 - [Install Models](INSTALL_MODELS.md)
+- [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
+- [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
 
 ## Top-Level Project Files
 
@@ -75,19 +77,20 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 50. [Command Shape](../repo-automation/docs/command-shape.md)
 51. [Output Modes](../repo-automation/docs/output-modes.md)
 52. [Testing](../repo-automation/docs/testing.md)
-53. [Roadmap](ROADMAP.md)
-54. [Repo Improvement Plan](repo-improvement-plan.md)
-55. [Drift Ledger](DRIFT_LEDGER.md)
-56. [Monetization](MONETIZATION.md)
-57. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
-58. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
-59. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
-60. [Source Provenance](../repo-automation/docs/source-provenance.md)
-61. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
+53. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
+54. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
+55. [Source Provenance](../repo-automation/docs/source-provenance.md)
+56. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 
-## Planned Helpers
+## Maintainer and Reference Material
 
+- [Maintainer Docs](maintainer/README.md)
 - [Slice Handoff](../repo-automation/docs/slice-handoff.md)
+- [Roadmap](maintainer/ROADMAP.md)
+- [Repo Improvement Plan](maintainer/repo-improvement-plan.md)
+- [Drift Ledger](maintainer/DRIFT_LEDGER.md)
+- [Workflow Audit Checklist](maintainer/WORKFLOW_AUDIT_CHECKLIST.md)
+- [Monetization](maintainer/MONETIZATION.md)
 
 ## Downstream Examples
 
@@ -96,7 +99,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 
 ## Start Here
 
-- New users should read the [Surface Map](SURFACE_MAP.md), then the [README](../README.md), then [Known Limitations](KNOWN_LIMITATIONS.md).
+- New users should read the [Surface Map](SURFACE_MAP.md), then the [README](../README.md), then [Known Limitations](KNOWN_LIMITATIONS.md), [Install Models](INSTALL_MODELS.md), and [Downstream Feedback](DOWNSTREAM_FEEDBACK.md).
 - Downstream maintainers should read [Downstream Feedback](DOWNSTREAM_FEEDBACK.md) before filing upstream issues.
 - Maintainers changing versions should read [Versioning](VERSIONING.md) and [Version Modes](../repo-automation/docs/version-modes.md) before editing `VERSION`, `CHANGELOG.md`, or downstream examples.
 - Contributors should read [Contributing](../CONTRIBUTING.md) and use the issue forms.
@@ -105,8 +108,5 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 ## Maintainer and reference material
 
 - Implementation, roadmap, and workflow-audit residue belong here instead of the starter path:
-  - [Repo Improvement Plan](repo-improvement-plan.md)
-  - [Drift Ledger](DRIFT_LEDGER.md)
-  - [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
-  - [Monetization](MONETIZATION.md)
+  - [Maintainer Docs](maintainer/README.md)
   - [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
