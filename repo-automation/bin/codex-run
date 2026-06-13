@@ -171,7 +171,8 @@ codex_run_first_excerpt_line() {
 }
 
 codex_run_write_summary() {
-  cat > "$codex_run_summary_path" <<EOF
+  {
+    cat <<EOF
 script=codex-run
 result=$codex_run_result
 exit_code=$codex_run_exit_code
@@ -179,17 +180,23 @@ prompt_file=$codex_run_prompt_file
 resume_mode=$([ -n "$codex_run_resume_session_id" ] && printf 'resume' || printf 'fresh')
 resume_session_id=$codex_run_resume_session_id
 out_dir=$codex_run_out_dir_abs
-cd=$codex_run_cd_abs
-profile=$codex_run_profile
 EOF
-  if [ -n "$codex_run_model" ]; then
-    printf 'requested_model=%s\n' "$codex_run_model" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_reasoning" ]; then
-    printf 'requested_reasoning=%s\n' "$codex_run_reasoning" >> "$codex_run_summary_path"
-  fi
-  cat <<EOF >> "$codex_run_summary_path"
-sandbox=$codex_run_sandbox
+    if [ -n "$codex_run_resume_session_id" ]; then
+      printf 'resume_workdir=%s\n' "$codex_run_cd_abs"
+      printf 'requested_profile=%s\n' "$codex_run_profile"
+      printf 'requested_sandbox=%s\n' "$codex_run_sandbox"
+    else
+      printf 'cd=%s\n' "$codex_run_cd_abs"
+      printf 'profile=%s\n' "$codex_run_profile"
+      printf 'sandbox=%s\n' "$codex_run_sandbox"
+    fi
+    if [ -n "$codex_run_model" ]; then
+      printf 'requested_model=%s\n' "$codex_run_model"
+    fi
+    if [ -n "$codex_run_reasoning" ]; then
+      printf 'requested_reasoning=%s\n' "$codex_run_reasoning"
+    fi
+    cat <<EOF
 timeout=$codex_run_timeout
 timeout_enforced=$codex_run_timeout_enforced
 codex_path=$codex_run_codex_path
@@ -198,30 +205,31 @@ stderr_path=$codex_run_stderr_path
 final_output_path=$codex_run_final_output_path
 final_output_status=$codex_run_final_output_status
 EOF
-  if [ -n "$codex_run_failure_step" ]; then
-    printf 'failure_step=%s\n' "$codex_run_failure_step" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_code" ]; then
-    printf 'failure_code=%s\n' "$codex_run_failure_code" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_reason" ]; then
-    printf 'failure_reason=%s\n' "$codex_run_failure_reason" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_fix" ]; then
-    printf 'failure_fix=%s\n' "$codex_run_failure_fix" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_log" ]; then
-    printf 'failure_log=%s\n' "$codex_run_failure_log" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_artifact" ]; then
-    printf 'failure_artifact=%s\n' "$codex_run_failure_artifact" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_failure_excerpt" ]; then
-    printf 'failure_excerpt=%s\n' "$codex_run_failure_excerpt" >> "$codex_run_summary_path"
-  fi
-  if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
-    printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path" >> "$codex_run_summary_path"
-  fi
+    if [ -n "$codex_run_failure_step" ]; then
+      printf 'failure_step=%s\n' "$codex_run_failure_step"
+    fi
+    if [ -n "$codex_run_failure_code" ]; then
+      printf 'failure_code=%s\n' "$codex_run_failure_code"
+    fi
+    if [ -n "$codex_run_failure_reason" ]; then
+      printf 'failure_reason=%s\n' "$codex_run_failure_reason"
+    fi
+    if [ -n "$codex_run_failure_fix" ]; then
+      printf 'failure_fix=%s\n' "$codex_run_failure_fix"
+    fi
+    if [ -n "$codex_run_failure_log" ]; then
+      printf 'failure_log=%s\n' "$codex_run_failure_log"
+    fi
+    if [ -n "$codex_run_failure_artifact" ]; then
+      printf 'failure_artifact=%s\n' "$codex_run_failure_artifact"
+    fi
+    if [ -n "$codex_run_failure_excerpt" ]; then
+      printf 'failure_excerpt=%s\n' "$codex_run_failure_excerpt"
+    fi
+    if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
+      printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path"
+    fi
+  } > "$codex_run_summary_path"
 }
 
 codex_run_print_final_summary() {
@@ -234,14 +242,20 @@ codex_run_print_final_summary() {
   printf 'script=codex-run\n'
   printf 'mode=run\n'
   printf 'rc=%s\n' "$rc"
-  printf 'profile=%s\n' "$codex_run_profile"
+  if [ -n "$codex_run_resume_session_id" ]; then
+    printf 'resume_workdir=%s\n' "$codex_run_cd_abs"
+    printf 'requested_profile=%s\n' "$codex_run_profile"
+    printf 'requested_sandbox=%s\n' "$codex_run_sandbox"
+  else
+    printf 'profile=%s\n' "$codex_run_profile"
+    printf 'sandbox=%s\n' "$codex_run_sandbox"
+  fi
   if [ -n "$codex_run_model" ]; then
     printf 'requested_model=%s\n' "$codex_run_model"
   fi
   if [ -n "$codex_run_reasoning" ]; then
     printf 'requested_reasoning=%s\n' "$codex_run_reasoning"
   fi
-  printf 'sandbox=%s\n' "$codex_run_sandbox"
   printf 'final_output=%s\n' "$final_output_value"
   printf 'summary=%s\n' "$summary_value"
   printf 'status=%s\n' "$status_value"
@@ -611,8 +625,13 @@ codex_run_main() {
   codex_run_timeout_enforced="not_enforced"
 
   if [ "$codex_run_explain" -eq 1 ]; then
-    printf 'INFO: codex-run profile=%s sandbox=%s timeout=%s\n' \
-      "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout" >&2
+    if [ -n "$codex_run_resume_session_id" ]; then
+      printf 'INFO: codex-run requested_profile=%s requested_sandbox=%s timeout=%s\n' \
+        "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout" >&2
+    else
+      printf 'INFO: codex-run profile=%s sandbox=%s timeout=%s\n' \
+        "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout" >&2
+    fi
     if [ -n "$codex_run_model" ]; then
       printf 'INFO: codex-run requested_model=%s\n' "$codex_run_model" >&2
     fi
@@ -627,20 +646,8 @@ codex_run_main() {
 
   if [ -n "$codex_run_resume_session_id" ]; then
     resume_prompt_text="$(cat "$codex_run_prompt_file")"
-    codex_cmd=("$codex_run_codex_path" exec resume)
-    if [ "$codex_run_profile" != "default" ]; then
-      codex_cmd+=("--profile" "$codex_run_profile")
-    fi
-    if [ -n "$codex_run_model" ]; then
-      codex_cmd+=("--model" "$codex_run_model")
-    fi
-    if [ -n "$codex_run_reasoning" ]; then
-      codex_cmd+=("-c" "model_reasoning_effort=$codex_run_reasoning")
-    fi
-    codex_cmd+=(
-      "--cd" "$codex_run_cd_abs"
-      "--sandbox" "$codex_run_sandbox"
-      "--output-last-message" "$codex_run_final_output_path"
+    codex_cmd=(
+      "$codex_run_codex_path" exec resume
       "$codex_run_resume_session_id"
       "$resume_prompt_text"
     )
@@ -648,7 +655,10 @@ codex_run_main() {
       printf 'INFO: codex-run executing codex exec resume
 ' >&2
     fi
-    "${codex_cmd[@]}" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
+    (
+      cd "$codex_run_cd_abs" || exit 1
+      "${codex_cmd[@]}" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
+    )
   else
     codex_cmd=("$codex_run_codex_path" exec)
     if [ "$codex_run_profile" != "default" ]; then
@@ -699,6 +709,10 @@ codex_run_main() {
       codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
     fi
     return 1
+  fi
+
+  if [ -n "$codex_run_resume_session_id" ]; then
+    cat "$codex_run_stdout_path" > "$codex_run_final_output_path" || return 1
   fi
 
   if [ -f "$codex_run_final_output_path" ] && [ ! -s "$codex_run_final_output_path" ]; then
