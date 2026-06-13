@@ -44,6 +44,7 @@ slice_handoff_codex_reasoning=""
 slice_handoff_commit_message=""
 slice_handoff_submit_mode=""
 slice_handoff_handoff_mode="implementation"
+slice_handoff_codex_session=""
 slice_handoff_repair_of_pr=""
 slice_handoff_repair_session=""
 slice_handoff_repair_session_id=""
@@ -145,6 +146,11 @@ slice_handoff_print_final_summary() {
     summary_lines+=(
       "repair_of_pr=$slice_handoff_repair_of_pr"
       "codex_session_id=$slice_handoff_repair_session_id"
+    )
+  elif [ -n "$slice_handoff_codex_session" ]; then
+    summary_lines+=(
+      "codex_session=$slice_handoff_codex_session"
+      "codex_session_id=$slice_handoff_codex_session_id"
     )
   fi
   if [ -n "$slice_handoff_codex_model" ]; then
@@ -1295,12 +1301,17 @@ slice_handoff_print_execution_success_summary() {
   if [ -n "$slice_handoff_codex_reasoning" ]; then
     summary_lines+=("codex_reasoning=$slice_handoff_codex_reasoning")
   fi
-  if [ "$slice_handoff_handoff_mode" = "repair" ]; then
-    summary_lines+=(
-      "repair_of_pr=$slice_handoff_repair_of_pr"
-      "codex_session_id=$slice_handoff_repair_session_id"
-    )
-  fi
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      summary_lines+=(
+        "repair_of_pr=$slice_handoff_repair_of_pr"
+        "codex_session_id=$slice_handoff_repair_session_id"
+      )
+    elif [ -n "$slice_handoff_codex_session" ]; then
+      summary_lines+=(
+        "codex_session=$slice_handoff_codex_session"
+        "codex_session_id=$slice_handoff_codex_session_id"
+      )
+    fi
   if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
     summary_lines+=(
       "self_target=$slice_handoff_self_target_mode"
@@ -1449,6 +1460,10 @@ slice_handoff_write_execution_summary() {
       printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
       printf 'repair_session=%s\n' "$slice_handoff_repair_session"
       printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
+    elif [ -n "$slice_handoff_codex_session" ]; then
+      printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+      printf 'codex_session=%s\n' "$slice_handoff_codex_session"
+      printf 'codex_session_id=%s\n' "$slice_handoff_codex_session_id"
     fi
     printf 'preflight_repo_root=%s\n' "$slice_handoff_repo_root"
     printf 'run_dir=%s\n' "$run_dir"
@@ -1516,6 +1531,10 @@ slice_handoff_write_dry_run_preview() {
       printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
       printf 'repair_session=%s\n' "$slice_handoff_repair_session"
       printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
+    elif [ -n "$slice_handoff_codex_session" ]; then
+      printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+      printf 'codex_session=%s\n' "$slice_handoff_codex_session"
+      printf 'codex_session_id=%s\n' "$slice_handoff_codex_session_id"
     fi
     printf 'commit_message=%s\n' "$slice_handoff_commit_message"
     printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
@@ -1566,6 +1585,29 @@ slice_handoff_write_dry_run_preview() {
         repo-automation/bin/codex-slice-preflight \
         "--branch=$slice_handoff_branch" \
         "--repair-of-pr=$slice_handoff_repair_of_pr" \
+        --clean-test-cache \
+        "--preserve-path=<active-run-dir>" \
+        --json
+      slice_handoff_write_argv_block planned_codex_run_argv "${planned_codex_run_argv[@]}"
+    elif [ "$slice_handoff_codex_session" = "resume" ]; then
+      local -a planned_codex_run_argv=(
+        repo-automation/bin/codex-run
+        "--prompt-file=<active-run-dir>/codex-prompt.md"
+        "--out-dir=<active-run-dir>/codex-run"
+        "--profile=$slice_handoff_codex_profile"
+        "--cd=$slice_handoff_repo_root"
+        "--resume-session-id=$slice_handoff_codex_session_id"
+      )
+      if [ -n "$slice_handoff_codex_model" ]; then
+        planned_codex_run_argv+=("--model=$slice_handoff_codex_model")
+      fi
+      if [ -n "$slice_handoff_codex_reasoning" ]; then
+        planned_codex_run_argv+=("--reasoning=$slice_handoff_codex_reasoning")
+      fi
+      slice_handoff_write_argv_block \
+        planned_preflight_argv \
+        repo-automation/bin/codex-slice-preflight \
+        "--branch=$slice_handoff_branch" \
         --clean-test-cache \
         "--preserve-path=<active-run-dir>" \
         --json
@@ -1725,7 +1767,7 @@ import json
 import sys
 
 manifest = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-for key in ('branch', 'title', 'codex_profile', 'codex_model', 'codex_reasoning', 'submit_mode', 'commit_message', 'handoff_mode', 'self_target', 'repair_of_pr', 'repair_session', 'codex_session_id', 'prompt_path', 'review_request_path', 'pr_body_path'):
+for key in ('branch', 'title', 'codex_profile', 'codex_model', 'codex_reasoning', 'submit_mode', 'commit_message', 'handoff_mode', 'self_target', 'codex_session', 'repair_of_pr', 'repair_session', 'codex_session_id', 'prompt_path', 'review_request_path', 'pr_body_path'):
     if key in manifest:
         value = manifest.get(key)
         if value is None:
@@ -1763,6 +1805,9 @@ PY
       self_target=*)
         slice_handoff_self_target_mode="${validator_manifest_value#self_target=}"
         ;;
+      codex_session=*)
+        slice_handoff_codex_session="${validator_manifest_value#codex_session=}"
+        ;;
       repair_of_pr=*)
         slice_handoff_repair_of_pr="${validator_manifest_value#repair_of_pr=}"
         ;;
@@ -1771,6 +1816,7 @@ PY
         ;;
       codex_session_id=*)
         slice_handoff_repair_session_id="${validator_manifest_value#codex_session_id=}"
+        slice_handoff_codex_session_id="${validator_manifest_value#codex_session_id=}"
         ;;
       prompt_path=*)
         slice_handoff_prompt_file="${validator_manifest_value#prompt_path=}"
@@ -2000,6 +2046,9 @@ EOF
     if [ "$slice_handoff_handoff_mode" = "repair" ]; then
       printf 'handoff_mode=repair\nrepair_of_pr=%s\nrepair_session=%s\ncodex_session_id=%s\n' \
         "$slice_handoff_repair_of_pr" "$slice_handoff_repair_session" "$slice_handoff_repair_session_id"
+    elif [ -n "$slice_handoff_codex_session" ]; then
+      printf 'handoff_mode=%s\ncodex_session=%s\ncodex_session_id=%s\n' \
+        "$slice_handoff_handoff_mode" "$slice_handoff_codex_session" "$slice_handoff_codex_session_id"
     fi
   } | slice_handoff_write_atomic_text_file "$summary_target"; then
     slice_handoff_fail "unable to write summary artifact" "fix filesystem permissions and rerun slice-handoff"
@@ -2198,10 +2247,13 @@ slice_handoff_run_execution_phase() {
   fi
   slice_handoff_info "remaining disk space=$(slice_handoff_remaining_disk_space_gb) GB"
   slice_handoff_info "preflight"
+  codex_resume_args=()
   if [ "$slice_handoff_handoff_mode" = "repair" ]; then
     preflight_repair_args=("--repair-of-pr=$slice_handoff_repair_of_pr")
     codex_resume_args=("--resume-session-id=$slice_handoff_repair_session_id")
     repo_flow_repair_args=(--replace-body)
+  elif [ "$slice_handoff_codex_session" = "resume" ]; then
+    codex_resume_args=("--resume-session-id=$slice_handoff_codex_session_id")
   fi
   preflight_validation_manifest_args=()
   if [ -n "$slice_handoff_validation_manifest_file" ]; then
@@ -2734,12 +2786,16 @@ PY
         printf 'codex_reasoning=%s\n' "$slice_handoff_codex_reasoning"
       fi
       printf 'submit_mode=%s\n' "$slice_handoff_submit_mode"
-      if [ "$slice_handoff_handoff_mode" = "repair" ]; then
-        printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
-        printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
-        printf 'repair_session=%s\n' "$slice_handoff_repair_session"
-        printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
-      fi
+    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+      printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+      printf 'repair_of_pr=%s\n' "$slice_handoff_repair_of_pr"
+      printf 'repair_session=%s\n' "$slice_handoff_repair_session"
+      printf 'codex_session_id=%s\n' "$slice_handoff_repair_session_id"
+    elif [ -n "$slice_handoff_codex_session" ]; then
+      printf 'handoff_mode=%s\n' "$slice_handoff_handoff_mode"
+      printf 'codex_session=%s\n' "$slice_handoff_codex_session"
+      printf 'codex_session_id=%s\n' "$slice_handoff_codex_session_id"
+    fi
       printf 'commit_message=%s\n' "$slice_handoff_commit_message"
       printf 'codex_prompt_path=%s\n' "$slice_handoff_out_dir_prompt"
       if [ -n "$slice_handoff_out_dir_pr_body" ]; then

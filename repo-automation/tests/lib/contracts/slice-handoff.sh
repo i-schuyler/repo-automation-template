@@ -566,6 +566,8 @@ args_file="${FAKE_CODEX_STATUS_ARGS_FILE:-}"
 stderr_text="${FAKE_CODEX_STATUS_STDERR_TEXT:-}"
 exit_code="${FAKE_CODEX_STATUS_EXIT_CODE:-0}"
 missing_field="${FAKE_CODEX_STATUS_MISSING_FIELD:-}"
+session_id="${FAKE_CODEX_STATUS_SESSION_ID:-sess-123}"
+resume_command="${FAKE_CODEX_STATUS_RESUME_COMMAND:-codex resume --include-non-interactive sess-123}"
 mode=""
 recent=""
 
@@ -582,21 +584,23 @@ for arg in "$@"; do
 done
 
 if [ "$recent" = "1" ]; then
-  python3 - "$missing_field" <<'PY'
+  python3 - "$missing_field" "$session_id" "$resume_command" <<'PY'
 from pathlib import Path
 import json
 import re
 import sys
 
 missing_field = sys.argv[1]
+session_id = sys.argv[2]
+resume_command = sys.argv[3]
 
 data = {
     "schema": "repo-automation-codex-status/v1",
     "result": "pass",
     "sessions": [
         {
-            "session_id": "sess-123",
-            "resume": {"command": "codex resume --include-non-interactive sess-123"},
+            "session_id": session_id,
+            "resume": {"command": resume_command},
             "model": {"name": "gpt-5.4-mini", "reasoning": "medium"},
             "context": {"remaining_summary": "85% left"},
             "work_time": {"total_seconds": 3723, "summary": "1h 2m 3s"},
@@ -647,7 +651,7 @@ json.dump(data, sys.stdout, ensure_ascii=False)
 sys.stdout.write("\n")
 PY
 else
-  printf '{"schema":"repo-automation-codex-status/v1","result":"pass","sessions":[{"session_id":"sess-123","resume":{"command":"codex resume --include-non-interactive sess-123"},"model":{"name":"gpt-5.4-mini","reasoning":"medium"},"context":{"remaining_summary":"85%% left"},"work_time":{"total_seconds":3723,"summary":"1h 2m 3s"}}],"rate_limits":{"five_hour":{"remaining_percent":99.0,"resets_at_local":"2026-05-24 04:31 PDT"},"weekly":{"remaining_percent":93.0,"resets_at_local":"2026-05-31 04:31 PDT"}}}\n'
+  printf '{"schema":"repo-automation-codex-status/v1","result":"pass","sessions":[{"session_id":"%s","resume":{"command":"%s"},"model":{"name":"gpt-5.4-mini","reasoning":"medium"},"context":{"remaining_summary":"85%% left"},"work_time":{"total_seconds":3723,"summary":"1h 2m 3s"}}],"rate_limits":{"five_hour":{"remaining_percent":99.0,"resets_at_local":"2026-05-24 04:31 PDT"},"weekly":{"remaining_percent":93.0,"resets_at_local":"2026-05-31 04:31 PDT"}}}\n' "$session_id" "$resume_command"
 fi
 
 if [ -n "$stderr_text" ]; then

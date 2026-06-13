@@ -23,6 +23,7 @@ HELP = """Usage: repo-automation/bin/slice-validator --file=<path> [--repair] [-
 
 Validate a repo-automation-slice-handoff/v1 file and emit a run-scoped capability manifest.
 Repair validation requires handoff_mode: repair, repair_of_pr, repair_session: resume, and a safe codex_session_id.
+Implementation session resume requires handoff_mode: implementation, codex_session: resume, and a safe codex_session_id.
 """
 
 OUTPUT_SCHEMA = "repo-automation-helper-output/v1"
@@ -41,6 +42,7 @@ KNOWN_ENVIRONMENT_KEYS = {
     "commit_message",
     "handoff_mode",
     "self_target",
+    "codex_session",
     "repair_of_pr",
     "repair_session",
     "codex_session_id",
@@ -108,6 +110,7 @@ class ValidationState:
     commit_message: str = ""
     handoff_mode: str = "implementation"
     self_target: str = ""
+    codex_session: str = ""
     repair_of_pr: str = ""
     repair_session: str = ""
     codex_session_id: str = ""
@@ -350,7 +353,7 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         if key not in KNOWN_ENVIRONMENT_KEYS:
             if key in ENVELOPE_KEY_ALIASES:
                 raise fail("unknown-envelope-key", "handoff-envelope", f"unknown envelope key: {key}", f"use {ENVELOPE_KEY_ALIASES[key]}")
-            raise fail("unknown-envelope-key", "handoff-envelope", f"unknown envelope key: {key}", "accepted envelope keys are schema, branch, title, codex_profile, codex_model, codex_reasoning, submit_mode, commit_message, handoff_mode, self_target, repair_of_pr, repair_session, codex_session_id, and pr_review_prompt_id")
+            raise fail("unknown-envelope-key", "handoff-envelope", f"unknown envelope key: {key}", "accepted envelope keys are schema, branch, title, codex_profile, codex_model, codex_reasoning, submit_mode, commit_message, handoff_mode, self_target, codex_session, repair_of_pr, repair_session, codex_session_id, and pr_review_prompt_id")
 
     schema = envelope.get("schema", "")
     if "schema" not in envelope:
@@ -398,10 +401,13 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
     self_target = envelope.get("self_target", "")
     if self_target and self_target != "copied-helper":
         raise fail("invalid-self-target", "handoff-envelope", f"unknown self_target: {self_target}", "use self_target: copied-helper or remove self_target")
+    codex_session = envelope.get("codex_session", "")
     repair_of_pr = envelope.get("repair_of_pr", "")
     repair_session = envelope.get("repair_session", "")
     codex_session_id = envelope.get("codex_session_id", "")
     if handoff_mode == "repair":
+        if codex_session:
+            raise fail("unsupported-codex-session", "repair-metadata", f"unsupported codex_session: {codex_session}", "use repair_session: resume for handoff_mode: repair, or remove codex_session")
         if not repair_of_pr:
             raise fail("missing-repair-of-pr", "repair-metadata", "missing repair_of_pr", "set repair_of_pr to the open PR number")
         if not re.fullmatch(r"[1-9][0-9]*", repair_of_pr):
@@ -414,8 +420,20 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
             raise fail("missing-codex-session-id", "repair-metadata", "missing codex_session_id for repair_session: resume", "set codex_session_id to the Codex session ID to resume")
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", codex_session_id) or ".." in codex_session_id:
             raise fail("unsafe-codex-session-id", "repair-metadata", f"unsafe codex_session_id: {codex_session_id}", "use a session ID containing only letters, digits, dot, underscore, colon, or hyphen")
-    elif any((repair_of_pr, repair_session, codex_session_id)):
-        raise fail("repair-metadata-without-mode", "repair-metadata", "repair metadata requires handoff_mode: repair", "set handoff_mode: repair and invoke slice-handoff --repair, or remove repair metadata")
+    else:
+        if repair_of_pr or repair_session:
+            raise fail("repair-metadata-without-mode", "repair-metadata", "repair metadata requires handoff_mode: repair", "set handoff_mode: repair and invoke slice-handoff --repair, or remove repair metadata")
+        if codex_session and codex_session != "resume":
+            raise fail("unsupported-codex-session", "repair-metadata", f"unsupported codex_session: {codex_session}", "use codex_session: resume or remove codex_session")
+        if codex_session_id and not codex_session:
+            raise fail("codex-session-id-without-mode", "repair-metadata", "codex_session_id requires codex_session: resume", "set codex_session: resume when reusing a Codex session in implementation mode")
+        if codex_session == "resume":
+            if not codex_session_id:
+                raise fail("missing-codex-session-id", "repair-metadata", "missing codex_session_id for codex_session: resume", "set codex_session_id to the Codex session ID to resume")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]*", codex_session_id) or ".." in codex_session_id:
+                raise fail("unsafe-codex-session-id", "repair-metadata", f"unsafe codex_session_id: {codex_session_id}", "use a session ID containing only letters, digits, dot, underscore, colon, or hyphen")
+        elif codex_session_id:
+            raise fail("codex-session-id-without-mode", "repair-metadata", "codex_session_id requires codex_session: resume", "set codex_session: resume when reusing a Codex session in implementation mode")
 
     if "## PR Body" in lines[:prompt_index]:
         raise fail("section-order", "handoff-structure", "invalid section order", "place ## PR Body after ## Codex Prompt if submit_mode is repo-flow-submit-all")
@@ -505,6 +523,7 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         "commit_message": commit_message,
         "handoff_mode": handoff_mode,
         "self_target": self_target,
+        "codex_session": codex_session,
         "repair_of_pr": repair_of_pr,
         "repair_session": repair_session,
         "codex_session_id": codex_session_id,
@@ -595,6 +614,8 @@ def build_manifest(state: ValidationState, pr_body_valid: bool, requested_mode: 
         "review_request_path": str(state.review_request_path),
         "review_request_hash": file_hash(state.review_request_path),
     }
+    manifest["codex_session"] = state.codex_session
+    manifest["codex_session_id"] = state.codex_session_id
     if state.self_target:
         manifest["self_target"] = state.self_target
     if state.codex_model:
@@ -628,6 +649,7 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
             "title": state.title,
             "submit_mode": state.submit_mode,
             "handoff_mode": state.handoff_mode,
+            "codex_session": state.codex_session,
             "repair_of_pr": state.repair_of_pr,
             "repair_session": state.repair_session,
             "codex_session_id": state.codex_session_id,
@@ -662,9 +684,13 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
     sys.stdout.write(f"handoff_mode={state.handoff_mode}\n")
     if state.self_target:
         sys.stdout.write(f"self_target={state.self_target}\n")
+    if state.codex_session:
+        sys.stdout.write(f"codex_session={state.codex_session}\n")
     if state.handoff_mode == "repair":
         sys.stdout.write(f"repair_of_pr={state.repair_of_pr}\n")
         sys.stdout.write(f"repair_session={state.repair_session}\n")
+        sys.stdout.write(f"codex_session_id={state.codex_session_id}\n")
+    elif state.codex_session_id:
         sys.stdout.write(f"codex_session_id={state.codex_session_id}\n")
     sys.stdout.write(f"commit_message={state.commit_message}\n")
     sys.stdout.write("next=codex-slice-preflight\n")
@@ -720,6 +746,7 @@ def main(argv: list[str]) -> int:
         submit_mode=str(parsed["submit_mode"]),
         commit_message=str(parsed["commit_message"]),
         handoff_mode=parsed_mode,
+        codex_session=str(parsed["codex_session"]),
         repair_of_pr=str(parsed["repair_of_pr"]),
         repair_session=str(parsed["repair_session"]),
         codex_session_id=str(parsed["codex_session_id"]),

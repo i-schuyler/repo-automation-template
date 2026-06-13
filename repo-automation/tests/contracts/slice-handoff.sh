@@ -46,6 +46,7 @@ smoke_main_impl() {
   smoke_run_named_check "smoke:slice-handoff-contract:repo-root-artifacts" smoke_check_slice_handoff_contract_no_repo_root_artifacts || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:codex-final-blocker-detector" smoke_check_slice_handoff_contract_codex_final_output_blocker_detector || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:validator-json-reason" smoke_check_slice_handoff_contract_validator_json_reason_failure || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:implementation-resume" smoke_check_slice_handoff_contract_execution_implementation_resume || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:validation-manifest-trace" smoke_check_slice_handoff_contract_execution_validation_manifest_trace || status=1
 
   return "$status"
@@ -1134,6 +1135,99 @@ smoke_check_slice_handoff_contract_codex_final_output_blocker_detector() {
     test_pass "codex final output blocker detector"
   else
     test_fail "codex final output blocker detector"
+    status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_slice_handoff_contract_execution_implementation_resume() {
+  local status=0
+  local implementation_resume_file="$smoke_slice_handoff_execution_artifact_root/implementation-resume.md"
+  local stdout_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-implementation-resume.out"
+  local stderr_file="$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-implementation-resume.err"
+  local preflight_args_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-slice-preflight-implementation-resume.args"
+  local codex_args_file="$smoke_slice_handoff_execution_artifact_root/fake-codex-run-implementation-resume.args"
+  local preflight_path="$smoke_test_dir/repo-automation/bin/codex-slice-preflight"
+  local out_dir="$smoke_slice_handoff_execution_artifact_root/out-implementation-resume"
+  local run_dir=""
+
+  cp -- "$smoke_slice_handoff_execution_valid_none_file" "$implementation_resume_file" || return 1
+  python3 - "$implementation_resume_file" <<'PY' || return 1
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+text = text.replace("branch: feature/slice-handoff-smoke\n", "branch: feature/slice-handoff-implementation-resume\nhandoff_mode: implementation\ncodex_session: resume\ncodex_session_id: session-242\n", 1)
+path.write_text(text, encoding='utf-8')
+PY
+  cat > "$preflight_path" <<EOF
+#!/usr/bin/env bash
+set -u
+set -o pipefail
+
+args_file="$preflight_args_file"
+manifest_path=""
+json_requested=0
+
+if [ -n "\$args_file" ]; then
+  printf '%s\n' "\$@" > "\$args_file"
+fi
+
+for arg in "\$@"; do
+  case "\$arg" in
+    --json)
+      json_requested=1
+      ;;
+    --validation-manifest=*)
+      manifest_path="\${arg#--validation-manifest=}"
+      ;;
+  esac
+done
+
+if [ "\$json_requested" -eq 1 ]; then
+  printf '{"script":"codex-slice-preflight","result":"pass","mode":"run","rc":0'
+  if [ -n "\$manifest_path" ]; then
+    printf ',"validation_manifest_path":"%s"' "\$manifest_path"
+  fi
+  printf '}\n'
+else
+  printf 'pass\n'
+  if [ -n "\$manifest_path" ]; then
+    printf 'validation_manifest_path=%s\n' "\$manifest_path"
+  fi
+fi
+
+exit 0
+EOF
+  chmod +x "$preflight_path" || return 1
+  git -C "$smoke_test_dir" update-index --skip-worktree repo-automation/bin/codex-slice-preflight || return 1
+
+  if (
+    FAKE_CODEX_RUN_HELPER=1 \
+    FAKE_CODEX_RUN_ARGS_FILE="$codex_args_file" \
+    FAKE_CODEX_RUN_STDOUT_TEXT='pass' \
+    FAKE_CODEX_RUN_FINAL_TEXT='Implementation complete.' \
+    FAKE_CODEX_STATUS_SESSION_ID='session-242' \
+    FAKE_CODEX_STATUS_RESUME_COMMAND='codex resume --include-non-interactive session-242' \
+    smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" \
+      smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$implementation_resume_file" --out-dir="$out_dir" --explain
+  ); then
+    run_dir="$(smoke_slice_handoff_extract_field "$stderr_file" run_dir)" || return 1
+    if grep -Fxq -- '--resume-session-id=session-242' "$codex_args_file" &&
+      ! grep -Fq -- '--repair-of-pr=' "$preflight_args_file" &&
+      ! grep -Fq -- '--replace-body' "$stderr_file" &&
+      grep -Fxq 'codex_session=resume' "$run_dir/slice-handoff-execution-summary.txt" &&
+      grep -Fxq 'codex_session_id=session-242' "$run_dir/slice-handoff-execution-summary.txt" &&
+      grep -Fxq 'codex_session_id=session-242' "$stderr_file"; then
+      test_pass "slice-handoff implementation resume execution passes resume-session-id without repair preflight"
+    else
+      test_fail "slice-handoff implementation resume execution passes resume-session-id without repair preflight"
+      status=1
+    fi
+  else
+    test_fail "slice-handoff implementation resume execution passes resume-session-id without repair preflight"
     status=1
   fi
 

@@ -32,8 +32,10 @@ smoke_slice_validator_write_handoff() {
   local self_target="${11:-}"
   local codex_model="${12:-}"
   local codex_reasoning="${13:-}"
+  local codex_session="${14:-}"
+  local codex_session_id="${15:-}"
 
-  python3 - "$path" "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$prompt_text" "$pr_body_text" "$review_request_text" "$pr_review_prompt_id" "$self_target" "$codex_model" "$codex_reasoning" <<'PY'
+  python3 - "$path" "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$prompt_text" "$pr_body_text" "$review_request_text" "$pr_review_prompt_id" "$self_target" "$codex_model" "$codex_reasoning" "$codex_session" "$codex_session_id" <<'PY'
 from pathlib import Path
 import sys
 
@@ -50,6 +52,8 @@ pr_review_prompt_id = sys.argv[10]
 self_target = sys.argv[11]
 codex_model = sys.argv[12]
 codex_reasoning = sys.argv[13]
+codex_session = sys.argv[14]
+codex_session_id = sys.argv[15]
 
 lines = [
     "schema: repo-automation-slice-handoff/v1",
@@ -67,6 +71,10 @@ if codex_model:
     lines.append(f"codex_model: {codex_model}")
 if codex_reasoning:
     lines.append(f"codex_reasoning: {codex_reasoning}")
+if codex_session:
+    lines.append(f"codex_session: {codex_session}")
+if codex_session_id:
+    lines.append(f"codex_session_id: {codex_session_id}")
 lines += [
     "",
     "# Slice Handoff",
@@ -125,6 +133,9 @@ smoke_check_slice_validator_contract() {
   local valid_both_file="$root/valid-both.md"
   local valid_submit_file="$root/valid-submit.md"
   local valid_repair_file="$root/valid-repair.md"
+  local valid_impl_resume_file="$root/valid-impl-resume.md"
+  local missing_impl_session_mode_file="$root/missing-impl-session-mode.md"
+  local unsupported_impl_session_mode_file="$root/unsupported-impl-session-mode.md"
   local missing_repair_pr_file="$root/missing-repair-pr.md"
   local missing_session_id_file="$root/missing-session-id.md"
   local unsafe_session_id_file="$root/unsafe-session-id.md"
@@ -264,6 +275,50 @@ EOF
   smoke_slice_validator_write_handoff "$valid_reasoning_file" "feature/slice-validator-reasoning" "Slice validator reasoning smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge." "" "" "" "medium"
   smoke_slice_validator_write_handoff "$valid_both_file" "feature/slice-validator-both" "Slice validator model reasoning smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge." "" "" "gpt-5.4-mini" "high"
   smoke_slice_validator_write_handoff "$valid_submit_file" "feature/slice-validator-submit" "Slice validator submit smoke" "review" "repo-flow-submit-all" "chore: slice-validator smoke" "Implement the slice and prepare the PR body." "$(cat "$valid_body_file")" "Please review this PR before merge."
+  cat > "$valid_impl_resume_file" <<'EOF'
+schema: repo-automation-slice-handoff/v1
+branch: feature/slice-validator-impl-resume
+title: Slice validator implementation resume smoke
+codex_profile: default
+submit_mode: none
+commit_message:
+codex_session: resume
+codex_session_id: session-242
+
+# Slice Handoff
+
+## Codex Prompt
+Implement the slice exactly as specified.
+EOF
+  cat > "$missing_impl_session_mode_file" <<'EOF'
+schema: repo-automation-slice-handoff/v1
+branch: feature/slice-validator-impl-missing-session-mode
+title: Slice validator implementation missing session mode smoke
+codex_profile: default
+submit_mode: none
+commit_message:
+codex_session_id: session-242
+
+# Slice Handoff
+
+## Codex Prompt
+Implement the slice exactly as specified.
+EOF
+  cat > "$unsupported_impl_session_mode_file" <<'EOF'
+schema: repo-automation-slice-handoff/v1
+branch: feature/slice-validator-impl-unsupported-session-mode
+title: Slice validator implementation unsupported session mode smoke
+codex_profile: default
+submit_mode: none
+commit_message:
+codex_session: pause
+codex_session_id: session-242
+
+# Slice Handoff
+
+## Codex Prompt
+Implement the slice exactly as specified.
+EOF
   cp "$valid_submit_file" "$valid_repair_file" || return 1
   python3 - "$valid_repair_file" <<'PY' || return 1
 from pathlib import Path
@@ -396,6 +451,48 @@ PY
     test_pass "slice-validator validates repair metadata"
   else
     test_fail "slice-validator validates repair metadata"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$valid_impl_resume_file" >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'handoff_mode=implementation' "$stdout_file" && grep -Fxq 'codex_session=resume' "$stdout_file" && grep -Fxq 'codex_session_id=session-242' "$stdout_file"; then
+    manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
+    if smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("handoff_mode") == "implementation" and data.get("codex_session") == "resume" and data.get("codex_session_id") == "session-242"'; then
+      test_pass "slice-validator validates implementation resume metadata"
+    else
+      test_fail "slice-validator validates implementation resume metadata"
+      status=1
+    fi
+  else
+    test_fail "slice-validator validates implementation resume metadata"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$missing_impl_session_mode_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects codex_session_id without codex_session: resume"
+    status=1
+  elif grep -Fq 'codex_session_id requires codex_session: resume' "$stderr_file"; then
+    test_pass "slice-validator rejects codex_session_id without codex_session: resume"
+  else
+    test_fail "slice-validator rejects codex_session_id without codex_session: resume"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$unsupported_impl_session_mode_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects unsupported codex_session value"
+    status=1
+  elif grep -Fq 'unsupported codex_session:' "$stderr_file"; then
+    test_pass "slice-validator rejects unsupported codex_session value"
+  else
+    test_fail "slice-validator rejects unsupported codex_session value"
     status=1
   fi
 
