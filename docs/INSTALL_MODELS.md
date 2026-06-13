@@ -6,6 +6,7 @@ The v0.1.0 default is to copy a pinned release bundle into each downstream repo 
 
 Downstream installed files must include provenance and upstream issue instructions.
 Use `repo-automation/bin/repo-automation-install` as the default repo-local install/update path for this pinned/copy model.
+For the phone-friendly quickstart, verification, and recovery path, see [Repo Automation Install](../repo-automation/docs/repo-automation-install.md).
 
 ## 2. GitHub Template Repo For New Repos
 

@@ -12,6 +12,34 @@
 - keeps the selected install profile explicit in human and JSON output
 - `--explain` prints the detailed human summary; default success is compact `plan` or `pass`
 
+## Quickstart
+
+1. Check the support boundary in [docs/INSTALL_MODELS.md](../../docs/INSTALL_MODELS.md) and [docs/KNOWN_LIMITATIONS.md](../../docs/KNOWN_LIMITATIONS.md).
+2. Plan the install:
+
+       repo-automation/bin/repo-automation-install --target=/path/to/downstream
+       repo-automation/bin/repo-automation-install --target=/path/to/downstream --json
+
+3. Review the plan output. If it looks wrong, stop and do not apply.
+4. Apply only after review:
+
+       repo-automation/bin/repo-automation-install --target=/path/to/downstream --apply
+
+5. Verify the downstream repo with existing documented helpers, for example:
+
+       cd /path/to/downstream && repo-automation/bin/repo-doctor --quick --no-run-tests
+
+Installed context and provenance live in `.repo-automation.conf` and `repo-automation/docs/README.md`.
+
+## Recovery Path
+
+- If plan output looks wrong, stop before `--apply`.
+- If the target repo is dirty, stop and clean/stash/commit outside the installer.
+- If local overrides exist, keep `.repo-automation.local.conf` and other override files untouched.
+- If the target remote is unsupported or missing, the generated `EXPECTED_REMOTE_URL` stays empty.
+- If the issue might be upstream automation behavior, use `repo-automation/bin/repo-automation-report-upstream --type=bug --title="<short title>" --dry-run` first and review the preview/redaction output before submitting.
+- If you already applied the install, inspect the changed files in the downstream repo; the installer does not commit or push.
+
 If mode is not explicitly passed:
 
 - install mode is inferred when target has no `.repo-automation.conf`
@@ -52,6 +80,7 @@ The helper writes downstream install context into:
 - `.repo-automation.conf` (`INSTALLED_VERSION_OR_REF`, `INSTALLED_AT`, `UPSTREAM_REPO_FULL_NAME`, target defaults)
 - `repo-automation/docs/README.md` (copyable installed automation context, doctor/report-upstream commands)
 - `EXPECTED_REMOTE_URL` is set only when the target origin is a supported GitHub SSH remote; unsupported or local/file/HTTPS origins are normalized to `""`
+- local override files such as `.repo-automation.local.conf` are preserved
 
 ## Installer Output Audit
 
