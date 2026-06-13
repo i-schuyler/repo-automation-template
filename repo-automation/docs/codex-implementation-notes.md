@@ -48,6 +48,11 @@ Challenges:
 Recommended improvements:
 - Keep repair mode explicit in both CLI and metadata, and keep child-helper fakes at the repo-relative paths used at runtime.
 
+### 2026-06-13 PR #252 preflight JSON stop_reason repair
+
+Material note:
+- The slice-handoff repair loop is easier to interpret when nonzero preflight JSON output keeps a useful `stop_reason`, which helps downstream repair routing stay compact and public-safe.
+
 ### 2026-06-09 codex-run resume-session final-output contract repair
 
 Challenges:

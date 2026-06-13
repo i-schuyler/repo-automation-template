@@ -21,7 +21,11 @@ For a first pass in a new repo, start with:
 - `repo-automation/bin/repo-doctor` for read-only health checks
 - `repo-automation/bin/run-tests` for the standard test harness
 
-For the full helper reference, see:
+For the first-read map, see:
+
+- [docs/SURFACE_MAP.md](docs/SURFACE_MAP.md)
+
+For the deeper helper reference, see:
 
 - [docs/INDEX.md](docs/INDEX.md)
 - [repo-automation/docs/helper-contracts.md](repo-automation/docs/helper-contracts.md)
@@ -42,24 +46,12 @@ This repo is in early public read-only/low-attention mode. Issues are welcome. E
 
 ## Start Here
 
+- Read [docs/SURFACE_MAP.md](docs/SURFACE_MAP.md) for the starter path and support boundary.
 - Read [docs/INDEX.md](docs/INDEX.md) for the canonical docs order.
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 - Read [repo-automation/docs/version-modes.md](repo-automation/docs/version-modes.md) for the version ownership model.
 - Read [docs/INSTALL_MODELS.md](docs/INSTALL_MODELS.md) before copying this template into downstream repos.
 - Read [docs/WORKFLOW_AUDIT_CHECKLIST.md](docs/WORKFLOW_AUDIT_CHECKLIST.md) before running audit-style checks.
-
-## Coming Soon
-
-The basic workflow should remain useful as open source. Paid paths should fund maintenance, examples, and support instead of locking away the core workflow.
-
-- GitHub Sponsors tiers coming soon
-- paid setup guide coming soon
-- low-cost done-for-you repo setup coming soon
-- workflow audit checklist product coming soon
-- sponsors-only early recipes/templates coming soon
-- paid support for adapting to non-GitHub providers coming soon
-
-Do not add live payment links here unless a support path is actually live and clickable.
 
 ## Support
 

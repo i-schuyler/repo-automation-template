@@ -2,6 +2,13 @@
 
 Start here if you are evaluating, copying, installing, or contributing to `repo-automation-template`.
 
+## First-Read Map
+
+- [Surface Map](SURFACE_MAP.md)
+- [README](../README.md)
+- [Known Limitations](KNOWN_LIMITATIONS.md)
+- [Install Models](INSTALL_MODELS.md)
+
 ## Top-Level Project Files
 
 - [README](../README.md)
@@ -17,65 +24,66 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 ## Canonical Docs Order
 
 1. [Decisions](DECISIONS.md)
-2. [Known Limitations](KNOWN_LIMITATIONS.md)
-3. [Install Models](INSTALL_MODELS.md)
-4. [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
-5. [Versioning](VERSIONING.md)
-6. [Version Modes](../repo-automation/docs/version-modes.md)
-7. [Repo Automation Config](../repo-automation/docs/config.md)
-8. [Managed Files](../repo-automation/docs/managed-files.md)
-9. [Helper Contracts](../repo-automation/docs/helper-contracts.md)
-10. [Script Routing](../repo-automation/docs/script-routing.md)
-11. [CI Failure Taxonomy](../repo-automation/docs/ci-failure-taxonomy.md)
-12. [Check-Cost Tiers](../repo-automation/docs/check-cost-tiers.md)
-13. [Workflow State Machine](../repo-automation/docs/workflow-state-machine.md)
-14. [GitHub CLI Fixtures](../repo-automation/docs/github-cli-fixtures.md)
-15. [Artifact Safety](../repo-automation/docs/artifact-safety.md)
-16. [Config Schema](../repo-automation/docs/config-schema.md)
-17. [Exit-Code / Stream Contract](../repo-automation/docs/exit-code-stream-contract.md)
-18. [Shared Bash Library](../repo-automation/docs/common-library.md)
-19. [Branch Cleanup](../repo-automation/docs/branch-cleanup.md)
-20. [Codex Slice Preflight](../repo-automation/docs/codex-slice-preflight.md)
-21. [PR Finish](../repo-automation/docs/pr-finish.md)
-22. [Add Doc PR](../repo-automation/docs/add-doc-pr.md)
-23. [PR Create](../repo-automation/docs/pr-create.md)
-24. [PR Body Check](../repo-automation/docs/pr-body-check.md)
-25. [Repo Flow](../repo-automation/docs/repo-flow.md)
-26. [Repo Zip](../repo-automation/docs/repo-zip.md)
-27. [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
-28. [Repo Doctor](../repo-automation/docs/repo-doctor.md) for read-only health checks and the repo-root artifact guard
-29. [Check Tooling](../repo-automation/docs/check-tooling.md)
-30. [Check Portability](../repo-automation/docs/check-portability.md)
-31. [GitHub Settings Check](../repo-automation/docs/github-settings-check.md)
-32. [Failure Log](../repo-automation/docs/failure-log.md)
-33. [Status Packet](../repo-automation/docs/status-packet.md)
-34. [Post Codex Packet](../repo-automation/docs/post-codex-packet.md)
-35. [Post Codex Review](../repo-automation/docs/post-codex-review.md)
-36. [Evidence Bundle](../repo-automation/docs/evidence-bundle.md)
-37. [Review Pack](../repo-automation/docs/review-pack.md)
-38. [Repair Prompt](../repo-automation/docs/repair-prompt.md)
-39. [Touched Files](../repo-automation/docs/touched-files.md)
-40. [CI Status](../repo-automation/docs/ci-status.md)
-41. [CI Watch](../repo-automation/docs/ci-watch.md)
-42. [CI Log Dump](../repo-automation/docs/ci-log-dump.md)
-43. [CI Failure Artifacts](../repo-automation/docs/ci-failure-artifacts.md)
-44. [Contract Debt Report](../repo-automation/docs/contract-debt-report.md)
-45. [ShellCheck CI Parity](../repo-automation/docs/shellcheck-ci-parity.md)
-46. [Starter Template Readiness](../repo-automation/docs/starter-template-readiness.md)
-47. [Repo Automation Install](../repo-automation/docs/repo-automation-install.md)
-48. [Starter Template Smoke Workflow](../repo-automation/docs/testing.md)
-49. [Command Shape](../repo-automation/docs/command-shape.md)
-50. [Output Modes](../repo-automation/docs/output-modes.md)
-51. [Testing](../repo-automation/docs/testing.md)
-52. [Roadmap](ROADMAP.md)
-53. [Repo Improvement Plan](repo-improvement-plan.md)
-54. [Drift Ledger](DRIFT_LEDGER.md)
-55. [Monetization](MONETIZATION.md)
-56. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
-57. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
-58. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
-59. [Source Provenance](../repo-automation/docs/source-provenance.md)
-60. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
+2. [Surface Map](SURFACE_MAP.md)
+3. [Known Limitations](KNOWN_LIMITATIONS.md)
+4. [Install Models](INSTALL_MODELS.md)
+5. [Downstream Feedback](DOWNSTREAM_FEEDBACK.md)
+6. [Versioning](VERSIONING.md)
+7. [Version Modes](../repo-automation/docs/version-modes.md)
+8. [Repo Automation Config](../repo-automation/docs/config.md)
+9. [Managed Files](../repo-automation/docs/managed-files.md)
+10. [Helper Contracts](../repo-automation/docs/helper-contracts.md)
+11. [Script Routing](../repo-automation/docs/script-routing.md)
+12. [CI Failure Taxonomy](../repo-automation/docs/ci-failure-taxonomy.md)
+13. [Check-Cost Tiers](../repo-automation/docs/check-cost-tiers.md)
+14. [Workflow State Machine](../repo-automation/docs/workflow-state-machine.md)
+15. [GitHub CLI Fixtures](../repo-automation/docs/github-cli-fixtures.md)
+16. [Artifact Safety](../repo-automation/docs/artifact-safety.md)
+17. [Config Schema](../repo-automation/docs/config-schema.md)
+18. [Exit-Code / Stream Contract](../repo-automation/docs/exit-code-stream-contract.md)
+19. [Shared Bash Library](../repo-automation/docs/common-library.md)
+20. [Branch Cleanup](../repo-automation/docs/branch-cleanup.md)
+21. [Codex Slice Preflight](../repo-automation/docs/codex-slice-preflight.md)
+22. [PR Finish](../repo-automation/docs/pr-finish.md)
+23. [Add Doc PR](../repo-automation/docs/add-doc-pr.md)
+24. [PR Create](../repo-automation/docs/pr-create.md)
+25. [PR Body Check](../repo-automation/docs/pr-body-check.md)
+26. [Repo Flow](../repo-automation/docs/repo-flow.md)
+27. [Repo Zip](../repo-automation/docs/repo-zip.md)
+28. [Report Upstream](../repo-automation/docs/repo-automation-report-upstream.md)
+29. [Repo Doctor](../repo-automation/docs/repo-doctor.md) for read-only health checks and the repo-root artifact guard
+30. [Check Tooling](../repo-automation/docs/check-tooling.md)
+31. [Check Portability](../repo-automation/docs/check-portability.md)
+32. [GitHub Settings Check](../repo-automation/docs/github-settings-check.md)
+33. [Failure Log](../repo-automation/docs/failure-log.md)
+34. [Status Packet](../repo-automation/docs/status-packet.md)
+35. [Post Codex Packet](../repo-automation/docs/post-codex-packet.md)
+36. [Post Codex Review](../repo-automation/docs/post-codex-review.md)
+37. [Evidence Bundle](../repo-automation/docs/evidence-bundle.md)
+38. [Review Pack](../repo-automation/docs/review-pack.md)
+39. [Repair Prompt](../repo-automation/docs/repair-prompt.md)
+40. [Touched Files](../repo-automation/docs/touched-files.md)
+41. [CI Status](../repo-automation/docs/ci-status.md)
+42. [CI Watch](../repo-automation/docs/ci-watch.md)
+43. [CI Log Dump](../repo-automation/docs/ci-log-dump.md)
+44. [CI Failure Artifacts](../repo-automation/docs/ci-failure-artifacts.md)
+45. [Contract Debt Report](../repo-automation/docs/contract-debt-report.md)
+46. [ShellCheck CI Parity](../repo-automation/docs/shellcheck-ci-parity.md)
+47. [Starter Template Readiness](../repo-automation/docs/starter-template-readiness.md)
+48. [Repo Automation Install](../repo-automation/docs/repo-automation-install.md)
+49. [Starter Template Smoke Workflow](../repo-automation/docs/testing.md)
+50. [Command Shape](../repo-automation/docs/command-shape.md)
+51. [Output Modes](../repo-automation/docs/output-modes.md)
+52. [Testing](../repo-automation/docs/testing.md)
+53. [Roadmap](ROADMAP.md)
+54. [Repo Improvement Plan](repo-improvement-plan.md)
+55. [Drift Ledger](DRIFT_LEDGER.md)
+56. [Monetization](MONETIZATION.md)
+57. [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
+58. [Downstream Install Contract](../repo-automation/docs/downstream-install-contract.md)
+59. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
+60. [Source Provenance](../repo-automation/docs/source-provenance.md)
+61. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
 
 ## Planned Helpers
 
@@ -88,8 +96,17 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 
 ## Start Here
 
-- New users should read the [README](../README.md), then [Known Limitations](KNOWN_LIMITATIONS.md), then [Install Models](INSTALL_MODELS.md).
+- New users should read the [Surface Map](SURFACE_MAP.md), then the [README](../README.md), then [Known Limitations](KNOWN_LIMITATIONS.md).
 - Downstream maintainers should read [Downstream Feedback](DOWNSTREAM_FEEDBACK.md) before filing upstream issues.
 - Maintainers changing versions should read [Versioning](VERSIONING.md) and [Version Modes](../repo-automation/docs/version-modes.md) before editing `VERSION`, `CHANGELOG.md`, or downstream examples.
 - Contributors should read [Contributing](../CONTRIBUTING.md) and use the issue forms.
 - For review fallbacks, prefer the PR-first helpers first and use [Review Pack](../repo-automation/docs/review-pack.md) only when you explicitly need an artifact bundle or Codex prompt.
+
+## Maintainer and reference material
+
+- Implementation, roadmap, and workflow-audit residue belong here instead of the starter path:
+  - [Repo Improvement Plan](repo-improvement-plan.md)
+  - [Drift Ledger](DRIFT_LEDGER.md)
+  - [Workflow Audit Checklist](WORKFLOW_AUDIT_CHECKLIST.md)
+  - [Monetization](MONETIZATION.md)
+  - [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)

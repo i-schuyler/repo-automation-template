@@ -5,6 +5,8 @@
 This doc is the top-level public helper contract matrix.
 It summarizes the public surface and points to the deeper source-of-truth docs:
 
+For the first-read surface map, see [docs/SURFACE_MAP.md](../../docs/SURFACE_MAP.md).
+
 - script routing: `repo-automation/docs/script-routing.md`
 - CI failure taxonomy: `repo-automation/docs/ci-failure-taxonomy.md`
 - check-cost tiers: `repo-automation/docs/check-cost-tiers.md`
