@@ -10,7 +10,9 @@
 - writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, `codex-final-output-block.txt`, and `codex-run-summary.txt` into the requested out-dir when final-output capture succeeds
 - supports `--quiet` and `--explain`
 - records `resume_mode=fresh` or `resume_mode=resume` in `codex-run-summary.txt`
-- forwards supported `--cd`, `--sandbox`, and `--profile` controls into resume mode
+- records requested model/reasoning in `codex-run-summary.txt` when they are supplied
+- forwards `--cd`, `--sandbox`, `--profile`, and `--model` into `codex exec` / `codex exec resume`
+- accepts optional `--model=<model-name>` and `--reasoning=<low|medium|high>` inputs, then forwards model as `--model` and reasoning as `-c model_reasoning_effort=<level>`
 - does not pass an approval-policy flag to `codex exec`; it relies on the selected sandbox mode and avoids dangerous bypass flags
 - does not implement `--json` in this slice
 
@@ -44,7 +46,7 @@ The contract tests inject a fake `codex` binary through `PATH`, so CI does not r
 
 `slice-handoff` execution routes through `codex-run` after preflight. `slice-handoff` execution can now continue from `codex-run` to PR-body validation and repo-flow submit only when bare `--submit` authorizes the submit boundary, and still stops before merge.
 
-Resume mode is intentionally narrower than fresh exec: it uses `codex exec resume` so `--cd`, `--sandbox`, `--profile`, and `--output-last-message` remain argv-driven, and it fails explicitly if a reliable final-output artifact does not appear. The adapter does not synthesize `codex-final.txt` from stdout.
+Resume mode is intentionally narrower than fresh exec: it uses `codex exec resume` so `--cd`, `--sandbox`, `--profile`, `--model`, and `--output-last-message` remain argv-driven, and it fails explicitly if a reliable final-output artifact does not appear. Reasoning is passed through `-c model_reasoning_effort=<level>`. The adapter does not synthesize `codex-final.txt` from stdout.
 
 Future slice-handoff execution planning should validate profile existence and adapter compatibility before preflight, but that validation is not implemented here.
 

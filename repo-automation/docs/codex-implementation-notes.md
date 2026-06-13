@@ -20,6 +20,17 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-13 grounded codex-run reasoning passthrough
+
+Challenges:
+- The adapter needed a verified downstream Codex config key for reasoning instead of assuming an older nested path.
+
+What would have made it easier:
+- A stable public Codex exec contract for non-interactive reasoning overrides.
+
+Recommendations:
+- Keep the adapter grounded in current local Codex help and config evidence, and prefer the observed `model_reasoning_effort` override for reasoning passthrough.
+
 ### 2026-06-11 copied-helper self-target contract
 
 Challenges:
@@ -58,6 +69,12 @@ Material note:
 Material note:
 - When Codex has already run successfully, repo-flow submit/watch failures should still print FINAL SUMMARY and CODEX RUN CONTEXT so the operator can continue the same-branch CI repair without losing session context.
 - If codex-run writes a failure summary, slice-handoff should prefer the child summary reason/fix/log/excerpt over generic stderr greps so the parent blocker stays actionable.
+
+### 2026-06-13 explicit codex model/reasoning passthrough
+
+Material note:
+- `slice-validator` now treats the handoff envelope as strict, with explicit optional `codex_model` and `codex_reasoning` inputs instead of opaque aliases.
+- `slice-handoff` and `codex-run` need to carry request-specific model/reasoning through both file summaries and explain-mode summaries so operators can see the requested tuning without losing the existing profile selector.
 
 ### 2026-06-09 codex-run resume-session final-output contract repair
 
