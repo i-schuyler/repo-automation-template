@@ -59,6 +59,12 @@ Material note:
 - When Codex has already run successfully, repo-flow submit/watch failures should still print FINAL SUMMARY and CODEX RUN CONTEXT so the operator can continue the same-branch CI repair without losing session context.
 - If codex-run writes a failure summary, slice-handoff should prefer the child summary reason/fix/log/excerpt over generic stderr greps so the parent blocker stays actionable.
 
+### 2026-06-13 explicit codex model/reasoning passthrough
+
+Material note:
+- `slice-validator` now treats the handoff envelope as strict, with explicit optional `codex_model` and `codex_reasoning` inputs instead of opaque aliases.
+- `slice-handoff` and `codex-run` need to carry request-specific model/reasoning through both file summaries and explain-mode summaries so operators can see the requested tuning without losing the existing profile selector.
+
 ### 2026-06-09 codex-run resume-session final-output contract repair
 
 Challenges:

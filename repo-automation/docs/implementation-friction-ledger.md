@@ -68,6 +68,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
+- 2026-06-13 / explicit codex model/reasoning passthrough / ids=none / score_delta=0 / signal=kept codex_profile as the selector while adding strict envelope keys and request-specific model/reasoning passthrough across validation, handoff, and codex-run
 - 2026-06-13 / PR #252 preflight JSON stop_reason repair / ids=none / score_delta=0 / signal=public-safe repair-loop note only; nonzero preflight JSON output now carries a useful `stop_reason`
 - 2026-06-13 / PR #253 submit/watch failure output closure / ids=slice-handoff-contract-opacity / score_delta=0 / signal=added FINAL SUMMARY + CODEX RUN CONTEXT on repo-flow-submit failure, kept PR review request suppressed, and preserved codex-run child summary reason/fix/log/excerpt evidence at the slice-handoff boundary
 

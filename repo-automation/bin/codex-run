@@ -25,6 +25,8 @@ codex_run_resume_session_id=""
 codex_run_out_dir=""
 codex_run_out_dir_abs=""
 codex_run_profile="default"
+codex_run_model=""
+codex_run_reasoning=""
 codex_run_cd=""
 codex_run_cd_abs=""
 codex_run_sandbox="workspace-write"
@@ -49,7 +51,7 @@ codex_run_failure_excerpt=""
 codex_run_failure_artifact=""
 
 codex_run_usage() {
-  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--resume-session-id=<id>] [--profile=<name>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
+  printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--resume-session-id=<id>] [--profile=<name>] [--model=<model-name>] [--reasoning=<low|medium|high>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
 }
 
 codex_run_fail() {
@@ -77,6 +79,15 @@ codex_run_is_conservative_token() {
 
 codex_run_is_conservative_session_id() {
   codex_run_is_conservative_token "$1"
+}
+
+codex_run_is_reasoning_level() {
+  case "${1:-}" in
+    low|medium|high)
+      return 0
+      ;;
+  esac
+  return 1
 }
 
 codex_run_resolve_existing_dir() {
@@ -170,6 +181,14 @@ resume_session_id=$codex_run_resume_session_id
 out_dir=$codex_run_out_dir_abs
 cd=$codex_run_cd_abs
 profile=$codex_run_profile
+EOF
+  if [ -n "$codex_run_model" ]; then
+    printf 'requested_model=%s\n' "$codex_run_model" >> "$codex_run_summary_path"
+  fi
+  if [ -n "$codex_run_reasoning" ]; then
+    printf 'requested_reasoning=%s\n' "$codex_run_reasoning" >> "$codex_run_summary_path"
+  fi
+  cat <<EOF >> "$codex_run_summary_path"
 sandbox=$codex_run_sandbox
 timeout=$codex_run_timeout
 timeout_enforced=$codex_run_timeout_enforced
@@ -216,6 +235,12 @@ codex_run_print_final_summary() {
   printf 'mode=run\n'
   printf 'rc=%s\n' "$rc"
   printf 'profile=%s\n' "$codex_run_profile"
+  if [ -n "$codex_run_model" ]; then
+    printf 'requested_model=%s\n' "$codex_run_model"
+  fi
+  if [ -n "$codex_run_reasoning" ]; then
+    printf 'requested_reasoning=%s\n' "$codex_run_reasoning"
+  fi
   printf 'sandbox=%s\n' "$codex_run_sandbox"
   printf 'final_output=%s\n' "$final_output_value"
   printf 'summary=%s\n' "$summary_value"
@@ -371,6 +396,36 @@ codex_run_main() {
         ;;
       --profile)
         codex_run_flag_value_error "missing flag value" "--profile" "use --profile=<name>"
+        return 1
+        ;;
+      --model=*)
+        codex_run_model="${arg#--model=}"
+        if [ -z "$codex_run_model" ]; then
+          codex_run_flag_value_error "empty flag value" "--model" "use --model=<model-name>"
+          return 1
+        fi
+        if ! codex_run_is_conservative_token "$codex_run_model"; then
+          codex_run_flag_value_error "invalid flag value" "--model" "use a conservative model name without spaces, paths, or shell metacharacters"
+          return 1
+        fi
+        ;;
+      --model)
+        codex_run_flag_value_error "missing flag value" "--model" "use --model=<model-name>"
+        return 1
+        ;;
+      --reasoning=*)
+        codex_run_reasoning="${arg#--reasoning=}"
+        if [ -z "$codex_run_reasoning" ]; then
+          codex_run_flag_value_error "empty flag value" "--reasoning" "use --reasoning=<low|medium|high>"
+          return 1
+        fi
+        if ! codex_run_is_reasoning_level "$codex_run_reasoning"; then
+          codex_run_flag_value_error "invalid flag value" "--reasoning" "use --reasoning=low, --reasoning=medium, or --reasoning=high"
+          return 1
+        fi
+        ;;
+      --reasoning)
+        codex_run_flag_value_error "missing flag value" "--reasoning" "use --reasoning=<low|medium|high>"
         return 1
         ;;
       --cd=*)
@@ -558,6 +613,12 @@ codex_run_main() {
   if [ "$codex_run_explain" -eq 1 ]; then
     printf 'INFO: codex-run profile=%s sandbox=%s timeout=%s\n' \
       "$codex_run_profile" "$codex_run_sandbox" "$codex_run_timeout" >&2
+    if [ -n "$codex_run_model" ]; then
+      printf 'INFO: codex-run requested_model=%s\n' "$codex_run_model" >&2
+    fi
+    if [ -n "$codex_run_reasoning" ]; then
+      printf 'INFO: codex-run requested_reasoning=%s\n' "$codex_run_reasoning" >&2
+    fi
     printf 'INFO: codex-run prompt=%s\n' "$codex_run_prompt_file" >&2
     printf 'INFO: codex-run out-dir=%s\n' "$codex_run_out_dir_abs" >&2
     printf 'INFO: codex-run cd=%s\n' "$codex_run_cd_abs" >&2
@@ -569,6 +630,12 @@ codex_run_main() {
     codex_cmd=("$codex_run_codex_path" exec resume)
     if [ "$codex_run_profile" != "default" ]; then
       codex_cmd+=("--profile" "$codex_run_profile")
+    fi
+    if [ -n "$codex_run_model" ]; then
+      codex_cmd+=("--model" "$codex_run_model")
+    fi
+    if [ -n "$codex_run_reasoning" ]; then
+      codex_cmd+=("-c" "collaboration_mode.settings.reasoning_effort=$codex_run_reasoning")
     fi
     codex_cmd+=(
       "--cd" "$codex_run_cd_abs"
@@ -586,6 +653,12 @@ codex_run_main() {
     codex_cmd=("$codex_run_codex_path" exec)
     if [ "$codex_run_profile" != "default" ]; then
       codex_cmd+=("--profile" "$codex_run_profile")
+    fi
+    if [ -n "$codex_run_model" ]; then
+      codex_cmd+=("--model" "$codex_run_model")
+    fi
+    if [ -n "$codex_run_reasoning" ]; then
+      codex_cmd+=("-c" "collaboration_mode.settings.reasoning_effort=$codex_run_reasoning")
     fi
     codex_cmd+=(
       "--cd" "$codex_run_cd_abs"

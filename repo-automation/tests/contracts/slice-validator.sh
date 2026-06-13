@@ -30,8 +30,10 @@ smoke_slice_validator_write_handoff() {
   local review_request_text="${9:-}"
   local pr_review_prompt_id="${10:-}"
   local self_target="${11:-}"
+  local codex_model="${12:-}"
+  local codex_reasoning="${13:-}"
 
-  python3 - "$path" "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$prompt_text" "$pr_body_text" "$review_request_text" "$pr_review_prompt_id" "$self_target" <<'PY'
+  python3 - "$path" "$branch" "$title" "$codex_profile" "$submit_mode" "$commit_message" "$prompt_text" "$pr_body_text" "$review_request_text" "$pr_review_prompt_id" "$self_target" "$codex_model" "$codex_reasoning" <<'PY'
 from pathlib import Path
 import sys
 
@@ -46,6 +48,8 @@ pr_body_text = sys.argv[8]
 review_request_text = sys.argv[9]
 pr_review_prompt_id = sys.argv[10]
 self_target = sys.argv[11]
+codex_model = sys.argv[12]
+codex_reasoning = sys.argv[13]
 
 lines = [
     "schema: repo-automation-slice-handoff/v1",
@@ -59,6 +63,10 @@ if pr_review_prompt_id:
     lines.append(f"pr_review_prompt_id: {pr_review_prompt_id}")
 if self_target:
     lines.append(f"self_target: {self_target}")
+if codex_model:
+    lines.append(f"codex_model: {codex_model}")
+if codex_reasoning:
+    lines.append(f"codex_reasoning: {codex_reasoning}")
 lines += [
     "",
     "# Slice Handoff",
@@ -112,6 +120,9 @@ smoke_check_slice_validator_contract() {
   local status=0
   local root="$smoke_test_base/slice-validator"
   local valid_none_file="$root/valid-none.md"
+  local valid_model_file="$root/valid-model.md"
+  local valid_reasoning_file="$root/valid-reasoning.md"
+  local valid_both_file="$root/valid-both.md"
   local valid_submit_file="$root/valid-submit.md"
   local valid_repair_file="$root/valid-repair.md"
   local missing_repair_pr_file="$root/missing-repair-pr.md"
@@ -123,6 +134,10 @@ smoke_check_slice_validator_contract() {
   local missing_branch_file="$root/missing-branch.md"
   local invalid_branch_file="$root/invalid-branch.md"
   local invalid_profile_file="$root/invalid-profile.md"
+  local invalid_model_file="$root/invalid-model.md"
+  local invalid_reasoning_file="$root/invalid-reasoning.md"
+  local unknown_key_file="$root/unknown-key.md"
+  local alias_model_file="$root/alias-model.md"
   local missing_commit_file="$root/missing-commit.md"
   local missing_pr_body_file="$root/missing-pr-body.md"
   local invalid_pr_body_file="$root/invalid-pr-body.md"
@@ -245,6 +260,9 @@ EOF
   fi
 
   smoke_slice_validator_write_handoff "$valid_none_file" "feature/slice-validator-smoke" "Slice validator smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge."
+  smoke_slice_validator_write_handoff "$valid_model_file" "feature/slice-validator-model" "Slice validator model smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge." "" "" "gpt-5.4-mini"
+  smoke_slice_validator_write_handoff "$valid_reasoning_file" "feature/slice-validator-reasoning" "Slice validator reasoning smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge." "" "" "" "medium"
+  smoke_slice_validator_write_handoff "$valid_both_file" "feature/slice-validator-both" "Slice validator model reasoning smoke" "default" "none" "" "Implement the slice exactly as specified." "" "Please review this PR before merge." "" "" "gpt-5.4-mini" "high"
   smoke_slice_validator_write_handoff "$valid_submit_file" "feature/slice-validator-submit" "Slice validator submit smoke" "review" "repo-flow-submit-all" "chore: slice-validator smoke" "Implement the slice and prepare the PR body." "$(cat "$valid_body_file")" "Please review this PR before merge."
   cp "$valid_submit_file" "$valid_repair_file" || return 1
   python3 - "$valid_repair_file" <<'PY' || return 1
@@ -302,6 +320,38 @@ from pathlib import Path
 import sys
 path = Path(sys.argv[1])
 text = path.read_text(encoding='utf-8').replace('codex_profile: review', 'codex_profile: invalid', 1)
+path.write_text(text, encoding='utf-8')
+PY
+  cp "$valid_none_file" "$invalid_model_file" || return 1
+  python3 - "$invalid_model_file" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8').replace('codex_profile: default', 'codex_profile: default\ncodex_model: -bad model', 1)
+path.write_text(text, encoding='utf-8')
+PY
+  cp "$valid_none_file" "$invalid_reasoning_file" || return 1
+  python3 - "$invalid_reasoning_file" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8').replace('codex_profile: default', 'codex_profile: default\ncodex_reasoning: extreme', 1)
+path.write_text(text, encoding='utf-8')
+PY
+  cp "$valid_none_file" "$unknown_key_file" || return 1
+  python3 - "$unknown_key_file" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8').replace('codex_profile: default', 'codex_profile: default\ncodex_reasoning_level: medium', 1)
+path.write_text(text, encoding='utf-8')
+PY
+  cp "$valid_none_file" "$alias_model_file" || return 1
+  python3 - "$alias_model_file" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8').replace('codex_profile: default', 'codex_profile: default\nmodel: gpt-5.4-mini', 1)
 path.write_text(text, encoding='utf-8')
 PY
   cp "$valid_submit_file" "$missing_commit_file" || return 1
@@ -406,9 +456,9 @@ PY
   if (
     cd "$smoke_test_dir" || return 1
     repo-automation/bin/slice-validator --file="$valid_none_file" >"$stdout_file" 2>"$stderr_file"
-  ) && grep -Fxq 'pass' "$stdout_file" && grep -Fq 'manifest_path=' "$stdout_file" && grep -Fq 'next=codex-slice-preflight' "$stdout_file"; then
+  ) && grep -Fxq 'pass' "$stdout_file" && grep -Fq 'manifest_path=' "$stdout_file" && grep -Fq 'next=codex-slice-preflight' "$stdout_file" && ! grep -Fq 'codex_model=' "$stdout_file" && ! grep -Fq 'codex_reasoning=' "$stdout_file"; then
     manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
-    if [ -s "$manifest_path" ] && smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("schema") == "repo-automation-slice-validator/v1" and data.get("validated_capabilities", {}).get("codex_run") is True and data.get("validated_capabilities", {}).get("repo_flow_submit") is False and data.get("next") == "codex-slice-preflight"'; then
+    if [ -s "$manifest_path" ] && smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("schema") == "repo-automation-slice-validator/v1" and data.get("validated_capabilities", {}).get("codex_run") is True and data.get("validated_capabilities", {}).get("repo_flow_submit") is False and data.get("next") == "codex-slice-preflight" and "codex_model" not in data and "codex_reasoning" not in data'; then
       test_pass "slice-validator validates a non-submit handoff"
     else
       test_fail "slice-validator validates a non-submit handoff"
@@ -416,6 +466,54 @@ PY
     fi
   else
     test_fail "slice-validator validates a non-submit handoff"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$valid_model_file" >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'pass' "$stdout_file" && grep -Fq 'codex_model=gpt-5.4-mini' "$stdout_file" && grep -Fq 'manifest_path=' "$stdout_file"; then
+    manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
+    if smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("codex_model") == "gpt-5.4-mini" and "codex_reasoning" not in data'; then
+      test_pass "slice-validator validates codex_model"
+    else
+      test_fail "slice-validator validates codex_model"
+      status=1
+    fi
+  else
+    test_fail "slice-validator validates codex_model"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$valid_reasoning_file" >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'pass' "$stdout_file" && grep -Fq 'codex_reasoning=medium' "$stdout_file" && grep -Fq 'manifest_path=' "$stdout_file"; then
+    manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
+    if smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("codex_reasoning") == "medium" and "codex_model" not in data'; then
+      test_pass "slice-validator validates codex_reasoning"
+    else
+      test_fail "slice-validator validates codex_reasoning"
+      status=1
+    fi
+  else
+    test_fail "slice-validator validates codex_reasoning"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$valid_both_file" >"$stdout_file" 2>"$stderr_file"
+  ) && grep -Fxq 'pass' "$stdout_file" && grep -Fq 'codex_model=gpt-5.4-mini' "$stdout_file" && grep -Fq 'codex_reasoning=high' "$stdout_file" && grep -Fq 'manifest_path=' "$stdout_file"; then
+    manifest_path="$(grep -F 'manifest_path=' "$stdout_file" | head -n1 | cut -d= -f2-)"
+    if smoke_slice_validator_assert_json_file "$manifest_path" 'data.get("codex_model") == "gpt-5.4-mini" and data.get("codex_reasoning") == "high"'; then
+      test_pass "slice-validator validates codex_model and codex_reasoning"
+    else
+      test_fail "slice-validator validates codex_model and codex_reasoning"
+      status=1
+    fi
+  else
+    test_fail "slice-validator validates codex_model and codex_reasoning"
     status=1
   fi
 
@@ -559,6 +657,58 @@ PY
     test_pass "slice-validator rejects invalid codex_profile"
   else
     test_fail "slice-validator rejects invalid codex_profile"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$invalid_model_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects invalid codex_model"
+    status=1
+  elif grep -Fq 'invalid codex_model:' "$stderr_file"; then
+    test_pass "slice-validator rejects invalid codex_model"
+  else
+    test_fail "slice-validator rejects invalid codex_model"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$invalid_reasoning_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects invalid codex_reasoning"
+    status=1
+  elif grep -Fq 'invalid codex_reasoning:' "$stderr_file"; then
+    test_pass "slice-validator rejects invalid codex_reasoning"
+  else
+    test_fail "slice-validator rejects invalid codex_reasoning"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$unknown_key_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects unknown envelope key"
+    status=1
+  elif grep -Fq 'unknown envelope key: codex_reasoning_level' "$stderr_file" && grep -Fq 'accepted envelope keys are' "$stderr_file"; then
+    test_pass "slice-validator rejects unknown envelope key"
+  else
+    test_fail "slice-validator rejects unknown envelope key"
+    status=1
+  fi
+
+  if (
+    cd "$smoke_test_dir" || return 1
+    repo-automation/bin/slice-validator --file="$alias_model_file" >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "slice-validator rejects known wrong alias"
+    status=1
+  elif grep -Fq 'unknown envelope key: model' "$stderr_file" && grep -Fq 'use codex_model' "$stderr_file"; then
+    test_pass "slice-validator rejects known wrong alias"
+  else
+    test_fail "slice-validator rejects known wrong alias"
     status=1
   fi
 

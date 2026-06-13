@@ -37,6 +37,7 @@ smoke_main_impl() {
 
   smoke_run_named_check "smoke:slice-handoff-contract:repair-execution" smoke_check_slice_handoff_contract_repair_execution || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-copied-helper-self-target" smoke_check_slice_handoff_contract_execution_copied_helper_self_target || status=1
+  smoke_run_named_check "smoke:slice-handoff-contract:model-reasoning-passthrough" smoke_check_slice_handoff_contract_model_reasoning_passthrough || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-none" smoke_check_slice_handoff_contract_execution_none_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-success" smoke_check_slice_handoff_contract_execution_submit_success_behavior || status=1
   smoke_run_named_check "smoke:slice-handoff-contract:execution-submit-false-positive" smoke_check_slice_handoff_contract_execution_submit_false_positive_blocker_behavior || status=1
@@ -192,6 +193,76 @@ EOF
   else
     test_fail "slice-handoff copied-helper self-target execution keeps the snapshot boundary stable"
     status=1
+  fi
+
+  return "$status"
+}
+
+smoke_check_slice_handoff_contract_model_reasoning_passthrough() {
+  local status=0
+  local model_reasoning_file="$smoke_test_base/slice-handoff-model-reasoning.md"
+  local dry_run_out_dir="$smoke_test_base/out-model-reasoning-dry-run"
+  local execution_out_dir="$smoke_test_base/slice-handoff-tmp/model-reasoning-execution"
+  local stdout_file="$smoke_test_base/slice-handoff-model-reasoning.out"
+  local stderr_file="$smoke_test_base/slice-handoff-model-reasoning.err"
+  local codex_args_file="$smoke_test_base/slice-handoff-model-reasoning-codex.args"
+  local codex_run_before="$smoke_test_base/slice-handoff-model-reasoning-codex-run.before"
+
+  cp -- "$smoke_slice_handoff_valid_none_file" "$model_reasoning_file" || return 1
+  python3 - "$model_reasoning_file" <<'PY' || return 1
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text(encoding='utf-8')
+text = text.replace("codex_profile: default\n", "codex_profile: default\ncodex_model: gpt-5.4-mini\ncodex_reasoning: high\n", 1)
+path.write_text(text, encoding='utf-8')
+PY
+  rm -rf -- "$dry_run_out_dir" "$execution_out_dir" || return 1
+  if [ -e "$smoke_test_dir/repo-automation/bin/codex-run" ]; then
+    cp -- "$smoke_test_dir/repo-automation/bin/codex-run" "$codex_run_before" || return 1
+  else
+    : > "$codex_run_before" || return 1
+  fi
+
+  if smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$model_reasoning_file" --dry-run --out-dir="$dry_run_out_dir" &&
+    grep -Fxq 'codex_model=gpt-5.4-mini' "$dry_run_out_dir/dry-run-preview.txt" &&
+    grep -Fxq 'codex_reasoning=high' "$dry_run_out_dir/dry-run-preview.txt" &&
+    grep -Fxq -- '- --model=gpt-5.4-mini' "$dry_run_out_dir/dry-run-preview.txt" &&
+    grep -Fxq -- '- --reasoning=high' "$dry_run_out_dir/dry-run-preview.txt" &&
+    grep -Fxq 'codex_model=gpt-5.4-mini' "$dry_run_out_dir/slice-handoff-summary.txt" &&
+    grep -Fxq 'codex_reasoning=high' "$dry_run_out_dir/slice-handoff-summary.txt"; then
+    :
+  else
+    test_fail "slice-handoff model/reasoning dry-run passthrough"
+    status=1
+  fi
+
+  if (
+    FAKE_CODEX_RUN_HELPER=1 \
+    FAKE_CODEX_RUN_ARGS_FILE="$codex_args_file" \
+    FAKE_CODEX_RUN_STDOUT_TEXT='pass' \
+    FAKE_CODEX_RUN_FINAL_TEXT='Implementation complete.' \
+    smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" \
+      smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$model_reasoning_file" --out-dir="$execution_out_dir" --explain &&
+      grep -Fxq 'codex_model=gpt-5.4-mini' "$execution_out_dir/slice-handoff-summary.txt" &&
+      grep -Fxq 'codex_reasoning=high' "$execution_out_dir/slice-handoff-summary.txt" &&
+      run_dir="$(smoke_slice_handoff_extract_field "$stderr_file" run_dir)" &&
+      grep -Fxq 'codex_model=gpt-5.4-mini' "$run_dir/slice-handoff-execution-summary.txt" &&
+      grep -Fxq 'codex_reasoning=high' "$run_dir/slice-handoff-execution-summary.txt" &&
+      grep -Fxq 'codex_model=gpt-5.4-mini' "$stderr_file" &&
+      grep -Fxq 'codex_reasoning=high' "$stderr_file" &&
+      grep -Fxq -- '--model=gpt-5.4-mini' "$codex_args_file" &&
+      grep -Fxq -- '--reasoning=high' "$codex_args_file"
+  ); then
+    :
+  else
+    test_fail "slice-handoff model/reasoning execution passthrough"
+    status=1
+  fi
+
+  if [ -s "$codex_run_before" ]; then
+    cp -- "$codex_run_before" "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
+    chmod +x "$smoke_test_dir/repo-automation/bin/codex-run" || return 1
   fi
 
   return "$status"

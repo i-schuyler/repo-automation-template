@@ -29,6 +29,29 @@ OUTPUT_SCHEMA = "repo-automation-helper-output/v1"
 MANIFEST_SCHEMA = "repo-automation-slice-validator/v1"
 VALID_PROFILES = {"default", "lean", "medium", "high", "repair", "review"}
 VALID_SUBMIT_MODES = {"none", "repo-flow-submit-all"}
+VALID_REASONS = {"low", "medium", "high"}
+KNOWN_ENVIRONMENT_KEYS = {
+    "schema",
+    "branch",
+    "title",
+    "codex_profile",
+    "codex_model",
+    "codex_reasoning",
+    "submit_mode",
+    "commit_message",
+    "handoff_mode",
+    "self_target",
+    "repair_of_pr",
+    "repair_session",
+    "codex_session_id",
+    "pr_review_prompt_id",
+}
+ENVELOPE_KEY_ALIASES = {
+    "intended_codex_model": "codex_model",
+    "intended_codex_reasoning": "codex_reasoning",
+    "model": "codex_model",
+    "reasoning": "codex_reasoning",
+}
 DEFAULT_REVIEW_REQUEST = (
     "Please review this PR before merge:\n\n"
     "<PR_URL>\n\n"
@@ -79,6 +102,8 @@ class ValidationState:
     branch: str = ""
     title: str = ""
     codex_profile: str = ""
+    codex_model: str = ""
+    codex_reasoning: str = ""
     submit_mode: str = ""
     commit_message: str = ""
     handoff_mode: str = "implementation"
@@ -321,6 +346,12 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
             raise fail("empty-envelope-key", "handoff-envelope", "empty envelope key", "use key: value lines before # Slice Handoff")
         envelope[key] = value
 
+    for key in envelope:
+        if key not in KNOWN_ENVIRONMENT_KEYS:
+            if key in ENVELOPE_KEY_ALIASES:
+                raise fail("unknown-envelope-key", "handoff-envelope", f"unknown envelope key: {key}", f"use {ENVELOPE_KEY_ALIASES[key]}")
+            raise fail("unknown-envelope-key", "handoff-envelope", f"unknown envelope key: {key}", "accepted envelope keys are schema, branch, title, codex_profile, codex_model, codex_reasoning, submit_mode, commit_message, handoff_mode, self_target, repair_of_pr, repair_session, codex_session_id, and pr_review_prompt_id")
+
     schema = envelope.get("schema", "")
     if "schema" not in envelope:
         raise fail("missing-schema", "handoff-envelope", "missing schema", "set schema: repo-automation-slice-handoff/v1")
@@ -342,6 +373,14 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         raise fail("missing-codex-profile", "handoff-envelope", "missing codex_profile", "set codex_profile to default, lean, medium, high, repair, or review")
     if codex_profile not in VALID_PROFILES:
         raise fail("invalid-codex-profile", "handoff-envelope", f"invalid codex_profile: {codex_profile}", "use one of default, lean, medium, high, repair, or review")
+
+    codex_model = envelope.get("codex_model", "")
+    if codex_model and (not re.fullmatch(r"[A-Za-z0-9._-]+", codex_model) or codex_model.startswith("-")):
+        raise fail("invalid-codex-model", "handoff-envelope", f"invalid codex_model: {codex_model}", "use a conservative token with letters, digits, dot, underscore, or hyphen")
+
+    codex_reasoning = envelope.get("codex_reasoning", "")
+    if codex_reasoning and codex_reasoning not in VALID_REASONS:
+        raise fail("invalid-codex-reasoning", "handoff-envelope", f"invalid codex_reasoning: {codex_reasoning}", "use one of low, medium, or high")
 
     submit_mode = envelope.get("submit_mode", "")
     if not submit_mode:
@@ -460,6 +499,8 @@ def parse_handoff(text: str, handoff_path: Path, repo_root: Path) -> dict[str, o
         "branch": branch,
         "title": title,
         "codex_profile": codex_profile,
+        "codex_model": codex_model,
+        "codex_reasoning": codex_reasoning,
         "submit_mode": submit_mode,
         "commit_message": commit_message,
         "handoff_mode": handoff_mode,
@@ -556,6 +597,10 @@ def build_manifest(state: ValidationState, pr_body_valid: bool, requested_mode: 
     }
     if state.self_target:
         manifest["self_target"] = state.self_target
+    if state.codex_model:
+        manifest["codex_model"] = state.codex_model
+    if state.codex_reasoning:
+        manifest["codex_reasoning"] = state.codex_reasoning
     if state.body_text:
         manifest["pr_body_path"] = str(state.body_path)
         manifest["pr_body_hash"] = file_hash(state.body_path)
@@ -593,6 +638,10 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
         }
         if state.self_target:
             payload["self_target"] = state.self_target
+        if state.codex_model:
+            payload["codex_model"] = state.codex_model
+        if state.codex_reasoning:
+            payload["codex_reasoning"] = state.codex_reasoning
         json.dump(payload, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")
         return
@@ -605,6 +654,10 @@ def emit_success(mode: str, manifest_path: Path, state: ValidationState, pr_body
     sys.stdout.write(f"branch={state.branch}\n")
     sys.stdout.write(f"title={state.title}\n")
     sys.stdout.write(f"codex_profile={state.codex_profile}\n")
+    if state.codex_model:
+        sys.stdout.write(f"codex_model={state.codex_model}\n")
+    if state.codex_reasoning:
+        sys.stdout.write(f"codex_reasoning={state.codex_reasoning}\n")
     sys.stdout.write(f"submit_mode={state.submit_mode}\n")
     sys.stdout.write(f"handoff_mode={state.handoff_mode}\n")
     if state.self_target:
@@ -662,6 +715,8 @@ def main(argv: list[str]) -> int:
         branch=str(parsed["branch"]),
         title=str(parsed["title"]),
         codex_profile=str(parsed["codex_profile"]),
+        codex_model=str(parsed.get("codex_model", "")),
+        codex_reasoning=str(parsed.get("codex_reasoning", "")),
         submit_mode=str(parsed["submit_mode"]),
         commit_message=str(parsed["commit_message"]),
         handoff_mode=parsed_mode,

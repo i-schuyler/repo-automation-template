@@ -10,7 +10,9 @@
 - writes `codex.stdout`, `codex.stderr`, `codex-final.txt`, `codex-final-output-block.txt`, and `codex-run-summary.txt` into the requested out-dir when final-output capture succeeds
 - supports `--quiet` and `--explain`
 - records `resume_mode=fresh` or `resume_mode=resume` in `codex-run-summary.txt`
-- forwards supported `--cd`, `--sandbox`, and `--profile` controls into resume mode
+- records requested model/reasoning in `codex-run-summary.txt` when they are supplied
+- forwards supported `--cd`, `--sandbox`, `--profile`, `--model`, and reasoning controls into resume mode
+- accepts optional `--model=<model-name>` and `--reasoning=<low|medium|high>` inputs, then forwards them to `codex exec` using supported CLI/config overrides
 - does not pass an approval-policy flag to `codex exec`; it relies on the selected sandbox mode and avoids dangerous bypass flags
 - does not implement `--json` in this slice
 

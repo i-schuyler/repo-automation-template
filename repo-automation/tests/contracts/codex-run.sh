@@ -151,7 +151,12 @@ codex_run_contract_main_impl() {
   resume_out_dir="$smoke_test_base/codex-run-resume"
   resume_custom_out_dir="$smoke_test_base/codex-run-resume-custom"
   resume_custom_cd_dir="$contract_root/resume-cd"
+  model_out_dir="$smoke_test_base/codex-run-model"
+  reasoning_out_dir="$smoke_test_base/codex-run-reasoning"
+  model_reasoning_out_dir="$smoke_test_base/codex-run-model-reasoning"
   invalid_resume_out_dir="$smoke_test_base/codex-run-invalid-resume"
+  invalid_model_out_dir="$smoke_test_base/codex-run-invalid-model"
+  invalid_reasoning_out_dir="$smoke_test_base/codex-run-invalid-reasoning"
   child_fail_out_dir="$smoke_test_base/codex-run-child-fail"
   missing_final_out_dir="$smoke_test_base/codex-run-missing-final"
   empty_final_out_dir="$smoke_test_base/codex-run-empty-final"
@@ -342,6 +347,72 @@ EOF
   fi
 
   if (
+    rm -rf -- "$model_out_dir" &&
+      mkdir -p "$model_out_dir" &&
+      FAKE_CODEX_LOG_FILE="$codex_log" \
+      FAKE_CODEX_ARGS_FILE="$args_log" \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$model_out_dir" --model=gpt-5.4-mini >"$stdout_file" 2>"$stderr_file" &&
+      codex_run_contract_assert_text "$stdout_file" "$(printf 'pass
+final_output_path=%s/codex-run-model/codex-final.txt
+summary_path=%s/codex-run-model/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")" &&
+      codex_run_contract_assert_empty "$stderr_file" &&
+      codex_run_contract_assert_grep '--model' "$args_log" &&
+      codex_run_contract_assert_grep 'gpt-5.4-mini' "$args_log" &&
+      codex_run_contract_assert_grep 'requested_model=gpt-5.4-mini' "$model_out_dir/codex-run-summary.txt"
+  ); then
+    :
+  else
+    test_fail "model-forwarding"
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$reasoning_out_dir" &&
+      mkdir -p "$reasoning_out_dir" &&
+      FAKE_CODEX_LOG_FILE="$codex_log" \
+      FAKE_CODEX_ARGS_FILE="$args_log" \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$reasoning_out_dir" --reasoning=medium >"$stdout_file" 2>"$stderr_file" &&
+      codex_run_contract_assert_text "$stdout_file" "$(printf 'pass
+final_output_path=%s/codex-run-reasoning/codex-final.txt
+summary_path=%s/codex-run-reasoning/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")" &&
+      codex_run_contract_assert_empty "$stderr_file" &&
+      codex_run_contract_assert_grep '-c' "$args_log" &&
+      codex_run_contract_assert_grep 'collaboration_mode.settings.reasoning_effort=medium' "$args_log" &&
+      codex_run_contract_assert_grep 'requested_reasoning=medium' "$reasoning_out_dir/codex-run-summary.txt"
+  ); then
+    :
+  else
+    test_fail "reasoning-forwarding"
+    status=1
+  fi
+
+  if (
+    rm -rf -- "$model_reasoning_out_dir" &&
+      mkdir -p "$model_reasoning_out_dir" &&
+      FAKE_CODEX_LOG_FILE="$codex_log" \
+      FAKE_CODEX_ARGS_FILE="$args_log" \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$model_reasoning_out_dir" --model=gpt-5.4-mini --reasoning=high --explain >"$stdout_file" 2>"$stderr_file" &&
+      codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run requested_model=gpt-5.4-mini' "$stderr_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run requested_reasoning=high' "$stderr_file" &&
+      codex_run_contract_assert_grep 'requested_model=gpt-5.4-mini' "$model_reasoning_out_dir/codex-run-summary.txt" &&
+      codex_run_contract_assert_grep 'requested_reasoning=high' "$model_reasoning_out_dir/codex-run-summary.txt" &&
+      codex_run_contract_assert_grep '--model' "$args_log" &&
+      codex_run_contract_assert_grep 'gpt-5.4-mini' "$args_log" &&
+      codex_run_contract_assert_grep '-c' "$args_log" &&
+      codex_run_contract_assert_grep 'collaboration_mode.settings.reasoning_effort=high' "$args_log" &&
+      codex_run_contract_assert_grep '===== FINAL SUMMARY =====' "$stderr_file"
+  ); then
+    :
+  else
+    test_fail "model-reasoning-explain-forwarding"
+    status=1
+  fi
+
+  if (
     rm -rf -- "$quiet_out_dir" &&
       mkdir -p "$quiet_out_dir" &&
       # --quiet quiet success
@@ -485,6 +556,28 @@ PY
     status=1
   else
     codex_run_contract_assert_grep 'invalid profile: bad profile' "$stderr_file" || { test_fail "invalid-profile"; status=1; }
+  fi
+
+  if (
+    PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$invalid_model_out_dir" --model='bad model' >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "invalid-model"
+    status=1
+  else
+    codex_run_contract_assert_grep 'invalid flag value' "$stderr_file" || { test_fail "invalid-model"; status=1; }
+    codex_run_contract_assert_grep '--model' "$stderr_file" || { test_fail "invalid-model"; status=1; }
+  fi
+
+  if (
+    PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$invalid_reasoning_out_dir" --reasoning=extreme >"$stdout_file" 2>"$stderr_file"
+  ); then
+    test_fail "invalid-reasoning"
+    status=1
+  else
+    codex_run_contract_assert_grep 'invalid flag value' "$stderr_file" || { test_fail "invalid-reasoning"; status=1; }
+    codex_run_contract_assert_grep '--reasoning' "$stderr_file" || { test_fail "invalid-reasoning"; status=1; }
   fi
 
   if (
