@@ -64,8 +64,11 @@ After Codex completes, `slice-handoff --submit` also captures `repo-automation/b
 | dry-run | `repo-flow-submit-all` | yes | validate PR body and preview submit plan; no execution |
 | execution | `repo-flow-submit-all` | no | preflight -> codex-run -> stop before submit |
 | execution | `repo-flow-submit-all` | yes | preflight -> codex-run -> pr-body-check -> repo-flow submit -> stop before merge |
-| implementation resume | `implementation` | no | validate `codex_session: resume` -> preflight -> codex-run --resume-session-id=<id> -> stop before submit |
+| execution (implementation resume) | unset | no | validate `handoff_mode: implementation` + `codex_session: resume` + `codex_session_id=<id>` -> preflight -> codex-run --resume-session-id=<id> -> stop before submit |
+| execution (implementation resume) | `repo-flow-submit-all` | yes | validate `handoff_mode: implementation` + `codex_session: resume` + `codex_session_id=<id>` -> preflight -> codex-run --resume-session-id=<id> -> pr-body-check -> repo-flow submit -> stop before merge |
 | repair execution | `repo-flow-submit-all` | yes | validate repair metadata -> verify existing open PR branch -> resume Codex -> pr-body-check -> replace existing PR body and resubmit/watch -> stop before merge |
+
+Implementation resume is a fresh run on a fresh branch with an existing Codex session. It does not use repair preflight or replace-body behavior.
 
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
