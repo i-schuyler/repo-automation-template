@@ -272,6 +272,11 @@ EOF
 
 Smoke fixture checklist notes.
 EOF
+    cat > docs/SURFACE_MAP.md <<'EOF'
+# Surface Map
+
+Smoke fixture surface map notes.
+EOF
     cat > docs/INDEX.md <<EOF
 # Docs Index
 
@@ -279,6 +284,7 @@ EOF
 - [Changelog](../CHANGELOG.md)
 - [Contributing](../CONTRIBUTING.md)
 - [Support](../SUPPORT.md)
+- [Surface Map](../docs/SURFACE_MAP.md)
 - [Decisions](../docs/DECISIONS.md)
 - [Known Limitations](../docs/KNOWN_LIMITATIONS.md)
 - [Downstream Feedback](../docs/DOWNSTREAM_FEEDBACK.md)

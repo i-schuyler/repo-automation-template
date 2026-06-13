@@ -69,6 +69,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 ## Per-Slice Signals
 
 - 2026-06-13 / PR #252 preflight JSON stop_reason repair / ids=none / score_delta=0 / signal=public-safe repair-loop note only; nonzero preflight JSON output now carries a useful `stop_reason`
+- 2026-06-13 / PR #253 submit/watch failure output closure / ids=slice-handoff-contract-opacity / score_delta=0 / signal=added FINAL SUMMARY + CODEX RUN CONTEXT on repo-flow-submit failure and kept PR review request suppressed
 
 - 2026-06-11 / copied-helper self-target contract / ids=none / score_delta=+2 / signal=implemented explicit copied-helper self-target orchestration with snapshot metadata, snapshot re-exec, and cleanup-safe snapshot permissions
 - 2026-06-11 / validation-manifest downstream enforcement / ids=none / score_delta=0 / signal=codex-slice-preflight now validates supplied slice-validator manifests while keeping standalone preflight optional
