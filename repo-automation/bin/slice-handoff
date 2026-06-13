@@ -1013,6 +1013,14 @@ slice_handoff_child_failure_excerpt() {
   printf '%s\n' "$excerpt"
 }
 
+slice_handoff_codex_run_failure_summary_value() {
+  local summary_path="$1"
+  local field="$2"
+
+  [ -s "$summary_path" ] || return 1
+  slice_handoff_field_value "$summary_path" "$field"
+}
+
 slice_handoff_extract_final_summary_field() {
   local file="$1"
   local field="$2"
@@ -1098,6 +1106,49 @@ slice_handoff_print_execution_blocker() {
   printf '  exit_code: %s\n' "$exit_code" >&2
   printf '  stdout: %s\n' "$stdout_path" >&2
   printf '  stderr: %s\n' "$stderr_path" >&2
+  printf '  command:\n' >&2
+  printf '    %s\n' "$command_summary" >&2
+}
+
+slice_handoff_print_codex_run_failure_blocker() {
+  local command_summary="$1"
+  local exit_code="$2"
+  local stdout_path="$3"
+  local stderr_path="$4"
+  local reason="$5"
+  local fix="$6"
+  local next_action="${7:-}"
+  local child_summary="${8:-}"
+  local child_failure_log="${9:-}"
+  local child_failure_artifact="${10:-}"
+  local child_failure_excerpt="${11:-}"
+
+  if [ -z "$next_action" ]; then
+    next_action="$(slice_handoff_execution_next_action "codex-run")"
+  fi
+
+  printf 'fail: codex-run failed\n' >&2
+  printf 'reason: %s\n' "$reason" >&2
+  printf 'fix: %s\n' "$fix" >&2
+  printf 'next: %s\n' "$next_action" >&2
+  printf 'details:\n' >&2
+  printf '  step: %s\n' 'codex-run' >&2
+  printf '  command_class: %s\n' "$(slice_handoff_execution_command_class "codex-run")" >&2
+  printf '  exit_code: %s\n' "$exit_code" >&2
+  printf '  stdout: %s\n' "$stdout_path" >&2
+  printf '  stderr: %s\n' "$stderr_path" >&2
+  if [ -n "$child_summary" ]; then
+    printf '  child_summary: %s\n' "$child_summary" >&2
+  fi
+  if [ -n "$child_failure_log" ]; then
+    printf '  child_failure_log: %s\n' "$child_failure_log" >&2
+  fi
+  if [ -n "$child_failure_artifact" ]; then
+    printf '  child_failure_artifact: %s\n' "$child_failure_artifact" >&2
+  fi
+  if [ -n "$child_failure_excerpt" ]; then
+    printf '  child_failure_excerpt: %s\n' "$child_failure_excerpt" >&2
+  fi
   printf '  command:\n' >&2
   printf '    %s\n' "$command_summary" >&2
 }
@@ -1654,9 +1705,40 @@ slice_handoff_validate_codex_run_output() {
   local codex_final_output_path="$8"
 
   if [ "$exit_code" -ne 0 ]; then
+    local child_summary=""
+    local child_failure_reason=""
+    local child_failure_fix=""
+    local child_failure_log=""
+    local child_failure_artifact=""
+    local child_failure_excerpt=""
+    local reason=""
+    local fix=""
     local excerpt=""
-    excerpt="$(slice_handoff_child_failure_excerpt "" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
-    slice_handoff_print_execution_blocker "codex-run" "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$excerpt"
+
+    if [ -s "$codex_run_summary_path" ]; then
+      child_summary="$codex_run_summary_path"
+      child_failure_reason="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_reason 2>/dev/null || true)"
+      child_failure_fix="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_fix 2>/dev/null || true)"
+      child_failure_log="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_log 2>/dev/null || true)"
+      child_failure_artifact="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_artifact 2>/dev/null || true)"
+      child_failure_excerpt="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_excerpt 2>/dev/null || true)"
+    fi
+    reason="$child_failure_reason"
+    if [ -z "$reason" ]; then
+      reason="$(slice_handoff_child_failure_excerpt "" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
+    fi
+    fix="$child_failure_fix"
+    if [ -z "$fix" ]; then
+      fix="$(slice_handoff_execution_failure_fix "codex-run" "$reason")"
+    fi
+    excerpt="$child_failure_excerpt"
+    if [ -z "$excerpt" ]; then
+      excerpt="$(slice_handoff_child_failure_excerpt "$reason" "$stdout_path" "$stderr_path" "codex-run exited nonzero")"
+    fi
+    if [ -z "$child_failure_log" ]; then
+      child_failure_log="$stderr_path"
+    fi
+    slice_handoff_print_codex_run_failure_blocker "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$reason" "$fix" "" "$child_summary" "$child_failure_log" "$child_failure_artifact" "$excerpt"
     return 1
   fi
 

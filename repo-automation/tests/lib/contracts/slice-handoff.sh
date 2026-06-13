@@ -442,6 +442,11 @@ stderr_text="${FAKE_CODEX_RUN_STDERR_TEXT:-}"
 exit_code="${FAKE_CODEX_RUN_EXIT_CODE:-0}"
 skip_final_output="${FAKE_CODEX_RUN_SKIP_FINAL_OUTPUT:-0}"
 args_file="${FAKE_CODEX_RUN_ARGS_FILE:-}"
+failure_reason="${FAKE_CODEX_RUN_FAILURE_REASON:-}"
+failure_fix="${FAKE_CODEX_RUN_FAILURE_FIX:-}"
+failure_log="${FAKE_CODEX_RUN_FAILURE_LOG:-}"
+failure_artifact="${FAKE_CODEX_RUN_FAILURE_ARTIFACT:-}"
+failure_excerpt="${FAKE_CODEX_RUN_FAILURE_EXCERPT:-}"
 final_text=""
 out_dir=""
 prev=""
@@ -494,19 +499,44 @@ if [ -n "$out_dir" ]; then
   if [ -n "$stdout_text" ]; then
     stdout_text="$(printf '%s\nfinal_output_path=%s\nsummary_path=%s' "$stdout_text" "$final_output_path" "$summary_path")"
   fi
-  {
-    printf 'script=codex-run\n'
-    printf 'result=pass\n'
-    printf 'exit_code=0\n'
-    printf 'final_output_path=%s\n' "$final_output_path"
-    if [ "$skip_final_output" -eq 0 ]; then
-      printf 'final_output_status=present\n'
-    else
+  if [ "$exit_code" -ne 0 ]; then
+    {
+      printf 'script=codex-run\n'
+      printf 'result=fail\n'
+      printf 'exit_code=%s\n' "$exit_code"
+      printf 'final_output_path=%s\n' "$final_output_path"
       printf 'final_output_status=missing\n'
+      if [ -n "$failure_reason" ]; then
+        printf 'failure_reason=%s\n' "$failure_reason"
+      fi
+      if [ -n "$failure_fix" ]; then
+        printf 'failure_fix=%s\n' "$failure_fix"
+      fi
+      if [ -n "$failure_log" ]; then
+        printf 'failure_log=%s\n' "$failure_log"
+      fi
+      if [ -n "$failure_artifact" ]; then
+        printf 'failure_artifact=%s\n' "$failure_artifact"
+      fi
+      if [ -n "$failure_excerpt" ]; then
+        printf 'failure_excerpt=%s\n' "$failure_excerpt"
+      fi
+    } > "$summary_path"
+  else
+    {
+      printf 'script=codex-run\n'
+      printf 'result=pass\n'
+      printf 'exit_code=0\n'
+      printf 'final_output_path=%s\n' "$final_output_path"
+      if [ "$skip_final_output" -eq 0 ]; then
+        printf 'final_output_status=present\n'
+      else
+        printf 'final_output_status=missing\n'
+      fi
+    } > "$summary_path"
+    if [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
+      printf '%s\n' "$final_text" > "$final_output_path"
     fi
-  } > "$summary_path"
-  if [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
-    printf '%s\n' "$final_text" > "$final_output_path"
   fi
 fi
 

@@ -26,6 +26,7 @@ First-read docs:
 - [Managed Files](../repo-automation/docs/managed-files.md)
 - [Config Schema](../repo-automation/docs/config-schema.md)
 - [Workflow State Machine](../repo-automation/docs/workflow-state-machine.md)
+- [Slice Handoff](../repo-automation/docs/slice-handoff.md)
 
 ## Maintainer and reference surfaces
 
@@ -39,7 +40,6 @@ First-read docs:
 
 ## Planned and deferred work
 
-- [Slice Handoff](../repo-automation/docs/slice-handoff.md)
 - package-manager install
 - release bundles
 - subtree mode

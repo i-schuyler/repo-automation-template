@@ -57,6 +57,7 @@ Material note:
 
 Material note:
 - When Codex has already run successfully, repo-flow submit/watch failures should still print FINAL SUMMARY and CODEX RUN CONTEXT so the operator can continue the same-branch CI repair without losing session context.
+- If codex-run writes a failure summary, slice-handoff should prefer the child summary reason/fix/log/excerpt over generic stderr greps so the parent blocker stays actionable.
 
 ### 2026-06-09 codex-run resume-session final-output contract repair
 

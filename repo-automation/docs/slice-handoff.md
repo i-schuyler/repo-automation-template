@@ -14,6 +14,8 @@ The non-executing mode is `--dry-run`.
 
 `--explain` is supported and prints operator-visible INFO progress plus a repo-style FINAL SUMMARY block. In successful submit mode, the visible order is `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`, and explain mode does not append an unlabeled trailing machine block. The rendered PR REVIEW REQUEST starts with compact Review metadata (`PR`, `Branch`, `Run dir`, `Commit`, `CI`, `Review request valid`) so an operator can paste it directly back into ChatGPT for PR review. In execution mode, `--explain` may also surface a CODEX FINAL OUTPUT block after Codex completes. When `--quiet` and `--explain` are supplied together, `--explain` takes precedence for visibility.
 
+If `repo-flow submit` fails after Codex has already run, `slice-handoff --submit --explain` prints a failure blocker, `FINAL SUMMARY` with `repo_flow_submit=fail`, and `CODEX RUN CONTEXT`, while suppressing `PR REVIEW REQUEST`.
+
 `slice-handoff --repair` is for existing PR repair/resume lanes. It still refuses prompts that would edit the active helper itself (`repo-automation/bin/slice-handoff`) before it creates a run dir or starts preflight unless the validation envelope explicitly opts into copied-helper self-targeting with `self_target: copied-helper`.
 
 ## Copied-helper/self-target contract
