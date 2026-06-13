@@ -21,6 +21,7 @@ set -u
 log_file="${FAKE_CODEX_LOG_FILE:-}"
 stdin_file="${FAKE_CODEX_STDIN_FILE:-}"
 args_file="${FAKE_CODEX_ARGS_FILE:-}"
+cwd_file="${FAKE_CODEX_CWD_FILE:-}"
 exit_code="${FAKE_CODEX_EXIT_CODE:-0}"
 final_text="${FAKE_CODEX_FINAL_TEXT:-fake final output}"
 stdout_text="${FAKE_CODEX_STDOUT_TEXT:-}"
@@ -31,6 +32,8 @@ final_chmod="${FAKE_CODEX_FINAL_CHMOD:-}"
 capture_stdin="${FAKE_CODEX_CAPTURE_STDIN:-1}"
 output_last_message=""
 prev=""
+mode=""
+is_resume=0
 
 if [ -n "$args_file" ]; then
   printf '%s\n' "$@" > "$args_file"
@@ -40,6 +43,10 @@ for arg in "$@"; do
   if [ -n "$prev" ]; then
     case "$prev" in
       --output-last-message)
+        if [ "$is_resume" -eq 1 ] 2>/dev/null; then
+          printf "error: unexpected argument '%s' found\n" "$prev" >&2
+          exit 2
+        fi
         output_last_message="$arg"
         ;;
     esac
@@ -47,11 +54,29 @@ for arg in "$@"; do
     continue
   fi
   case "$arg" in
+    exec)
+      mode="exec"
+      ;;
+    resume)
+      if [ "$mode" = "exec" ]; then
+        is_resume=1
+      fi
+      ;;
     --output-last-message)
       prev="$arg"
       ;;
+    --cd|--sandbox|--profile|--model|-c|-C|--output-last-message)
+      if [ "$is_resume" -eq 1 ] 2>/dev/null; then
+        printf "error: unexpected argument '%s' found\n" "$arg" >&2
+        exit 2
+      fi
+      ;;
   esac
 done
+
+if [ -n "$cwd_file" ]; then
+  pwd > "$cwd_file"
+fi
 
 if [ "$capture_stdin" -eq 1 ] 2>/dev/null && [ -n "$stdin_file" ]; then
   cat > "$stdin_file"
@@ -144,6 +169,7 @@ codex_run_contract_main_impl() {
   invalid_profile_prompt="$contract_root/invalid-profile-prompt.txt"
   stdin_log="$contract_root/codex.stdin"
   args_log="$contract_root/codex.args"
+  cwd_log="$contract_root/codex.cwd"
   codex_log="$contract_root/codex.log"
   default_out_dir="$smoke_test_base/codex-run-default"
   explain_out_dir="$smoke_test_base/codex-run-explain"
@@ -177,7 +203,7 @@ codex_run_contract_main_impl() {
 
   expected_default_stdout="$(printf 'pass\nfinal_output_path=%s/codex-run-default/codex-final.txt\nsummary_path=%s/codex-run-default/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")"
   expected_default_summary="$(printf 'script=codex-run\nresult=pass\nexit_code=0\nprompt_file=%s\nresume_mode=fresh\nresume_session_id=\nout_dir=%s/codex-run-default\ncd=%s\nprofile=default\nsandbox=workspace-write\ntimeout=0\ntimeout_enforced=not_enforced\ncodex_path=%s/codex\nstdout_path=%s/codex.stdout\nstderr_path=%s/codex.stderr\nfinal_output_path=%s/codex-run-default/codex-final.txt\nfinal_output_status=present\ncodex_final_output_block_path=%s/codex-run-default/codex-final-output-block.txt' "$prompt_file" "$smoke_test_base" "$repo_root" "$fake_bin_dir" "$smoke_test_base/codex-run-default" "$smoke_test_base/codex-run-default" "$smoke_test_base" "$smoke_test_base")"
-  expected_resume_summary="$(printf 'script=codex-run\nresult=pass\nexit_code=0\nprompt_file=%s\nresume_mode=resume\nresume_session_id=session-123\nout_dir=%s/codex-run-resume\ncd=%s\nprofile=default\nsandbox=workspace-write\ntimeout=0\ntimeout_enforced=not_enforced\ncodex_path=%s/codex\nstdout_path=%s/codex.stdout\nstderr_path=%s/codex.stderr\nfinal_output_path=%s/codex-run-resume/codex-final.txt\nfinal_output_status=present\ncodex_final_output_block_path=%s/codex-run-resume/codex-final-output-block.txt' "$prompt_file" "$smoke_test_base" "$repo_root" "$fake_bin_dir" "$smoke_test_base/codex-run-resume" "$smoke_test_base/codex-run-resume" "$smoke_test_base" "$smoke_test_base")"
+  expected_resume_summary="$(printf 'script=codex-run\nresult=pass\nexit_code=0\nprompt_file=%s\nresume_mode=resume\nresume_session_id=session-123\nout_dir=%s/codex-run-resume\nresume_workdir=%s\nrequested_profile=default\nrequested_sandbox=workspace-write\ntimeout=0\ntimeout_enforced=not_enforced\ncodex_path=%s/codex\nstdout_path=%s/codex.stdout\nstderr_path=%s/codex.stderr\nfinal_output_path=%s/codex-run-resume/codex-final.txt\nfinal_output_status=present\ncodex_final_output_block_path=%s/codex-run-resume/codex-final-output-block.txt' "$prompt_file" "$smoke_test_base" "$repo_root" "$fake_bin_dir" "$smoke_test_base/codex-run-resume" "$smoke_test_base/codex-run-resume" "$smoke_test_base" "$smoke_test_base")"
   expected_explain_summary="$(cat <<EOF
 script=codex-run
 mode=run
@@ -235,7 +261,13 @@ EOF
   if (
     rm -rf -- "$resume_out_dir" &&
       mkdir -p "$resume_out_dir" &&
-      FAKE_CODEX_STDOUT_TEXT='resume stdout from fake codex'       FAKE_CODEX_STDERR_TEXT='resume stderr from fake codex'       FAKE_CODEX_FINAL_TEXT='resume final output from fake codex'       FAKE_CODEX_LOG_FILE="$codex_log"       FAKE_CODEX_ARGS_FILE="$args_log"       PATH="$fake_bin_dir:$PATH"       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$resume_out_dir" --resume-session-id=session-123 >"$stdout_file" 2>"$stderr_file" &&
+      FAKE_CODEX_STDOUT_TEXT='resume final output from fake codex' \
+      FAKE_CODEX_STDERR_TEXT='resume stderr from fake codex' \
+      FAKE_CODEX_LOG_FILE="$codex_log" \
+      FAKE_CODEX_ARGS_FILE="$args_log" \
+      FAKE_CODEX_CWD_FILE="$cwd_log" \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$resume_out_dir" --resume-session-id=session-123 >"$stdout_file" 2>"$stderr_file" &&
       codex_run_contract_assert_text "$stdout_file" "$(printf 'pass
 final_output_path=%s/codex-run-resume/codex-final.txt
 summary_path=%s/codex-run-resume/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")" &&
@@ -247,18 +279,13 @@ resume final output from fake codex
 ===== END CODEX FINAL OUTPUT =====
 EOF
 )" &&
-      codex_run_contract_assert_text "$resume_out_dir/codex.stdout" 'resume stdout from fake codex' &&
+      codex_run_contract_assert_text "$resume_out_dir/codex.stdout" 'resume final output from fake codex' &&
       codex_run_contract_assert_text "$resume_out_dir/codex.stderr" 'resume stderr from fake codex' &&
       codex_run_contract_assert_text "$resume_out_dir/codex-run-summary.txt" "$expected_resume_summary" &&
+      codex_run_contract_assert_text "$cwd_log" "$repo_root" &&
       codex_run_contract_assert_text "$args_log" "$(cat <<EOF
 exec
 resume
---cd
-$repo_root
---sandbox
-workspace-write
---output-last-message
-$resume_out_dir/codex-final.txt
 session-123
 run codex-run smoke prompt
 EOF
@@ -292,11 +319,20 @@ EOF
     rm -rf -- "$resume_custom_out_dir" &&
       mkdir -p "$resume_custom_out_dir" &&
       mkdir -p "$resume_custom_cd_dir" &&
-      FAKE_CODEX_STDOUT_TEXT='resume stdout with custom options'       FAKE_CODEX_STDERR_TEXT='resume stderr with custom options'       FAKE_CODEX_FINAL_TEXT='resume final output with custom options'       FAKE_CODEX_LOG_FILE="$codex_log"       FAKE_CODEX_ARGS_FILE="$args_log"       PATH="$fake_bin_dir:$PATH"       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$resume_custom_out_dir" --resume-session-id=session-123 --profile=resume-profile --cd="$resume_custom_cd_dir" --sandbox=read-only >"$stdout_file" 2>"$stderr_file" &&
-      codex_run_contract_assert_text "$stdout_file" "$(printf 'pass
-final_output_path=%s/codex-run-resume-custom/codex-final.txt
-summary_path=%s/codex-run-resume-custom/codex-run-summary.txt' "$smoke_test_base" "$smoke_test_base")" &&
-      codex_run_contract_assert_empty "$stderr_file" &&
+      FAKE_CODEX_STDOUT_TEXT='resume final output with custom options' \
+      FAKE_CODEX_STDERR_TEXT='resume stderr with custom options' \
+      FAKE_CODEX_LOG_FILE="$codex_log" \
+      FAKE_CODEX_ARGS_FILE="$args_log" \
+      FAKE_CODEX_CWD_FILE="$cwd_log" \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$resume_custom_out_dir" --resume-session-id=session-123 --profile=resume-profile --cd="$resume_custom_cd_dir" --sandbox=read-only --model=gpt-5.4-mini --reasoning=high --explain >"$stdout_file" 2>"$stderr_file" &&
+      codex_run_contract_assert_empty "$stdout_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run requested_profile=resume-profile requested_sandbox=read-only timeout=0' "$stderr_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run requested_model=gpt-5.4-mini' "$stderr_file" &&
+      codex_run_contract_assert_grep 'INFO: codex-run requested_reasoning=high' "$stderr_file" &&
+      codex_run_contract_assert_grep 'requested_profile=resume-profile' "$stderr_file" &&
+      codex_run_contract_assert_grep 'requested_sandbox=read-only' "$stderr_file" &&
+      codex_run_contract_assert_grep 'resume_workdir='"$resume_custom_cd_dir" "$stderr_file" &&
       codex_run_contract_assert_text "$resume_custom_out_dir/codex-final.txt" 'resume final output with custom options' &&
       codex_run_contract_assert_text "$resume_custom_out_dir/codex-final-output-block.txt" "$(cat <<'EOF'
 ===== CODEX FINAL OUTPUT =====
@@ -304,7 +340,7 @@ resume final output with custom options
 ===== END CODEX FINAL OUTPUT =====
 EOF
 )" &&
-      codex_run_contract_assert_text "$resume_custom_out_dir/codex.stdout" 'resume stdout with custom options' &&
+      codex_run_contract_assert_text "$resume_custom_out_dir/codex.stdout" 'resume final output with custom options' &&
       codex_run_contract_assert_text "$resume_custom_out_dir/codex.stderr" 'resume stderr with custom options' &&
       codex_run_contract_assert_text "$resume_custom_out_dir/codex-run-summary.txt" "$(printf 'script=codex-run
 result=pass
@@ -313,9 +349,11 @@ prompt_file=%s
 resume_mode=resume
 resume_session_id=session-123
 out_dir=%s/codex-run-resume-custom
-cd=%s
-profile=resume-profile
-sandbox=read-only
+resume_workdir=%s
+requested_profile=resume-profile
+requested_sandbox=read-only
+requested_model=gpt-5.4-mini
+requested_reasoning=high
 timeout=0
 timeout_enforced=not_enforced
 codex_path=%s/codex
@@ -324,17 +362,10 @@ stderr_path=%s/codex.stderr
 final_output_path=%s/codex-run-resume-custom/codex-final.txt
 final_output_status=present
 codex_final_output_block_path=%s/codex-run-resume-custom/codex-final-output-block.txt' "$prompt_file" "$smoke_test_base" "$resume_custom_cd_dir" "$fake_bin_dir" "$smoke_test_base/codex-run-resume-custom" "$smoke_test_base/codex-run-resume-custom" "$smoke_test_base" "$smoke_test_base")" &&
+      codex_run_contract_assert_text "$cwd_log" "$resume_custom_cd_dir" &&
       codex_run_contract_assert_text "$args_log" "$(cat <<EOF
 exec
 resume
---profile
-resume-profile
---cd
-$resume_custom_cd_dir
---sandbox
-read-only
---output-last-message
-$resume_custom_out_dir/codex-final.txt
 session-123
 run codex-run smoke prompt
 EOF
@@ -630,7 +661,10 @@ child failure line two' \
   fi
 
   if (
-    FAKE_CODEX_WRITE_FINAL=0       FAKE_CODEX_STDOUT_TEXT='resume stdout without final file'       PATH="$fake_bin_dir:$PATH"       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$missing_final_out_dir" --resume-session-id=session-123 >"$stdout_file" 2>"$stderr_file"
+    FAKE_CODEX_WRITE_FINAL=0 \
+      FAKE_CODEX_STDOUT_TEXT='' \
+      PATH="$fake_bin_dir:$PATH" \
+      repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$missing_final_out_dir" --resume-session-id=session-123 >"$stdout_file" 2>"$stderr_file"
   ); then
     test_fail "resume-missing-final-output"
     status=1
@@ -642,7 +676,7 @@ child failure line two' \
       codex_run_contract_assert_grep 'fix: use codex exec for non-resume execution or implement a verified resume final-output capture path' "$stderr_file" &&
       codex_run_contract_assert_grep 'failure_code=resume-final-output-contract-failed' "$missing_final_out_dir/codex-run-summary.txt" &&
       codex_run_contract_assert_grep 'failure_step=resume-final-output-contract' "$missing_final_out_dir/codex-run-summary.txt" &&
-      codex_run_contract_assert_not_exists "$missing_final_out_dir/codex-final.txt"; then
+      codex_run_contract_assert_empty "$missing_final_out_dir/codex-final.txt"; then
       :
     else
       test_fail "resume-missing-final-output"
@@ -651,7 +685,8 @@ child failure line two' \
   fi
 
   if (
-    FAKE_CODEX_WRITE_FINAL=0 \
+    rm -rf -- "$missing_final_out_dir" &&
+      FAKE_CODEX_WRITE_FINAL=0 \
       PATH="$fake_bin_dir:$PATH" \
       repo-automation/bin/codex-run --prompt-file="$prompt_file" --out-dir="$missing_final_out_dir" --quiet >"$stdout_file" 2>"$stderr_file"
   ); then
