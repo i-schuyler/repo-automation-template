@@ -145,6 +145,32 @@ codex_run_contract_assert_grep() {
   grep -Fq -- "$needle" "$path"
 }
 
+codex_run_contract_assert_summary_with_elapsed() {
+  local path="$1"
+  local expected_prefix="$2"
+
+  python3 - "$path" "$expected_prefix" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+expected_prefix = sys.argv[2].splitlines()
+actual = path.read_text(encoding='utf-8').splitlines()
+
+if actual[:len(expected_prefix)] != expected_prefix:
+    raise SystemExit(1)
+
+tail = actual[len(expected_prefix):]
+if len(tail) != 2:
+    raise SystemExit(1)
+if not re.fullmatch(r'elapsed_seconds=[0-9]+', tail[0]):
+    raise SystemExit(1)
+if not re.fullmatch(r'elapsed=.+', tail[1]):
+    raise SystemExit(1)
+PY
+}
+
 codex_run_contract_main_impl() {
   # shellcheck disable=SC2154
   local status=0
@@ -238,7 +264,7 @@ EOF
 )" &&
       codex_run_contract_assert_text "$default_out_dir/codex.stdout" 'stdout from fake codex' &&
       codex_run_contract_assert_text "$default_out_dir/codex.stderr" 'stderr from fake codex' &&
-      codex_run_contract_assert_text "$default_out_dir/codex-run-summary.txt" "$expected_default_summary" &&
+      codex_run_contract_assert_summary_with_elapsed "$default_out_dir/codex-run-summary.txt" "$expected_default_summary" &&
       codex_run_contract_assert_text "$stdin_log" 'run codex-run smoke prompt' &&
       codex_run_contract_assert_text "$args_log" "$(cat <<EOF
 exec
@@ -281,7 +307,7 @@ EOF
 )" &&
       codex_run_contract_assert_text "$resume_out_dir/codex.stdout" 'resume final output from fake codex' &&
       codex_run_contract_assert_text "$resume_out_dir/codex.stderr" 'resume stderr from fake codex' &&
-      codex_run_contract_assert_text "$resume_out_dir/codex-run-summary.txt" "$expected_resume_summary" &&
+      codex_run_contract_assert_summary_with_elapsed "$resume_out_dir/codex-run-summary.txt" "$expected_resume_summary" &&
       codex_run_contract_assert_text "$cwd_log" "$repo_root" &&
       codex_run_contract_assert_text "$args_log" "$(cat <<EOF
 exec
@@ -342,7 +368,7 @@ EOF
 )" &&
       codex_run_contract_assert_text "$resume_custom_out_dir/codex.stdout" 'resume final output with custom options' &&
       codex_run_contract_assert_text "$resume_custom_out_dir/codex.stderr" 'resume stderr with custom options' &&
-      codex_run_contract_assert_text "$resume_custom_out_dir/codex-run-summary.txt" "$(printf 'script=codex-run
+      codex_run_contract_assert_summary_with_elapsed "$resume_custom_out_dir/codex-run-summary.txt" "$(printf 'script=codex-run
 result=pass
 exit_code=0
 prompt_file=%s

@@ -42,6 +42,8 @@ codex_run_summary_path=""
 codex_run_exit_code=0
 codex_run_result="pass"
 codex_run_final_output_status="missing"
+codex_run_elapsed_seconds=""
+codex_run_elapsed_summary="unknown"
 codex_run_failure_step=""
 codex_run_failure_code=""
 codex_run_failure_reason=""
@@ -88,6 +90,35 @@ codex_run_is_reasoning_level() {
       ;;
   esac
   return 1
+}
+
+codex_run_format_elapsed_summary() {
+  local total_seconds="${1:-}"
+  local hours=0
+  local minutes=0
+  local seconds=0
+  local parts=()
+
+  case "$total_seconds" in
+    ''|*[!0-9]*)
+      printf '%s' unknown
+      return 0
+      ;;
+  esac
+
+  hours=$((total_seconds / 3600))
+  minutes=$(((total_seconds % 3600) / 60))
+  seconds=$((total_seconds % 60))
+
+  if [ "$hours" -gt 0 ]; then
+    parts+=("${hours}h")
+  fi
+  if [ "$minutes" -gt 0 ]; then
+    parts+=("${minutes}m")
+  fi
+  parts+=("${seconds}s")
+
+  printf '%s' "${parts[*]}"
 }
 
 codex_run_resolve_existing_dir() {
@@ -228,6 +259,10 @@ EOF
     fi
     if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
       printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path"
+    fi
+    if [ -n "$codex_run_elapsed_seconds" ]; then
+      printf 'elapsed_seconds=%s\n' "$codex_run_elapsed_seconds"
+      printf 'elapsed=%s\n' "$codex_run_elapsed_summary"
     fi
   } > "$codex_run_summary_path"
 }
@@ -655,6 +690,7 @@ codex_run_main() {
       printf 'INFO: codex-run executing codex exec resume
 ' >&2
     fi
+    SECONDS=0
     (
       cd "$codex_run_cd_abs" || exit 1
       "${codex_cmd[@]}" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
@@ -681,10 +717,12 @@ codex_run_main() {
       printf 'INFO: codex-run executing codex exec
 ' >&2
     fi
-
+    SECONDS=0
     "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
   fi
   codex_run_exit_code=$?
+  codex_run_elapsed_seconds="$SECONDS"
+  codex_run_elapsed_summary="$(codex_run_format_elapsed_summary "$codex_run_elapsed_seconds")"
 
   if [ "$codex_run_exit_code" -ne 0 ]; then
     codex_run_failure_reason="codex exec exited with status $codex_run_exit_code"

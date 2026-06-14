@@ -59,8 +59,9 @@ smoke_check_slice_handoff_contract_repair_execution() {
   local codex_args="$smoke_test_base/slice-handoff-repair-codex.args"
   local repo_flow_args="$smoke_test_base/slice-handoff-repair-repo-flow.args"
   local fake_bin="$smoke_test_base/slice-handoff-repair-gh"
-  local branch="feature/slice-handoff-repair"
+  local branch=""
 
+  branch="$(git -C "$smoke_repo_root" branch --show-current)" || return 1
   cp -- "$smoke_slice_handoff_execution_valid_submit_file" "$repair_file" || return 1
   python3 - "$repair_file" "$branch" <<'PY' || return 1
 from pathlib import Path
@@ -73,7 +74,7 @@ path.write_text(text, encoding="utf-8")
 PY
   git -C "$smoke_test_dir" branch -D "$branch" >/dev/null 2>&1 || true
   git -C "$smoke_test_dir" branch "$branch" main || return 1
-  git -C "$smoke_test_dir" checkout main >/dev/null 2>&1 || return 1
+  git -C "$smoke_test_dir" checkout "$branch" >/dev/null 2>&1 || return 1
   mkdir -p "$fake_bin" || return 1
   cat >"$fake_bin/gh" <<EOF
 #!/usr/bin/env bash
@@ -690,7 +691,8 @@ PY
       grep -Fxq 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' "$stderr_file" &&
       grep -Fq 'INFO: slice-handoff remaining disk space=' "$stderr_file" &&
       grep -Fq 'INFO: slice-handoff codex-run result=implementation-complete final_output=' "$stderr_file" &&
-      grep -Fq ' work_time=1h 2m 3s' "$stderr_file" &&
+      grep -Fq ' codex_run_elapsed=' "$stderr_file" &&
+      grep -Fq ' codex_session_work_time=1h 2m 3s' "$stderr_file" &&
       grep -Fxq 'INFO: slice-handoff repo-flow submit ci=pass' "$stderr_file" &&
       pr_body_validation_info_prefix='INFO: slice-handoff ' &&
       pr_body_validation_info_suffix='PR-body validation' &&
@@ -975,6 +977,28 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       test_pass "execution-submit codex-run summary failure"
     else
       test_fail "execution-submit codex-run summary failure"
+      status=1
+    fi
+  fi
+
+  smoke_slice_handoff_prepare_execution_submit_context "codex-run-blocker-output" || return 1
+  local codex_run_blocker_text_file="$smoke_slice_handoff_execution_submit_bundle_root/fake-codex-run-blocker.txt"
+  printf 'blocker\nexact failing command: repo-automation/tests/contracts/slice-handoff.sh\nexit code: 1\nrelevant excerpt:\nfail: preflight failed\nsmallest recommended fix: rerun the focused slice-handoff contract\n' > "$codex_run_blocker_text_file" || return 1
+  if (
+    rm -f -- "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" &&
+      smoke_slice_handoff_assert_execution_submit_artifact_bundle "codex-run-blocker-output" "$smoke_slice_handoff_execution_submit_bundle_root" "$smoke_slice_handoff_execution_fake_codex_args_submit_file" "$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" "$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" "$smoke_slice_handoff_execution_fake_codex_run_final_text_file" &&
+      PATH="$smoke_slice_handoff_execution_fake_codex_bin_dir:$PATH" FAKE_CODEX_RUN_HELPER=1 FAKE_CODEX_RUN_EXIT_CODE=1 FAKE_CODEX_ARGS_FILE="$smoke_slice_handoff_execution_fake_codex_args_submit_file" FAKE_CODEX_RUN_STDOUT_TEXT='pass' FAKE_CODEX_RUN_STDERR_TEXT='fail: generic codex-run stderr fallback' FAKE_CODEX_RUN_FINAL_OUTPUT_ON_FAILURE=1 FAKE_CODEX_RUN_FINAL_TEXT_FILE="$codex_run_blocker_text_file" FAKE_PR_BODY_CHECK_ARGS_FILE="$smoke_slice_handoff_execution_fake_pr_body_check_args_submit_file" FAKE_REPO_FLOW_ARGS_FILE="$smoke_slice_handoff_execution_fake_repo_flow_args_submit_file" smoke_slice_handoff_run_with_isolated_temp_env "$smoke_slice_handoff_execution_isolated_tmpdir" "$smoke_slice_handoff_execution_isolated_home" smoke_slice_handoff_run "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-blocker-output.out" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-blocker-output.err" --file="$smoke_slice_handoff_execution_valid_submit_file" --submit --out-dir="$smoke_slice_handoff_execution_submit_out_dir"
+  ); then
+    test_fail "execution-submit codex-run blocker output"
+    status=1
+  else
+    run_dir="$(smoke_slice_handoff_latest_run_dir "$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs" "execution-submit codex-run blocker output")" || return 1
+    if grep -Fxq '===== CODEX FINAL OUTPUT =====' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-blocker-output.err" &&
+      grep -Fq 'exact failing command: repo-automation/tests/contracts/slice-handoff.sh' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-blocker-output.err" &&
+      grep -Fxq 'blocker' "$run_dir/codex-run/codex-final.txt"; then
+      test_pass "execution-submit codex-run blocker output"
+    else
+      test_fail "execution-submit codex-run blocker output"
       status=1
     fi
   fi

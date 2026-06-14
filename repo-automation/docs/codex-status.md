@@ -83,6 +83,7 @@ Field notes:
 - `context.remaining_summary` should be compact human-readable text when calculable, otherwise `unknown`
 - context remaining must never go negative; if the current total exceeds the window, set context fields to null and warn
 - `work_time.total_seconds` and `work_time.summary` should be present when session duration can be read from session metadata or derived from session timestamps; otherwise use `null` and `unknown`
+- `work_time` is session-level cumulative work time for the selected Codex session, and may be reported directly or derived from the session timestamp span; it is not the elapsed duration of a single wrapper invocation when sessions are resumed
 - pretty single-session output should include a `work_time:` line
 - rate limits are separate from token usage and context usage; keep their fields separate in JSON and pretty output
 - `limits.five_hour` and `limits.weekly` should include `used_percent`, `remaining_percent`, `window_minutes`, `state`, and thresholds
@@ -156,6 +157,7 @@ Each `sessions[]` item includes:
 - `context.remaining_summary`
 - `work_time.total_seconds`
 - `work_time.summary`
+- `work_time` remains session/cumulative timing, so recent-session output can be much larger than a single helper run
 - `resume.command`
 - `resume.commands`
 - pretty recent output should include each session's `work_time:` summary

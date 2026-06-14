@@ -72,7 +72,10 @@ slice_handoff_codex_resume_command=""
 slice_handoff_codex_model_name=""
 slice_handoff_codex_model_reasoning=""
 slice_handoff_codex_context_remaining_summary=""
-slice_handoff_codex_work_time_summary=""
+slice_handoff_codex_run_elapsed_seconds=""
+slice_handoff_codex_run_elapsed_summary=""
+slice_handoff_codex_session_work_time_total_seconds=""
+slice_handoff_codex_session_work_time_summary=""
 slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
 slice_handoff_codex_rate_limit_five_hour_resets_at_local=""
 slice_handoff_codex_rate_limit_weekly_remaining_percent=""
@@ -347,8 +350,11 @@ codex_session_id=$slice_handoff_codex_session_id
 codex_resume=$slice_handoff_codex_resume_command
 model=$slice_handoff_codex_model_name / $slice_handoff_codex_model_reasoning
 context=$slice_handoff_codex_context_remaining_summary
+codex_run_elapsed=$slice_handoff_codex_run_elapsed_summary
+codex_run_elapsed_seconds=$slice_handoff_codex_run_elapsed_seconds
+codex_session_work_time=$slice_handoff_codex_session_work_time_summary
+codex_session_work_time_total_seconds=$slice_handoff_codex_session_work_time_total_seconds
 rate_limits=5h $slice_handoff_codex_rate_limit_five_hour_remaining_percent% left resets $slice_handoff_codex_rate_limit_five_hour_resets_at_local; week $slice_handoff_codex_rate_limit_weekly_remaining_percent% left resets $slice_handoff_codex_rate_limit_weekly_resets_at_local
-work_time=$slice_handoff_codex_work_time_summary
 codex_final_result=$slice_handoff_codex_run_context_result
 codex_final_output=$slice_handoff_codex_run_context_final_output
 ===== END CODEX RUN CONTEXT =====
@@ -383,7 +389,11 @@ slice_handoff_collect_codex_run_context() {
   local context_run_id=""
   local context_run_dir=""
   local context_final_output=""
-  local context_work_time=""
+  local context_session_work_time=""
+  local context_session_work_time_total_seconds=""
+  local codex_run_summary_file=""
+  local codex_run_elapsed_seconds=""
+  local codex_run_elapsed_summary=""
 
   json_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-status.XXXXXX.json")" || return 1
   stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-codex-status.XXXXXX.stderr")" || {
@@ -553,6 +563,12 @@ PY
       context=*)
         slice_handoff_codex_context_remaining_summary="${context_value#context=}"
         ;;
+      work_time=*)
+        context_session_work_time="${context_value#work_time=}"
+        ;;
+      work_time_total_seconds=*)
+        context_session_work_time_total_seconds="${context_value#work_time_total_seconds=}"
+        ;;
       codex_rate_limit_five_hour_remaining_percent=*)
         slice_handoff_codex_rate_limit_five_hour_remaining_percent="${context_value#codex_rate_limit_five_hour_remaining_percent=}"
         ;;
@@ -571,19 +587,31 @@ PY
       codex_final_output=*)
         context_final_output="${context_value#codex_final_output=}"
         ;;
-      work_time=*)
-        context_work_time="${context_value#work_time=}"
-        ;;
     esac
   done <<EOF
 $context_values
 EOF
 
+  codex_run_summary_file="${codex_final_output_path%/*}/codex-run-summary.txt"
+  if [ -f "$codex_run_summary_file" ]; then
+    codex_run_elapsed_seconds="$(slice_handoff_field_value "$codex_run_summary_file" elapsed_seconds 2>/dev/null || true)"
+    codex_run_elapsed_summary="$(slice_handoff_field_value "$codex_run_summary_file" elapsed 2>/dev/null || true)"
+  fi
+  if [ -z "$codex_run_elapsed_seconds" ]; then
+    codex_run_elapsed_seconds="unknown"
+  fi
+  if [ -z "$codex_run_elapsed_summary" ]; then
+    codex_run_elapsed_summary="unknown"
+  fi
+
   slice_handoff_codex_run_context_run_id="$context_run_id"
   slice_handoff_codex_run_context_run_dir="$context_run_dir"
   slice_handoff_codex_run_context_final_output="$context_final_output"
   slice_handoff_codex_run_context_result="$context_result"
-  slice_handoff_codex_work_time_summary="${context_work_time:-unknown}"
+  slice_handoff_codex_run_elapsed_seconds="$codex_run_elapsed_seconds"
+  slice_handoff_codex_run_elapsed_summary="$codex_run_elapsed_summary"
+  slice_handoff_codex_session_work_time_total_seconds="${context_session_work_time_total_seconds:-unknown}"
+  slice_handoff_codex_session_work_time_summary="${context_session_work_time:-unknown}"
   slice_handoff_codex_run_context_file="$context_path"
   if [ "$slice_handoff_codex_run_context_run_dir" != "$run_dir" ]; then
     slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "codex-status recent run_dir did not match active run dir" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"
@@ -1890,6 +1918,11 @@ slice_handoff_validate_codex_run_output() {
     if [ -z "$child_failure_log" ]; then
       child_failure_log="$stderr_path"
     fi
+    if slice_handoff_codex_final_output_is_blocker "$codex_final_output_path"; then
+      reason="$(slice_handoff_child_failure_excerpt "" "$codex_final_output_path" "$codex_final_output_path" "codex final output is blocker")"
+      excerpt="$reason"
+      slice_handoff_print_codex_final_output_block "$codex_final_output_path"
+    fi
     slice_handoff_print_codex_run_failure_blocker "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$reason" "$fix" "" "$child_summary" "$child_failure_log" "$child_failure_artifact" "$excerpt"
     return 1
   fi
@@ -2347,7 +2380,7 @@ slice_handoff_run_execution_phase() {
   fi
 
   if [ "$slice_handoff_explain" -eq 1 ]; then
-    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path work_time=$slice_handoff_codex_work_time_summary"
+    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path codex_run_elapsed=$slice_handoff_codex_run_elapsed_summary codex_session_work_time=$slice_handoff_codex_session_work_time_summary"
     slice_handoff_print_codex_final_output_block "$codex_final_output_path"
   fi
 
