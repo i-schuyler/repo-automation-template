@@ -417,6 +417,8 @@ repo_install_main() {
     "repo-automation/docs/testing.md"
     "repo-automation/docs/version-modes.md"
     "repo-automation/docs/output-contract-backlog.md"
+    "repo-automation/lib/failure-diagnosis.sh"
+    "repo-automation/docs/failure-diagnosis-contract.md"
 
   )
   local -a starter_template_files=(

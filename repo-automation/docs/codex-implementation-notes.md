@@ -292,3 +292,13 @@ Recommended improvements:
 - Keep submit-success and blocker subcases from sharing mutable fake Codex/repo-flow artifacts unless the fixture is explicitly reseeded between them.
 - Prefer one scenario-owned fake artifact bundle per execution-submit case so assertions never accidentally read reused state from a later subcase.
 - For sourced libraries, make harness globals visible to ShellCheck in the same function scope that initializes them.
+
+### 2026-06-14 run-tests quiet-failure smoke alignment
+
+Material note:
+- The run-tests quiet-failure contract only reached the intended docs-index diagnostic once the smoke fixture mirrored current public docs (`README.md`, `docs/`, and `LICENSE`), which kept the durable `log:` line and focused-check guidance meaningful.
+
+### 2026-06-14 Failure Diagnosis Contract v1
+
+Material note:
+- PR #259 established a public-safe failure-card contract after repeated child-failure flattening in parent helpers, with source-labeled timing fields and preserved child blocker paths.

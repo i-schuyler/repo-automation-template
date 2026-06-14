@@ -23,6 +23,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   return 2 2>/dev/null || exit 2
 }
 
+# shellcheck source=/dev/null
+. "$script_dir/../lib/failure-diagnosis.sh" || {
+  printf 'STOP: failed to source failure diagnosis library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
 slice_handoff_quiet=0
 slice_handoff_explain=0
 slice_handoff_file=""
@@ -74,6 +80,7 @@ slice_handoff_codex_model_reasoning=""
 slice_handoff_codex_context_remaining_summary=""
 slice_handoff_codex_run_elapsed_seconds=""
 slice_handoff_codex_run_elapsed_summary=""
+slice_handoff_codex_run_failure_card_path=""
 slice_handoff_codex_session_work_time_total_seconds=""
 slice_handoff_codex_session_work_time_summary=""
 slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
@@ -350,10 +357,10 @@ codex_session_id=$slice_handoff_codex_session_id
 codex_resume=$slice_handoff_codex_resume_command
 model=$slice_handoff_codex_model_name / $slice_handoff_codex_model_reasoning
 context=$slice_handoff_codex_context_remaining_summary
-codex_run_elapsed=$slice_handoff_codex_run_elapsed_summary
-codex_run_elapsed_seconds=$slice_handoff_codex_run_elapsed_seconds
-codex_session_work_time=$slice_handoff_codex_session_work_time_summary
-codex_session_work_time_total_seconds=$slice_handoff_codex_session_work_time_total_seconds
+codex_run_invocation_elapsed=$slice_handoff_codex_run_elapsed_summary
+codex_run_invocation_elapsed_seconds=$slice_handoff_codex_run_elapsed_seconds
+codex_status_work_time=$slice_handoff_codex_session_work_time_summary
+codex_status_work_time_total_seconds=$slice_handoff_codex_session_work_time_total_seconds
 rate_limits=5h $slice_handoff_codex_rate_limit_five_hour_remaining_percent% left resets $slice_handoff_codex_rate_limit_five_hour_resets_at_local; week $slice_handoff_codex_rate_limit_weekly_remaining_percent% left resets $slice_handoff_codex_rate_limit_weekly_resets_at_local
 codex_final_result=$slice_handoff_codex_run_context_result
 codex_final_output=$slice_handoff_codex_run_context_final_output
@@ -596,6 +603,7 @@ EOF
   if [ -f "$codex_run_summary_file" ]; then
     codex_run_elapsed_seconds="$(slice_handoff_field_value "$codex_run_summary_file" elapsed_seconds 2>/dev/null || true)"
     codex_run_elapsed_summary="$(slice_handoff_field_value "$codex_run_summary_file" elapsed 2>/dev/null || true)"
+    slice_handoff_codex_run_failure_card_path="$(slice_handoff_field_value "$codex_run_summary_file" failure_card_path 2>/dev/null || true)"
   fi
   if [ -z "$codex_run_elapsed_seconds" ]; then
     codex_run_elapsed_seconds="unknown"
@@ -892,6 +900,7 @@ metadata_path = Path(sys.argv[5])
 relative_files = [
     Path('repo-automation/bin/slice-handoff'),
     Path('repo-automation/lib/common.sh'),
+    Path('repo-automation/lib/failure-diagnosis.sh'),
     Path('repo-automation/lib/operator-output.sh'),
     Path('repo-automation/lib/review-request.sh'),
 ]
@@ -1202,6 +1211,7 @@ slice_handoff_print_codex_run_failure_blocker() {
   local child_failure_log="${9:-}"
   local child_failure_artifact="${10:-}"
   local child_failure_excerpt="${11:-}"
+  local child_failure_card_path="${12:-}"
 
   if [ -z "$next_action" ]; then
     next_action="$(slice_handoff_execution_next_action "codex-run")"
@@ -1229,6 +1239,12 @@ slice_handoff_print_codex_run_failure_blocker() {
   if [ -n "$child_failure_excerpt" ]; then
     printf '  child_failure_excerpt: %s\n' "$child_failure_excerpt" >&2
   fi
+  if [ -n "$child_failure_card_path" ]; then
+    printf '  child_failure_card_path: %s\n' "$child_failure_card_path" >&2
+  fi
+  printf '  child_failure_preserved: %s\n' true >&2
+  printf '  repair_surface: %s\n' slice-handoff >&2
+  printf '  operator_next: %s\n' "$fix" >&2
   printf '  command:\n' >&2
   printf '    %s\n' "$command_summary" >&2
 }
@@ -1505,6 +1521,9 @@ slice_handoff_write_execution_summary() {
     printf 'codex_run_stderr_path=%s\n' "$codex_run_stderr_path"
     printf 'codex_run_summary_path=%s\n' "$codex_run_summary_path"
     printf 'codex_final_output_path=%s\n' "$codex_final_output_path"
+    if [ -n "$slice_handoff_codex_run_failure_card_path" ]; then
+      printf 'codex_run_failure_card_path=%s\n' "$slice_handoff_codex_run_failure_card_path"
+    fi
     if [ -n "$slice_handoff_validation_manifest_file" ]; then
       printf 'validation_manifest_path=%s\n' "$slice_handoff_validation_manifest_file"
     fi
@@ -1890,6 +1909,7 @@ slice_handoff_validate_codex_run_output() {
     local child_failure_fix=""
     local child_failure_log=""
     local child_failure_artifact=""
+    local child_failure_card_path=""
     local child_failure_excerpt=""
     local reason=""
     local fix=""
@@ -1901,6 +1921,7 @@ slice_handoff_validate_codex_run_output() {
       child_failure_fix="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_fix 2>/dev/null || true)"
       child_failure_log="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_log 2>/dev/null || true)"
       child_failure_artifact="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_artifact 2>/dev/null || true)"
+      child_failure_card_path="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_card_path 2>/dev/null || true)"
       child_failure_excerpt="$(slice_handoff_codex_run_failure_summary_value "$codex_run_summary_path" failure_excerpt 2>/dev/null || true)"
     fi
     reason="$child_failure_reason"
@@ -1923,7 +1944,7 @@ slice_handoff_validate_codex_run_output() {
       excerpt="$reason"
       slice_handoff_print_codex_final_output_block "$codex_final_output_path"
     fi
-    slice_handoff_print_codex_run_failure_blocker "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$reason" "$fix" "" "$child_summary" "$child_failure_log" "$child_failure_artifact" "$excerpt"
+    slice_handoff_print_codex_run_failure_blocker "$command_summary" "$exit_code" "$stdout_path" "$stderr_path" "$reason" "$fix" "" "$child_summary" "$child_failure_log" "$child_failure_artifact" "$excerpt" "$child_failure_card_path"
     return 1
   fi
 
@@ -2380,7 +2401,7 @@ slice_handoff_run_execution_phase() {
   fi
 
   if [ "$slice_handoff_explain" -eq 1 ]; then
-    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path codex_run_elapsed=$slice_handoff_codex_run_elapsed_summary codex_session_work_time=$slice_handoff_codex_session_work_time_summary"
+    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path codex_run_invocation_elapsed=$slice_handoff_codex_run_elapsed_summary codex_status_work_time=$slice_handoff_codex_session_work_time_summary"
     slice_handoff_print_codex_final_output_block "$codex_final_output_path"
   fi
 

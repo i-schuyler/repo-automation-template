@@ -236,6 +236,10 @@ smoke_check_run_tests_contract() {
 
   if (
     cd "$smoke_test_dir" || return 1
+    cp "$smoke_repo_root/README.md" "$smoke_test_dir/README.md" || return 1
+    cp "$smoke_repo_root/LICENSE" "$smoke_test_dir/LICENSE" || return 1
+    rm -rf "$smoke_test_dir/docs" || return 1
+    cp -R "$smoke_repo_root/docs" "$smoke_test_dir/docs" || return 1
     cat > docs/run-tests-diagnostic.md <<'EOF'
 # Diagnostic
 

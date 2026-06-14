@@ -653,7 +653,14 @@ child failure line two' \
       codex_run_contract_assert_grep 'reason: codex exec exited with status 17' "$stderr_file" &&
       codex_run_contract_assert_grep 'log: '"$child_fail_out_dir"'/codex.stderr' "$stderr_file" &&
       codex_run_contract_assert_grep 'child failure line one' "$stderr_file" &&
-      codex_run_contract_assert_grep 'fix: inspect the child failure log and rerun codex-run' "$stderr_file"; then
+      codex_run_contract_assert_grep 'failure_card: '"$child_fail_out_dir"'/codex-failure-card.txt' "$stderr_file" &&
+      codex_run_contract_assert_grep 'fix: inspect the child failure log and rerun codex-run' "$stderr_file" &&
+      codex_run_contract_assert_grep 'failure_card_path='"$child_fail_out_dir"'/codex-failure-card.txt' "$child_fail_out_dir/codex-run-summary.txt" &&
+      codex_run_contract_assert_grep 'failure_card_version=1' "$child_fail_out_dir/codex-failure-card.txt" &&
+      codex_run_contract_assert_grep 'contract_id=failure-diagnosis-v1' "$child_fail_out_dir/codex-failure-card.txt" &&
+      codex_run_contract_assert_grep 'child_failure_preserved=true' "$child_fail_out_dir/codex-failure-card.txt" &&
+      codex_run_contract_assert_grep 'owner=codex-run' "$child_fail_out_dir/codex-failure-card.txt" &&
+      codex_run_contract_assert_grep 'repair_surface=codex-run' "$child_fail_out_dir/codex-failure-card.txt"; then
       :
     else
       test_fail "child-failure"
@@ -677,8 +684,11 @@ child failure line two' \
       codex_run_contract_assert_grep 'step=codex' "$stderr_file" &&
       codex_run_contract_assert_grep 'reason=codex exec exited with status 17' "$stderr_file" &&
       codex_run_contract_assert_grep 'log='"$child_fail_out_dir"'/codex.stderr' "$stderr_file" &&
+      codex_run_contract_assert_grep 'failure_card='"$child_fail_out_dir"'/codex-failure-card.txt' "$stderr_file" &&
       codex_run_contract_assert_grep 'excerpt=child failure line one' "$stderr_file" &&
-      codex_run_contract_assert_grep 'fix=inspect the child failure log and rerun codex-run' "$stderr_file"; then
+      codex_run_contract_assert_grep 'fix=inspect the child failure log and rerun codex-run' "$stderr_file" &&
+      codex_run_contract_assert_grep 'failure_card_path='"$child_fail_out_dir"'/codex-failure-card.txt' "$child_fail_out_dir/codex-run-summary.txt" &&
+      codex_run_contract_assert_grep 'child_failure_preserved=true' "$child_fail_out_dir/codex-failure-card.txt"; then
       :
     else
       test_fail "quiet-child-failure"

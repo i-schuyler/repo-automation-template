@@ -448,6 +448,7 @@ failure_fix="${FAKE_CODEX_RUN_FAILURE_FIX:-}"
 failure_log="${FAKE_CODEX_RUN_FAILURE_LOG:-}"
 failure_artifact="${FAKE_CODEX_RUN_FAILURE_ARTIFACT:-}"
 failure_excerpt="${FAKE_CODEX_RUN_FAILURE_EXCERPT:-}"
+failure_card_path=""
 final_text=""
 out_dir=""
 prev=""
@@ -503,6 +504,7 @@ if [ -n "$out_dir" ]; then
     stdout_text="$(printf '%s\nfinal_output_path=%s\nsummary_path=%s' "$stdout_text" "$final_output_path" "$summary_path")"
   fi
   if [ "$exit_code" -ne 0 ]; then
+    failure_card_path="$out_dir/codex-failure-card.txt"
     {
       printf 'script=codex-run\n'
       printf 'result=fail\n'
@@ -528,9 +530,25 @@ if [ -n "$out_dir" ]; then
       if [ -n "$failure_excerpt" ]; then
         printf 'failure_excerpt=%s\n' "$failure_excerpt"
       fi
+      printf 'failure_card_path=%s\n' "$failure_card_path"
       printf 'elapsed_seconds=%s\n' "$elapsed_seconds"
       printf 'elapsed=%s\n' "$elapsed_summary"
     } > "$summary_path"
+    {
+      printf 'failure_card_version=1\n'
+      printf 'contract_id=failure-diagnosis-v1\n'
+      printf 'layer=wrapper\n'
+      printf 'owner=codex-run\n'
+      printf 'failing_command=repo-automation/bin/codex-run\n'
+      printf 'status_code=%s\n' "$exit_code"
+      printf 'reason=%s\n' "${failure_reason:-codex exec exited with status $exit_code}"
+      printf 'expected=codex exec to exit 0\n'
+      printf 'actual=%s\n' "${failure_excerpt:-${stderr_text:-no child excerpt available}}"
+      printf 'evidence_path=%s\n' "${failure_log:-${failure_artifact:-$final_output_path}}"
+      printf 'child_failure_preserved=true\n'
+      printf 'repair_surface=codex-run\n'
+      printf 'operator_next=%s\n' "${failure_fix:-inspect the child failure log and rerun codex-run}"
+    } > "$failure_card_path"
     if [ "$final_output_on_failure" -eq 1 ] 2>/dev/null && [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
       printf '%s\n' "$final_text" > "$final_output_path"
     fi
@@ -2016,10 +2034,10 @@ print(f'codex_session_id={session["session_id"]}')
 print(f'codex_resume={session["resume"]["command"]}')
 print(f'model={session["model"]["name"]} / {session["model"]["reasoning"]}')
 print(f'context={session["context"]["remaining_summary"]}')
-print(f'codex_run_elapsed={summary.get("elapsed", "unknown")}')
-print(f'codex_run_elapsed_seconds={summary.get("elapsed_seconds", "unknown")}')
-print(f'codex_session_work_time={work_time["summary"]}')
-print(f'codex_session_work_time_total_seconds={work_time["total_seconds"]}')
+print(f'codex_run_invocation_elapsed={summary.get("elapsed", "unknown")}')
+print(f'codex_run_invocation_elapsed_seconds={summary.get("elapsed_seconds", "unknown")}')
+print(f'codex_status_work_time={work_time["summary"]}')
+print(f'codex_status_work_time_total_seconds={work_time["total_seconds"]}')
 print('rate_limits=5h 99.0% left resets 2026-05-24 04:31 PDT; week 93.0% left resets 2026-05-31 04:31 PDT')
 print(f'codex_final_result={codex_final_result}')
 print(f'codex_final_output={run_dir}/codex-run/codex-final.txt')
@@ -2140,7 +2158,7 @@ if 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' not in lines:
     raise SystemExit(1)
 if not any(line.startswith('INFO: slice-handoff remaining disk space=') for line in lines):
     raise SystemExit(1)
-if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' codex_run_elapsed=' in line and ' codex_session_work_time=1h 2m 3s' in line for line in lines):
+if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' codex_run_invocation_elapsed=' in line and ' codex_status_work_time=1h 2m 3s' in line for line in lines):
     raise SystemExit(1)
 if 'INFO: slice-handoff repo-flow submit ci=pass' not in lines:
     raise SystemExit(1)

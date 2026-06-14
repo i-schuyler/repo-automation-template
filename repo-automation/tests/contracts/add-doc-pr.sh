@@ -24,10 +24,20 @@ smoke_main_impl() {
   if [ "$TEST_OUTPUT_MODE" = "explain" ]; then
     trap 'test_cleanup' EXIT INT TERM
 
-    smoke_setup_temp_repo || return 1
+    # Keep fixture setup itself named so a setup regression is actionable.
+    if smoke_check_add_doc_pr_fixture_setup; then
+      test_pass "smoke:add-doc-pr-fixture-setup"
+    else
+      test_fail "smoke:add-doc-pr-fixture-setup"
+      status=1
+    fi
 
-    smoke_run_named_check "smoke:add-doc-pr-docs-only" smoke_check_add_doc_pr_docs_only || status=1
-    smoke_run_named_check "smoke:add-doc-pr-blocked-file" smoke_check_add_doc_pr_blocked_file || status=1
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:add-doc-pr-docs-only" smoke_check_add_doc_pr_docs_only || status=1
+    fi
+    if [ "$status" -eq 0 ]; then
+      smoke_run_named_check "smoke:add-doc-pr-blocked-file" smoke_check_add_doc_pr_blocked_file || status=1
+    fi
   else
     mkdir -p "$TEST_TEMP_ROOT" || return 1
     smoke_output_capture="$(mktemp "$TEST_TEMP_ROOT/add-doc-pr.XXXXXX")" || return 1
@@ -35,7 +45,12 @@ smoke_main_impl() {
     exec >"$smoke_output_capture" 2>&1
     trap 'test_cleanup' EXIT INT TERM
 
-    smoke_setup_temp_repo || status=1
+    if smoke_check_add_doc_pr_fixture_setup; then
+      :
+    else
+      status=1
+      test_fail "smoke:add-doc-pr-fixture-setup"
+    fi
     if [ "$status" -eq 0 ]; then
       smoke_run_named_check "smoke:add-doc-pr-docs-only" smoke_check_add_doc_pr_docs_only || status=1
     fi
@@ -48,6 +63,10 @@ smoke_main_impl() {
   fi
 
   return "$status"
+}
+
+smoke_check_add_doc_pr_fixture_setup() {
+  smoke_setup_temp_repo || return 1
 }
 
 smoke_main() {

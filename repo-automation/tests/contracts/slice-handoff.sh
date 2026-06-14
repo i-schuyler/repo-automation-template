@@ -691,8 +691,8 @@ PY
       grep -Fxq 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' "$stderr_file" &&
       grep -Fq 'INFO: slice-handoff remaining disk space=' "$stderr_file" &&
       grep -Fq 'INFO: slice-handoff codex-run result=implementation-complete final_output=' "$stderr_file" &&
-      grep -Fq ' codex_run_elapsed=' "$stderr_file" &&
-      grep -Fq ' codex_session_work_time=1h 2m 3s' "$stderr_file" &&
+      grep -Fq ' codex_run_invocation_elapsed=' "$stderr_file" &&
+      grep -Fq ' codex_status_work_time=1h 2m 3s' "$stderr_file" &&
       grep -Fxq 'INFO: slice-handoff repo-flow submit ci=pass' "$stderr_file" &&
       pr_body_validation_info_prefix='INFO: slice-handoff ' &&
       pr_body_validation_info_suffix='PR-body validation' &&
@@ -963,6 +963,8 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       grep -Fq "child_summary: $run_dir/codex-run/codex-run-summary.txt" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
       grep -Fq "child_failure_log: $codex_run_failure_log" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
       grep -Fq "child_failure_artifact: $codex_run_failure_artifact" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
+      grep -Fq "child_failure_card_path: $run_dir/codex-run/codex-failure-card.txt" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
+      grep -Fq 'child_failure_preserved: true' "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
       grep -Fq "child_failure_excerpt: $codex_run_failure_excerpt" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
       grep -Fq "reason: $codex_run_failure_reason" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
       grep -Fq "fix: $codex_run_failure_fix" "$smoke_slice_handoff_execution_artifact_root/slice-handoff-execution-codex-run-summary-failure.err" &&
@@ -973,7 +975,10 @@ smoke_check_slice_handoff_contract_execution_failure_cases() {
       grep -Fxq "failure_fix=$codex_run_failure_fix" "$run_dir/codex-run/codex-run-summary.txt" &&
       grep -Fxq "failure_log=$codex_run_failure_log" "$run_dir/codex-run/codex-run-summary.txt" &&
       grep -Fxq "failure_artifact=$codex_run_failure_artifact" "$run_dir/codex-run/codex-run-summary.txt" &&
-      grep -Fxq "failure_excerpt=$codex_run_failure_excerpt" "$run_dir/codex-run/codex-run-summary.txt"; then
+      grep -Fxq "failure_card_path=$run_dir/codex-run/codex-failure-card.txt" "$run_dir/codex-run/codex-run-summary.txt" &&
+      grep -Fxq "failure_excerpt=$codex_run_failure_excerpt" "$run_dir/codex-run/codex-run-summary.txt" &&
+      grep -Fxq 'contract_id=failure-diagnosis-v1' "$run_dir/codex-run/codex-failure-card.txt" &&
+      grep -Fxq 'child_failure_preserved=true' "$run_dir/codex-run/codex-failure-card.txt"; then
       test_pass "execution-submit codex-run summary failure"
     else
       test_fail "execution-submit codex-run summary failure"
