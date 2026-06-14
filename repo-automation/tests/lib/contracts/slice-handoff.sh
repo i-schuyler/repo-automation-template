@@ -441,12 +441,14 @@ stdout_text="${FAKE_CODEX_RUN_STDOUT_TEXT:-pass}"
 stderr_text="${FAKE_CODEX_RUN_STDERR_TEXT:-}"
 exit_code="${FAKE_CODEX_RUN_EXIT_CODE:-0}"
 skip_final_output="${FAKE_CODEX_RUN_SKIP_FINAL_OUTPUT:-0}"
+final_output_on_failure="${FAKE_CODEX_RUN_FINAL_OUTPUT_ON_FAILURE:-0}"
 args_file="${FAKE_CODEX_RUN_ARGS_FILE:-}"
 failure_reason="${FAKE_CODEX_RUN_FAILURE_REASON:-}"
 failure_fix="${FAKE_CODEX_RUN_FAILURE_FIX:-}"
 failure_log="${FAKE_CODEX_RUN_FAILURE_LOG:-}"
 failure_artifact="${FAKE_CODEX_RUN_FAILURE_ARTIFACT:-}"
 failure_excerpt="${FAKE_CODEX_RUN_FAILURE_EXCERPT:-}"
+failure_card_path=""
 final_text=""
 out_dir=""
 prev=""
@@ -496,16 +498,23 @@ if [ -n "$out_dir" ]; then
   mkdir -p "$out_dir" || exit 1
   final_output_path="$out_dir/codex-final.txt"
   summary_path="$out_dir/codex-run-summary.txt"
+  elapsed_seconds="${FAKE_CODEX_RUN_ELAPSED_SECONDS:-7}"
+  elapsed_summary="${FAKE_CODEX_RUN_ELAPSED:-7s}"
   if [ -n "$stdout_text" ]; then
     stdout_text="$(printf '%s\nfinal_output_path=%s\nsummary_path=%s' "$stdout_text" "$final_output_path" "$summary_path")"
   fi
   if [ "$exit_code" -ne 0 ]; then
+    failure_card_path="$out_dir/codex-failure-card.txt"
     {
       printf 'script=codex-run\n'
       printf 'result=fail\n'
       printf 'exit_code=%s\n' "$exit_code"
       printf 'final_output_path=%s\n' "$final_output_path"
-      printf 'final_output_status=missing\n'
+      if [ "$final_output_on_failure" -eq 1 ] 2>/dev/null && [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
+        printf 'final_output_status=present\n'
+      else
+        printf 'final_output_status=missing\n'
+      fi
       if [ -n "$failure_reason" ]; then
         printf 'failure_reason=%s\n' "$failure_reason"
       fi
@@ -521,7 +530,28 @@ if [ -n "$out_dir" ]; then
       if [ -n "$failure_excerpt" ]; then
         printf 'failure_excerpt=%s\n' "$failure_excerpt"
       fi
+      printf 'failure_card_path=%s\n' "$failure_card_path"
+      printf 'elapsed_seconds=%s\n' "$elapsed_seconds"
+      printf 'elapsed=%s\n' "$elapsed_summary"
     } > "$summary_path"
+    {
+      printf 'failure_card_version=1\n'
+      printf 'contract_id=failure-diagnosis-v1\n'
+      printf 'layer=wrapper\n'
+      printf 'owner=codex-run\n'
+      printf 'failing_command=repo-automation/bin/codex-run\n'
+      printf 'status_code=%s\n' "$exit_code"
+      printf 'reason=%s\n' "${failure_reason:-codex exec exited with status $exit_code}"
+      printf 'expected=codex exec to exit 0\n'
+      printf 'actual=%s\n' "${failure_excerpt:-${stderr_text:-no child excerpt available}}"
+      printf 'evidence_path=%s\n' "${failure_log:-${failure_artifact:-$final_output_path}}"
+      printf 'child_failure_preserved=true\n'
+      printf 'repair_surface=codex-run\n'
+      printf 'operator_next=%s\n' "${failure_fix:-inspect the child failure log and rerun codex-run}"
+    } > "$failure_card_path"
+    if [ "$final_output_on_failure" -eq 1 ] 2>/dev/null && [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
+      printf '%s\n' "$final_text" > "$final_output_path"
+    fi
   else
     {
       printf 'script=codex-run\n'
@@ -533,6 +563,8 @@ if [ -n "$out_dir" ]; then
       else
         printf 'final_output_status=missing\n'
       fi
+      printf 'elapsed_seconds=%s\n' "$elapsed_seconds"
+      printf 'elapsed=%s\n' "$elapsed_summary"
     } > "$summary_path"
     if [ "$skip_final_output" -eq 0 ] && [ -n "$final_text" ]; then
       printf '%s\n' "$final_text" > "$final_output_path"
@@ -1975,20 +2007,42 @@ smoke_slice_handoff_expected_codex_run_context() {
   local run_dir="$1"
   local codex_final_result="$2"
 
-  cat <<EOF
-===== CODEX RUN CONTEXT =====
-slice_run_id=$(basename "$run_dir")
-run_dir=$run_dir
-codex_session_id=sess-123
-codex_resume=codex resume --include-non-interactive sess-123
-model=gpt-5.4-mini / medium
-context=85% left
-rate_limits=5h 99.0% left resets 2026-05-24 04:31 PDT; week 93.0% left resets 2026-05-31 04:31 PDT
-work_time=1h 2m 3s
-codex_final_result=$codex_final_result
-codex_final_output=$run_dir/codex-run/codex-final.txt
-===== END CODEX RUN CONTEXT =====
-EOF
+  python3 - "$run_dir" "$codex_final_result" <<'PY'
+from pathlib import Path
+import json
+import sys
+
+run_dir = Path(sys.argv[1])
+codex_final_result = sys.argv[2]
+summary_path = run_dir / 'codex-run' / 'codex-run-summary.txt'
+status_path = run_dir / 'codex-status-recent.json'
+
+summary = {}
+for line in summary_path.read_text(encoding='utf-8').splitlines():
+    if '=' in line:
+        key, value = line.split('=', 1)
+        summary[key] = value
+
+status = json.loads(status_path.read_text(encoding='utf-8'))
+session = status['sessions'][0]
+work_time = session['work_time']
+
+print('===== CODEX RUN CONTEXT =====')
+print(f'slice_run_id={run_dir.name}')
+print(f'run_dir={run_dir}')
+print(f'codex_session_id={session["session_id"]}')
+print(f'codex_resume={session["resume"]["command"]}')
+print(f'model={session["model"]["name"]} / {session["model"]["reasoning"]}')
+print(f'context={session["context"]["remaining_summary"]}')
+print(f'codex_run_invocation_elapsed={summary.get("elapsed", "unknown")}')
+print(f'codex_run_invocation_elapsed_seconds={summary.get("elapsed_seconds", "unknown")}')
+print(f'codex_status_work_time={work_time["summary"]}')
+print(f'codex_status_work_time_total_seconds={work_time["total_seconds"]}')
+print('rate_limits=5h 99.0% left resets 2026-05-24 04:31 PDT; week 93.0% left resets 2026-05-31 04:31 PDT')
+print(f'codex_final_result={codex_final_result}')
+print(f'codex_final_output={run_dir}/codex-run/codex-final.txt')
+print('===== END CODEX RUN CONTEXT =====')
+PY
 }
 
 smoke_slice_handoff_assert_execution_success_summary() {
@@ -2104,7 +2158,7 @@ if 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' not in lines:
     raise SystemExit(1)
 if not any(line.startswith('INFO: slice-handoff remaining disk space=') for line in lines):
     raise SystemExit(1)
-if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' work_time=1h 2m 3s' in line for line in lines):
+if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' codex_run_invocation_elapsed=' in line and ' codex_status_work_time=1h 2m 3s' in line for line in lines):
     raise SystemExit(1)
 if 'INFO: slice-handoff repo-flow submit ci=pass' not in lines:
     raise SystemExit(1)

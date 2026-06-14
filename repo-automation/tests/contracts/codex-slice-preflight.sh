@@ -83,6 +83,7 @@ smoke_check_preflight_repair() {
   local behind_output="$smoke_test_base/preflight-repair-behind.json"
   local diverged_output="$smoke_test_base/preflight-repair-diverged.json"
   local non_repair_output="$smoke_test_base/preflight-non-repair.json"
+  local healthy_bin="$smoke_test_base/preflight-repair-healthy-bin"
   local branch="feature/preflight-repair"
   local behind_branch="feature/preflight-repair-behind"
   local diverged_branch="feature/preflight-repair-diverged"
@@ -107,15 +108,34 @@ PY
   git -C "$repo" commit -m "test: ahead-only repair branch" >/dev/null 2>&1 || return 1
   git -C "$repo" checkout main >/dev/null 2>&1 || return 1
   mkdir -p "$fake_bin" || return 1
+  mkdir -p "$healthy_bin" || return 1
   cat >"$fake_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 printf '{"number":242,"state":"%s","headRefName":"%s"}\n' "${FAKE_PR_STATE:-OPEN}" "${FAKE_PR_HEAD:-feature/preflight-repair}"
 EOF
   chmod +x "$fake_bin/gh" || return 1
+  cat >"$healthy_bin/df" <<'EOF'
+#!/usr/bin/env bash
+set -u
+case "${1:-}" in
+  -P*) shift ;;
+esac
+if [ "${1:-}" = "-k" ]; then
+  shift
+fi
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'stubfs %s %s %s %s%% %s\n' \
+  "${PREFLIGHT_DF_BLOCKS:-1953125}" \
+  "${PREFLIGHT_DF_USED:-50}" \
+  "${PREFLIGHT_DF_AVAILABLE:-1953125}" \
+  "${PREFLIGHT_DF_USE_PERCENT:-50}" \
+  "${1:-${PREFLIGHT_DF_MOUNTPOINT:-/}}"
+EOF
+  chmod +x "$healthy_bin/df" || return 1
 
   if (
     cd "$repo" || return 1
-    repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-non-repair --json >"$non_repair_output"
+    REPO_AUTOMATION_DF_BIN="$healthy_bin/df" repo-automation/bin/codex-slice-preflight --check-only --branch=feature/preflight-non-repair --json >"$non_repair_output"
   ) && python3 -m json.tool "$non_repair_output" >/dev/null &&
     smoke_json_assert "$non_repair_output" 'data.get("result") == "pass" and data.get("mode") == "check-only" and "repair_of_pr" not in data and "repair_pr_head" not in data'; then
     test_pass "non-repair preflight JSON omits repair-only fields"
@@ -126,7 +146,7 @@ EOF
 
   if (
     cd "$repo" || return 1
-    PATH="$fake_bin:$PATH" repo-automation/bin/codex-slice-preflight --branch="$branch" --repair-of-pr=242 --json >"$output"
+    PATH="$fake_bin:$PATH" REPO_AUTOMATION_DF_BIN="$healthy_bin/df" repo-automation/bin/codex-slice-preflight --branch="$branch" --repair-of-pr=242 --json >"$output"
   ) && smoke_json_assert "$output" 'data.get("result") == "pass" and data.get("mode") == "repair" and data.get("repair_of_pr") == "242" and data.get("repair_pr_head") == "feature/preflight-repair" and data.get("divergence") == "0\t1"' &&
     [ "$(git -C "$repo" branch --show-current)" = "$branch" ]; then
     test_pass "repair preflight allows an ahead-only existing open PR branch"
@@ -138,7 +158,7 @@ EOF
   if (
     cd "$repo" || return 1
     git checkout main >/dev/null 2>&1 || return 1
-    PATH="$fake_bin:$PATH" FAKE_PR_HEAD=feature/missing repo-automation/bin/codex-slice-preflight --branch=feature/missing --repair-of-pr=242 --json >"$missing_output"
+    PATH="$fake_bin:$PATH" REPO_AUTOMATION_DF_BIN="$healthy_bin/df" FAKE_PR_HEAD=feature/missing repo-automation/bin/codex-slice-preflight --branch=feature/missing --repair-of-pr=242 --json >"$missing_output"
   ); then
     test_fail "repair preflight refuses to create a missing branch"
     return 1
@@ -151,7 +171,7 @@ EOF
 
   if (
     cd "$repo" || return 1
-    PATH="$fake_bin:$PATH" FAKE_PR_HEAD=feature/other repo-automation/bin/codex-slice-preflight --branch="$branch" --repair-of-pr=242 --json >"$mismatch_output"
+    PATH="$fake_bin:$PATH" REPO_AUTOMATION_DF_BIN="$healthy_bin/df" FAKE_PR_HEAD=feature/other repo-automation/bin/codex-slice-preflight --branch="$branch" --repair-of-pr=242 --json >"$mismatch_output"
   ); then
     test_fail "repair preflight rejects PR branch mismatch"
     return 1
@@ -176,7 +196,7 @@ EOF
 
   if (
     cd "$repo" || return 1
-    PATH="$fake_bin:$PATH" FAKE_PR_HEAD="$behind_branch" repo-automation/bin/codex-slice-preflight --branch="$behind_branch" --repair-of-pr=242 --json >"$behind_output"
+    PATH="$fake_bin:$PATH" REPO_AUTOMATION_DF_BIN="$healthy_bin/df" FAKE_PR_HEAD="$behind_branch" repo-automation/bin/codex-slice-preflight --branch="$behind_branch" --repair-of-pr=242 --json >"$behind_output"
   ); then
     test_fail "repair preflight rejects a behind repair branch"
     return 1
@@ -190,7 +210,7 @@ EOF
   git -C "$repo" checkout main >/dev/null 2>&1 || return 1
   if (
     cd "$repo" || return 1
-    PATH="$fake_bin:$PATH" FAKE_PR_HEAD="$diverged_branch" repo-automation/bin/codex-slice-preflight --branch="$diverged_branch" --repair-of-pr=242 --json >"$diverged_output"
+    PATH="$fake_bin:$PATH" REPO_AUTOMATION_DF_BIN="$healthy_bin/df" FAKE_PR_HEAD="$diverged_branch" repo-automation/bin/codex-slice-preflight --branch="$diverged_branch" --repair-of-pr=242 --json >"$diverged_output"
   ); then
     test_fail "repair preflight rejects a diverged repair branch"
     return 1

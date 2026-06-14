@@ -977,6 +977,16 @@
       "path": "repo-automation/docs/output-contract-backlog.md",
       "owner": "repo-automation-template",
       "kind": "doc"
+    },
+    {
+      "path": "repo-automation/lib/failure-diagnosis.sh",
+      "owner": "repo-automation-template",
+      "kind": "script"
+    },
+    {
+      "path": "repo-automation/docs/failure-diagnosis-contract.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
     }
   ]
 }

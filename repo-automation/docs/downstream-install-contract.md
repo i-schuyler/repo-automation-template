@@ -31,5 +31,6 @@ Downstream repos should have a visible repo-automation README showing:
 
 When available, downstream installs should include `repo-automation/bin/repo-automation-report-upstream` so upstream shared automation bugs/features can be prepared with preview/redaction safeguards before submission.
 Downstream installs should use `repo-automation/bin/repo-automation-install --target=<repo>` in plan mode first, then explicit `--apply`.
+For a concise downstream quickstart and recovery path, see [Repo Automation Install](repo-automation-install.md).
 Installer smoke tests should audit the downstream contract in temp repos before real rollout.
 The starter-template profile must stay conservative: it can add reusable repo automation templates, but it must not broaden workflow permissions, install app/product CI, or imply ownership of the downstream app/product version or any starter-template version.

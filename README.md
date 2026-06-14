@@ -51,6 +51,7 @@ This repo is in early public read-only/low-attention mode. Issues are welcome. E
 - Read [docs/VERSIONING.md](docs/VERSIONING.md) before changing version numbers.
 - Read [repo-automation/docs/version-modes.md](repo-automation/docs/version-modes.md) for the version ownership model.
 - Read [docs/INSTALL_MODELS.md](docs/INSTALL_MODELS.md) before copying this template into downstream repos.
+- Open [repo-automation/docs/repo-automation-install.md](repo-automation/docs/repo-automation-install.md) for the downstream install quickstart and recovery path.
 - Read [docs/maintainer/WORKFLOW_AUDIT_CHECKLIST.md](docs/maintainer/WORKFLOW_AUDIT_CHECKLIST.md) before running audit-style checks.
 
 ## Support

@@ -11,6 +11,7 @@
 - supports `--quiet` and `--explain`
 - records `resume_mode=fresh` or `resume_mode=resume` in `codex-run-summary.txt`
 - records requested model/reasoning/profile/sandbox values in `codex-run-summary.txt` when they are supplied
+- records current wrapper invocation timing in `codex-run-summary.txt` as `elapsed_seconds` and `elapsed`
 - forwards `--cd`, `--sandbox`, `--profile`, and `--model` into fresh `codex exec`
 - keeps resume mode narrower: it runs `codex exec resume` from the requested working directory, forwards only the session id and prompt, and captures stdout as the durable final output artifact
 - accepts optional `--model=<model-name>` and `--reasoning=<low|medium|high>` inputs, then forwards model as `--model` and reasoning as `-c model_reasoning_effort=<level>` in fresh mode

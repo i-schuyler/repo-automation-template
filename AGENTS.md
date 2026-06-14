@@ -15,6 +15,10 @@ Do not rely on PATH-only or env-only fake injection to prove child-helper wiring
 
 Use or add smoke helper assertions that fail actionably when the runtime helper is missing.
 
+Preserve child failure detail in parent helpers. Wrapper output may add context, but it must not replace the most specific child blocker, failure card, expected/actual pair, or evidence path.
+
+Keep derived timing fields source-labeled or conservatively named. Distinguish current helper invocation elapsed time from Codex-reported work time and any timestamp-span-derived session time.
+
 Do not run tests, commit, push, merge, tag, publish releases, or perform GitHub write operations unless explicitly asked.
 
 For implementation PRs, update `repo-automation/docs/implementation-friction-ledger.md`.

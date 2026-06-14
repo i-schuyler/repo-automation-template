@@ -17,6 +17,12 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   return 2 2>/dev/null || exit 2
 }
 
+# shellcheck source=/dev/null
+. "$script_dir/../lib/failure-diagnosis.sh" || {
+  printf 'STOP: failed to source failure diagnosis library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
 codex_run_quiet=0
 codex_run_explain=0
 codex_run_json=0
@@ -42,6 +48,8 @@ codex_run_summary_path=""
 codex_run_exit_code=0
 codex_run_result="pass"
 codex_run_final_output_status="missing"
+codex_run_elapsed_seconds=""
+codex_run_elapsed_summary="unknown"
 codex_run_failure_step=""
 codex_run_failure_code=""
 codex_run_failure_reason=""
@@ -49,6 +57,8 @@ codex_run_failure_fix=""
 codex_run_failure_log=""
 codex_run_failure_excerpt=""
 codex_run_failure_artifact=""
+codex_run_failure_card_path=""
+codex_run_failure_command_string=""
 
 codex_run_usage() {
   printf 'Usage: repo-automation/bin/codex-run --prompt-file=<path> --out-dir=<path> [--resume-session-id=<id>] [--profile=<name>] [--model=<model-name>] [--reasoning=<low|medium|high>] [--cd=<path>] [--sandbox=<mode>] [--timeout=<seconds>] [--quiet] [--explain] [--help]\n'
@@ -88,6 +98,35 @@ codex_run_is_reasoning_level() {
       ;;
   esac
   return 1
+}
+
+codex_run_format_elapsed_summary() {
+  local total_seconds="${1:-}"
+  local hours=0
+  local minutes=0
+  local seconds=0
+  local parts=()
+
+  case "$total_seconds" in
+    ''|*[!0-9]*)
+      printf '%s' unknown
+      return 0
+      ;;
+  esac
+
+  hours=$((total_seconds / 3600))
+  minutes=$(((total_seconds % 3600) / 60))
+  seconds=$((total_seconds % 60))
+
+  if [ "$hours" -gt 0 ]; then
+    parts+=("${hours}h")
+  fi
+  if [ "$minutes" -gt 0 ]; then
+    parts+=("${minutes}m")
+  fi
+  parts+=("${seconds}s")
+
+  printf '%s' "${parts[*]}"
 }
 
 codex_run_resolve_existing_dir() {
@@ -223,11 +262,18 @@ EOF
     if [ -n "$codex_run_failure_artifact" ]; then
       printf 'failure_artifact=%s\n' "$codex_run_failure_artifact"
     fi
+    if [ -n "$codex_run_failure_card_path" ]; then
+      printf 'failure_card_path=%s\n' "$codex_run_failure_card_path"
+    fi
     if [ -n "$codex_run_failure_excerpt" ]; then
       printf 'failure_excerpt=%s\n' "$codex_run_failure_excerpt"
     fi
     if [ -n "$codex_run_final_output_block_path" ] && [ -f "$codex_run_final_output_block_path" ]; then
       printf 'codex_final_output_block_path=%s\n' "$codex_run_final_output_block_path"
+    fi
+    if [ -n "$codex_run_elapsed_seconds" ]; then
+      printf 'elapsed_seconds=%s\n' "$codex_run_elapsed_seconds"
+      printf 'elapsed=%s\n' "$codex_run_elapsed_summary"
     fi
   } > "$codex_run_summary_path"
 }
@@ -270,6 +316,7 @@ codex_run_print_failure_block() {
   local artifact_path="$5"
   local excerpt_text="$6"
   local fix="$7"
+  local failure_card_path="${8:-}"
 
   printf 'fail: codex-run failed\n'
   printf 'step: %s\n' "$step"
@@ -282,6 +329,9 @@ codex_run_print_failure_block() {
   elif [ -n "$artifact_path" ]; then
     printf 'artifact: %s\n' "$artifact_path"
   fi
+  if [ -n "$failure_card_path" ]; then
+    printf 'failure_card: %s\n' "$failure_card_path"
+  fi
   printf 'fix: %s\n' "$fix"
 }
 
@@ -293,6 +343,7 @@ codex_run_print_quiet_failure() {
   local log_path="$5"
   local artifact_path="$6"
   local excerpt_text="$7"
+  local failure_card_path="${8:-}"
 
   printf 'result=fail\n'
   printf 'code=%s\n' "$code"
@@ -305,9 +356,37 @@ codex_run_print_quiet_failure() {
   if [ -n "$artifact_path" ]; then
     printf 'artifact=%s\n' "$artifact_path"
   fi
+  if [ -n "$failure_card_path" ]; then
+    printf 'failure_card=%s\n' "$failure_card_path"
+  fi
   if [ -n "$excerpt_text" ]; then
     printf 'excerpt=%s\n' "$excerpt_text"
   fi
+}
+
+codex_run_write_failure_card() {
+  local layer="$1"
+  local child_failure_preserved="$2"
+  local expected_value="$3"
+  local actual_value="$4"
+  local evidence_path="$5"
+  local operator_next="$6"
+
+  [ -n "$codex_run_failure_card_path" ] || return 0
+  repo_failure_diagnosis_write_card_file "$codex_run_failure_card_path" \
+    failure_card_version 1 \
+    contract_id failure-diagnosis-v1 \
+    layer "$layer" \
+    owner codex-run \
+    failing_command "$codex_run_failure_command_string" \
+    status_code "$codex_run_exit_code" \
+    reason "$codex_run_failure_reason" \
+    expected "$expected_value" \
+    actual "$actual_value" \
+    evidence_path "$evidence_path" \
+    child_failure_preserved "$child_failure_preserved" \
+    repair_surface codex-run \
+    operator_next "$operator_next"
 }
 
 codex_run_finish_failure() {
@@ -651,10 +730,13 @@ codex_run_main() {
       "$codex_run_resume_session_id"
       "$resume_prompt_text"
     )
+    codex_run_failure_command_string="$(printf '%q ' "${codex_cmd[@]}")"
+    codex_run_failure_command_string="${codex_run_failure_command_string% }"
     if [ "$codex_run_explain" -eq 1 ]; then
       printf 'INFO: codex-run executing codex exec resume
 ' >&2
     fi
+    SECONDS=0
     (
       cd "$codex_run_cd_abs" || exit 1
       "${codex_cmd[@]}" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
@@ -676,15 +758,19 @@ codex_run_main() {
       "--output-last-message" "$codex_run_final_output_path"
       -
     )
+    codex_run_failure_command_string="$(printf '%q ' "${codex_cmd[@]}")"
+    codex_run_failure_command_string="${codex_run_failure_command_string% }"
 
     if [ "$codex_run_explain" -eq 1 ]; then
       printf 'INFO: codex-run executing codex exec
 ' >&2
     fi
-
+    SECONDS=0
     "${codex_cmd[@]}" < "$codex_run_prompt_file" >"$codex_run_stdout_path" 2>"$codex_run_stderr_path"
   fi
   codex_run_exit_code=$?
+  codex_run_elapsed_seconds="$SECONDS"
+  codex_run_elapsed_summary="$(codex_run_format_elapsed_summary "$codex_run_elapsed_seconds")"
 
   if [ "$codex_run_exit_code" -ne 0 ]; then
     codex_run_failure_reason="codex exec exited with status $codex_run_exit_code"
@@ -697,13 +783,15 @@ codex_run_main() {
     codex_run_failure_excerpt_block="$(codex_run_first_excerpt "$codex_run_failure_log")"
     codex_run_failure_code="codex-child-failed"
     codex_run_failure_artifact=""
+    codex_run_failure_card_path="$codex_run_out_dir_abs/codex-failure-card.txt"
+    codex_run_write_failure_card "wrapper" "true" "codex exec to exit 0" "$codex_run_failure_excerpt" "$codex_run_failure_log" "$codex_run_failure_fix" || return 1
     codex_run_result="fail"
     codex_run_failure_step="codex"
     codex_run_write_summary || return 1
     if [ "$codex_run_quiet" -eq 1 ]; then
-      codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_log" "" "$(codex_run_first_excerpt_line "$codex_run_failure_log")" >&2
+      codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_log" "" "$(codex_run_first_excerpt_line "$codex_run_failure_log")" "$codex_run_failure_card_path" >&2
     else
-      codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "$codex_run_failure_log" "" "$codex_run_failure_excerpt_block" "$codex_run_failure_fix" >&2
+      codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "$codex_run_failure_log" "" "$codex_run_failure_excerpt_block" "$codex_run_failure_fix" "$codex_run_failure_card_path" >&2
     fi
     if [ "$codex_run_explain" -eq 1 ]; then
       codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
@@ -729,12 +817,14 @@ codex_run_main() {
       codex_run_failure_log="$codex_run_final_output_path"
       codex_run_failure_artifact="$codex_run_final_output_block_path"
       codex_run_failure_excerpt="$codex_run_failure_reason"
+      codex_run_failure_card_path="$codex_run_out_dir_abs/codex-failure-card.txt"
+      codex_run_write_failure_card "wrapper" "false" "codex exec to write a readable final output block" "$codex_run_failure_excerpt" "$codex_run_failure_artifact" "$codex_run_failure_fix" || return 1
       codex_run_result="fail"
       codex_run_write_summary || return 1
       if [ "$codex_run_quiet" -eq 1 ]; then
-        codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_log" "$codex_run_failure_artifact" "$codex_run_failure_reason" >&2
+        codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_log" "$codex_run_failure_artifact" "$codex_run_failure_reason" "$codex_run_failure_card_path" >&2
       else
-        codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "$codex_run_failure_log" "$codex_run_failure_artifact" "$codex_run_failure_reason" "$codex_run_failure_fix" >&2
+        codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "$codex_run_failure_log" "$codex_run_failure_artifact" "$codex_run_failure_reason" "$codex_run_failure_fix" "$codex_run_failure_card_path" >&2
       fi
       if [ "$codex_run_explain" -eq 1 ]; then
         codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
@@ -769,12 +859,14 @@ codex_run_main() {
     codex_run_failure_log=""
     codex_run_failure_artifact="$codex_run_final_output_path"
     codex_run_failure_excerpt="codex exec resume exited 0 but $codex_run_failure_reason"
+    codex_run_failure_card_path="$codex_run_out_dir_abs/codex-failure-card.txt"
+    codex_run_write_failure_card "wrapper" "false" "resume to produce a reliable final-output artifact" "$codex_run_failure_excerpt" "$codex_run_failure_artifact" "$codex_run_failure_fix" || return 1
     codex_run_result="fail"
     codex_run_write_summary || return 1
     if [ "$codex_run_quiet" -eq 1 ]; then
-      codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" >&2
+      codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_card_path" >&2
     else
-      codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" >&2
+      codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" "$codex_run_failure_card_path" >&2
     fi
     if [ "$codex_run_explain" -eq 1 ]; then
       codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
@@ -794,12 +886,14 @@ codex_run_main() {
   codex_run_failure_log=""
   codex_run_failure_artifact="$codex_run_final_output_path"
   codex_run_failure_excerpt="codex exec exited 0 but $codex_run_failure_reason"
+  codex_run_failure_card_path="$codex_run_out_dir_abs/codex-failure-card.txt"
+  codex_run_write_failure_card "wrapper" "false" "codex exec to write a non-empty final output file" "$codex_run_failure_excerpt" "$codex_run_failure_artifact" "$codex_run_failure_fix" || return 1
   codex_run_result="fail"
   codex_run_write_summary || return 1
   if [ "$codex_run_quiet" -eq 1 ]; then
-    codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" >&2
+    codex_run_print_quiet_failure "$codex_run_failure_code" "$codex_run_failure_step" "$codex_run_failure_reason" "$codex_run_failure_fix" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_card_path" >&2
   else
-    codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" >&2
+    codex_run_print_failure_block "$codex_run_failure_step" "$codex_run_exit_code" "$codex_run_failure_reason" "" "$codex_run_failure_artifact" "$codex_run_failure_excerpt" "$codex_run_failure_fix" "$codex_run_failure_card_path" >&2
   fi
   if [ "$codex_run_explain" -eq 1 ]; then
     codex_run_print_final_summary 1 none "$codex_run_summary_path" fail >&2
