@@ -59,9 +59,8 @@ smoke_check_slice_handoff_contract_repair_execution() {
   local codex_args="$smoke_test_base/slice-handoff-repair-codex.args"
   local repo_flow_args="$smoke_test_base/slice-handoff-repair-repo-flow.args"
   local fake_bin="$smoke_test_base/slice-handoff-repair-gh"
-  local branch=""
+  local branch="feature/slice-handoff-submit"
 
-  branch="$(git -C "$smoke_repo_root" branch --show-current)" || return 1
   if ! cp -- "$smoke_slice_handoff_execution_valid_submit_file" "$repair_file"; then
     test_fail "slice-handoff repair execution seeds the repair fixture"
     return 1
@@ -81,7 +80,7 @@ PY
   fi
   git -C "$smoke_test_dir" branch -D "$branch" >/dev/null 2>&1 || true
   if ! git -C "$smoke_test_dir" branch "$branch" main; then
-    test_fail "slice-handoff repair execution creates the isolated repair branch"
+    test_fail "slice-handoff repair execution creates the isolated repair branch (expected=$branch source=main)"
     return 1
   fi
   if ! git -C "$smoke_test_dir" checkout "$branch" >/dev/null 2>&1; then
@@ -113,7 +112,7 @@ EOF
   then
     test_pass "slice-handoff repair execution resumes Codex and replaces the existing PR body"
   else
-    test_fail "slice-handoff repair execution resumes Codex and replaces the existing PR body"
+    test_fail "slice-handoff repair execution resumes Codex and replaces the existing PR body (expected_branch=$branch actual_branch=$(git -C "$smoke_test_dir" branch --show-current))"
     return 1
   fi
 }

@@ -83,6 +83,7 @@ smoke_check_run_tests_contract() {
   local run_tests_unknown_stderr="$smoke_test_base/run-tests-unknown-$$.stderr"
   local run_tests_shellcheck_ci_parity_backup="$smoke_test_base/run-tests-shellcheck-ci-parity-backup-$$.sh"
   local run_tests_shellcheck_ci_parity_log="$smoke_test_base/run-tests-shellcheck-ci-parity-$$.args"
+  local run_tests_shellcheck_expected_paths="$smoke_test_base/run-tests-shellcheck-expected-paths-$$.txt"
   local run_tests_shellcheck_ci_parity_path="$smoke_test_dir/repo-automation/bin/shellcheck-ci-parity"
   local run_tests_shellcheck_stub_dir="$smoke_test_base/run-tests-shellcheck-stub-$$"
   local run_tests_shellcheck_stub_log="$smoke_test_base/run-tests-shellcheck-stub-$$.args"
@@ -317,6 +318,7 @@ EOF
     mkdir -p "$run_tests_shellcheck_stub_dir" || return 1
     cp "$run_tests_shellcheck_ci_parity_path" "$run_tests_shellcheck_ci_parity_backup" || return 1
     cp "$run_tests_shellcheck_target" "$run_tests_shellcheck_target_backup" || return 1
+    "$run_tests_shellcheck_ci_parity_path" --print-paths > "$run_tests_shellcheck_expected_paths" || return 1
     cat > "$run_tests_shellcheck_ci_parity_path" <<EOF
 #!/usr/bin/env bash
 set -u
@@ -326,9 +328,7 @@ printf '%s\n' "\$@" > "$run_tests_shellcheck_ci_parity_log"
 
 case "\${1:-}" in
   --print-paths)
-    printf '%s\n' \
-      repo-automation/bin/check-portability \
-      repo-automation/bin/shellcheck-ci-parity
+    cat "$run_tests_shellcheck_expected_paths"
     ;;
   *)
     printf 'unexpected shellcheck-ci-parity args\n' >&2
@@ -351,10 +351,12 @@ case "\${REPO_AUTOMATION_SHELLCHECK_MODE:-verify}" in
       exit 1
     fi
     shift 2
-    if [ "\$#" -ne 2 ] ||
-      [ "\$1" != "repo-automation/bin/check-portability" ] ||
-      [ "\$2" != "repo-automation/bin/shellcheck-ci-parity" ]; then
+    if ! diff -u -- "$run_tests_shellcheck_expected_paths" <(printf '%s\n' "\$@") >/dev/null 2>&1; then
       printf 'unexpected shellcheck paths\n' >&2
+      printf 'expected:\n' >&2
+      cat "$run_tests_shellcheck_expected_paths" >&2
+      printf 'actual:\n' >&2
+      printf '%s\n' "\$@" >&2
       exit 1
     fi
     ;;
@@ -393,6 +395,7 @@ EOF
 
   if grep -Fqx -- 'repo-automation/bin/check-portability' "$run_tests_shellcheck_stub_log" &&
     grep -Fqx -- 'repo-automation/bin/shellcheck-ci-parity' "$run_tests_shellcheck_stub_log" &&
+    grep -Fqx -- 'repo-automation/lib/failure-diagnosis.sh' "$run_tests_shellcheck_stub_log" &&
     ! grep -Fq -- "$run_tests_shellcheck_legacy_target" "$run_tests_shellcheck_stub_log"; then
     test_pass "run-tests shellcheck uses generated paths and skips the old broad find"
   else
