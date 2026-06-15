@@ -45,6 +45,7 @@ checks=preflight pass; codex pass; pr-body pass; submit pass; ci pass
 codex=gpt-5.4-mini / medium
 codex_elapsed=4m 41s
 codex_session=019ec1c2-3823-7051-a8a2-fd8c7cfa2b33
+codex_resume=codex resume --include-non-interactive 019ec1c2-3823-7051-a8a2-fd8c7cfa2b33
 codex_session_total=9m 03s across 3 tracked runs
 url=https://github.com/i-schuyler/repo-automation-template/pull/259
 next=review PR before merge
@@ -65,6 +66,7 @@ checks=preflight pass; codex fail
 codex=gpt-5.4-mini / medium
 codex_elapsed=1m 12s
 codex_session=019ec1c2-3823-7051-a8a2-fd8c7cfa2b33
+codex_resume=codex resume --include-non-interactive 019ec1c2-3823-7051-a8a2-fd8c7cfa2b33
 codex_session_total=9m 03s across 3 tracked runs
 failure_source=codex-child
 failure_step=codex
@@ -95,12 +97,16 @@ next=repair blocker
 - codex
 - codex_elapsed
 - codex_session
+- codex_resume
 - codex_session_total
+
+Approved future behavior: if `slice-handoff` reaches repo-flow submit for an existing open PR whose head branch is the current handoff branch, it should refresh that PR body by passing `--replace-body` to `repo-flow submit` instead of failing only because a PR body already exists. This is approved for the next behavior slice and is not implemented by this contract.
 
 ## Rules
 
 - Use `codex_elapsed`, not bare `elapsed`, inside slice-handoff final summaries.
 - Use `codex_session_total`, not bare `session_total`, inside slice-handoff final summaries.
+- When a Codex session id is available after Codex execution, include `codex_resume=codex resume --include-non-interactive <session-id>` so the blocker paste-back stays self-contained.
 - Do not print raw seconds in human UI.
 - Do not print `codex-status` `work_time` anywhere.
 - Only print failure fields on failure/blocker paths.
@@ -119,6 +125,17 @@ Any future change that:
 - reintroduces `work_time` into pretty output,
 - changes the meaning of `session total`,
 - removes required blocker evidence from slice-handoff summaries,
+- changes existing-PR submit routing away from the approved `--replace-body` refresh path,
 - or changes the success/blocker paste-back rule,
 
 must first update the relevant contract doc and receive explicit approval.
+
+## Known current implementation drift
+
+The current implementation and some adjacent docs may still mention `work_time` or `codex_session_work_time`.
+
+That is known drift, not approved contract behavior.
+
+The next implementation slice should replace those fields with the contract fields here and add matching tests.
+
+This PR intentionally does not implement that behavior.
