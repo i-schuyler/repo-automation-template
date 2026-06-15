@@ -83,6 +83,7 @@ slice_handoff_codex_run_elapsed_summary=""
 slice_handoff_codex_run_failure_card_path=""
 slice_handoff_codex_session_work_time_total_seconds=""
 slice_handoff_codex_session_work_time_summary=""
+slice_handoff_pr_body_replace_mode=""
 slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
 slice_handoff_codex_rate_limit_five_hour_resets_at_local=""
 slice_handoff_codex_rate_limit_weekly_remaining_percent=""
@@ -145,6 +146,9 @@ slice_handoff_print_final_summary() {
   if [ -n "$slice_handoff_validation_manifest_file" ]; then
     summary_lines+=("validation_manifest_path=$slice_handoff_validation_manifest_file")
   fi
+  if [ -n "$slice_handoff_pr_body_replace_mode" ]; then
+    summary_lines+=("pr_body_replace_mode=$slice_handoff_pr_body_replace_mode")
+  fi
   if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
     summary_lines+=(
       "self_target=$slice_handoff_self_target_mode"
@@ -152,15 +156,14 @@ slice_handoff_print_final_summary() {
       "helper_snapshot_hash=$slice_handoff_helper_snapshot_hash"
     )
   fi
-  if [ "$slice_handoff_handoff_mode" = "repair" ]; then
+  if [ "$slice_handoff_handoff_mode" = "repair" ] && [ -n "$slice_handoff_repair_of_pr" ]; then
+    summary_lines+=("repair_of_pr=$slice_handoff_repair_of_pr")
+  fi
+  if [ -n "$slice_handoff_codex_session_id" ]; then
     summary_lines+=(
-      "repair_of_pr=$slice_handoff_repair_of_pr"
-      "codex_session_id=$slice_handoff_repair_session_id"
-    )
-  elif [ -n "$slice_handoff_codex_session" ]; then
-    summary_lines+=(
-      "codex_session=$slice_handoff_codex_session"
+      "codex_session=$slice_handoff_codex_session_id"
       "codex_session_id=$slice_handoff_codex_session_id"
+      "codex_resume=$slice_handoff_codex_resume_command"
     )
   fi
   if [ -n "$slice_handoff_codex_model" ]; then
@@ -353,14 +356,13 @@ slice_handoff_write_codex_run_context_file() {
 ===== CODEX RUN CONTEXT =====
 slice_run_id=$slice_handoff_codex_run_context_run_id
 run_dir=$slice_handoff_codex_run_context_run_dir
+codex_session=$slice_handoff_codex_session_id
 codex_session_id=$slice_handoff_codex_session_id
 codex_resume=$slice_handoff_codex_resume_command
 model=$slice_handoff_codex_model_name / $slice_handoff_codex_model_reasoning
 context=$slice_handoff_codex_context_remaining_summary
-codex_run_invocation_elapsed=$slice_handoff_codex_run_elapsed_summary
-codex_run_invocation_elapsed_seconds=$slice_handoff_codex_run_elapsed_seconds
-codex_status_work_time=$slice_handoff_codex_session_work_time_summary
-codex_status_work_time_total_seconds=$slice_handoff_codex_session_work_time_total_seconds
+codex_elapsed=$slice_handoff_codex_run_elapsed_summary
+codex_elapsed_seconds=$slice_handoff_codex_run_elapsed_seconds
 rate_limits=5h $slice_handoff_codex_rate_limit_five_hour_remaining_percent% left resets $slice_handoff_codex_rate_limit_five_hour_resets_at_local; week $slice_handoff_codex_rate_limit_weekly_remaining_percent% left resets $slice_handoff_codex_rate_limit_weekly_resets_at_local
 codex_final_result=$slice_handoff_codex_run_context_result
 codex_final_output=$slice_handoff_codex_run_context_final_output
@@ -1267,6 +1269,17 @@ slice_handoff_print_execution_blocker_summary() {
   if [ -n "$slice_handoff_codex_reasoning" ]; then
     summary_args+=("codex_reasoning=$slice_handoff_codex_reasoning")
   fi
+  if [ -n "$slice_handoff_pr_body_replace_mode" ]; then
+    summary_args+=("pr_body_replace_mode=$slice_handoff_pr_body_replace_mode")
+  fi
+  if [ -n "$slice_handoff_codex_session_id" ]; then
+    summary_args+=(
+      "codex_session=$slice_handoff_codex_session_id"
+      "codex_session_id=$slice_handoff_codex_session_id"
+      "codex_resume=$slice_handoff_codex_resume_command"
+      "codex_elapsed=$slice_handoff_codex_run_elapsed_summary"
+    )
+  fi
   summary_args+=(
     "run_dir=$run_dir"
     "codex_final_output_path=$codex_final_output_path"
@@ -1345,17 +1358,20 @@ slice_handoff_print_execution_success_summary() {
   if [ -n "$slice_handoff_codex_reasoning" ]; then
     summary_lines+=("codex_reasoning=$slice_handoff_codex_reasoning")
   fi
-    if [ "$slice_handoff_handoff_mode" = "repair" ]; then
-      summary_lines+=(
-        "repair_of_pr=$slice_handoff_repair_of_pr"
-        "codex_session_id=$slice_handoff_repair_session_id"
-      )
-    elif [ -n "$slice_handoff_codex_session" ]; then
-      summary_lines+=(
-        "codex_session=$slice_handoff_codex_session"
-        "codex_session_id=$slice_handoff_codex_session_id"
-      )
-    fi
+  if [ -n "$slice_handoff_pr_body_replace_mode" ]; then
+    summary_lines+=("pr_body_replace_mode=$slice_handoff_pr_body_replace_mode")
+  fi
+  if [ "$slice_handoff_handoff_mode" = "repair" ] && [ -n "$slice_handoff_repair_of_pr" ]; then
+    summary_lines+=("repair_of_pr=$slice_handoff_repair_of_pr")
+  fi
+  if [ -n "$slice_handoff_codex_session_id" ]; then
+    summary_lines+=(
+      "codex_session=$slice_handoff_codex_session_id"
+      "codex_session_id=$slice_handoff_codex_session_id"
+      "codex_resume=$slice_handoff_codex_resume_command"
+      "codex_elapsed=$slice_handoff_codex_run_elapsed_summary"
+    )
+  fi
   if [ "$slice_handoff_self_target_mode" = "copied-helper" ]; then
     summary_lines+=(
       "self_target=$slice_handoff_self_target_mode"
@@ -1447,6 +1463,20 @@ slice_handoff_print_execution_submit_failure_summary() {
   fi
   if [ -n "$slice_handoff_codex_reasoning" ]; then
     summary_args+=("codex_reasoning=$slice_handoff_codex_reasoning")
+  fi
+  if [ -n "$slice_handoff_pr_body_replace_mode" ]; then
+    summary_args+=("pr_body_replace_mode=$slice_handoff_pr_body_replace_mode")
+  fi
+  if [ "$slice_handoff_handoff_mode" = "repair" ] && [ -n "$slice_handoff_repair_of_pr" ]; then
+    summary_args+=("repair_of_pr=$slice_handoff_repair_of_pr")
+  fi
+  if [ -n "$slice_handoff_codex_session_id" ]; then
+    summary_args+=(
+      "codex_session=$slice_handoff_codex_session_id"
+      "codex_session_id=$slice_handoff_codex_session_id"
+      "codex_resume=$slice_handoff_codex_resume_command"
+      "codex_elapsed=$slice_handoff_codex_run_elapsed_summary"
+    )
   fi
   summary_args+=(
     "run_dir=$run_dir"
@@ -1687,15 +1717,9 @@ slice_handoff_write_dry_run_preview() {
         planned_pr_body_validation_argv \
         repo-automation/bin/pr-body-check \
         "--body-file=$pr_body_path"
-      if [ "$slice_handoff_handoff_mode" = "repair" ]; then
-        slice_handoff_write_argv_block planned_repo_flow_submit_argv repo-automation/bin/repo-flow submit --all \
-          "--message=$slice_handoff_commit_message" "--body-file=$pr_body_path" --replace-body \
-          "--review-request-file=<active-run-dir>/review-request-source.txt" --watch --timeout=900 --diagnose-on-fail --explain
-      else
-        slice_handoff_write_argv_block planned_repo_flow_submit_argv repo-automation/bin/repo-flow submit --all \
-          "--message=$slice_handoff_commit_message" "--body-file=$pr_body_path" \
-          "--review-request-file=<active-run-dir>/review-request-source.txt" --watch --timeout=900 --diagnose-on-fail --explain
-      fi
+      slice_handoff_write_argv_block planned_repo_flow_submit_argv repo-automation/bin/repo-flow submit --all \
+        "--message=$slice_handoff_commit_message" "--body-file=$pr_body_path" --replace-body \
+        "--review-request-file=<active-run-dir>/review-request-source.txt" --watch --timeout=900 --diagnose-on-fail --explain
     else
       printf 'planned_pr_body_validation_argv=not_applicable\n'
       printf 'planned_repo_flow_submit_argv=not_applicable\n'
@@ -2177,7 +2201,6 @@ slice_handoff_run_execution_phase() {
   local repo_flow_submit_review_request_path=""
   local -a preflight_repair_args=()
   local -a codex_resume_args=()
-  local -a repo_flow_repair_args=()
   local -a preflight_validation_manifest_args=()
 
   cd "$slice_handoff_repo_root" || return 1
@@ -2305,7 +2328,6 @@ slice_handoff_run_execution_phase() {
   if [ "$slice_handoff_handoff_mode" = "repair" ]; then
     preflight_repair_args=("--repair-of-pr=$slice_handoff_repair_of_pr")
     codex_resume_args=("--resume-session-id=$slice_handoff_repair_session_id")
-    repo_flow_repair_args=(--replace-body)
   elif [ "$slice_handoff_codex_session" = "resume" ]; then
     codex_resume_args=("--resume-session-id=$slice_handoff_codex_session_id")
   fi
@@ -2401,11 +2423,13 @@ slice_handoff_run_execution_phase() {
   fi
 
   if [ "$slice_handoff_explain" -eq 1 ]; then
-    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path codex_run_invocation_elapsed=$slice_handoff_codex_run_elapsed_summary codex_status_work_time=$slice_handoff_codex_session_work_time_summary"
+    slice_handoff_info "codex-run result=$slice_handoff_codex_run_context_result final_output=$codex_final_output_path codex_elapsed=$slice_handoff_codex_run_elapsed_summary"
     slice_handoff_print_codex_final_output_block "$codex_final_output_path"
   fi
 
   if [ "$slice_handoff_submit_requested" -eq 1 ]; then
+    local -a slice_handoff_repo_flow_submit_replace_body_args=(--replace-body)
+    slice_handoff_pr_body_replace_mode="replace-body"
     pr_body_check_stdout_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stdout")" || return 1
     pr_body_check_stderr_tmp="$(mktemp "${TMPDIR:-$HOME/.cache}/slice-handoff-pr-body-check.XXXXXX.stderr")" || {
       rm -f -- "$pr_body_check_stdout_tmp" >/dev/null 2>&1 || true
@@ -2458,11 +2482,11 @@ slice_handoff_run_execution_phase() {
       slice_handoff_print_execution_blocker "review-request-source" "prepare review request source for repo-flow submit" 1 "$repo_flow_submit_review_request_source_path" "$repo_flow_submit_stderr_path" "review request source file is not a regular readable non-empty file"
       return 1
     fi
-    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "${repo_flow_repair_args[@]}" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain)"
+    repo_flow_submit_command_summary="$(slice_handoff_command_summary repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "${slice_handoff_repo_flow_submit_replace_body_args[@]}" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain)"
 
     if ! (
       cd "$slice_handoff_repo_root" || return 1
-      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "${repo_flow_repair_args[@]}" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
+      repo-automation/bin/repo-flow submit --all "--message=$slice_handoff_commit_message" "--body-file=$active_run_dir/pr-body.md" "${slice_handoff_repo_flow_submit_replace_body_args[@]}" "--review-request-file=$repo_flow_submit_review_request_source_path" --watch --timeout=900 --diagnose-on-fail --explain >"$repo_flow_submit_stdout_tmp" 2>"$repo_flow_submit_stderr_tmp"
     ); then
       repo_flow_submit_phase_failed=1
     fi

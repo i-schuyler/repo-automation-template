@@ -20,6 +20,16 @@ Each entry should answer:
 
 ## Entries
 
+### 2026-06-15 slice-handoff submit/resume context polish
+
+Challenges:
+- Submit-mode handoff output needed to carry resume-ready Codex context and replacement intent without reusing the older codex-status timing label.
+- Execution-slice checks also needed to distinguish smoke-repo roots from execution-repo roots, and copied-helper self-target coverage needed explicit frozen-snapshot assertions to make failures actionable.
+
+Recommended improvements:
+- Keep slice-handoff final summaries sourced from the current codex-run elapsed artifact plus the session resume command, and route same-branch PR body refresh through `repo-flow submit --replace-body` in both normal and repair submit paths.
+- Keep smoke-fixture execution expectations anchored to the execution repo root, and prefer named copied-helper invariants over one long assertion bundle.
+
 ### 2026-06-13 grounded codex-run reasoning passthrough
 
 Challenges:

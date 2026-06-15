@@ -17,6 +17,8 @@ Use or add smoke helper assertions that fail actionably when the runtime helper 
 
 Preserve child failure detail in parent helpers. Wrapper output may add context, but it must not replace the most specific child blocker, failure card, expected/actual pair, or evidence path.
 
+For bundled test assertions, prefer named actionable checks over long `&&` chains. Use fail-fast named assertions when later checks depend on earlier setup or would cascade; aggregate named failures only when checks are independent, cheap, and useful together. Failure output should name the failed invariant and include expected/actual/path when cheap to compute.
+
 Keep derived timing fields source-labeled or conservatively named. Distinguish current helper invocation elapsed time from Codex-reported work time and any timestamp-span-derived session time.
 
 Do not run tests, commit, push, merge, tag, publish releases, or perform GitHub write operations unless explicitly asked.

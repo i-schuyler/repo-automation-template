@@ -53,7 +53,7 @@ Supported placeholders in review-request content are:
 
 Dry-run artifacts may keep placeholders unresolved because no real PR has been submitted and no active execution run has completed. In execution submit mode, the active run-dir `review-request.txt` is rewritten after submit succeeds so supported placeholders resolve.
 
-After Codex completes, `slice-handoff --submit` captures two timing sources into run-dir artifacts: `repo-automation/bin/codex-run` writes current wrapper elapsed timing to `codex-run-summary.txt` as `elapsed_seconds` and `elapsed`, while `repo-automation/bin/codex-status --recent=1` contributes session-level cumulative `work_time` to `codex-status-recent.json` and `codex-status-recent.stderr`. That `work_time` may be reported directly by Codex or derived from the session timestamp span, so it can be much larger than a single resumed slice invocation. In explain mode, `CODEX RUN CONTEXT` labels the current child-run duration as `codex_run_elapsed=` and the session total as `codex_session_work_time=`. In successful explain submit output, when Codex final output is printed the visible order is `CODEX FINAL OUTPUT`, `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`; no unlabeled trailing machine block follows the review request, and the review block includes compact Review metadata. If Codex final output is a blocker, explain mode prints `CODEX RUN CONTEXT` before `CODEX FINAL OUTPUT`.
+After Codex completes, `slice-handoff --submit` captures two timing sources into run-dir artifacts: `repo-automation/bin/codex-run` writes the current wrapper invocation elapsed timing to `codex-run-summary.txt` as `elapsed_seconds` and `elapsed`, while `repo-automation/bin/codex-status --recent=1` still contributes session-level cumulative `work_time` to the raw status artifact for later slices. In explain mode, `CODEX RUN CONTEXT` labels the current child-run duration as `codex_elapsed=`; it does not claim that field is the session total. The session total remains deferred to the later codex-status timing/data-source slice. In successful explain submit output, when Codex final output is printed the visible order is `CODEX FINAL OUTPUT`, `FINAL SUMMARY`, `CODEX RUN CONTEXT`, then `PR REVIEW REQUEST`; no unlabeled trailing machine block follows the review request, and the review block includes compact Review metadata. If Codex final output is a blocker, explain mode prints `CODEX RUN CONTEXT` before `CODEX FINAL OUTPUT`.
 
 ## Submit authorization matrix
 
@@ -68,7 +68,7 @@ After Codex completes, `slice-handoff --submit` captures two timing sources into
 | execution (implementation resume) | `repo-flow-submit-all` | yes | validate `handoff_mode: implementation` + `codex_session: resume` + `codex_session_id=<id>` -> preflight -> codex-run --resume-session-id=<id> -> pr-body-check -> repo-flow submit -> stop before merge |
 | repair execution | `repo-flow-submit-all` | yes | validate repair metadata -> verify existing open PR branch -> resume Codex -> pr-body-check -> replace existing PR body and resubmit/watch -> stop before merge |
 
-Implementation resume is a fresh run on a fresh branch with an existing Codex session. It does not use repair preflight or replace-body behavior.
+Implementation resume is a fresh run on a fresh branch with an existing Codex session. It does not use repair preflight, but same-branch existing PR body refresh still routes through repo-flow submit replacement intent.
 
 Use `--out-dir=<path>` to write normalized local artifacts outside the repo root:
 
