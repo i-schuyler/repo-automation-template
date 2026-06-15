@@ -81,8 +81,6 @@ slice_handoff_codex_context_remaining_summary=""
 slice_handoff_codex_run_elapsed_seconds=""
 slice_handoff_codex_run_elapsed_summary=""
 slice_handoff_codex_run_failure_card_path=""
-slice_handoff_codex_session_work_time_total_seconds=""
-slice_handoff_codex_session_work_time_summary=""
 slice_handoff_pr_body_replace_mode=""
 slice_handoff_codex_rate_limit_five_hour_remaining_percent=""
 slice_handoff_codex_rate_limit_five_hour_resets_at_local=""
@@ -398,8 +396,6 @@ slice_handoff_collect_codex_run_context() {
   local context_run_id=""
   local context_run_dir=""
   local context_final_output=""
-  local context_session_work_time=""
-  local context_session_work_time_total_seconds=""
   local codex_run_summary_file=""
   local codex_run_elapsed_seconds=""
   local codex_run_elapsed_summary=""
@@ -492,8 +488,6 @@ resume_command = nested_required(data, 'sessions[0].resume.command')
 model_name = nested_required(data, 'sessions[0].model.name')
 model_reasoning = nested_required(data, 'sessions[0].model.reasoning')
 context_summary = nested_required(data, 'sessions[0].context.remaining_summary')
-work_time_summary = nested_optional(data, 'sessions[0].work_time.summary', 'unknown')
-work_time_total_seconds = nested_optional(data, 'sessions[0].work_time.total_seconds', 'unknown')
 five_hour_remaining_percent = nested_required(data, 'rate_limits.five_hour.remaining_percent')
 five_hour_resets_at_local = nested_required(data, 'rate_limits.five_hour.resets_at_local')
 weekly_remaining_percent = nested_required(data, 'rate_limits.weekly.remaining_percent')
@@ -532,8 +526,6 @@ print(f'codex_rate_limit_five_hour_remaining_percent={five_hour_remaining_percen
 print(f'codex_rate_limit_five_hour_resets_at_local={five_hour_resets_at_local}')
 print(f'codex_rate_limit_weekly_remaining_percent={weekly_remaining_percent}')
 print(f'codex_rate_limit_weekly_resets_at_local={weekly_resets_at_local}')
-print(f'work_time={work_time_summary}')
-print(f'work_time_total_seconds={work_time_total_seconds}')
 print(f'codex_final_result={final_result}')
 print(f'codex_final_output={codex_final_output_path}')
 PY
@@ -571,12 +563,6 @@ PY
         ;;
       context=*)
         slice_handoff_codex_context_remaining_summary="${context_value#context=}"
-        ;;
-      work_time=*)
-        context_session_work_time="${context_value#work_time=}"
-        ;;
-      work_time_total_seconds=*)
-        context_session_work_time_total_seconds="${context_value#work_time_total_seconds=}"
         ;;
       codex_rate_limit_five_hour_remaining_percent=*)
         slice_handoff_codex_rate_limit_five_hour_remaining_percent="${context_value#codex_rate_limit_five_hour_remaining_percent=}"
@@ -620,8 +606,6 @@ EOF
   slice_handoff_codex_run_context_result="$context_result"
   slice_handoff_codex_run_elapsed_seconds="$codex_run_elapsed_seconds"
   slice_handoff_codex_run_elapsed_summary="$codex_run_elapsed_summary"
-  slice_handoff_codex_session_work_time_total_seconds="${context_session_work_time_total_seconds:-unknown}"
-  slice_handoff_codex_session_work_time_summary="${context_session_work_time:-unknown}"
   slice_handoff_codex_run_context_file="$context_path"
   if [ "$slice_handoff_codex_run_context_run_dir" != "$run_dir" ]; then
     slice_handoff_print_execution_blocker "codex-status-recent" "$command_summary" 0 "$json_path" "$stderr_path" "codex-status recent run_dir did not match active run dir" "" "repair codex-status recent output contract and rerun slice-handoff" "repair codex-status recent output contract and rerun slice-handoff"

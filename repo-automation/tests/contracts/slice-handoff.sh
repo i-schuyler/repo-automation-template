@@ -187,7 +187,6 @@ smoke_check_slice_handoff_contract_execution_copied_helper_self_target() {
   local fake_codex_edit_text="$smoke_slice_handoff_execution_artifact_root/fake-codex-edit-helper.txt"
   local self_target_expected_review_request
   local run_dir=""
-  local snapshot_helper_path=""
 
   smoke_slice_handoff_install_fake_codex_run || return 1
   if [ -e "$smoke_test_dir/repo-automation/bin/codex-run" ]; then
@@ -222,7 +221,6 @@ EOF
       smoke_slice_handoff_run "$stdout_file" "$stderr_file" --file="$smoke_slice_handoff_self_target_file" --explain --out-dir="$self_target_out_dir"
   ); then
     run_dir="$(smoke_slice_handoff_extract_field "$stderr_file" run_dir)" || return 1
-    snapshot_helper_path="$run_dir/helper-snapshot/repo-automation/bin/slice-handoff"
     if smoke_slice_handoff_assert_execution_run_dir "$run_dir" "none" "feature/slice-handoff-submit-resume-context" "Slice handoff copied-helper smoke" "Update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "$self_target_expected_review_request" "" "$smoke_test_dir" &&
       smoke_slice_handoff_assert_copied_helper_self_target_snapshot_boundary "$run_dir" "$stderr_file" "$smoke_test_dir" "$worktree_helper_before" "$smoke_test_dir"; then
       if [ -s "$codex_run_before" ]; then
