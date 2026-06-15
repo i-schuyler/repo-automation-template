@@ -413,6 +413,8 @@ repo_install_main() {
     "repo-automation/docs/evidence-bundle.md"
     "repo-automation/docs/repo-automation-install.md"
     "repo-automation/docs/starter-template-readiness.md"
+    "repo-automation/docs/contracts/codex-status-timing-ui-contract.md"
+    "repo-automation/docs/contracts/slice-handoff-final-summary-contract.md"
     "repo-automation/docs/source-provenance.md"
     "repo-automation/docs/testing.md"
     "repo-automation/docs/version-modes.md"

@@ -379,6 +379,16 @@
       "kind": "doc"
     },
     {
+      "path": "repo-automation/docs/contracts/codex-status-timing-ui-contract.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
+      "path": "repo-automation/docs/contracts/slice-handoff-final-summary-contract.md",
+      "owner": "repo-automation-template",
+      "kind": "doc"
+    },
+    {
       "path": "repo-automation/docs/managed-files.md",
       "owner": "repo-automation-template",
       "kind": "doc"
