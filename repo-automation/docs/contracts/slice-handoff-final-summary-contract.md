@@ -59,7 +59,7 @@ script=slice-handoff
 mode=execution
 rc=1
 run_id=1781390196-1445973-docs-downstream-install-quickstart-l1h4fra1
-run_dir=/home/schuyler/.cache/tmp/repo-automation/slice-handoff-runs/1781390196-1445973-docs-downstream-install-quickstart-l1h4fra1
+run_dir=${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs/1781390196-1445973-docs-downstream-install-quickstart-l1h4fra1
 branch=docs/downstream-install-quickstart
 checks=preflight pass; codex fail
 codex=gpt-5.4-mini / medium
@@ -71,7 +71,7 @@ failure_step=codex
 child_failure_preserved=true
 blocker=fail: preflight failed; reason: stop_reason=validation manifest contract failed: branch must match requested branch: expected 'feature/slice-handoff-repair', got 'docs/downstream-install-quickstart'
 failure_fix=align the repair-execution smoke fixture branch with the branch codex-slice-preflight reads, then rerun the focused slice-handoff contract
-evidence=/home/schuyler/.cache/tmp/repo-automation/slice-handoff-runs/1781390196-1445973-docs-downstream-install-quickstart-l1h4fra1/codex-run/codex-failure-card.txt
+evidence=${TMPDIR:-$HOME/.cache}/repo-automation/slice-handoff-runs/1781390196-1445973-docs-downstream-install-quickstart-l1h4fra1/codex-run/codex-failure-card.txt
 next=repair blocker
 ===== END =====
 ```
