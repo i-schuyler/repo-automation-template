@@ -100,7 +100,7 @@ next=repair blocker
 - codex_resume
 - codex_session_total
 
-Approved future behavior: if `slice-handoff` reaches repo-flow submit for an existing open PR whose head branch is the current handoff branch, it should refresh that PR body by passing `--replace-body` to `repo-flow submit` instead of failing only because a PR body already exists. This is approved for the next behavior slice and is not implemented by this contract.
+Approved behavior: if `slice-handoff` reaches repo-flow submit for an existing open PR whose head branch is the current handoff branch, it refreshes that PR body by passing `--replace-body` to `repo-flow submit` instead of failing only because a PR body already exists.
 
 ## Rules
 
@@ -132,10 +132,4 @@ must first update the relevant contract doc and receive explicit approval.
 
 ## Known current implementation drift
 
-The current implementation and some adjacent docs may still mention `work_time` or `codex_session_work_time`.
-
-That is known drift, not approved contract behavior.
-
-The next implementation slice should replace those fields with the contract fields here and add matching tests.
-
-This PR intentionally does not implement that behavior.
+The current implementation still omits `codex_session_total`; that slice remains deferred.

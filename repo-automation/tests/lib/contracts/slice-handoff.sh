@@ -128,6 +128,7 @@ smoke_slice_handoff_prepare_execution_repo() {
   git -C "$smoke_test_dir" update-index --skip-worktree .repo-automation.conf || return 1
   python3 - "$smoke_expected_origin_url" "$config_path" <<'PY' || return 1
 from pathlib import Path
+import json
 import sys
 
 expected = sys.argv[1]
@@ -1366,6 +1367,7 @@ planned_repo_flow_submit_argv:
 - --all
 - --message=$commit_message
 - --body-file=$pr_body_path
+- --replace-body
 - --review-request-file=<active-run-dir>/review-request-source.txt
 - --watch
 - --timeout=900
@@ -1554,7 +1556,7 @@ EOF
   smoke_slice_handoff_write_file "$smoke_slice_handoff_missing_prompt_file" "feature/slice-handoff-pr-review" "Slice handoff preset review smoke" "default" "none" "" "$smoke_slice_handoff_valid_prompt" "" "" "missing-preset" || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_lifecycle_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Please create a PR." || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_self_modifying_helper_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Update repo-automation/bin/slice-handoff to add the new guard." || return 1
-  smoke_slice_handoff_write_file "$smoke_slice_handoff_self_target_file" "feature/slice-handoff-self-target" "Slice handoff copied-helper smoke" "default" "none" "" "Update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "" "" "" "copied-helper" || return 1
+  smoke_slice_handoff_write_file "$smoke_slice_handoff_self_target_file" "feature/slice-handoff-submit-resume-context" "Slice handoff copied-helper smoke" "default" "none" "" "Update repo-automation/bin/slice-handoff to implement the copied-helper snapshot lane." "" "" "" "copied-helper" || return 1
   smoke_slice_handoff_write_file "$smoke_slice_handoff_helper_command_mention_file" "feature/slice-handoff-smoke" "Slice handoff smoke" "default" "none" "" "Please run repo-automation/bin/slice-handoff --help as a command reference, then continue with the slice." || return 1
 }
 
@@ -1600,7 +1602,7 @@ printf 'stubfs %s %s %s %s%% %s\n' \
 EOF
   chmod +x "$smoke_slice_handoff_execution_healthy_disk_stub_dir/df" || return 1
   export REPO_AUTOMATION_DF_BIN="$smoke_slice_handoff_execution_healthy_disk_stub_dir/df"
-  smoke_slice_handoff_expected_execution_repo_root="$smoke_test_dir"
+  smoke_slice_handoff_expected_execution_repo_root="$smoke_slice_handoff_execution_smoke_test_dir"
   smoke_slice_handoff_expected_execution_planned_run_dir_root="$smoke_slice_handoff_execution_isolated_tmpdir/repo-automation/slice-handoff-runs"
   smoke_slice_handoff_expected_execution_none_preview="${smoke_slice_handoff_expected_none_preview//$smoke_slice_handoff_valid_none_out_dir/$smoke_slice_handoff_execution_none_out_dir}"
   smoke_slice_handoff_expected_execution_none_preview="${smoke_slice_handoff_expected_execution_none_preview//$smoke_slice_handoff_expected_dry_run_repo_root/$smoke_slice_handoff_expected_execution_repo_root}"
@@ -2025,19 +2027,17 @@ for line in summary_path.read_text(encoding='utf-8').splitlines():
 
 status = json.loads(status_path.read_text(encoding='utf-8'))
 session = status['sessions'][0]
-work_time = session['work_time']
 
 print('===== CODEX RUN CONTEXT =====')
 print(f'slice_run_id={run_dir.name}')
 print(f'run_dir={run_dir}')
+print(f'codex_session={session["session_id"]}')
 print(f'codex_session_id={session["session_id"]}')
 print(f'codex_resume={session["resume"]["command"]}')
 print(f'model={session["model"]["name"]} / {session["model"]["reasoning"]}')
 print(f'context={session["context"]["remaining_summary"]}')
-print(f'codex_run_invocation_elapsed={summary.get("elapsed", "unknown")}')
-print(f'codex_run_invocation_elapsed_seconds={summary.get("elapsed_seconds", "unknown")}')
-print(f'codex_status_work_time={work_time["summary"]}')
-print(f'codex_status_work_time_total_seconds={work_time["total_seconds"]}')
+print(f'codex_elapsed={summary.get("elapsed", "unknown")}')
+print(f'codex_elapsed_seconds={summary.get("elapsed_seconds", "unknown")}')
 print('rate_limits=5h 99.0% left resets 2026-05-24 04:31 PDT; week 93.0% left resets 2026-05-31 04:31 PDT')
 print(f'codex_final_result={codex_final_result}')
 print(f'codex_final_output={run_dir}/codex-run/codex-final.txt')
@@ -2066,6 +2066,7 @@ smoke_slice_handoff_assert_execution_success_summary() {
   grep -Fxq "branch=$expected_branch" "$stderr_file" || return 1
   grep -Fxq "run_dir=$expected_run_dir" "$stderr_file" || return 1
   grep -Fxq "review_request_path=$expected_review_request_path" "$stderr_file" || return 1
+  grep -Fxq 'pr_body_replace_mode=replace-body' "$stderr_file" || return 1
   grep -Fxq "pr=$expected_pr" "$stderr_file" || return 1
   grep -Fxq "commit=$expected_commit" "$stderr_file" || return 1
   grep -Fxq "watched=$expected_watched" "$stderr_file" || return 1
@@ -2075,6 +2076,34 @@ smoke_slice_handoff_assert_execution_success_summary() {
   grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
   grep -Fxq "next=$expected_next" "$stderr_file" || return 1
   grep -Fxq '===== END =====' "$stderr_file" || return 1
+  python3 - "$stderr_file" "$expected_run_dir" <<'PY' || return 1
+from pathlib import Path
+import json
+import sys
+
+stderr_path = Path(sys.argv[1])
+run_dir = Path(sys.argv[2])
+status = json.loads((run_dir / 'codex-status-recent.json').read_text(encoding='utf-8'))
+session = status['sessions'][0]
+summary = {}
+for line in (run_dir / 'codex-run' / 'codex-run-summary.txt').read_text(encoding='utf-8').splitlines():
+    if '=' in line:
+        key, value = line.split('=', 1)
+        summary[key] = value
+lines = stderr_path.read_text(encoding='utf-8').splitlines()
+expected = [
+    f'codex_session={session["session_id"]}',
+    f'codex_session_id={session["session_id"]}',
+    f'codex_resume={session["resume"]["command"]}',
+    f'codex_elapsed={summary.get("elapsed", "unknown")}',
+]
+for needle in expected:
+    if needle not in lines:
+        raise SystemExit(1)
+for forbidden in ('codex_status_work_time', 'codex_status_work_time_total_seconds', 'codex_session_work_time'):
+    if any(forbidden in line for line in lines):
+        raise SystemExit(1)
+PY
 }
 
 smoke_slice_handoff_assert_execution_submit_failure_summary() {
@@ -2106,10 +2135,39 @@ smoke_slice_handoff_assert_execution_submit_failure_summary() {
   grep -Fxq "ci=$expected_ci" "$stderr_file" || return 1
   grep -Fxq "INFO: slice-handoff repo-flow submit ci=$expected_ci" "$stderr_file" || return 1
   grep -Fxq "url_or_stop=$expected_url_or_stop" "$stderr_file" || return 1
+  grep -Fxq 'pr_body_replace_mode=replace-body' "$stderr_file" || return 1
   grep -Fxq 'repo_flow_submit=fail' "$stderr_file" || return 1
   grep -Fxq "review_request_printed=$expected_review_request_printed" "$stderr_file" || return 1
   grep -Fxq "next=$expected_next" "$stderr_file" || return 1
   grep -Fxq '===== END =====' "$stderr_file" || return 1
+  python3 - "$stderr_file" "$expected_run_dir" <<'PY' || return 1
+from pathlib import Path
+import json
+import sys
+
+stderr_path = Path(sys.argv[1])
+run_dir = Path(sys.argv[2])
+status = json.loads((run_dir / 'codex-status-recent.json').read_text(encoding='utf-8'))
+session = status['sessions'][0]
+summary = {}
+for line in (run_dir / 'codex-run' / 'codex-run-summary.txt').read_text(encoding='utf-8').splitlines():
+    if '=' in line:
+        key, value = line.split('=', 1)
+        summary[key] = value
+lines = stderr_path.read_text(encoding='utf-8').splitlines()
+expected = [
+    f'codex_session={session["session_id"]}',
+    f'codex_session_id={session["session_id"]}',
+    f'codex_resume={session["resume"]["command"]}',
+    f'codex_elapsed={summary.get("elapsed", "unknown")}',
+]
+for needle in expected:
+    if needle not in lines:
+        raise SystemExit(1)
+for forbidden in ('codex_status_work_time', 'codex_status_work_time_total_seconds', 'codex_session_work_time'):
+    if any(forbidden in line for line in lines):
+        raise SystemExit(1)
+PY
   smoke_slice_handoff_assert_markers_in_order "$stderr_file" '===== FINAL SUMMARY =====' '===== CODEX RUN CONTEXT =====' || return 1
   ! grep -Fq '===== PR REVIEW REQUEST =====' "$stderr_file" || return 1
 }
@@ -2158,7 +2216,7 @@ if 'INFO: slice-handoff branch=feature/slice-handoff-pr-review' not in lines:
     raise SystemExit(1)
 if not any(line.startswith('INFO: slice-handoff remaining disk space=') for line in lines):
     raise SystemExit(1)
-if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' codex_run_invocation_elapsed=' in line and ' codex_status_work_time=1h 2m 3s' in line for line in lines):
+if not any(line.startswith('INFO: slice-handoff codex-run result=implementation-complete final_output=') and ' codex_elapsed=' in line for line in lines):
     raise SystemExit(1)
 if 'INFO: slice-handoff repo-flow submit ci=pass' not in lines:
     raise SystemExit(1)
@@ -2182,6 +2240,25 @@ expected_prefix = [
 
 if lines[review_request_line + 1:review_request_line + 1 + len(expected_prefix)] != expected_prefix:
     raise SystemExit(1)
+status = json.loads((Path(expected_run_dir) / 'codex-status-recent.json').read_text(encoding='utf-8'))
+session = status['sessions'][0]
+summary = {}
+for line in (Path(expected_run_dir) / 'codex-run' / 'codex-run-summary.txt').read_text(encoding='utf-8').splitlines():
+    if '=' in line:
+        key, value = line.split('=', 1)
+        summary[key] = value
+for needle in (
+    'pr_body_replace_mode=replace-body',
+    f'codex_session={session["session_id"]}',
+    f'codex_session_id={session["session_id"]}',
+    f'codex_resume={session["resume"]["command"]}',
+    f'codex_elapsed={summary.get("elapsed", "unknown")}',
+):
+    if needle not in lines:
+        raise SystemExit(1)
+for forbidden in ('codex_status_work_time', 'codex_status_work_time_total_seconds', 'codex_session_work_time'):
+    if any(forbidden in line for line in lines):
+        raise SystemExit(1)
 
 # no unlabeled trailing machine block in explain mode
 PY
@@ -2478,6 +2555,98 @@ PY
   else
     grep -Fxq "next=$expected_next" "$run_dir/slice-handoff-execution-summary.txt" || return 1
   fi
+  return 0
+}
+
+smoke_slice_handoff_assert_copied_helper_self_target_snapshot_boundary() {
+  local run_dir="$1"
+  local stderr_file="$2"
+  local expected_source_repo_root="$3"
+  local worktree_helper_before="$4"
+  local smoke_test_dir="$5"
+  local execution_summary_path="$run_dir/slice-handoff-execution-summary.txt"
+  local snapshot_manifest_path="$run_dir/helper-snapshot.txt"
+  local snapshot_helper_path="$run_dir/helper-snapshot/repo-automation/bin/slice-handoff"
+  local worktree_helper_path="$smoke_test_dir/repo-automation/bin/slice-handoff"
+  local actual=""
+
+  actual="$(smoke_slice_handoff_extract_field "$execution_summary_path" self_target)"
+  if [ "$actual" != "copied-helper" ]; then
+    test_fail "copied-helper self-target invariant: expected self_target=copied-helper actual=${actual:-missing} path=$execution_summary_path"
+    return 1
+  fi
+
+  actual="$(smoke_slice_handoff_extract_field "$execution_summary_path" helper_snapshot_path)"
+  if [ "$actual" != "$snapshot_helper_path" ]; then
+    test_fail "copied-helper snapshot path invariant: expected=$snapshot_helper_path actual=${actual:-missing} path=$execution_summary_path"
+    return 1
+  fi
+
+  actual="$(smoke_slice_handoff_extract_field "$execution_summary_path" helper_snapshot_hash)"
+  if ! printf '%s' "$actual" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+    test_fail "copied-helper snapshot hash invariant: expected=sha256:<64 hex> actual=${actual:-missing} path=$execution_summary_path"
+    return 1
+  fi
+
+  actual="$(smoke_slice_handoff_extract_field "$snapshot_manifest_path" snapshot_mode)"
+  if [ "$actual" != "copied-helper" ]; then
+    test_fail "copied-helper snapshot mode invariant: expected=copied-helper actual=${actual:-missing} path=$snapshot_manifest_path"
+    return 1
+  fi
+
+  actual="$(smoke_slice_handoff_extract_field "$snapshot_manifest_path" snapshot_helper_path)"
+  if [ "$actual" != "$snapshot_helper_path" ]; then
+    test_fail "copied-helper snapshot helper invariant: expected=$snapshot_helper_path actual=${actual:-missing} path=$snapshot_manifest_path"
+    return 1
+  fi
+
+  actual="$(smoke_slice_handoff_extract_field "$snapshot_manifest_path" snapshot_root)"
+  if [ "$actual" != "$run_dir/helper-snapshot" ]; then
+    test_fail "copied-helper snapshot root invariant: expected=$run_dir/helper-snapshot actual=${actual:-missing} path=$snapshot_manifest_path"
+    return 1
+  fi
+
+  actual="$(smoke_slice_handoff_extract_field "$snapshot_manifest_path" snapshot_source_repo_root)"
+  if [ "$actual" != "$expected_source_repo_root" ]; then
+    test_fail "copied-helper source repo root invariant: expected=$expected_source_repo_root actual=${actual:-missing} path=$snapshot_manifest_path"
+    return 1
+  fi
+
+  if [ ! -x "$snapshot_helper_path" ]; then
+    test_fail "copied-helper snapshot executable invariant: expected executable path=$snapshot_helper_path actual=not_executable"
+    return 1
+  fi
+
+  if ! cmp -s "$worktree_helper_before" "$snapshot_helper_path"; then
+    test_fail "copied-helper snapshot frozen invariant: expected=$worktree_helper_before actual=$snapshot_helper_path"
+    return 1
+  fi
+
+  if cmp -s "$worktree_helper_before" "$worktree_helper_path"; then
+    test_fail "copied-helper worktree mutation invariant: expected=$worktree_helper_before actual=$worktree_helper_path"
+    return 1
+  fi
+
+  if ! grep -Fxq '# fake codex-run edited worktree helper' "$worktree_helper_path"; then
+    test_fail "copied-helper worktree edit invariant: expected marker in path=$worktree_helper_path actual=missing"
+    return 1
+  fi
+
+  if ! grep -Fxq 'self_target=copied-helper' "$stderr_file"; then
+    test_fail "copied-helper stderr invariant: expected self_target=copied-helper actual=missing path=$stderr_file"
+    return 1
+  fi
+
+  if ! grep -Fxq "helper_snapshot_path=$snapshot_helper_path" "$stderr_file"; then
+    test_fail "copied-helper stderr snapshot path invariant: expected=$snapshot_helper_path actual=missing path=$stderr_file"
+    return 1
+  fi
+
+  if ! grep -Eq '^helper_snapshot_hash=sha256:[0-9a-f]{64}$' "$stderr_file"; then
+    test_fail "copied-helper stderr snapshot hash invariant: expected=sha256:<64 hex> actual=missing path=$stderr_file"
+    return 1
+  fi
+
   return 0
 }
 

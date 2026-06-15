@@ -35,6 +35,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 | ID | Score | Status | Last seen | Evidence | Suggested next action |
 | --- | ---: | --- | --- | --- | --- |
+| `slice-handoff-submit-resume-context` | 1 | active | 2026-06-15 | slice-handoff execution tests needed separate smoke-repo and execution-repo expectations, and copied-helper self-target checks needed named invariants for the frozen snapshot boundary instead of one bundled assertion. | keep execution expectations anchored to the execution repo root, keep final summaries sourced from codex-run elapsed plus session resume command, and keep `--replace-body` in both normal and repair submit paths |
 | `summary-helper-long-positional-call` | 3 | active | PR #182 | Submit summary helper now accepts optional trailing fields; Codex noted long positional helper calls make optional fields easy to get wrong. | consider named-arg style wrapper or option parser if the interface grows again |
 | `summary-rendering-split-paths` | 1 | mitigated | PR #182 | PR #182 consolidated duplicate submit FINAL SUMMARY construction through the shared helper. | monitor for new duplicate summary construction |
 | `grep-awk-summary-assertions` | 1 | mitigated | PR #181 | PR #181 added shared FINAL SUMMARY assertion helpers and converted targeted repo-flow submit assertions. | continue using shared helpers for new summary contracts |
