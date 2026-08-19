@@ -21,12 +21,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "docs-pr",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "DOC_BRANCH_PREFIX",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "DOC_BRANCH_PREFIX", "REMOTE_NAME", "EXPECTED_REMOTE_URL"]
     },
     {
       "name": "automation-freshness",
@@ -68,14 +63,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "preflight",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "FEATURE_BRANCH_PREFIX",
-        "FIX_BRANCH_PREFIX",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "PREFLIGHT_REQUIRE_CLEAN_WORKTREE"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "FEATURE_BRANCH_PREFIX", "FIX_BRANCH_PREFIX", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "PREFLIGHT_REQUIRE_CLEAN_WORKTREE"]
     },
     {
       "name": "check-tooling",
@@ -243,14 +231,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "preflight",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "FEATURE_BRANCH_PREFIX",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "PREFLIGHT_REQUIRE_CLEAN_WORKTREE",
-        "PR_PROVIDER"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "FEATURE_BRANCH_PREFIX", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "PREFLIGHT_REQUIRE_CLEAN_WORKTREE", "PR_PROVIDER"]
     },
     {
       "name": "evidence-bundle",
@@ -526,6 +507,27 @@
       "config_keys": []
     },
     {
+      "name": "review-rebind",
+      "path": "repo-automation/bin/review-rebind",
+      "doc_path": "repo-automation/docs/review-rebind.md",
+      "contract_test_path": "repo-automation/tests/contracts/review-rebind.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "network-read",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": true,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": false,
+      "supports_json": true,
+      "artifact_helper": false,
+      "umbrella_helper": true,
+      "workflow_role": "status",
+      "config_keys": []
+    },
+    {
       "name": "review-pack",
       "path": "repo-automation/bin/review-pack",
       "doc_path": "repo-automation/docs/review-pack.md",
@@ -544,10 +546,7 @@
       "artifact_helper": true,
       "umbrella_helper": true,
       "workflow_role": "artifact",
-      "config_keys": [
-        "REVIEW_PACK_COPY_TO",
-        "REVIEW_PACK_SCP_TO"
-      ]
+      "config_keys": ["REVIEW_PACK_COPY_TO", "REVIEW_PACK_SCP_TO"]
     },
     {
       "name": "prepare-release",
@@ -589,12 +588,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "pr",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "MERGE_MODE"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "MERGE_MODE"]
     },
     {
       "name": "pr-body-check",
@@ -636,13 +630,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "pr",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "MERGE_MODE",
-        "PR_PROVIDER"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "MERGE_MODE", "PR_PROVIDER"]
     },
     {
       "name": "repo-automation-install",
@@ -663,26 +651,7 @@
       "artifact_helper": false,
       "umbrella_helper": true,
       "workflow_role": "install",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "DOCS_DIR",
-        "DOCS_INDEX",
-        "STATE_DIR_NAME",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "PREFLIGHT_REQUIRE_CLEAN_WORKTREE",
-        "CI_PROVIDER",
-        "PR_PROVIDER",
-        "MERGE_MODE",
-        "DOC_PR_TIMEOUT_SECONDS",
-        "DOC_PR_POLL_SECONDS",
-        "IMPLEMENTATION_PR_TIMEOUT_SECONDS",
-        "IMPLEMENTATION_PR_POLL_SECONDS",
-        "DOC_BRANCH_PREFIX",
-        "FEATURE_BRANCH_PREFIX",
-        "FIX_BRANCH_PREFIX",
-        "CHECK_PROFILE_DEFAULT"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "DOCS_DIR", "DOCS_INDEX", "STATE_DIR_NAME", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "PREFLIGHT_REQUIRE_CLEAN_WORKTREE", "CI_PROVIDER", "PR_PROVIDER", "MERGE_MODE", "DOC_PR_TIMEOUT_SECONDS", "DOC_PR_POLL_SECONDS", "IMPLEMENTATION_PR_TIMEOUT_SECONDS", "IMPLEMENTATION_PR_POLL_SECONDS", "DOC_BRANCH_PREFIX", "FEATURE_BRANCH_PREFIX", "FIX_BRANCH_PREFIX", "CHECK_PROFILE_DEFAULT"]
     },
     {
       "name": "repo-automation-report-upstream",
@@ -724,26 +693,7 @@
       "artifact_helper": false,
       "umbrella_helper": true,
       "workflow_role": "audit",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "DOCS_DIR",
-        "DOCS_INDEX",
-        "STATE_DIR_NAME",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "PREFLIGHT_REQUIRE_CLEAN_WORKTREE",
-        "CI_PROVIDER",
-        "PR_PROVIDER",
-        "MERGE_MODE",
-        "DOC_PR_TIMEOUT_SECONDS",
-        "DOC_PR_POLL_SECONDS",
-        "IMPLEMENTATION_PR_TIMEOUT_SECONDS",
-        "IMPLEMENTATION_PR_POLL_SECONDS",
-        "DOC_BRANCH_PREFIX",
-        "FEATURE_BRANCH_PREFIX",
-        "FIX_BRANCH_PREFIX",
-        "CHECK_PROFILE_DEFAULT"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "DOCS_DIR", "DOCS_INDEX", "STATE_DIR_NAME", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "PREFLIGHT_REQUIRE_CLEAN_WORKTREE", "CI_PROVIDER", "PR_PROVIDER", "MERGE_MODE", "DOC_PR_TIMEOUT_SECONDS", "DOC_PR_POLL_SECONDS", "IMPLEMENTATION_PR_TIMEOUT_SECONDS", "IMPLEMENTATION_PR_POLL_SECONDS", "DOC_BRANCH_PREFIX", "FEATURE_BRANCH_PREFIX", "FIX_BRANCH_PREFIX", "CHECK_PROFILE_DEFAULT"]
     },
     {
       "name": "repo-flow",
@@ -764,14 +714,7 @@
       "artifact_helper": false,
       "umbrella_helper": true,
       "workflow_role": "workflow",
-      "config_keys": [
-        "DEFAULT_BRANCH",
-        "REMOTE_NAME",
-        "EXPECTED_REMOTE_URL",
-        "FEATURE_BRANCH_PREFIX",
-        "FIX_BRANCH_PREFIX",
-        "PR_PROVIDER"
-      ]
+      "config_keys": ["DEFAULT_BRANCH", "REMOTE_NAME", "EXPECTED_REMOTE_URL", "FEATURE_BRANCH_PREFIX", "FIX_BRANCH_PREFIX", "PR_PROVIDER"]
     },
     {
       "name": "repo-zip",
@@ -855,10 +798,7 @@
       "artifact_helper": false,
       "umbrella_helper": false,
       "workflow_role": "readiness",
-      "config_keys": [
-        "CHECK_PROFILE_DEFAULT",
-        "DOCS_INDEX"
-      ]
+      "config_keys": ["CHECK_PROFILE_DEFAULT", "DOCS_INDEX"]
     },
     {
       "name": "status-packet",
@@ -904,33 +844,9 @@
     }
   ],
   "planned_routes": [
-    {
-      "name": "codex-run",
-      "state": "implemented",
-      "route": "codex-run",
-      "public": false,
-      "workflow_role": "artifact"
-    },
-    {
-      "name": "submit",
-      "state": "implemented",
-      "route": "repo-flow submit",
-      "public": false,
-      "workflow_role": "workflow"
-    },
-    {
-      "name": "merge",
-      "state": "implemented",
-      "route": "repo-flow merge",
-      "public": false,
-      "workflow_role": "workflow"
-    },
-    {
-      "name": "slice-handoff dry-run",
-      "state": "implemented",
-      "route": "slice-handoff --dry-run",
-      "public": false,
-      "workflow_role": "workflow"
-    }
+    {"name": "codex-run", "state": "implemented", "route": "codex-run", "public": false, "workflow_role": "artifact"},
+    {"name": "submit", "state": "implemented", "route": "repo-flow submit", "public": false, "workflow_role": "workflow"},
+    {"name": "merge", "state": "implemented", "route": "repo-flow merge", "public": false, "workflow_role": "workflow"},
+    {"name": "slice-handoff dry-run", "state": "implemented", "route": "slice-handoff --dry-run", "public": false, "workflow_role": "workflow"}
   ]
 }
