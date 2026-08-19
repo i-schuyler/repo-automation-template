@@ -71,7 +71,7 @@ This is a lightweight repo-maintainer ledger for recurring implementation fricti
 
 ## Per-Slice Signals
 
-- 2026-08-18 / #262 Slice 1 review-rebind / ids=none / score_delta=0 / signal=added a read-only PR review rebind helper with stable remote-state fingerprints, repo-relative ci-status composition, focused fake-gh coverage, and declarative managed-file registration; installer execution and downstream qualification remain deferred
+- 2026-08-18 / #262 Slice 1 review-rebind / ids=review-rebind-exit-trap-scope / score_delta=0 / signal=CI #708 caught success-path stderr and leaked temp cleanup from an EXIT trap dereferencing function-local state under set -u; same-PR repair keeps only the deferred cleanup path at script scope and reuses the existing focused regression assertion; installer execution and downstream qualification remain deferred
 - 2026-06-13 / explicit codex model/reasoning passthrough / ids=none / score_delta=0 / signal=kept codex_profile as the selector while adding strict envelope keys and request-specific model/reasoning passthrough across validation, handoff, and codex-run
 - 2026-06-13 / codex-run reasoning adapter grounding / ids=none / score_delta=0 / signal=grounded downstream reasoning passthrough on the observed model_reasoning_effort config key while keeping requested model/reasoning request records and handoff envelope names stable
 - 2026-06-13 / codex-run resume argv narrowing / ids=codex-run-resume-final-output-contract / score_delta=+1 / signal=separated resume argv from fresh exec, moved resume cwd application into the wrapper, and kept requested profile/model/reasoning/sandbox values distinct from forwarded args

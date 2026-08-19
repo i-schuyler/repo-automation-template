@@ -13,6 +13,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 review_rebind_pr=""
 review_rebind_json=0
+review_rebind_cleanup_dir=""
 
 review_rebind_usage() {
   printf 'Usage: repo-automation/bin/review-rebind --pr=<number> [--json] [--help]\n'
@@ -181,7 +182,8 @@ review_rebind_main() {
     review_rebind_failure "temp-dir-failed" "temp-setup" "unable to create review-rebind temp directory" "set TMPDIR to a writable directory and rerun"
     return 1
   }
-  trap 'rm -rf -- "$work_dir" >/dev/null 2>&1 || true' EXIT INT TERM
+  review_rebind_cleanup_dir="$work_dir"
+  trap 'rm -rf -- "$review_rebind_cleanup_dir" >/dev/null 2>&1 || true' EXIT INT TERM
 
   repo_json="$work_dir/repo.json"
   pr_json="$work_dir/pr.json"
