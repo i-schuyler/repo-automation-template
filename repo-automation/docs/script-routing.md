@@ -19,6 +19,7 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | post-Codex review packet | `post-codex-packet` | no | yes | no | no | no | `status-packet` |
 | Codex adapter | `codex-run` | no | yes | no | no | no | `slice-handoff`; supports explicit model passthrough via `--model` and reasoning passthrough via `-c model_reasoning_effort=<level>` from handoff envelopes |
 | current status packet | `status-packet` | yes | no | no | no | no | `ci-status` |
+| PR review rebind | `review-rebind --pr=<number> --json` | yes | no | no | read-only network | no | ChatGPT semantic review |
 | CI status check | `ci-status` | yes | no | no | yes | no | `ci-watch` |
 | CI watch | `ci-watch` | no | no | no | yes | no | `failure-log` |
 | CI failure evidence | `ci-log-dump` | no | yes | no | yes | no | `failure-log` |
@@ -37,3 +38,4 @@ PR-first review remains the normal path; use `post-codex-review` for the concise
 | slice-handoff dry-run | `slice-handoff --dry-run` | yes | no | no | no | no | `status-packet` |
 
 `review-pack --target=codex` and `repair-prompt --target=codex` are artifact-only routes; they do not invoke Codex.
+`review-rebind` is a read-only mechanical binding surface; it does not decide review verdicts or merge readiness.
