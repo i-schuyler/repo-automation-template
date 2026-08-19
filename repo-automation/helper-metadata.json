@@ -526,6 +526,27 @@
       "config_keys": []
     },
     {
+      "name": "review-rebind",
+      "path": "repo-automation/bin/review-rebind",
+      "doc_path": "repo-automation/docs/review-rebind.md",
+      "contract_test_path": "repo-automation/tests/contracts/review-rebind.sh",
+      "kind": "script",
+      "public": true,
+      "phone_safe": true,
+      "check_cost_tier": "network-read",
+      "writes_files": false,
+      "writes_git": false,
+      "uses_github": true,
+      "runs_run_tests": false,
+      "can_run_broad_checks": false,
+      "supports_quiet": false,
+      "supports_json": true,
+      "artifact_helper": false,
+      "umbrella_helper": true,
+      "workflow_role": "status",
+      "config_keys": []
+    },
+    {
       "name": "review-pack",
       "path": "repo-automation/bin/review-pack",
       "doc_path": "repo-automation/docs/review-pack.md",

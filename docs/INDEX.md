@@ -82,6 +82,7 @@ Start here if you are evaluating, copying, installing, or contributing to `repo-
 56. [Issue Escalation](../repo-automation/docs/issue-escalation.md)
 57. [Source Provenance](../repo-automation/docs/source-provenance.md)
 58. [Implementation Friction Ledger](../repo-automation/docs/implementation-friction-ledger.md)
+59. [Review Rebind](../repo-automation/docs/review-rebind.md)
 
 ## Maintainer and Reference Material
 

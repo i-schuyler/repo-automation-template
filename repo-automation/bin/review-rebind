@@ -1,0 +1,653 @@
+#!/usr/bin/env bash
+# repo-automation/bin/review-rebind
+
+set -u
+set -o pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "$script_dir/../lib/common.sh" || {
+  printf 'STOP: failed to source shared library\n' >&2
+  return 2 2>/dev/null || exit 2
+}
+
+review_rebind_pr=""
+review_rebind_json=0
+review_rebind_cleanup_dir=""
+
+review_rebind_usage() {
+  printf 'Usage: repo-automation/bin/review-rebind --pr=<number> [--json] [--help]\n'
+}
+
+review_rebind_failure() {
+  local code="$1"
+  local step="$2"
+  local reason="$3"
+  local fix="$4"
+
+  if [ "$review_rebind_json" -eq 1 ]; then
+    if command -v python3 >/dev/null 2>&1; then
+      python3 - "$code" "$step" "$reason" "$fix" <<'PY'
+import json
+import sys
+
+code, step, reason, fix = sys.argv[1:5]
+print(json.dumps({
+    'schema': 'repo-automation-helper-output/v1',
+    'script': 'review-rebind',
+    'mode': 'json',
+    'result': 'fail',
+    'status': 'fail',
+    'code': code,
+    'step': step,
+    'reason': reason,
+    'fix': fix,
+}, separators=(',', ':')))
+PY
+    else
+      printf 'STOP: python3 is required for review-rebind JSON output\n' >&2
+    fi
+  else
+    printf 'fail: %s\n' "$reason" >&2
+    printf 'fix: %s\n' "$fix" >&2
+  fi
+  return 1
+}
+
+review_rebind_required_capture() {
+  local step="$1"
+  local code="$2"
+  local fix="$3"
+  local output_file="$4"
+  local stderr_file="$5"
+  shift 5
+  local rc=0
+  local reason=""
+
+  "$@" >"$output_file" 2>"$stderr_file" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    return 0
+  fi
+
+  reason="$(sed -n '1p' "$stderr_file" 2>/dev/null || true)"
+  if [ -z "$reason" ]; then
+    reason="$step failed"
+  fi
+  review_rebind_failure "$code" "$step" "$reason" "$fix"
+  return 1
+}
+
+review_rebind_main() {
+  local arg=""
+  local next=""
+  local temp_root=""
+  local work_dir=""
+  local repo_json=""
+  local pr_json=""
+  local default_ref_json=""
+  local reviews_json=""
+  local files_json=""
+  local comments_json=""
+  local threads_json=""
+  local ci_json=""
+  local result_json=""
+  local stderr_file=""
+  local repository=""
+  local default_branch=""
+  local owner=""
+  local name=""
+  local thread_unknown_reason=""
+  local thread_rc=0
+  local ci_rc=0
+  local ci_child=""
+  local assemble_rc=0
+
+  for arg in "$@"; do
+    if [ "$arg" = "--json" ]; then
+      review_rebind_json=1
+    fi
+  done
+
+  while [ "$#" -gt 0 ]; do
+    arg="$1"
+    next="${2:-}"
+    case "$arg" in
+      --help)
+        review_rebind_usage
+        return 0
+        ;;
+      --json)
+        ;;
+      --pr=*)
+        review_rebind_pr="${arg#--pr=}"
+        if [ -z "$review_rebind_pr" ]; then
+          review_rebind_failure "empty-flag-value" "flag-parse" "empty flag value: --pr" "use --pr=<number>"
+          return 1
+        fi
+        if ! repo_auto_is_positive_integer "$review_rebind_pr"; then
+          review_rebind_failure "invalid-pr" "flag-parse" "invalid --pr value: $review_rebind_pr" "use --pr=<positive-number>"
+          return 1
+        fi
+        ;;
+      --pr)
+        if [ -n "$next" ] && [ "${next#-}" = "$next" ]; then
+          review_rebind_failure "flag-format-not-accepted" "flag-parse" "flag format not accepted: --pr" "use --pr=<number>"
+        else
+          review_rebind_failure "missing-flag-value" "flag-parse" "missing flag value: --pr" "use --pr=<number>"
+        fi
+        return 1
+        ;;
+      --*)
+        review_rebind_failure "unknown-flag" "flag-parse" "unknown flag: $arg" "run repo-automation/bin/review-rebind --help"
+        return 1
+        ;;
+      *)
+        review_rebind_failure "unknown-argument" "flag-parse" "unknown argument: $arg" "run repo-automation/bin/review-rebind --help"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$review_rebind_pr" ]; then
+    review_rebind_failure "missing-pr" "flag-parse" "--pr=<number> is required" "use --pr=<number>"
+    return 1
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf 'STOP: python3 is required for review-rebind\n' >&2
+    return 1
+  fi
+  if ! command -v gh >/dev/null 2>&1; then
+    review_rebind_failure "github-cli-missing" "github-access" "gh is required for review-rebind" "install GitHub CLI and rerun"
+    return 1
+  fi
+  if ! gh auth status --active --hostname github.com >/dev/null 2>&1; then
+    review_rebind_failure "github-auth-failed" "github-access" "gh is not authenticated for github.com" "run gh auth login and rerun"
+    return 1
+  fi
+
+  ci_child="$script_dir/ci-status"
+  if [ ! -x "$ci_child" ]; then
+    review_rebind_failure "runtime-child-missing" "ci-status" "runtime child is missing or not executable: repo-automation/bin/ci-status" "restore the repo-relative ci-status helper and rerun"
+    return 1
+  fi
+
+  temp_root="${TMPDIR:-$HOME/.cache}"
+  mkdir -p "$temp_root" || {
+    review_rebind_failure "temp-root-unavailable" "temp-setup" "unable to create temp root: $temp_root" "set TMPDIR to a writable directory and rerun"
+    return 1
+  }
+  work_dir="$(mktemp -d "$temp_root/review-rebind.XXXXXX")" || {
+    review_rebind_failure "temp-dir-failed" "temp-setup" "unable to create review-rebind temp directory" "set TMPDIR to a writable directory and rerun"
+    return 1
+  }
+  review_rebind_cleanup_dir="$work_dir"
+  trap 'rm -rf -- "$review_rebind_cleanup_dir" >/dev/null 2>&1 || true' EXIT INT TERM
+
+  repo_json="$work_dir/repo.json"
+  pr_json="$work_dir/pr.json"
+  default_ref_json="$work_dir/default-ref.json"
+  reviews_json="$work_dir/reviews.json"
+  files_json="$work_dir/files.json"
+  comments_json="$work_dir/comments.json"
+  threads_json="$work_dir/threads.json"
+  ci_json="$work_dir/ci.json"
+  result_json="$work_dir/result.json"
+  stderr_file="$work_dir/stderr"
+
+  review_rebind_required_capture "repository-binding" "repository-binding-failed" "verify GitHub access and rerun" "$repo_json" "$stderr_file" \
+    gh repo view --json nameWithOwner,defaultBranchRef || return 1
+
+  repository="$(python3 - "$repo_json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+print(data.get('nameWithOwner') or '')
+PY
+)" || repository=""
+  default_branch="$(python3 - "$repo_json" <<'PY'
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+ref = data.get('defaultBranchRef') or {}
+print(ref.get('name') or '')
+PY
+)" || default_branch=""
+
+  if [ -z "$repository" ] || [ -z "$default_branch" ] || [ "${repository#*/}" = "$repository" ]; then
+    review_rebind_failure "repository-binding-invalid" "repository-binding" "GitHub repository identity/default branch was unavailable" "verify the current checkout remote and GitHub access, then rerun"
+    return 1
+  fi
+  owner="${repository%%/*}"
+  name="${repository#*/}"
+
+  review_rebind_required_capture "pr-binding" "pr-binding-failed" "verify PR #$review_rebind_pr exists and is accessible, then rerun" "$pr_json" "$stderr_file" \
+    gh pr view "$review_rebind_pr" --json number,state,isDraft,mergeable,mergedAt,headRefOid,headRefName,baseRefOid,baseRefName,body || return 1
+
+  review_rebind_required_capture "default-branch-binding" "default-branch-binding-failed" "verify the default branch is accessible, then rerun" "$default_ref_json" "$stderr_file" \
+    gh api "repos/$repository/git/ref/heads/$default_branch" || return 1
+
+  review_rebind_required_capture "reviews" "reviews-fetch-failed" "verify PR review access and rerun" "$reviews_json" "$stderr_file" \
+    gh api "repos/$repository/pulls/$review_rebind_pr/reviews?per_page=100" --paginate --slurp || return 1
+
+  review_rebind_required_capture "changed-files" "changed-files-fetch-failed" "verify PR file-list access and rerun" "$files_json" "$stderr_file" \
+    gh api "repos/$repository/pulls/$review_rebind_pr/files?per_page=100" --paginate --slurp || return 1
+
+  review_rebind_required_capture "checkpoint-comments" "checkpoint-comments-fetch-failed" "verify PR comment access and rerun" "$comments_json" "$stderr_file" \
+    gh api "repos/$repository/issues/$review_rebind_pr/comments?per_page=100" --paginate --slurp || return 1
+
+  # GraphQL variable references are literal by contract.
+  # shellcheck disable=SC2016
+  gh api graphql --paginate --slurp \
+    -f query='query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved comments(first:100){totalCount nodes{id databaseId body createdAt updatedAt author{login} path}}} pageInfo{hasNextPage endCursor}}}}}' \
+    -F owner="$owner" -F name="$name" -F number="$review_rebind_pr" >"$threads_json" 2>"$stderr_file" || thread_rc=$?
+  if [ "$thread_rc" -ne 0 ]; then
+    thread_unknown_reason="$(sed -n '1p' "$stderr_file" 2>/dev/null || true)"
+    if [ -z "$thread_unknown_reason" ]; then
+      thread_unknown_reason="review-thread API unavailable"
+    fi
+    printf '[]\n' >"$threads_json"
+  fi
+
+  "$ci_child" --pr="$review_rebind_pr" --json >"$ci_json" 2>"$stderr_file" || ci_rc=$?
+  if ! python3 -m json.tool "$ci_json" >/dev/null 2>&1; then
+    local ci_reason=""
+    ci_reason="$(sed -n '1p' "$stderr_file" 2>/dev/null || true)"
+    if [ -z "$ci_reason" ]; then
+      ci_reason="ci-status did not produce valid JSON"
+    fi
+    review_rebind_failure "ci-status-invalid" "ci-status" "$ci_reason" "run repo-automation/bin/ci-status --pr=$review_rebind_pr --json and resolve its access/runtime failure"
+    return 1
+  fi
+  : "$ci_rc"
+
+  python3 - \
+    "$repo_json" "$pr_json" "$default_ref_json" "$reviews_json" "$files_json" "$comments_json" "$threads_json" "$ci_json" "$thread_unknown_reason" >"$result_json" <<'PY'
+import collections
+import hashlib
+import json
+import pathlib
+import re
+import sys
+
+(
+    repo_path, pr_path, default_ref_path, reviews_path, files_path,
+    comments_path, threads_path, ci_path, thread_unknown_reason,
+) = sys.argv[1:10]
+
+
+def load(path):
+    return json.loads(pathlib.Path(path).read_text(encoding='utf-8'))
+
+
+def canonical_fingerprint(value):
+    payload = json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode('utf-8')
+    return 'sha256:' + hashlib.sha256(payload).hexdigest()
+
+
+def text_fingerprint(value):
+    return 'sha256:' + hashlib.sha256((value or '').encode('utf-8')).hexdigest()
+
+
+def flatten_rest_pages(value, label):
+    if not isinstance(value, list):
+        raise ValueError(f'{label} pagination payload is not a list')
+    flattened = []
+    for page in value:
+        if not isinstance(page, list):
+            raise ValueError(f'{label} pagination page is not a list')
+        flattened.extend(page)
+    return flattened
+
+
+def author_login(value):
+    if not isinstance(value, dict):
+        return ''
+    author = value.get('author') or value.get('user') or {}
+    return author.get('login') or '' if isinstance(author, dict) else ''
+
+
+def clean_header_line(line):
+    line = line.strip()
+    line = re.sub(r'^[\-+*#>\s]+', '', line)
+    line = line.replace('**', '').replace('__', '').replace('`', '')
+    return line.strip()
+
+
+checkpoint_labels = {
+    'sequence': 'sequence',
+    'review generation': 'review_generation',
+    'reviewed head': 'reviewed_head',
+    'base/current main': 'base_current_main',
+    'base/current-main': 'base_current_main',
+    'lifecycle': 'lifecycle',
+    'lifecycle state': 'lifecycle',
+    'current item': 'current_item',
+    'verdict': 'verdict',
+}
+
+
+def parse_checkpoint(comment):
+    body = comment.get('body') or ''
+    if '<!-- pr-review-checkpoint:v1 -->' not in body:
+        return None
+    fields = {}
+    for raw_line in body.splitlines():
+        line = clean_header_line(raw_line)
+        if ':' not in line:
+            continue
+        label, value = line.split(':', 1)
+        key = checkpoint_labels.get(label.strip().lower())
+        if key and key not in fields:
+            fields[key] = value.strip()
+    sequence_text = fields.get('sequence', '')
+    if not re.fullmatch(r'[0-9]+', sequence_text):
+        return {'valid': False, 'comment_id': comment.get('id')}
+    sequence = int(sequence_text)
+    if sequence < 1:
+        return {'valid': False, 'comment_id': comment.get('id')}
+    return {
+        'valid': True,
+        'comment_id': comment.get('id'),
+        'sequence': sequence,
+        'review_generation': fields.get('review_generation') or None,
+        'reviewed_head': fields.get('reviewed_head') or None,
+        'base_current_main': fields.get('base_current_main') or None,
+        'lifecycle': fields.get('lifecycle') or None,
+        'current_item': fields.get('current_item') or None,
+        'verdict': fields.get('verdict') or None,
+        '_updated_at': comment.get('updated_at') or comment.get('created_at') or '',
+    }
+
+
+def fail(code, step, reason, fix):
+    print(json.dumps({
+        'schema': 'repo-automation-helper-output/v1',
+        'script': 'review-rebind',
+        'mode': 'json',
+        'result': 'fail',
+        'status': 'fail',
+        'code': code,
+        'step': step,
+        'reason': reason,
+        'fix': fix,
+    }, separators=(',', ':')))
+    raise SystemExit(1)
+
+
+try:
+    repo = load(repo_path)
+    pr = load(pr_path)
+    default_ref = load(default_ref_path)
+    reviews = flatten_rest_pages(load(reviews_path), 'reviews')
+    changed_file_rows = flatten_rest_pages(load(files_path), 'changed-files')
+    comments = flatten_rest_pages(load(comments_path), 'comments')
+    thread_pages = load(threads_path)
+    ci = load(ci_path)
+except (ValueError, TypeError, json.JSONDecodeError, OSError) as exc:
+    fail('remote-payload-invalid', 'normalize', str(exc), 'rerun after GitHub data is available and structurally valid')
+
+repository = repo.get('nameWithOwner') or ''
+default_branch_ref = (repo.get('defaultBranchRef') or {}).get('name') or ''
+default_branch_sha = ((default_ref.get('object') or {}).get('sha') if isinstance(default_ref, dict) else '') or ''
+head_sha = pr.get('headRefOid') or ''
+head_ref = pr.get('headRefName') or ''
+base_sha = pr.get('baseRefOid') or ''
+base_ref = pr.get('baseRefName') or ''
+required_binding = {
+    'repository': repository,
+    'default_branch.ref': default_branch_ref,
+    'default_branch.sha': default_branch_sha,
+    'head.sha': head_sha,
+    'head.ref': head_ref,
+    'base.sha': base_sha,
+    'base.ref': base_ref,
+}
+missing_binding = [key for key, value in required_binding.items() if not value]
+if missing_binding:
+    fail(
+        'binding-incomplete',
+        'normalize',
+        'required binding value unavailable: ' + ','.join(missing_binding),
+        'rerun after the PR and default-branch binding values are available',
+    )
+
+review_rows = []
+state_counts = collections.Counter()
+for review in reviews:
+    if not isinstance(review, dict):
+        continue
+    state = str(review.get('state') or '')
+    state_counts[state] += 1
+    review_rows.append({
+        'id': review.get('id'),
+        'author': author_login(review),
+        'state': state,
+        'submitted_at': review.get('submitted_at') or '',
+        'commit_id': review.get('commit_id') or '',
+        'body_fingerprint': text_fingerprint(review.get('body') or ''),
+    })
+review_rows.sort(key=lambda item: (str(item.get('id') or ''), item.get('submitted_at') or ''))
+reviews_summary = {
+    'count': len(review_rows),
+    'state_counts': dict(sorted(state_counts.items())),
+    'fingerprint': canonical_fingerprint(review_rows),
+}
+
+thread_summary = {
+    'total': None,
+    'unresolved': None,
+    'fingerprint': None,
+    'completeness': 'unknown',
+}
+unknowns = []
+if thread_unknown_reason:
+    thread_summary['unknown_reason'] = thread_unknown_reason
+    unknowns.append('review_threads')
+else:
+    try:
+        if not isinstance(thread_pages, list):
+            raise ValueError('review-thread payload is not a list')
+        thread_map = {}
+        incomplete = False
+        saw_page = False
+        last_has_next = False
+        for page in thread_pages:
+            if not isinstance(page, dict):
+                raise ValueError('review-thread page is not an object')
+            threads = (((page.get('data') or {}).get('repository') or {}).get('pullRequest') or {}).get('reviewThreads')
+            if not isinstance(threads, dict):
+                raise ValueError('review-thread page is missing reviewThreads')
+            saw_page = True
+            page_info = threads.get('pageInfo') or {}
+            last_has_next = bool(page_info.get('hasNextPage'))
+            for thread in threads.get('nodes') or []:
+                if not isinstance(thread, dict):
+                    continue
+                thread_id = str(thread.get('id') or '')
+                if not thread_id:
+                    incomplete = True
+                    continue
+                comments_obj = thread.get('comments') or {}
+                comment_nodes = comments_obj.get('nodes') or []
+                comment_total = comments_obj.get('totalCount')
+                if isinstance(comment_total, int) and comment_total > len(comment_nodes):
+                    incomplete = True
+                normalized_comments = []
+                for comment in comment_nodes:
+                    if not isinstance(comment, dict):
+                        continue
+                    normalized_comments.append({
+                        'id': comment.get('databaseId') or comment.get('id'),
+                        'author': author_login(comment),
+                        'updated_at': comment.get('updatedAt') or comment.get('createdAt') or '',
+                        'path': comment.get('path') or '',
+                        'body_fingerprint': text_fingerprint(comment.get('body') or ''),
+                    })
+                normalized_comments.sort(key=lambda item: str(item.get('id') or ''))
+                thread_map[thread_id] = {
+                    'id': thread_id,
+                    'resolved': bool(thread.get('isResolved')),
+                    'comment_total': comment_total if isinstance(comment_total, int) else len(normalized_comments),
+                    'comments': normalized_comments,
+                }
+        if last_has_next:
+            incomplete = True
+        if not saw_page:
+            raise ValueError('review-thread pagination returned no page')
+        thread_rows = sorted(thread_map.values(), key=lambda item: item['id'])
+        thread_summary = {
+            'total': len(thread_rows),
+            'unresolved': sum(1 for item in thread_rows if not item['resolved']),
+            'fingerprint': canonical_fingerprint(thread_rows),
+            'completeness': 'incomplete' if incomplete else 'complete',
+        }
+        if incomplete:
+            unknowns.append('review_thread_comment_details')
+    except (ValueError, TypeError) as exc:
+        thread_summary = {
+            'total': None,
+            'unresolved': None,
+            'fingerprint': None,
+            'completeness': 'unknown',
+            'unknown_reason': str(exc),
+        }
+        unknowns.append('review_threads')
+
+marked = []
+malformed_marked = 0
+for comment in comments:
+    if not isinstance(comment, dict):
+        continue
+    parsed = parse_checkpoint(comment)
+    if parsed is None:
+        continue
+    if not parsed.get('valid'):
+        malformed_marked += 1
+        continue
+    marked.append(parsed)
+
+if not marked and malformed_marked:
+    fail(
+        'malformed-checkpoint',
+        'checkpoint-parse',
+        'marked PR review checkpoint exists but no valid positive Sequence field was found',
+        'repair the durable checkpoint header before continuing review rebind',
+    )
+
+if marked:
+    marked.sort(key=lambda item: (item['sequence'], item.get('_updated_at') or '', int(item.get('comment_id') or 0)))
+    chosen = dict(marked[-1])
+    chosen.pop('valid', None)
+    chosen.pop('_updated_at', None)
+    checkpoint = {'available': True, **chosen}
+    if malformed_marked:
+        checkpoint['malformed_marked_count'] = malformed_marked
+else:
+    checkpoint = {'available': False}
+
+filenames = sorted({
+    row.get('filename')
+    for row in changed_file_rows
+    if isinstance(row, dict) and isinstance(row.get('filename'), str) and row.get('filename')
+})
+changed_files = {'count': len(filenames), 'filenames': filenames}
+
+mergeable = pr.get('mergeable')
+if not mergeable or str(mergeable).upper() == 'UNKNOWN':
+    unknowns.append('pr.mergeable')
+
+binding_mismatches = []
+if checkpoint.get('available'):
+    checkpoint_head = checkpoint.get('reviewed_head')
+    if checkpoint_head and checkpoint_head != head_sha:
+        binding_mismatches.append({
+            'field': 'checkpoint.reviewed_head',
+            'expected': head_sha,
+            'actual': checkpoint_head,
+        })
+    checkpoint_main = checkpoint.get('base_current_main')
+    if checkpoint_main and checkpoint_main != default_branch_sha:
+        binding_mismatches.append({
+            'field': 'checkpoint.base_current_main',
+            'expected': default_branch_sha,
+            'actual': checkpoint_main,
+        })
+
+if base_ref == default_branch_ref and base_sha != default_branch_sha:
+    binding_mismatches.append({
+        'field': 'pr.base_sha',
+        'expected': default_branch_sha,
+        'actual': base_sha,
+    })
+
+ci_head = ci.get('head_sha') if isinstance(ci, dict) else None
+if ci_head:
+    if ci_head != head_sha:
+        binding_mismatches.append({
+            'field': 'ci.head_sha',
+            'expected': head_sha,
+            'actual': ci_head,
+        })
+else:
+    unknowns.append('ci.head_sha')
+
+state = str(pr.get('state') or '').upper()
+merged = bool(pr.get('mergedAt')) or state == 'MERGED'
+result = {
+    'schema': 'repo-automation-helper-output/v1',
+    'script': 'review-rebind',
+    'mode': 'json',
+    'result': 'pass',
+    'status': 'pass',
+    'repository': repository,
+    'pr': pr.get('number'),
+    'pr_state': {
+        'state': state,
+        'open': state == 'OPEN',
+        'draft': bool(pr.get('isDraft')),
+        'merged': merged,
+        'mergeable': mergeable,
+    },
+    'head': {'sha': head_sha, 'ref': head_ref},
+    'base': {'sha': base_sha, 'ref': base_ref},
+    'default_branch': {'sha': default_branch_sha, 'ref': default_branch_ref},
+    'body': {'fingerprint': text_fingerprint(pr.get('body') or '')},
+    'reviews': reviews_summary,
+    'review_threads': thread_summary,
+    'checkpoint': checkpoint,
+    'changed_files': changed_files,
+    'ci': ci,
+    'binding_mismatches': binding_mismatches,
+    'unknowns': sorted(set(unknowns)),
+}
+print(json.dumps(result, sort_keys=True, separators=(',', ':')))
+PY
+  assemble_rc=$?
+
+  if [ "$review_rebind_json" -eq 1 ]; then
+    cat "$result_json"
+  elif [ "$assemble_rc" -eq 0 ]; then
+    printf 'pass: review rebind collected for PR #%s\n' "$review_rebind_pr"
+  else
+    python3 - "$result_json" <<'PY' >&2
+import json
+import pathlib
+import sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))
+print('fail: ' + str(data.get('reason') or 'review rebind failed'))
+print('fix: ' + str(data.get('fix') or 'rerun after resolving the reported failure'))
+PY
+  fi
+
+  return "$assemble_rc"
+}
+
+review_rebind_main "$@"
+# repo-automation/bin/review-rebind EOF

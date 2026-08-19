@@ -38,7 +38,7 @@ Use the linked doc for route-specific or contract-specific rules.
 | run-dir lifecycle | `slice-run-dir` | mutating | marked run-dir creation and stale cleanup only on repo-owned marked run dirs |
 | codex adapter | `codex-run` | mutating | local adapter around `codex exec`; tests inject a fake `codex` binary through `PATH`; optional explicit model passthrough uses `--model` and reasoning passthrough uses `-c model_reasoning_effort=<level>` |
 | review/repair | `review-pack`, `repair-prompt` | mutating | fallback review packet / repair prompt helpers; `review-pack --target=review` is lean by default, `--full` builds the heavier evidence bundle/repo-zip artifact, and `review-pack --target=codex` and `repair-prompt --target=codex` create local artifacts only |
-| status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch` | instant / network-read / CI-owned | compact read-only state helpers; `status-packet --explain` is the FINAL SUMMARY handoff form |
+| status | `status-packet`, `failure-log`, `touched-files`, `ci-status`, `ci-watch`, `review-rebind` | instant / network-read / CI-owned | compact read-only state helpers; `review-rebind` binds PR/review/thread/checkpoint state and delegates exact-head CI semantics to `ci-status`; `status-packet --explain` is the FINAL SUMMARY handoff form |
 | release/report | `prepare-release`, `repo-automation-report-upstream`, `repo-automation-install` | mutating / network-read | release, reporting, and install helpers |
 
 ## Planned routing/state rows
@@ -81,6 +81,7 @@ PR-first review remains the normal path; `review-pack` is a fallback artifact he
 | `GH_STUB_RUN_LIST_JSON` / `GH_STUB_RUN_VIEW_*` | CI log discovery and log capture |
 | `GH_STUB_PR_MERGE_*` | merge-path guardrails |
 | `GH_STUB_PR_CREATE_*` | PR creation contract checks |
+| `GH_STUB_DEFAULT_BRANCH_REF_JSON`, `GH_STUB_PR_REVIEWS_JSON`, `GH_STUB_PR_FILES_JSON`, `GH_STUB_ISSUE_COMMENTS_JSON`, `GH_STUB_REVIEW_THREADS_JSON` | `review-rebind` remote binding, pagination, checkpoint, and review-thread fixtures |
 
 The helper contracts use these fixtures only in smoke tests; production helpers still call the real `gh` CLI when GitHub access is available.
 
@@ -89,7 +90,7 @@ The helper contracts use these fixtures only in smoke tests; production helpers 
 | Helper family | Artifact rule |
 | --- | --- |
 | `post-codex-packet`, `repo-zip`, `evidence-bundle`, `ci-log-dump` | write only to the requested artifact path or temp evidence area |
-| `failure-log`, `status-packet`, `touched-files`, `ci-status`, `ci-watch` | read-only, no artifact writes |
+| `failure-log`, `status-packet`, `touched-files`, `ci-status`, `ci-watch`, `review-rebind` | read-only, no repository or GitHub artifact writes; `review-rebind` uses cleaned temporary captures only |
 | `repo-automation-install` | writes the target repo only, never the source repo |
 
 ## Config schema touchpoints
