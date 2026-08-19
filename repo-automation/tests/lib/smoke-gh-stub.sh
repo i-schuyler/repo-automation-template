@@ -265,6 +265,16 @@ PY
       else
         printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
       fi
+    elif [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
+      : > "$GH_STUB_RUN_LIST_FAIL_ONCE_FILE"
+      printf '%s\n' "${GH_STUB_RUN_LIST_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
+      exit 1
+    elif [[ " $* " == *' --commit '* && " $* " == *' --event pull_request '* && -n "${GH_STUB_RUN_LIST_SHA_PR_JSON:-}" ]]; then
+      printf '%s\n' "$GH_STUB_RUN_LIST_SHA_PR_JSON"
+    elif [[ " $* " == *' --commit '* && -n "${GH_STUB_RUN_LIST_SHA_JSON:-}" ]]; then
+      printf '%s\n' "$GH_STUB_RUN_LIST_SHA_JSON"
+    elif [[ " $* " == *' --branch '* && " $* " == *' --event pull_request '* && -n "${GH_STUB_RUN_LIST_BRANCH_PR_JSON:-}" ]]; then
+      printf '%s\n' "$GH_STUB_RUN_LIST_BRANCH_PR_JSON"
     else
       printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     fi
