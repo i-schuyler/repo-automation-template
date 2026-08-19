@@ -11,9 +11,34 @@ set -u
 cmd="${1:-}"
 sub="${2:-}"
 shift 2 >/dev/null 2>&1 || true
-  case "$cmd $sub" in
+
+gh_stub_print_json_var_or_default() {
+  local var_name="$1"
+  local default_json="$2"
+
+  if [ "${!var_name+x}" = x ]; then
+    printf '%s\n' "${!var_name}"
+  else
+    printf '%s\n' "$default_json"
+  fi
+}
+
+case "$cmd $sub" in
   'auth status')
     exit 0
+    ;;
+  'repo view')
+    GH_STUB_REPO_NAME_WITH_OWNER_VALUE="${GH_STUB_REPO_NAME_WITH_OWNER:-i-schuyler/repo-automation-template}" \
+    GH_STUB_DEFAULT_BRANCH_NAME_VALUE="${GH_STUB_DEFAULT_BRANCH_NAME:-main}" \
+    python3 - <<'PY'
+import json
+import os
+
+print(json.dumps({
+    'nameWithOwner': os.environ.get('GH_STUB_REPO_NAME_WITH_OWNER_VALUE', 'i-schuyler/repo-automation-template'),
+    'defaultBranchRef': {'name': os.environ.get('GH_STUB_DEFAULT_BRANCH_NAME_VALUE', 'main')},
+}))
+PY
     ;;
   'pr checks')
     if [ -n "${GH_STUB_PR_CHECKS_SEQUENCE_FILE:-}" ] && [ -f "$GH_STUB_PR_CHECKS_SEQUENCE_FILE" ]; then
@@ -56,8 +81,12 @@ shift 2 >/dev/null 2>&1 || true
           GH_STUB_PR_VIEW_STATE_VALUE="${GH_STUB_PR_VIEW_STATE:-OPEN}" \
           GH_STUB_PR_VIEW_IS_DRAFT_VALUE="${GH_STUB_PR_VIEW_IS_DRAFT:-false}" \
           GH_STUB_PR_VIEW_MERGEABLE_VALUE="${GH_STUB_PR_VIEW_MERGEABLE:-MERGEABLE}" \
+          GH_STUB_PR_VIEW_MERGED_AT_VALUE="${GH_STUB_PR_VIEW_MERGED_AT:-}" \
           GH_STUB_PR_VIEW_HEAD_SHA_VALUE="${GH_STUB_PR_VIEW_HEAD_SHA:-}" \
           GH_STUB_PR_VIEW_HEAD_REF_VALUE="${GH_STUB_PR_VIEW_HEAD_REF:-feature/demo}" \
+          GH_STUB_PR_VIEW_BASE_SHA_VALUE="${GH_STUB_PR_VIEW_BASE_SHA:-}" \
+          GH_STUB_PR_VIEW_BASE_REF_VALUE="${GH_STUB_PR_VIEW_BASE_REF:-main}" \
+          GH_STUB_PR_VIEW_BODY_TEXT_VALUE="${GH_STUB_PR_VIEW_BODY_TEXT:-}" \
           python3 - <<'PY'
 import json
 import os
@@ -68,6 +97,7 @@ try:
 except Exception:
     pass
 
+merged_at = os.environ.get('GH_STUB_PR_VIEW_MERGED_AT_VALUE', '')
 data = {
     'number': number_value,
     'title': os.environ.get('GH_STUB_PR_VIEW_TITLE_VALUE', 'demo title'),
@@ -75,8 +105,12 @@ data = {
     'state': os.environ.get('GH_STUB_PR_VIEW_STATE_VALUE', 'OPEN'),
     'isDraft': os.environ.get('GH_STUB_PR_VIEW_IS_DRAFT_VALUE', 'false').lower() == 'true',
     'mergeable': os.environ.get('GH_STUB_PR_VIEW_MERGEABLE_VALUE', 'MERGEABLE'),
+    'mergedAt': merged_at or None,
     'headRefOid': os.environ.get('GH_STUB_PR_VIEW_HEAD_SHA_VALUE', ''),
     'headRefName': os.environ.get('GH_STUB_PR_VIEW_HEAD_REF_VALUE', 'feature/demo'),
+    'baseRefOid': os.environ.get('GH_STUB_PR_VIEW_BASE_SHA_VALUE', ''),
+    'baseRefName': os.environ.get('GH_STUB_PR_VIEW_BASE_REF_VALUE', 'main'),
+    'body': os.environ.get('GH_STUB_PR_VIEW_BODY_TEXT_VALUE', ''),
 }
 print(json.dumps(data))
 PY
@@ -231,16 +265,6 @@ PY
       else
         printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
       fi
-    elif [ -n "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE:-}" ] && [ ! -e "${GH_STUB_RUN_LIST_FAIL_ONCE_FILE}" ]; then
-      : > "$GH_STUB_RUN_LIST_FAIL_ONCE_FILE"
-      printf '%s\n' "${GH_STUB_RUN_LIST_FAIL_ONCE_STDERR:-net/http: TLS handshake timeout}" >&2
-      exit 1
-    elif [[ " $* " == *' --commit '* && " $* " == *' --event pull_request '* && -n "${GH_STUB_RUN_LIST_SHA_PR_JSON:-}" ]]; then
-      printf '%s\n' "$GH_STUB_RUN_LIST_SHA_PR_JSON"
-    elif [[ " $* " == *' --commit '* && -n "${GH_STUB_RUN_LIST_SHA_JSON:-}" ]]; then
-      printf '%s\n' "$GH_STUB_RUN_LIST_SHA_JSON"
-    elif [[ " $* " == *' --branch '* && " $* " == *' --event pull_request '* && -n "${GH_STUB_RUN_LIST_BRANCH_PR_JSON:-}" ]]; then
-      printf '%s\n' "$GH_STUB_RUN_LIST_BRANCH_PR_JSON"
     else
       printf '%s\n' "${GH_STUB_RUN_LIST_JSON:-[]}"
     fi
@@ -270,6 +294,13 @@ PY
         ;;
     esac
     ;;
+  'api graphql')
+    if [ "${GH_STUB_REVIEW_THREADS_EXIT:-0}" -ne 0 ] 2>/dev/null; then
+      printf '%s\n' "${GH_STUB_REVIEW_THREADS_STDERR:-review thread API failed}" >&2
+      exit "$GH_STUB_REVIEW_THREADS_EXIT"
+    fi
+    gh_stub_print_json_var_or_default GH_STUB_REVIEW_THREADS_JSON '[{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}]'
+    ;;
   'api repos/'*)
     endpoint="$sub"
     case "$endpoint" in
@@ -281,6 +312,18 @@ PY
         ;;
       */rulesets)
         printf '%s\n' "${GH_STUB_RULESETS_JSON:-[]}"
+        ;;
+      */git/ref/heads/*)
+        gh_stub_print_json_var_or_default GH_STUB_DEFAULT_BRANCH_REF_JSON '{"ref":"refs/heads/main","object":{"sha":"main-sha"}}'
+        ;;
+      */pulls/*/reviews*)
+        gh_stub_print_json_var_or_default GH_STUB_PR_REVIEWS_JSON '[[]]'
+        ;;
+      */pulls/*/files*)
+        gh_stub_print_json_var_or_default GH_STUB_PR_FILES_JSON '[[]]'
+        ;;
+      */issues/*/comments*)
+        gh_stub_print_json_var_or_default GH_STUB_ISSUE_COMMENTS_JSON '[[]]'
         ;;
       *)
         printf '%s\n' "${GH_STUB_REPO_JSON:-{\"default_branch\":\"main\",\"delete_branch_on_merge\":true,\"allow_merge_commit\":true,\"allow_squash_merge\":true,\"allow_rebase_merge\":true}}"
@@ -302,7 +345,11 @@ smoke_reset_gh_stub_state() {
   for gh_stub_var in \
     GH_STUB_ACTIONS_PERMISSIONS_JSON \
     GH_STUB_BRANCH_PROTECTION_JSON \
+    GH_STUB_DEFAULT_BRANCH_NAME \
+    GH_STUB_DEFAULT_BRANCH_REF_JSON \
+    GH_STUB_ISSUE_COMMENTS_JSON \
     GH_STUB_REPO_JSON \
+    GH_STUB_REPO_NAME_WITH_OWNER \
     GH_STUB_RULESETS_JSON \
     GH_STUB_PR_CHECKS_JSON \
     GH_STUB_PR_CHECKS_SEQUENCE_FILE \
@@ -316,6 +363,7 @@ smoke_reset_gh_stub_state() {
     GH_STUB_PR_EDIT_ERROR \
     GH_STUB_PR_EDIT_EXIT \
     GH_STUB_PR_EDIT_LOG_FILE \
+    GH_STUB_PR_FILES_JSON \
     GH_STUB_PR_LIST_JSON \
     GH_STUB_PR_LIST_NUMBER \
     GH_STUB_PR_MERGE_ERROR \
@@ -323,7 +371,10 @@ smoke_reset_gh_stub_state() {
     GH_STUB_PR_MERGE_LOG_FILE \
     GH_STUB_PR_MERGE_STDERR_FILE \
     GH_STUB_PR_MERGE_UPDATE_MAIN \
+    GH_STUB_PR_REVIEWS_JSON \
     GH_STUB_PR_STATE_FILE \
+    GH_STUB_PR_VIEW_BASE_REF \
+    GH_STUB_PR_VIEW_BASE_SHA \
     GH_STUB_PR_VIEW_BODY_ERROR \
     GH_STUB_PR_VIEW_BODY_EXIT \
     GH_STUB_PR_VIEW_BODY_FILE \
@@ -336,11 +387,15 @@ smoke_reset_gh_stub_state() {
     GH_STUB_PR_VIEW_IS_DRAFT \
     GH_STUB_PR_VIEW_LOG_FILE \
     GH_STUB_PR_VIEW_MERGEABLE \
+    GH_STUB_PR_VIEW_MERGED_AT \
     GH_STUB_PR_VIEW_NUMBER \
     GH_STUB_PR_VIEW_STATE \
     GH_STUB_PR_VIEW_TITLE \
     GH_STUB_PR_VIEW_URL \
     GH_STUB_PR_VIEW_SEQUENCE_FILE \
+    GH_STUB_REVIEW_THREADS_EXIT \
+    GH_STUB_REVIEW_THREADS_JSON \
+    GH_STUB_REVIEW_THREADS_STDERR \
     GH_STUB_RUN_LIST_FAIL_ONCE_FILE \
     GH_STUB_RUN_LIST_FAIL_ONCE_STDERR \
     GH_STUB_RUN_LIST_JSON \
