@@ -239,6 +239,7 @@ PY
   review_rebind_required_capture "checkpoint-comments" "checkpoint-comments-fetch-failed" "verify PR comment access and rerun" "$comments_json" "$stderr_file" \
     gh api "repos/$repository/issues/$review_rebind_pr/comments?per_page=100" --paginate --slurp || return 1
 
+  # shellcheck disable=SC2016 -- GraphQL variable references are literal by contract.
   gh api graphql --paginate --slurp \
     -f query='query($owner:String!,$name:String!,$number:Int!,$endCursor:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$endCursor){nodes{id isResolved comments(first:100){totalCount nodes{id databaseId body createdAt updatedAt author{login} path}}} pageInfo{hasNextPage endCursor}}}}}' \
     -F owner="$owner" -F name="$name" -F number="$review_rebind_pr" >"$threads_json" 2>"$stderr_file" || thread_rc=$?
