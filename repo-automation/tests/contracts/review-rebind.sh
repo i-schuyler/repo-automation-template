@@ -7,6 +7,9 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "$0")" && pwd)/../lib/smoke-common.sh"
 
+# shellcheck disable=SC2154
+# smoke_test_base and smoke_test_dir are shared harness globals initialized by
+# repo-automation/tests/lib/smoke-common.sh before contract checks run.
 smoke_check_review_rebind_contract() {
   local status=0
   local gh_stub_dir="$smoke_test_base/gh-stub-review-rebind"
